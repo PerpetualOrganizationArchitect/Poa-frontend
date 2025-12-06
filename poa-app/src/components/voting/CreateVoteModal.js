@@ -14,12 +14,12 @@ import {
   Input,
   Textarea,
   Select,
-  HStack,
   Text,
   Box,
   Divider,
+  Alert,
+  AlertIcon,
 } from "@chakra-ui/react";
-import { AddIcon } from "@chakra-ui/icons";
 
 const glassLayerStyle = {
   position: "absolute",
@@ -42,12 +42,8 @@ const CreateVoteModal = ({
   handleProposalTypeChange,
   handleTransferAddressChange,
   handleTransferAmountChange,
-  handleTransferOptionChange,
-  handleCandidateChange,
-  addCandidate,
   handlePollCreated,
   loadingSubmit,
-  candidateList
 }) => {
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg">
@@ -141,7 +137,6 @@ const CreateVoteModal = ({
               >
                 <option value="normal">Normal</option>
                 <option value="transferFunds">Transfer Funds</option>
-                <option value="election">Election</option>
               </Select>
             </FormControl>
 
@@ -164,9 +159,9 @@ const CreateVoteModal = ({
             {proposal.type === "transferFunds" && (
               <>
                 <FormControl>
-                  <FormLabel color="white" fontWeight="medium">Transfer Address</FormLabel>
+                  <FormLabel color="white" fontWeight="medium">Recipient Address</FormLabel>
                   <Input
-                    placeholder="Enter transfer address"
+                    placeholder="0x..."
                     value={proposal.transferAddress}
                     onChange={handleTransferAddressChange}
                     bg="whiteAlpha.100"
@@ -178,11 +173,14 @@ const CreateVoteModal = ({
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel color="white" fontWeight="medium">Transfer Amount</FormLabel>
+                  <FormLabel color="white" fontWeight="medium">Amount (ETH)</FormLabel>
                   <Input
-                    placeholder="Enter amount"
+                    placeholder="Amount in ETH"
                     value={proposal.transferAmount}
                     onChange={handleTransferAmountChange}
+                    type="number"
+                    step="0.001"
+                    min="0"
                     bg="whiteAlpha.100"
                     border="1px solid rgba(148, 115, 220, 0.3)"
                     color="white"
@@ -191,63 +189,27 @@ const CreateVoteModal = ({
                   />
                 </FormControl>
 
-                <FormControl>
-                  <FormLabel color="white" fontWeight="medium">Transfer Option</FormLabel>
-                  <Input
-                    placeholder="Should the amount be transferred? (Yes/No)"
-                    value={proposal.transferOption}
-                    onChange={handleTransferOptionChange}
-                    bg="whiteAlpha.100"
-                    border="1px solid rgba(148, 115, 220, 0.3)"
-                    color="white"
-                    _hover={{ borderColor: "purple.400" }}
-                    _focus={{ borderColor: "purple.500", boxShadow: "0 0 0 1px rgba(148, 115, 220, 0.6)" }}
-                  />
-                </FormControl>
-              </>
-            )}
-
-            {proposal.type === "election" && (
-              <>
-                <FormControl>
-                  <FormLabel color="white" fontWeight="medium">Candidates</FormLabel>
-                  <VStack spacing={3} align="stretch">
-                    {candidateList.map((candidate, index) => (
-                      <HStack key={index} spacing={3}>
-                        <Input
-                          placeholder="Candidate Name"
-                          value={candidate.name}
-                          onChange={(e) => handleCandidateChange(index, "name", e.target.value)}
-                          bg="whiteAlpha.100"
-                          border="1px solid rgba(148, 115, 220, 0.3)"
-                          color="white"
-                          _hover={{ borderColor: "purple.400" }}
-                          _focus={{ borderColor: "purple.500", boxShadow: "0 0 0 1px rgba(148, 115, 220, 0.6)" }}
-                        />
-                        <Input
-                          placeholder="Wallet Address"
-                          value={candidate.address}
-                          onChange={(e) => handleCandidateChange(index, "address", e.target.value)}
-                          bg="whiteAlpha.100"
-                          border="1px solid rgba(148, 115, 220, 0.3)"
-                          color="white"
-                          _hover={{ borderColor: "purple.400" }}
-                          _focus={{ borderColor: "purple.500", boxShadow: "0 0 0 1px rgba(148, 115, 220, 0.6)" }}
-                        />
-                      </HStack>
-                    ))}
+                <Box
+                  bg="rgba(148, 115, 220, 0.1)"
+                  borderRadius="md"
+                  p={3}
+                  border="1px solid rgba(148, 115, 220, 0.3)"
+                >
+                  <Text fontSize="sm" color="gray.300" fontWeight="medium" mb={2}>
+                    Voting Options:
+                  </Text>
+                  <VStack align="start" spacing={1} pl={2}>
+                    <Text fontSize="sm" color="green.300">✓ Yes - Execute transfer</Text>
+                    <Text fontSize="sm" color="red.300">✗ No - Reject transfer</Text>
                   </VStack>
-                  <Button 
-                    leftIcon={<AddIcon />} 
-                    onClick={addCandidate} 
-                    mt={3} 
-                    size="sm"
-                    colorScheme="purple"
-                    variant="outline"
-                  >
-                    Add Candidate
-                  </Button>
-                </FormControl>
+                </Box>
+
+                <Alert status="info" borderRadius="md" bg="rgba(66, 153, 225, 0.15)">
+                  <AlertIcon color="blue.300" />
+                  <Text fontSize="sm" color="gray.300">
+                    This creates a Yes/No vote. If "Yes" wins, the transfer executes automatically from the organization's treasury.
+                  </Text>
+                </Alert>
               </>
             )}
           </VStack>

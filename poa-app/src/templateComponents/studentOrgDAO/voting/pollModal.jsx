@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Modal,
   ModalOverlay,
@@ -10,12 +10,37 @@ import {
   Button,
   Text,
   VStack,
+  HStack,
   Radio,
   RadioGroup,
+  Alert,
+  AlertIcon,
+  Switch,
+  FormControl,
+  FormLabel,
+  Slider,
+  SliderTrack,
+  SliderFilledTrack,
+  SliderThumb,
+  Box,
+  Icon,
 } from "@chakra-ui/react";
+import { LockIcon } from "@chakra-ui/icons";
 import { ethers } from "ethers";
 import CountDown from "./countDown";
 import { useRouter } from "next/router";
+import { useAccount } from "wagmi";
+import { usePOContext } from "@/context/POContext";
+
+// Helper to map hat IDs to role indices
+const getRestrictedRoleNames = (restrictedHatIds, roleHatIds) => {
+    if (!restrictedHatIds?.length || !roleHatIds?.length) return [];
+    return restrictedHatIds.map(hatId => {
+        const roleIndex = roleHatIds?.findIndex(rh => rh === hatId || String(rh) === String(hatId));
+        if (roleIndex >= 0) return `Role ${roleIndex + 1}`;
+        return null;
+    }).filter(Boolean);
+};
 
 
 const glassLayerStyle = {
@@ -41,21 +66,80 @@ const PollModal = ({
 }) => {
   const router = useRouter();
   const { userDAO } = router.query;
+  const { address } = useAccount();
+  const { roleHatIds } = usePOContext();
+
+  // Get role names for restricted voting
+  const restrictedRoles = getRestrictedRoleNames(selectedPoll?.restrictedHatIds, roleHatIds);
+
+  // Weighted voting state (for Hybrid voting)
+  const [isWeightedMode, setIsWeightedMode] = useState(false);
+  const [voteWeights, setVoteWeights] = useState({});
+
+  // Calculate remaining weight to distribute
+  const remainingWeight = useMemo(() => {
+    const used = Object.values(voteWeights).reduce((sum, w) => sum + w, 0);
+    return 100 - used;
+  }, [voteWeights]);
+
+  // Check if user has already voted
+  const hasVoted = useMemo(() => {
+    if (!address || !selectedPoll?.votes) return false;
+    return selectedPoll.votes.some(
+      v => v.voter?.toLowerCase() === address.toLowerCase()
+    );
+  }, [address, selectedPoll?.votes]);
+
+  // Reset weighted state when modal opens with new poll
+  useEffect(() => {
+    setIsWeightedMode(false);
+    setVoteWeights({});
+    setSelectedOption("");
+  }, [selectedPoll?.id]);
 
   const handleModalClose = () => {
     onClose();
     router.push(`/voting/?userDAO=${userDAO}`);
   };
 
+  const handleWeightChange = (optionIndex, newValue) => {
+    const currentWeight = voteWeights[optionIndex] || 0;
+    const maxAllowed = remainingWeight + currentWeight;
+    const clampedValue = Math.min(newValue, maxAllowed);
+
+    setVoteWeights(prev => {
+      const updated = { ...prev };
+      if (clampedValue > 0) {
+        updated[optionIndex] = clampedValue;
+      } else {
+        delete updated[optionIndex];
+      }
+      return updated;
+    });
+  };
+
   const vote = () => {
+    let optionIndices, weights;
+
+    if (isWeightedMode) {
+      // Weighted voting - get all options with weights
+      optionIndices = Object.keys(voteWeights).map(k => parseInt(k));
+      weights = Object.values(voteWeights);
+
+      // Validate total is 100
+      const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+      if (totalWeight !== 100) {
+        alert("Weights must sum to 100%");
+        return;
+      }
+    } else {
+      // Single option voting
+      const selectedOptionIndex = parseInt(selectedOption);
+      optionIndices = [selectedOptionIndex];
+      weights = [100];
+    }
 
     handleModalClose();
-
-    // Only send the selected option with 100% weight
-    // Contract expects arrays of [selectedOptionIndex] and [100]
-    const selectedOptionIndex = parseInt(selectedOption);
-    const optionIndices = [selectedOptionIndex];
-    const weights = [100];
 
     // In POP subgraph, id format is "contractAddress-proposalId"
     // Use proposalId directly if available, otherwise extract from id
@@ -63,6 +147,15 @@ const PollModal = ({
 
     handleVote(contractAddress, newPollId, optionIndices, weights);
   };
+
+  // Check if vote is valid
+  const isVoteValid = useMemo(() => {
+    if (isWeightedMode) {
+      const totalWeight = Object.values(voteWeights).reduce((sum, w) => sum + w, 0);
+      return totalWeight === 100;
+    }
+    return selectedOption !== "";
+  }, [isWeightedMode, voteWeights, selectedOption]);
 
   return (
     <Modal onOpen={onOpen} isOpen={isOpen} onClose={handleModalClose}>
@@ -107,37 +200,126 @@ const PollModal = ({
               }
             />
 
+            {/* Who can vote and quorum display */}
+            <HStack spacing={4} justify="center" flexWrap="wrap">
+              <HStack spacing={2}>
+                <Icon as={LockIcon} color="purple.300" boxSize={4} />
+                <Text fontSize="sm" color="gray.300">
+                  Who can vote:{" "}
+                  <Text as="span" color="purple.300" fontWeight="medium">
+                    {selectedPoll?.isHatRestricted && restrictedRoles.length > 0
+                      ? restrictedRoles.join(", ")
+                      : "Role 1"}
+                  </Text>
+                </Text>
+              </HStack>
+              {selectedPoll?.quorum > 0 && (
+                <Text fontSize="sm" color="gray.400">
+                  Quorum: {selectedPoll.quorum}%
+                </Text>
+              )}
+            </HStack>
+
+            {/* Already voted alert */}
+            {hasVoted && (
+              <Alert status="info" borderRadius="md" bg="rgba(66, 153, 225, 0.15)">
+                <AlertIcon color="blue.300" />
+                <Text fontSize="sm" color="gray.300">
+                  You have already voted on this proposal.
+                </Text>
+              </Alert>
+            )}
+
+            {/* Weighted voting toggle */}
+            {!hasVoted && (
+              <FormControl display="flex" alignItems="center" justifyContent="center">
+                <FormLabel htmlFor="weighted-mode" mb="0" color="gray.300" fontSize="sm">
+                  Split vote across options
+                </FormLabel>
+                <Switch
+                  id="weighted-mode"
+                  isChecked={isWeightedMode}
+                  onChange={(e) => {
+                    setIsWeightedMode(e.target.checked);
+                    setVoteWeights({});
+                    setSelectedOption("");
+                  }}
+                  colorScheme="purple"
+                />
+              </FormControl>
+            )}
+
             {/* Voting Options Section */}
-            <VStack color="rgba(333, 333, 333, 1)" spacing={4}>
-              <RadioGroup onChange={setSelectedOption} value={selectedOption}>
-                <VStack align="flex-start">
+            <VStack color="rgba(333, 333, 333, 1)" spacing={4} w="100%">
+              {isWeightedMode ? (
+                // Weighted voting mode - sliders for each option
+                <VStack spacing={4} w="100%" px={4}>
                   {selectedPoll?.options?.map((option, index) => (
-                    <Radio size="lg" key={index} value={index}>
-                      {option.name}{" "}
-                      {selectedPoll.type === "Hybrid" ? (
-                        // Show percentage for Hybrid type
-                        `(Percentage: ${option.currentPercentage || 0}%)`
-                      ) : (
-                        // Fallback to showing votes, handle invalid BigNumber values
-                        `(Votes: ${option.votes ? ethers.BigNumber.from(option.votes).toNumber() : 0})`
-                      )}
-                    </Radio>
+                    <Box key={index} w="100%">
+                      <HStack justify="space-between" mb={1}>
+                        <Text fontSize="sm" fontWeight="medium">
+                          {option.name}
+                        </Text>
+                        <Text fontSize="sm" fontWeight="bold" color="purple.300">
+                          {voteWeights[index] || 0}%
+                        </Text>
+                      </HStack>
+                      <Slider
+                        value={voteWeights[index] || 0}
+                        min={0}
+                        max={100}
+                        step={5}
+                        onChange={(val) => handleWeightChange(index, val)}
+                        colorScheme="purple"
+                      >
+                        <SliderTrack bg="gray.600">
+                          <SliderFilledTrack />
+                        </SliderTrack>
+                        <SliderThumb boxSize={4} />
+                      </Slider>
+                    </Box>
                   ))}
+                  <Text
+                    fontSize="sm"
+                    fontWeight="bold"
+                    color={remainingWeight === 0 ? "green.400" : "orange.400"}
+                  >
+                    {remainingWeight === 0
+                      ? "✓ All 100% allocated"
+                      : `Remaining: ${remainingWeight}%`}
+                  </Text>
                 </VStack>
-              </RadioGroup>
+              ) : (
+                // Simple single-option selection
+                <RadioGroup onChange={setSelectedOption} value={selectedOption}>
+                  <VStack align="flex-start">
+                    {selectedPoll?.options?.map((option, index) => (
+                      <Radio size="lg" key={index} value={String(index)}>
+                        {option.name}{" "}
+                        {selectedPoll.type === "Hybrid" ? (
+                          `(${option.currentPercentage || 0}%)`
+                        ) : (
+                          `(${option.votes || 0} votes)`
+                        )}
+                      </Radio>
+                    ))}
+                  </VStack>
+                </RadioGroup>
+              )}
             </VStack>
           </VStack>
         </ModalBody>
 
         <ModalFooter>
           <Button
-            colorScheme="blue"
+            colorScheme="purple"
             onClick={vote}
             mr={3}
             isLoading={loadingVote}
             loadingText="Handling Vote"
+            isDisabled={hasVoted || !isVoteValid}
           >
-            Vote
+            {hasVoted ? "Already Voted" : "Vote"}
           </Button>
         </ModalFooter>
       </ModalContent>

@@ -205,8 +205,11 @@ export const FETCH_VOTING_DATA_NEW = gql`
           restrictedHatIds
           votes {
             voter
+            voterUsername
             optionIndexes
             optionWeights
+            classRawPowers
+            votedAt
           }
         }
       }

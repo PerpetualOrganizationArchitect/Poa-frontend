@@ -41,7 +41,7 @@ const UserprofileHub = () => {
   const { ongoingPolls,} = useVotingContext();
   const {recommendedTasks} = useProjectContext();
 
-  const {claimedTasks, userProposals, graphUsername, userDataLoading, error, userData, hasExecNFT} = useUserContext();
+  const {claimedTasks, userProposals, graphUsername, userDataLoading, error, userData, hasExecRole} = useUserContext();
 
 
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -135,10 +135,10 @@ const UserprofileHub = () => {
       }
   }, [userData, graphUsername]);
 
-  // In POP, executive status is determined by hasExecNFT from UserContext
+  // In POP, executive status is determined by hasExecRole from UserContext
   useEffect(() => {
-    setIsExec(hasExecNFT);
-  }, [hasExecNFT]);
+    setIsExec(hasExecRole);
+  }, [hasExecRole]);
 
   const animatedPT = useSpring({ 
     pt: userInfo.ptBalance, 

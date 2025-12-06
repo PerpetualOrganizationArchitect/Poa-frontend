@@ -17,12 +17,14 @@ import {
   Tooltip,
   IconButton,
   Collapse,
+  useToast,
 } from '@chakra-ui/react';
 import { useWeb3Context } from '../../context/web3Context';
 import { useDataBaseContext } from '@/context/dataBaseContext';
 import DraggableProject from './DraggableProject';
 import TrashBin from './TrashBin';
 import { usePOContext } from '@/context/POContext';
+import { useUserContext } from '@/context/UserContext';
 import { AddIcon, SearchIcon, ChevronLeftIcon } from '@chakra-ui/icons';
 
 const glassLayerStyle = {
@@ -42,28 +44,43 @@ const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onCreatePr
   const [showInput, setShowInput] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showProjects, setShowProjects] = useState(true);
-  let hasExecNFT = true;
+  const { hasExecRole } = useUserContext();
   const { deleteProject: handleDeleteProject } = useWeb3Context();
-  
+  const toast = useToast();
+
   const { taskManagerContractAddress } = usePOContext();
-  
+
   const handleCreateProject = () => {
-    if (hasExecNFT) {
+    if (hasExecRole) {
       onCreateProject(newProjectName);
       setNewProjectName('');
       setShowInput(false);
     } else {
-      alert('You must be an executive to create project');
+      toast({
+        title: 'Permission Required',
+        description: 'You must be an executive to create a project.',
+        status: 'warning',
+        duration: 4000,
+        isClosable: true,
+        position: 'top',
+      });
       setNewProjectName('');
       setShowInput(false);
     }
   };
-  
+
   const onDeleteProject = (projectName) => {
-    if (hasExecNFT) {
+    if (hasExecRole) {
       handleDeleteProject(taskManagerContractAddress, projectName);
     } else {
-      alert('You must be an executive to delete project');
+      toast({
+        title: 'Permission Required',
+        description: 'You must be an executive to delete a project.',
+        status: 'warning',
+        duration: 4000,
+        isClosable: true,
+        position: 'top',
+      });
     }
   };
 

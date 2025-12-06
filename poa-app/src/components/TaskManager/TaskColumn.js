@@ -11,6 +11,7 @@ import { useToast } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
 import { useProjectContext } from '@/context/ProjectContext';
 import { useUserContext } from '@/context/UserContext';
+import { calculatePayout } from '../../util/taskUtils';
 
 
 const glassLayerStyle = {
@@ -31,11 +32,11 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   const {userDAO} = router.query;
   const { moveTask, addTask, editTask } = useTaskBoard();
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
-  const {account, mintKUBIX, createTask } = useWeb3Context();
+  const {account, createTask } = useWeb3Context();
   const { taskManagerContractAddress,  } = usePOContext();
   const {taskCount, } = useProjectContext();
   const toast = useToast();
-  const { graphUsername, hasExecNFT: userHasExecNFT, hasMemberNFT: userHasMemberNFT } = useUserContext();
+  const { graphUsername, hasExecRole: userHasExecRole, hasMemberRole: userHasMemberRole } = useUserContext();
 
   // Empty state icons and messages, moved from TaskBoard for consistency
   const emptyStateIcons = {
@@ -52,31 +53,38 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
     'Completed': 'The finish line is waiting for your first completed task. Keep pushing!'
   };
 
-  let hasExecNFT = userHasExecNFT;
-  let hasMemberNFT = userHasMemberNFT;
-  const hasMemberNFTRef = useRef(hasMemberNFT);
-  const hasExecNFTRef = useRef(hasExecNFT);
+  let hasExecRole = userHasExecRole;
+  let hasMemberRole = userHasMemberRole;
+  const hasMemberRoleRef = useRef(hasMemberRole);
+  const hasExecRoleRef = useRef(hasExecRole);
 
   // Expose methods via ref
   useImperativeHandle(ref, () => ({
     handleOpenAddTaskModal: () => {
       if (title === 'Open') {
-        if (hasExecNFT) {
+        if (hasExecRole) {
           setIsAddTaskModalOpen(true);
         } else {
-          alert('You must be an executive to add task');
+          toast({
+            title: 'Permission Required',
+            description: 'You must be an executive to add a task.',
+            status: 'warning',
+            duration: 4000,
+            isClosable: true,
+            position: 'top',
+          });
         }
       }
     }
   }));
 
   useEffect(() => {
-    hasMemberNFTRef.current = hasMemberNFT;
-  }, [hasMemberNFT]);
+    hasMemberRoleRef.current = hasMemberRole;
+  }, [hasMemberRole]);
 
   useEffect(() => {
-    hasExecNFTRef.current = hasExecNFT;
-  }, [hasExecNFT]);
+    hasExecRoleRef.current = hasExecRole;
+  }, [hasExecRole]);
 
   
   const handleCloseAddTaskModal = () => {
@@ -84,23 +92,8 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   };
   
   const handleAddTask =  async (updatedTask) => {
-    
-    const calculatePayout = (difficulty, estimatedHours) => {
-  
-      const difficulties = {
-        easy: { base: 1, multiplier: 16.5 },
-        medium: { base: 4, multiplier: 24 },
-        hard: { base: 10, multiplier: 30 },
-        veryHard: { base: 25, multiplier: 37.5 },
-      };
-      
-      const { base, multiplier } = difficulties[difficulty];
-      const total = Math.round(base + (multiplier * estimatedHours));
-      return total;
-  
-    };
     if (title === 'Open') {
-      let Payout= calculatePayout(updatedTask.difficulty, updatedTask.estHours);
+      let Payout = calculatePayout(updatedTask.difficulty, updatedTask.estHours);
 
       let hexTaskCount = taskCount.toString(16); 
       let newTaskId = `0x${hexTaskCount}-${taskManagerContractAddress}`;
@@ -148,23 +141,40 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
     canDrop: () => true, // Always allow dropping
     drop: async(item) => {
       console.log(`Attempting to drop in ${title} column:`, item);
-      
-      if (!hasMemberNFTRef.current && title != 'Completed') {
-        alert('You must own an NFT to move tasks. Go to user to join');
+
+      if (!hasMemberRoleRef.current && title != 'Completed') {
+        toast({
+          title: 'Membership Required',
+          description: 'You must be a member to move tasks. Go to user page to join.',
+          status: 'warning',
+          duration: 4000,
+          isClosable: true,
+          position: 'top',
+        });
         return;
       }
-      else if (!hasExecNFTRef.current && title === 'Completed') {
-        alert('You must be an Executive to review tasks.');
+      else if (!hasExecRoleRef.current && title === 'Completed') {
+        toast({
+          title: 'Permission Required',
+          description: 'You must be an executive to review tasks.',
+          status: 'warning',
+          duration: 4000,
+          isClosable: true,
+          position: 'top',
+        });
         return;
       }
-      else if (title === 'Completed') {
-        console.log("item.claimedBy: ", item.claimedBy)
-        console.log("item.kubixPayout: ", item.kubixPayout)
-        setTimeout(async() => {await mintKUBIX(item.claimedBy, item.kubixPayout, true)}, 2100);
-      }
+      // Note: Token minting is now handled automatically by the contract on task completion
 
       if (item.columnId === 'completed') {
-        alert('You cannot move tasks from the Completed column.');
+        toast({
+          title: 'Action Not Allowed',
+          description: 'You cannot move tasks from the Completed column.',
+          status: 'info',
+          duration: 3000,
+          isClosable: true,
+          position: 'top',
+        });
         return;
       }
 
@@ -267,10 +277,17 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
 
   const handleOpenAddTaskModal = () => {
     if (title === 'Open') {
-      if (hasExecNFT) {
+      if (hasExecRole) {
         setIsAddTaskModalOpen(true);
       } else {
-        alert('You must be an executive to add task');
+        toast({
+          title: 'Permission Required',
+          description: 'You must be an executive to add a task.',
+          status: 'warning',
+          duration: 4000,
+          isClosable: true,
+          position: 'top',
+        });
       }
     }
   };

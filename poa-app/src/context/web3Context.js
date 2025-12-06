@@ -1,7 +1,9 @@
 // Web3Context.js - Updated for POP contracts on Hoodi testnet
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { ethers } from 'ethers';
+import bs58 from 'bs58';
 import { useIPFScontext } from './ipfsContext';
+import { parseTaskId, parseModuleId } from '../util/taskUtils';
 
 // New POP ABIs
 import UniversalAccountRegistry from "../../abi/UniversalAccountRegistry.json";
@@ -73,9 +75,39 @@ export const Web3Provider = ({ children }) => {
         return ethers.utils.toUtf8Bytes(str);
     };
 
-    // Helper: Convert string to bytes32 hash (for IPFS hashes, descriptions, etc.)
+    // Helper: Convert string to bytes32 hash (for descriptions, submissions, etc.)
     const stringToBytes32 = (str) => {
         return ethers.utils.keccak256(ethers.utils.toUtf8Bytes(str));
+    };
+
+    // Helper: Encode IPFS CIDv0 (Qm...) to bytes32
+    // CIDv0 = base58(0x1220 + 32-byte-sha256-hash)
+    // We store just the 32-byte hash portion, which fits in bytes32
+    const ipfsCidToBytes32 = (cid) => {
+        if (!cid || cid === '') return ethers.constants.HashZero;
+        try {
+            // Decode base58 CID, skip 2-byte multihash prefix (0x12 0x20), get 32-byte hash
+            const decoded = bs58.decode(cid);
+            const hashBytes = decoded.slice(2); // Skip the 0x12 0x20 prefix
+            return ethers.utils.hexlify(hashBytes);
+        } catch (error) {
+            console.warn('Failed to encode IPFS CID to bytes32:', error);
+            return ethers.constants.HashZero;
+        }
+    };
+
+    // Helper: Decode bytes32 back to IPFS CIDv0
+    const bytes32ToIpfsCid = (bytes32Hash) => {
+        if (!bytes32Hash || bytes32Hash === ethers.constants.HashZero) return null;
+        try {
+            // Prepend multihash prefix (0x1220 = sha2-256, 32 bytes)
+            const hashBytes = ethers.utils.arrayify(bytes32Hash);
+            const withPrefix = new Uint8Array([0x12, 0x20, ...hashBytes]);
+            return bs58.encode(withPrefix);
+        } catch (error) {
+            console.warn('Failed to decode bytes32 to IPFS CID:', error);
+            return null;
+        }
     };
 
     // ============================================
@@ -566,7 +598,7 @@ export const Web3Provider = ({ children }) => {
 
         // Create IPFS metadata
         let ipfsHash = await ipfsAddTask(taskName, taskDescription, taskLocation, difficulty, estHours, "");
-        let metadataHash = stringToBytes32(ipfsHash.path);
+        let metadataHash = ipfsCidToBytes32(ipfsHash.path);
 
         const contract = getContractInstance(contractAddress, TaskManager);
 
@@ -624,8 +656,7 @@ export const Web3Provider = ({ children }) => {
 
         console.log("Claiming task with ID:", taskID);
         const contract = getContractInstance(contractAddress, TaskManager);
-        // In POP subgraph, task ID format is "taskManagerAddress-taskId"
-        const newTaskID = taskID.toString().includes("-") ? taskID.split("-")[1] : taskID;
+        const newTaskID = parseTaskId(taskID);
 
         const notificationId = addNotification('Claiming task...', 'loading');
 
@@ -655,8 +686,7 @@ export const Web3Provider = ({ children }) => {
             return;
         }
         const contract = getContractInstance(contractAddress, TaskManager);
-        // In POP subgraph, task ID format is "taskManagerAddress-taskId"
-        const newTaskID = taskID.toString().includes("-") ? taskID.split("-")[1] : taskID;
+        const newTaskID = parseTaskId(taskID);
 
         const notificationId = addNotification('Completing task...', 'loading');
 
@@ -686,8 +716,7 @@ export const Web3Provider = ({ children }) => {
             return;
         }
         const contract = getContractInstance(contractAddress, TaskManager);
-        // In POP subgraph, task ID format is "taskManagerAddress-taskId"
-        const newTaskID = taskID.toString().includes("-") ? taskID.split("-")[1] : taskID;
+        const newTaskID = parseTaskId(taskID);
 
         const notificationId = addNotification('Submitting task...', 'loading');
 
@@ -728,8 +757,7 @@ export const Web3Provider = ({ children }) => {
             return;
         }
         const contract = getContractInstance(contractAddress, TaskManager);
-        // In POP subgraph, task ID format is "taskManagerAddress-taskId"
-        const newTaskID = taskID.toString().includes("-") ? taskID.split("-")[1] : taskID;
+        const newTaskID = parseTaskId(taskID);
 
         const notificationId = addNotification('Updating task...', 'loading');
 
@@ -789,14 +817,13 @@ export const Web3Provider = ({ children }) => {
         let ipfsHash = await ipfsAddTask(taskName, taskDescription, taskLocation, difficulty, estHours, "");
 
         const contract = getContractInstance(contractAddress, TaskManager);
-        // In POP subgraph, task ID format is "taskManagerAddress-taskId"
-        const newTaskID = taskID.toString().includes("-") ? taskID.split("-")[1] : taskID;
+        const newTaskID = parseTaskId(taskID);
 
         const notificationId = addNotification('Editing task...', 'loading');
 
         try {
             const titleBytes = stringToBytes(taskName);
-            const metaHash = stringToBytes32(ipfsHash.path);
+            const metaHash = ipfsCidToBytes32(ipfsHash.path);
 
             const gasEstimate = await contract.estimateGas.updateTask(
                 newTaskID,
@@ -870,8 +897,7 @@ export const Web3Provider = ({ children }) => {
             return;
         }
         const contract = getContractInstance(contractAddress, TaskManager);
-        // In POP subgraph, task ID format is "taskManagerAddress-taskId"
-        const newTaskID = taskID.toString().includes("-") ? taskID.split("-")[1] : taskID;
+        const newTaskID = parseTaskId(taskID);
 
         const notificationId = addNotification('Cancelling task...', 'loading');
 
@@ -925,7 +951,7 @@ export const Web3Provider = ({ children }) => {
         };
 
         const ipfsHash = await addToIpfs(JSON.stringify(data));
-        const contentHash = stringToBytes32(ipfsHash.path);
+        const contentHash = ipfsCidToBytes32(ipfsHash.path);
 
         let correctAnswerIndex = answers.indexOf(correctAnswer);
 
@@ -971,10 +997,7 @@ export const Web3Provider = ({ children }) => {
 
         const contract = getContractInstance(contractAddress, EducationHub);
 
-        // In POP subgraph, module ID format is "educationHubAddress-moduleId"
-        const actualModuleId = moduleId.toString().includes('-')
-            ? moduleId.split('-')[1]
-            : moduleId;
+        const actualModuleId = parseModuleId(moduleId);
 
         if (!actualModuleId) {
             console.error(`Invalid moduleId: ${moduleId}`);
@@ -1024,55 +1047,6 @@ export const Web3Provider = ({ children }) => {
         return ipfsHash;
     }
 
-    // ============================================
-    // Stub Functions (Features removed in POP migration)
-    // These prevent crashes - UI stays intact but functions are no-ops
-    // ============================================
-
-    // NFT Membership stubs (replaced by Hats Protocol)
-    async function checkIsExecutive(contractAddress, userAddress) {
-        console.warn("checkIsExecutive is deprecated - use Hats Protocol");
-        return false;
-    }
-
-    async function updateNFT(contractAddress, address, membershipType) {
-        console.warn("updateNFT is deprecated - use Hats Protocol");
-    }
-
-    async function mintNFT(contractAddress, address, membershipType) {
-        console.warn("mintNFT is deprecated - use Hats Protocol");
-    }
-
-    async function mintDefaultNFT(contractAddress, address) {
-        console.warn("mintDefaultNFT is deprecated - use Hats Protocol");
-    }
-
-    // Election stub (feature removed)
-    async function createProposalElection(...args) {
-        console.warn("createProposalElection is deprecated - elections not supported in POP");
-    }
-
-    // Treasury stubs (replaced by Executor/PaymentManager)
-    async function transferFunds(...args) {
-        console.warn("transferFunds is deprecated - use Executor batches");
-    }
-
-    async function sendToTreasury(...args) {
-        console.warn("sendToTreasury is deprecated");
-    }
-
-    // DD Token stub (removed)
-    async function mintDDtokens(...args) {
-        console.warn("mintDDtokens is deprecated - no DD token in POP");
-    }
-
-    // KUBIX token stub (replaced by ParticipationToken auto-minting on task completion)
-    async function mintKUBIX(address, amount, isTaskCompletion = false) {
-        console.warn("mintKUBIX is deprecated - ParticipationToken is auto-minted on task completion in POP");
-        // In POP, completeTask automatically mints participation tokens
-        return true;
-    }
-
     return (
         <Web3Context.Provider value={{
             address,
@@ -1108,18 +1082,9 @@ export const Web3Provider = ({ children }) => {
             // Education Hub Functions
             createEduModule,
             completeModule,
-            // IPFS Helper
+            // IPFS Helpers
             ipfsAddTask,
-            // Stub functions (deprecated - prevent crashes)
-            checkIsExecutive,
-            updateNFT,
-            mintNFT,
-            mintDefaultNFT,
-            createProposalElection,
-            transferFunds,
-            sendToTreasury,
-            mintDDtokens,
-            mintKUBIX,
+            bytes32ToIpfsCid,
         }}>
             {children}
         </Web3Context.Provider>

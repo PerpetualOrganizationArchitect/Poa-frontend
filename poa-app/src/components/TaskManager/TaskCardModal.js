@@ -1,4 +1,4 @@
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Button,
   FormControl,
@@ -15,7 +15,6 @@ import {
   VStack,
   Flex,
   Spacer,
-  Toast,
   useToast,
   Textarea,
   useDisclosure,
@@ -24,6 +23,7 @@ import {
   HStack
 } from '@chakra-ui/react';
 import { CheckIcon } from '@chakra-ui/icons';
+import { hasBounty as checkHasBounty, getTokenByAddress } from '../../util/tokens';
 import EditTaskModal from './EditTaskModal';
 import { useTaskBoard } from '../../context/TaskBoardContext';
 import { useWeb3Context } from '../../context/web3Context';
@@ -46,7 +46,7 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
   console.log("task", task);
   const [submission, setSubmission] = useState('');
   const { moveTask, deleteTask } = useTaskBoard();
-  const { hasExecNFT, hasMemberNFT, address: account, fetchUserDetails } = useUserContext();
+  const { hasExecRole, hasMemberRole, address: account, fetchUserDetails } = useUserContext();
   const { getUsernameByAddress, setSelectedProject, projects } = useDataBaseContext();
   const router = useRouter();
   const { userDAO } = router.query;
@@ -88,17 +88,24 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
   const handleButtonClick = async () => {
     handleCloseModal();
     if (columnId === 'open') {
-      if (hasMemberNFT) {
+      if (hasMemberRole) {
         try {
           await moveTask(task, columnId, 'inProgress', 0, " ", account);
-          
+
         }
         catch (error) {
 
           console.error("Error moving task:", error);
         }
       } else {
-        alert('You must own an NFT to claim this task. Go to user to join ');
+        toast({
+          title: 'Membership Required',
+          description: 'You must be a member to claim this task. Go to user page to join.',
+          status: 'warning',
+          duration: 4000,
+          isClosable: true,
+          position: 'top',
+        });
       }
     }
     if (columnId === 'inProgress') {
@@ -111,7 +118,7 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
           isClosable: true
         });
         return;
-      } else if (hasMemberNFT) {
+      } else if (hasMemberRole) {
         try {
           await moveTask(task, columnId, 'inReview', 0, submission);
           toast({
@@ -133,11 +140,18 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
           console.error("Error moving task:", error);
         }
       } else {
-        alert('You must own an NFT to submit. Go to user to join');
+        toast({
+          title: 'Membership Required',
+          description: 'You must be a member to submit. Go to user page to join.',
+          status: 'warning',
+          duration: 4000,
+          isClosable: true,
+          position: 'top',
+        });
       }
     }
     if (columnId === 'inReview') {
-      if (hasExecNFT) {
+      if (hasExecRole) {
         try {
           await moveTask(task, columnId, 'completed', 0);
           toast({
@@ -158,11 +172,18 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
           });
         }
       } else {
-        alert('You must be an executive to complete the review');
+        toast({
+          title: 'Permission Required',
+          description: 'You must be an executive to complete the review.',
+          status: 'warning',
+          duration: 4000,
+          isClosable: true,
+          position: 'top',
+        });
       }
     }
     if (columnId === 'completed') {
-      if (hasExecNFT) {
+      if (hasExecRole) {
         try {
           await deleteTask(task.id, columnId);
           toast({
@@ -184,7 +205,14 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
           });
         }
       } else {
-        alert('You must be an executive to delete task');
+        toast({
+          title: 'Permission Required',
+          description: 'You must be an executive to delete a task.',
+          status: 'warning',
+          duration: 4000,
+          isClosable: true,
+          position: 'top',
+        });
       }
     }
   };
@@ -209,10 +237,17 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
 
   const handleOpenEditTaskModal = () => {
     
-    if (hasExecNFT) {
+    if (hasExecRole) {
       setIsEditTaskModalOpen(true);
     } else {
-       alert('You must be an executive to edit.');
+      toast({
+        title: 'Permission Required',
+        description: 'You must be an executive to edit a task.',
+        status: 'warning',
+        duration: 4000,
+        isClosable: true,
+        position: 'top',
+      });
     }
     
   };
@@ -320,9 +355,16 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
           </ModalBody>
           <ModalFooter borderTop="1.5px solid" borderColor="gray.200" py={2}>
             <Box flexGrow={1}>
-              <Text fontWeight="bold" fontSize="m">
-                Reward: {task.Payout}
-              </Text>
+              <VStack align="start" spacing={0}>
+                <Text fontWeight="bold" fontSize="m">
+                  Reward: {task.Payout} PT
+                </Text>
+                {checkHasBounty(task.bountyToken, task.bountyPayout) && (
+                  <Text fontWeight="bold" fontSize="sm" color="green.400">
+                    + {task.bountyPayout} {getTokenByAddress(task.bountyToken).symbol} Bounty
+                  </Text>
+                )}
+              </VStack>
             </Box>
             <Box>
               <Button textColor={"white"} variant="outline" onClick={copyLinkToClipboard} mr={2}>

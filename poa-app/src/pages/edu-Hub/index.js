@@ -38,7 +38,7 @@ import QuizModal from '@/components/eduHub/QuizModal';
 
 const EducationHub = () => {
   const { poContextLoading, educationModules, educationHubAddress } = usePOContext();
-  const { completedModules, hasExecNFT, userDataLoading } = useUserContext();
+  const { completedModules, hasExecRole, userDataLoading } = useUserContext();
   const { createEduModule, address } = useWeb3Context();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const toast = useToast();
@@ -54,7 +54,7 @@ const EducationHub = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Executive status comes from UserContext (Hats-based check)
-  const isExecutive = hasExecNFT;
+  const isExecutive = hasExecRole;
   const isLoadingExecCheck = userDataLoading;
 
   const handleAddModule = async () => {

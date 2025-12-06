@@ -193,8 +193,8 @@ const PollModal = ({
               </Alert>
             )}
 
-            {/* Weighted voting toggle (only for Hybrid) */}
-            {selectedPoll?.type === "Hybrid" && !hasVoted && (
+            {/* Weighted voting toggle */}
+            {!hasVoted && (
               <FormControl display="flex" alignItems="center" justifyContent="center">
                 <FormLabel htmlFor="weighted-mode" mb="0" color="gray.300" fontSize="sm">
                   Split vote across options

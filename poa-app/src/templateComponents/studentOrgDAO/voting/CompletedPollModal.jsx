@@ -107,7 +107,7 @@ const CompletedPollModal = ({ onOpen, isOpen, onClose, selectedPoll, voteType })
         ...option,
         processedVotes: option.normalizedVotes,
         percentage: percentage,
-        isWinner: index === selectedPoll.winningOptionIndex,
+        isWinner: index === selectedPoll.winningOption,
       };
     });
     
@@ -149,7 +149,7 @@ const CompletedPollModal = ({ onOpen, isOpen, onClose, selectedPoll, voteType })
           fontWeight="extrabold"
           fontSize="2xl"
         >
-          {selectedPoll?.name}
+          {selectedPoll?.title}
         </ModalHeader>
         <ModalCloseButton color="white" />
         

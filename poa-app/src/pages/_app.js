@@ -17,15 +17,20 @@ import {
   darkTheme,
 } from '@rainbow-me/rainbowkit';
 import { WagmiProvider } from 'wagmi';
-import {
-  mainnet,
-  polygon,
-  optimism,
-  arbitrum,
-  base,
-  sepolia,
-  polygonAmoy,
-} from 'wagmi/chains';
+import { defineChain } from 'viem';
+
+// Define Hoodi testnet chain
+const hoodi = defineChain({
+  id: 560048,
+  name: 'Hoodi',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: ['https://0xrpc.io/hoodi'] },
+  },
+  blockExplorers: {
+    default: { name: 'Hoodi Explorer', url: 'https://explorer.hoodi.ethpandaops.io' },
+  },
+});
 import {
   QueryClientProvider,
   QueryClient,
@@ -42,7 +47,7 @@ const queryClient = new QueryClient();
 const config = getDefaultConfig({
   appName: 'Poa',
   projectId: '7dc7409d6ef96f46e91e9d5797e4deac',
-  chains: [polygon, sepolia, polygonAmoy],
+  chains: [hoodi],
   ssr: false,
 });
 
@@ -69,7 +74,7 @@ function MyApp({ Component, pageProps }) {
     <WagmiProvider config={config}>
       <ApolloProvider client={client}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider  initialChain={polygonAmoy}>
+        <RainbowKitProvider initialChain={hoodi}>
           <IPFSprovider>
             <ProfileHubProvider>
               <POProvider>

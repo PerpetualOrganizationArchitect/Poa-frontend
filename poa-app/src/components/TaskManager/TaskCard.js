@@ -29,6 +29,7 @@ const TaskCard = ({ id, name, description, difficulty, estHours, index, columnId
   const { isOpen, onOpen, onClose } = useDisclosure();
 
   const truncateDescription = (desc, maxLength) => {
+    if (!desc) return '';
     if (desc.length > maxLength) {
       return desc.substring(0, maxLength) + '...';
     }
@@ -91,6 +92,7 @@ const TaskCard = ({ id, name, description, difficulty, estHours, index, columnId
 
   // Helper for difficulty colors
   function getDifficultyColor(diff) {
+    if (!diff) return '#CBD5E0';
     const colorMap = {
       easy: '#68D391', // green.300
       medium: '#F6E05E', // yellow.300

@@ -140,33 +140,70 @@ const ArchitectPage = () => {
   }, []);
 
   const initChatBot = async () => {
-    const openai = new OpenAI({
-      apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
-      dangerouslyAllowBrowser: true,
-    });
-    setOpenai(openai);
+    // Check if OpenAI API key is available
+    const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
 
-    const assistant = await openai.beta.assistants.retrieve(
-      "asst_HopuEd843XXuOmDlfRCCfT7k"
-    );
-    const thread = await openai.beta.threads.create();
-    setAssistant(assistant);
-    setThread(thread);
+    if (!apiKey) {
+      // No API key - show a message and allow manual setup
+      const introMessage =
+        'Welcome to the Organization Creator!\n\n' +
+        'The AI assistant is not available (no API key configured).\n\n' +
+        'You can still create your organization using the form on the right side of the screen. ' +
+        'Fill in your organization details and proceed through each step.';
 
-    const introMessage =
-      'Hello! I\'m Poa\n\n' +
-      'I\'m your Perpetual Organization architect. I\'m here to help you build unstoppable, fully community-owned organizations.\n\n' +
-      'Feel free to ask me any questions as you go through the setup process on the right side of the screen.';
+      addMessage(introMessage, "Poa");
+      previousMessagesRef.current = [{
+        speaker: "Poa",
+        text: introMessage,
+        isTyping: false,
+        isPreTyped: false
+      }];
+      return;
+    }
 
-    addMessage(introMessage, "Poa");
-    
-    // Store the intro message in the reference for collapse/expand
-    previousMessagesRef.current = [{
-      speaker: "Poa",
-      text: introMessage,
-      isTyping: false,
-      isPreTyped: false
-    }];
+    try {
+      const openai = new OpenAI({
+        apiKey: apiKey,
+        dangerouslyAllowBrowser: true,
+      });
+      setOpenai(openai);
+
+      const assistant = await openai.beta.assistants.retrieve(
+        "asst_HopuEd843XXuOmDlfRCCfT7k"
+      );
+      const thread = await openai.beta.threads.create();
+      setAssistant(assistant);
+      setThread(thread);
+
+      const introMessage =
+        'Hello! I\'m Poa\n\n' +
+        'I\'m your Perpetual Organization architect. I\'m here to help you build unstoppable, fully community-owned organizations.\n\n' +
+        'Feel free to ask me any questions as you go through the setup process on the right side of the screen.';
+
+      addMessage(introMessage, "Poa");
+
+      // Store the intro message in the reference for collapse/expand
+      previousMessagesRef.current = [{
+        speaker: "Poa",
+        text: introMessage,
+        isTyping: false,
+        isPreTyped: false
+      }];
+    } catch (error) {
+      console.error('Error initializing chatbot:', error);
+      const errorMessage =
+        'Welcome to the Organization Creator!\n\n' +
+        'The AI assistant could not be initialized.\n\n' +
+        'You can still create your organization using the form on the right side of the screen.';
+
+      addMessage(errorMessage, "Poa");
+      previousMessagesRef.current = [{
+        speaker: "Poa",
+        text: errorMessage,
+        isTyping: false,
+        isPreTyped: false
+      }];
+    }
   };
 
   const addMessage = (text, speaker = "Poa", isTyping = false) => {
@@ -189,16 +226,25 @@ const ArchitectPage = () => {
   };
 
   const askChatBot = async (input) => {
+    // Check if chatbot is available
+    if (!openai || !thread || !assistant) {
+      addMessage(
+        "The AI assistant is not available. Please use the form on the right to configure your organization.",
+        "Poa"
+      );
+      return;
+    }
+
     setIsWaiting(true);
     // Add a unique ID to the message to help track it
     const messageId = `message-${Date.now()}`;
-    
+
     // Add a typing placeholder message with the unique ID
     setMessages((prevMessages) => [
       ...prevMessages,
       { speaker: "Poa", text: "", isTyping: true, isPreTyped: false, id: messageId },
     ]);
-    
+
     try {
       await openai.beta.threads.messages.create(thread.id, {
         role: "user",
@@ -588,7 +634,7 @@ const ArchitectPage = () => {
           fontWeight="500"
           zIndex={2}
         >
-          Beta on Polygon Amoy
+          Beta on Hoodi Testnet
         </Box>
         </>
         }

@@ -1,135 +1,153 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@apollo/client';
-import { FETCH_PROJECT_DATA, FETCH_ALL_PO_DATA } from '../util/queries';
+import { FETCH_PROJECTS_DATA_NEW } from '../util/queries';
 import { useRouter } from 'next/router';
 import { useAccount } from 'wagmi';
-import { BigNumber } from 'ethers';
+import { usePOContext } from './POContext';
+import { formatTokenAmount } from '../util/formatToken';
 
 const ProjectContext = createContext();
 
 export const useProjectContext = () => useContext(ProjectContext);
 
+const STATUS_TO_COLUMN = {
+    'Open': 'Open',
+    'Assigned': 'In Progress',
+    'Submitted': 'In Review',
+    'Completed': 'Completed',
+    'Cancelled': null,
+};
+
 export const ProjectProvider = ({ children }) => {
-  const [projectsData, setProjectsData] = useState([]);
-  const [taskCount, setTaskCount] = useState(0);
-  const [recommendedTasks, setRecommendedTasks] = useState([]);
-  const { address } = useAccount();
+    const [projectsData, setProjectsData] = useState([]);
+    const [taskCount, setTaskCount] = useState(0);
+    const [recommendedTasks, setRecommendedTasks] = useState([]);
+    const { address } = useAccount();
+    const { orgId } = usePOContext();
 
-  const router = useRouter();
-  const { userDAO } = router.query;
-  const poName = userDAO || '';
+    const router = useRouter();
 
-  const [account, setAccount] = useState('0x00');
+    const { data, loading, error } = useQuery(FETCH_PROJECTS_DATA_NEW, {
+        variables: { orgId: orgId },
+        skip: !orgId,
+        fetchPolicy: 'cache-first',
+        notifyOnNetworkStatusChange: true,
+    });
 
-  useEffect(() => {
-    if (address) {
-      setAccount(address);
-    }
-  }, [address]);
+    useEffect(() => {
+        if (data?.organization?.taskManager) {
+            const projects = data.organization.taskManager.projects || [];
 
-  
-  const combinedID = `${poName}-${account?.toLowerCase()}`;
+            let totalTasks = 0;
+            projects.forEach(project => {
+                project.tasks?.forEach(task => {
+                    if (task.status !== 'Cancelled') totalTasks++;
+                });
+            });
+            setTaskCount(totalTasks);
 
+            // Get recommended tasks (open tasks, randomly sorted)
+            const openTasks = projects
+                .flatMap(project =>
+                    (project.tasks || [])
+                        .filter(task => task.status === 'Open')
+                        .map(task => {
+                            const taskPayout = formatTokenAmount(task.payout || '0');
+                            return {
+                                ...task,
+                                title: task.title || 'Indexing...',
+                                name: task.title || 'Indexing...', // Alias for TaskManager components
+                                description: '', // In IPFS
+                                difficulty: 'medium', // Default
+                                estHours: 1, // Default
+                                payout: taskPayout,
+                                Payout: taskPayout,
+                                kubixPayout: taskPayout,
+                                projectId: project.id,
+                                projectTitle: project.title,
+                                isIndexing: !task.title,
+                            };
+                        })
+                )
+                .sort(() => Math.random() - 0.5);
+            setRecommendedTasks(openTasks);
 
+            // Transform projects for kanban board
+            const transformedProjects = projects.map(project => {
+                const projectTitle = project.title || 'Indexing...';
+                const transformedProject = {
+                    id: project.id,
+                    title: projectTitle,
+                    name: projectTitle, // Alias for TaskManager components
+                    metadataHash: project.metadataHash,
+                    cap: project.cap,
+                    columns: [
+                        { id: 'open', title: 'Open', tasks: [] },
+                        { id: 'inProgress', title: 'In Progress', tasks: [] },
+                        { id: 'inReview', title: 'In Review', tasks: [] },
+                        { id: 'completed', title: 'Completed', tasks: [] },
+                    ],
+                };
 
-  const  { data, loading, error } = useQuery(FETCH_ALL_PO_DATA, {
-    variables: { id: account?.toLowerCase(), poName: poName, combinedID: combinedID },
-    skip: !account || !poName || !combinedID,
-    fetchPolicy:'cache-first',
-    notifyOnNetworkStatusChange: true,
-    onCompleted: () => {
-      console.log('Query project completed successfully');
-    },
-  });
+                (project.tasks || []).forEach(task => {
+                    if (task.status === 'Cancelled') return;
 
-  useEffect(() => {
-    if (data) {
-      console.log("data", data);
-      const projects = data.perpetualOrganization.TaskManager.projects;
+                    const taskTitle = task.title || 'Indexing...';
+                    const taskPayout = formatTokenAmount(task.payout || '0');
+                    const transformedTask = {
+                        id: task.id,
+                        taskId: task.taskId,
+                        title: taskTitle,
+                        name: taskTitle, // Alias for TaskManager components
+                        // Description, difficulty, estHours are in IPFS - provide placeholders
+                        description: '', // Fetched from IPFS via metadataHash
+                        difficulty: 'medium', // Default - could be fetched from IPFS
+                        estHours: 1, // Default - could be fetched from IPFS
+                        metadataHash: task.metadataHash,
+                        claimedBy: task.assignee || '',
+                        payout: taskPayout,
+                        Payout: taskPayout, // Alias with capital P for TaskCard
+                        kubixPayout: taskPayout, // Alias for TaskColumn
+                        bountyToken: task.bountyToken,
+                        bountyPayout: formatTokenAmount(task.bountyPayout || '0'),
+                        projectId: project.id,
+                        status: task.status,
+                        claimerUsername: task.assigneeUsername || '',
+                        completerUsername: task.completerUsername || '',
+                        requiresApplication: task.requiresApplication,
+                        applications: task.applications || [],
+                        isIndexing: !task.title,
+                        createdAt: task.createdAt,
+                        assignedAt: task.assignedAt,
+                        submittedAt: task.submittedAt,
+                        completedAt: task.completedAt,
+                    };
 
-      const totalTaskCount =
-        BigNumber.from(data.perpetualOrganization.TaskManager.activeTaskAmount).toNumber() +
-        BigNumber.from(data.perpetualOrganization.TaskManager.completedTaskAmount).toNumber() +
-        BigNumber.from(data.perpetualOrganization.TaskManager.deletedTaskAmount).toNumber();
-      
-      setTaskCount(totalTaskCount);
+                    const columnTitle = STATUS_TO_COLUMN[task.status] || 'Open';
+                    const column = transformedProject.columns.find(c => c.title === columnTitle);
+                    if (column) {
+                        column.tasks.push(transformedTask);
+                    }
+                });
 
-      const recommendedTasks = projects
-      .flatMap(project => project.tasks.map(task => ({ ...task, projectId: project.id })))
-        .filter(task => task.taskInfo && task.taskInfo.location === 'Open')
-        .sort(() => Math.random() - 0.5);
+                return transformedProject;
+            });
 
+            setProjectsData(transformedProjects);
+        }
+    }, [data]);
 
-      setRecommendedTasks(recommendedTasks);
+    const contextValue = useMemo(() => ({
+        projectsData,
+        taskCount,
+        recommendedTasks,
+        loading,
+        error,
+    }), [projectsData, taskCount, recommendedTasks, loading, error]);
 
-      const transformedProjects = projects.map(project => {
-        const transformedProject = {
-          id: project.id,
-          name: project.name,
-          description: project.description || '',
-          columns: [
-            { id: 'open', title: 'Open', tasks: [] },
-            { id: 'inProgress', title: 'In Progress', tasks: [] },
-            { id: 'inReview', title: 'In Review', tasks: [] },
-            { id: 'completed', title: 'Completed', tasks: [] }
-          ],
-        };
-
-        project.tasks.forEach(task => {
-          const taskInfo = task.taskInfo || {};
-          const transformedTask = {
-            id: task.id,
-            name: taskInfo.name || 'Indexing...',
-            description: taskInfo.description || 'Task information is being indexed from IPFS',
-            difficulty: taskInfo.difficulty || '',
-            estHours: taskInfo.estimatedHours || '',
-            claimedBy: task.claimer || '',
-            Payout: parseInt(task.payout, 10),
-            projectId: project.id,
-            location: taskInfo.location || 'Open',
-            completed: task.completed,
-            claimerUsername: task.user?.Account?.userName || '',
-            submission: taskInfo.submissionContent || '',
-            isIndexing: !task.taskInfo,
-          };
-
-          let columnTitle = transformedTask.location;
-
-          if (transformedTask.claimedBy && columnTitle === 'Open') {
-            columnTitle = 'In Progress';
-          }
-
-          if (transformedTask.completed) {
-            columnTitle = 'Completed';
-          }
-
-          const column = transformedProject.columns.find(c => c.title === columnTitle);
-          if (column) {
-            column.tasks.push(transformedTask);
-          } else {
-            console.error(`Task location '${transformedTask.location}' does not match any column title`);
-          }
-        });
-
-        return transformedProject;
-      });
-
-      setProjectsData(transformedProjects);
-    }
-  }, [data]);
-
-  // Memoize the context value to avoid unnecessary re-renders
-  const contextValue = useMemo(() => ({
-    projectsData,
-    taskCount,
-    recommendedTasks,
-    loading,
-    error,
-  }), [projectsData, taskCount, recommendedTasks, loading, error]);
-
-  return (
-    <ProjectContext.Provider value={contextValue}>
-      {children}
-    </ProjectContext.Provider>
-  );
+    return (
+        <ProjectContext.Provider value={contextValue}>
+            {children}
+        </ProjectContext.Provider>
+    );
 };

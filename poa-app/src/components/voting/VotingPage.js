@@ -48,8 +48,6 @@ const VotingPage = () => {
     hybridVotingCompleted,
     democracyVotingOngoing,
     democracyVotingCompleted,
-    participationVotingCompleted,
-    participationVotingOngoing,
     votingType
   } = useVotingContext();
 
@@ -91,13 +89,13 @@ const VotingPage = () => {
     { name: "", address: "" },
   ]);
 
-  // Safe array handling
-  const safeVotingOngoing = Array.isArray(selectedTab === 0 ? democracyVotingOngoing : (PTVoteType === "Hybrid" ? hybridVotingOngoing : participationVotingOngoing)) 
-    ? (selectedTab === 0 ? democracyVotingOngoing : (PTVoteType === "Hybrid" ? hybridVotingOngoing : participationVotingOngoing)) 
+  // Safe array handling - POP uses HybridVoting (no separate ParticipationVoting)
+  const safeVotingOngoing = Array.isArray(selectedTab === 0 ? democracyVotingOngoing : hybridVotingOngoing)
+    ? (selectedTab === 0 ? democracyVotingOngoing : hybridVotingOngoing)
     : [];
-  
-  const safeVotingCompleted = Array.isArray(selectedTab === 0 ? democracyVotingCompleted : (PTVoteType === "Hybrid" ? hybridVotingCompleted : participationVotingCompleted)) 
-    ? (selectedTab === 0 ? democracyVotingCompleted : (PTVoteType === "Hybrid" ? hybridVotingCompleted : participationVotingCompleted)) 
+
+  const safeVotingCompleted = Array.isArray(selectedTab === 0 ? democracyVotingCompleted : hybridVotingCompleted)
+    ? (selectedTab === 0 ? democracyVotingCompleted : hybridVotingCompleted)
     : [];
 
   // Display filtered proposals
@@ -127,7 +125,9 @@ const VotingPage = () => {
   };
   
   const getWinner = async (address, proposalId) => {
-    const newID = proposalId.split("-")[0];
+    // In POP subgraph, id format is "contractAddress-proposalId"
+    // Extract the actual proposalId (second part after split)
+    const newID = proposalId.split("-")[1] || proposalId;
     const tx = await getWinnerDDVoting(address, newID);
   };
   
@@ -222,45 +222,30 @@ const VotingPage = () => {
   const handlePollCreated = async () => {
     setLoadingSubmit(true);
     try {
-      const last = proposal.type === "transferFunds";
       const election = proposal.type === "election";
 
       if (election) {
-        // For an election, the candidate names will serve as the 'options'
-        const candidateNames = candidateList.map(c => c.name);
-        const candidateAddresses = candidateList.map(c => c.address);
-        // Assign candidateNames to proposal.options for the contract call
-        proposal.candidateNames = candidateNames;
-        proposal.candidateAddresses = candidateAddresses;
-        proposal.options = candidateNames;
-
-        await createProposalElection(
-          directDemocracyVotingContractAddress,
-          proposal.name,
-          proposal.description,
-          proposal.time,
-          proposal.options,             // options replaced by candidate names
-          proposal.candidateAddresses,  // candidate addresses
-          proposal.candidateNames,      // candidate names
-          0, 
-          "0x0000000000000000000000000000000000000000",
-          "0",
-          false
-        );
-      } else {
-        // Normal or Transfer Funds
-        await createProposalDDVoting(
-          directDemocracyVotingContractAddress,
-          proposal.name,
-          proposal.description,
-          proposal.time,
-          proposal.options,
-          last ? proposal.transferOption : 0,
-          last ? proposal.transferAddress : address,
-          last ? proposal.transferAmount : "0",
-          last
-        );
+        // Elections are deprecated in POP - show warning
+        console.warn("Elections are not supported in POP. Use a normal proposal instead.");
+        alert("Elections are not supported. Please create a normal proposal.");
+        setLoadingSubmit(false);
+        return;
       }
+
+      // POP DDV function signature:
+      // createProposalDDVoting(contractAddress, proposalName, proposalDescription, durationMinutes, numOptions, batches, hatIds)
+      // Options array like ["Yes", "No"] -> numOptions = 2
+      const numOptions = proposal.options?.length || 2;
+
+      await createProposalDDVoting(
+        directDemocracyVotingContractAddress,
+        proposal.name,
+        proposal.description,
+        proposal.time,        // duration in minutes
+        numOptions,           // number of options (not the options array)
+        [],                   // batches - empty for non-executable proposals
+        []                    // hatIds - empty for unrestricted voting
+      );
 
       setLoadingSubmit(false);
       setShowCreatePoll(false);
@@ -274,7 +259,7 @@ const VotingPage = () => {
   // Effect to check for expired proposals
   useEffect(() => {
     safeVotingOngoing.forEach(proposal => {
-      updateWinnerStatus(proposal?.experationTimestamp, proposal?.id, proposal?.isHybrid);
+      updateWinnerStatus(proposal?.endTimestamp, proposal?.id, proposal?.isHybrid);
     });
   }, [safeVotingOngoing]);
 
@@ -284,7 +269,7 @@ const VotingPage = () => {
       const pollId = router.query.poll;
       
       const findPoll = (proposals) => {
-        return proposals.find((proposal) => proposal.id === pollId || proposal.name === pollId);
+        return proposals.find((proposal) => proposal.id === pollId || proposal.title === pollId);
       };
       
       let pollFound = null;
@@ -300,10 +285,6 @@ const VotingPage = () => {
         if (pollFound) pollType = "Hybrid";
       }
 
-      if (!pollFound && Array.isArray(participationVotingOngoing) && participationVotingOngoing.length > 0) {
-        pollFound = findPoll(participationVotingOngoing);
-        if (pollFound) pollType = "Participation";
-      }
 
       if (!pollFound && Array.isArray(democracyVotingCompleted) && democracyVotingCompleted.length > 0) {
         pollFound = findPoll(democracyVotingCompleted);
@@ -315,25 +296,16 @@ const VotingPage = () => {
         if (pollFound) pollType = "Hybrid";
       }
 
-      if (!pollFound && Array.isArray(participationVotingCompleted) && participationVotingCompleted.length > 0) {
-        pollFound = findPoll(participationVotingCompleted);
-        if (pollFound) pollType = "Participation";
-      }
 
       if (pollFound) {
         setSelectedPoll(pollFound);
         setVotingTypeSelected(pollType);
         setSelectedTab(pollType === "Direct Democracy" ? 0 : 1);
-        setIsPollCompleted(
+        const isCompleted =
           (Array.isArray(democracyVotingCompleted) && democracyVotingCompleted.includes(pollFound)) ||
-          (Array.isArray(hybridVotingCompleted) && hybridVotingCompleted.includes(pollFound)) ||
-          (Array.isArray(participationVotingCompleted) && participationVotingCompleted.includes(pollFound))
-        );
-        if (
-          (Array.isArray(democracyVotingCompleted) && democracyVotingCompleted.includes(pollFound)) ||
-          (Array.isArray(hybridVotingCompleted) && hybridVotingCompleted.includes(pollFound)) ||
-          (Array.isArray(participationVotingCompleted) && participationVotingCompleted.includes(pollFound))
-        ) {
+          (Array.isArray(hybridVotingCompleted) && hybridVotingCompleted.includes(pollFound));
+        setIsPollCompleted(isCompleted);
+        if (isCompleted) {
           onCompletedOpen();
         } else {
           onOpen();
@@ -346,8 +318,6 @@ const VotingPage = () => {
     democracyVotingCompleted,
     hybridVotingOngoing,
     hybridVotingCompleted,
-    participationVotingOngoing,
-    participationVotingCompleted,
     onOpen,
     onCompletedOpen
   ]);

@@ -37,35 +37,25 @@ import { useUserContext } from '@/context/UserContext';
 import QuizModal from '@/components/eduHub/QuizModal';
 
 const EducationHub = () => {
-  const { poContextLoading, educationModules, nftMembershipContractAddress, educationHubAddress } = usePOContext();
-  const { completedModules } = useUserContext();
-  const { createEduModule, checkIsExecutive, address } = useWeb3Context();
-  const [isExecutive, setIsExecutive] = useState(false);
-  const [isLoadingExecCheck, setIsLoadingExecCheck] = useState(true);
+  const { poContextLoading, educationModules, educationHubAddress } = usePOContext();
+  const { completedModules, hasExecNFT, userDataLoading } = useUserContext();
+  const { createEduModule, address } = useWeb3Context();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const toast = useToast();
 
   // Form state
   const [moduleTitle, setModuleTitle] = useState('');
   const [moduleDescription, setModuleDescription] = useState('');
-  const [moduleLink, setModuleLink] = useState(''); 
-  const [moduleQuestion, setModuleQuestion] = useState(''); 
+  const [moduleLink, setModuleLink] = useState('');
+  const [moduleQuestion, setModuleQuestion] = useState('');
   const [payout, setPayout] = useState(0);
   const [answers, setAnswers] = useState(['', '', '', '']);
   const [correctAnswerIndex, setCorrectAnswerIndex] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Check if the user is an executive
-  useEffect(() => {
-    const checkExecutiveStatus = async () => {
-      if (nftMembershipContractAddress && address) {
-        const execStatus = await checkIsExecutive(nftMembershipContractAddress, address);
-        setIsExecutive(execStatus);
-      }
-      setIsLoadingExecCheck(false);
-    };
-    checkExecutiveStatus();
-  }, [nftMembershipContractAddress, address]);
+  // Executive status comes from UserContext (Hats-based check)
+  const isExecutive = hasExecNFT;
+  const isLoadingExecCheck = userDataLoading;
 
   const handleAddModule = async () => {
           // Reset form

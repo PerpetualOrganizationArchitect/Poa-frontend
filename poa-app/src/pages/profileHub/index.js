@@ -41,7 +41,7 @@ const UserprofileHub = () => {
   const { ongoingPolls,} = useVotingContext();
   const {recommendedTasks} = useProjectContext();
 
-  const {claimedTasks,  userProposals,graphUsername, userDataLoading, error, userData} = useUserContext();
+  const {claimedTasks, userProposals, graphUsername, userDataLoading, error, userData, hasExecNFT} = useUserContext();
 
 
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -114,27 +114,31 @@ const UserprofileHub = () => {
   useEffect(() => {
     if (userData) {
       console.log(userData);
-      let progressData = calculateProgress(userData.ptTokenBalance);
+      // participationTokenBalance is already formatted by UserContext
+      const ptBalance = Number(userData.participationTokenBalance) || 0;
+      let progressData = calculateProgress(ptBalance);
       let userInfo = {
         username: graphUsername,
-        ptBalance: Number(userData.ptTokenBalance),
-        memberStatus: userData.memberType,
+        ptBalance: ptBalance,
+        memberStatus: userData.membershipStatus || 'Member',
         accountAddress: userData.id,
-        tasksCompleted: userData.tasksCompleted,
-        totalVotes: userData.totalVotes,
-        dateJoined: formatDateToAmerican(userData.dateJoined),
-        tier: determineTier(userData.ptTokenBalance),
+        tasksCompleted: userData.tasksCompleted || 0,
+        totalVotes: userData.totalVotes || 0,
+        dateJoined: userData.firstSeenAt ? formatDateToAmerican(userData.firstSeenAt) : 'Unknown',
+        tier: determineTier(ptBalance),
         progress: progressData.progress,
         nextTier: progressData.nextTier,
         nextTierThreshold: progressData.nextTierThreshold
       };
       setUserInfo(userInfo);
 
-      if (userInfo.memberStatus === "Executive") {
-        setIsExec(true);
       }
-    }
   }, [userData, graphUsername]);
+
+  // In POP, executive status is determined by hasExecNFT from UserContext
+  useEffect(() => {
+    setIsExec(hasExecNFT);
+  }, [hasExecNFT]);
 
   const animatedPT = useSpring({ 
     pt: userInfo.ptBalance, 
@@ -307,14 +311,10 @@ const UserprofileHub = () => {
                       <Link2 href={`/tasks/?task=${task.id}&projectId=${encodeURIComponent(decodeURIComponent(task.projectId))}&userDAO=${userDAO}`}>
                         <VStack textColor="white" align="stretch" spacing={3}>
                           <Text fontSize="md" lineHeight="99%" fontWeight="extrabold">
-                            {task.isIndexing ? 'Indexing...' : task.taskInfo?.name}
+                            {task.isIndexing ? 'Indexing...' : task.title}
                           </Text>
                           <HStack justify="space-between">
-                            {task.isIndexing ? (
-                              <Badge colorScheme="purple">Indexing from IPFS</Badge>
-                            ) : (
-                              <Badge colorScheme={difficultyColorScheme[task.taskInfo?.difficulty?.toLowerCase().replace(" ", "")]}>{task.taskInfo?.difficulty}</Badge>
-                            )}
+                            <Badge colorScheme="purple">{task.status}</Badge>
                             <Text fontWeight="bold">Payout {task.payout}</Text>
                           </HStack>
                         </VStack>
@@ -372,14 +372,10 @@ const UserprofileHub = () => {
                         <Link2 href={`/tasks/?task=${task.id}&projectId=${encodeURIComponent(decodeURIComponent(task.projectId))}`}>
                           <VStack textColor="white" align="stretch" spacing={3}>
                             <Text fontSize="md" lineHeight="99%" fontWeight="extrabold">
-                              {task.isIndexing ? 'Indexing...' : task.taskInfo?.name}
+                              {task.isIndexing ? 'Indexing...' : task.title}
                             </Text>
                             <HStack justify="space-between">
-                              {task.isIndexing ? (
-                                <Badge colorScheme="purple">Indexing from IPFS</Badge>
-                              ) : (
-                                <Badge colorScheme={difficultyColorScheme[task.taskInfo?.difficulty?.toLowerCase().replace(" ", "")]}>{task.taskInfo?.difficulty}</Badge>
-                              )}
+                              <Badge colorScheme="purple">{task.status}</Badge>
                               <Text fontWeight="bold">Payout {task.payout}</Text>
                             </HStack>
                           </VStack>

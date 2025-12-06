@@ -7,6 +7,29 @@ export const useIPFScontext = () => {
     return useContext(IPFScontext);
 }
 
+// Helper to validate IPFS CID format
+function isValidIpfsCid(hash) {
+    if (!hash || typeof hash !== 'string') return false;
+    // Skip if it's a hex bytes value from POP subgraph (starts with 0x)
+    if (hash.startsWith('0x')) return false;
+    // Valid CIDs start with Qm (v0) or ba (v1)
+    return hash.startsWith('Qm') || hash.startsWith('ba');
+}
+
+// Convert bytes hash to displayable format (for future IPFS gateway use)
+function bytesHashToString(bytesHash) {
+    if (!bytesHash) return null;
+    // If already a valid CID, return as-is
+    if (isValidIpfsCid(bytesHash)) return bytesHash;
+    // If it's a hex string, it needs to be decoded differently
+    // For now, just return null as we can't directly use it with IPFS
+    if (bytesHash.startsWith('0x')) {
+        console.log('IPFS hash is in bytes format, cannot fetch directly:', bytesHash);
+        return null;
+    }
+    return bytesHash;
+}
+
 export const IPFSprovider = ({children}) => {
     // Setup Infura IPFS client for fetch operations
     const auth = 'Basic ' + Buffer.from(process.env.NEXT_PUBLIC_INFURA_PROJECTID + ':' + process.env.NEXT_PUBLIC_INFURA_IPFS).toString('base64');
@@ -40,40 +63,56 @@ export const IPFSprovider = ({children}) => {
 
     async function fetchFromIpfs(ipfsHash) {
         console.log("fetching from IPFS", ipfsHash);
-        let stringData = '';
-        for await (const chunk of fetchIpfs.cat(ipfsHash)) {
-            console.log("chunk:", chunk);
-            stringData += new TextDecoder().decode(chunk);
+
+        // Validate and convert hash
+        const validHash = bytesHashToString(ipfsHash);
+        if (!validHash) {
+            console.warn("Invalid or unsupported IPFS hash format:", ipfsHash);
+            return null;
         }
+
+        let stringData = '';
         try {
+            for await (const chunk of fetchIpfs.cat(validHash)) {
+                console.log("chunk:", chunk);
+                stringData += new TextDecoder().decode(chunk);
+            }
             console.log("stringData:", stringData);
             return JSON.parse(stringData);
         } catch (error) {
-            console.error("Error parsing JSON from IPFS via Infura:", error, "stringData:", stringData);
-            throw error;
+            console.error("Error fetching/parsing from IPFS:", error, "hash:", validHash);
+            return null; // Return null instead of throwing to prevent crashes
         }
     }
 
     async function fetchImageFromIpfs(ipfsHash) {
         console.log("fetching image from IPFS", ipfsHash);
+
+        // Validate and convert hash
+        const validHash = bytesHashToString(ipfsHash);
+        if (!validHash) {
+            console.warn("Invalid or unsupported IPFS hash format for image:", ipfsHash);
+            return null;
+        }
+
         let binaryData = [];
-    
+
         try {
-            for await (const chunk of addIpfs.cat(ipfsHash)) {
+            for await (const chunk of addIpfs.cat(validHash)) {
                 binaryData.push(chunk);
             }
-           
+
             // Convert binary data to Blob
-            const blob = new Blob(binaryData, { type: 'image/png' });  
-    
+            const blob = new Blob(binaryData, { type: 'image/png' });
+
             // Create Object URL from Blob
             const imageUrl = URL.createObjectURL(blob);
             console.log("Image URL:", imageUrl);
-    
+
             return imageUrl;
         } catch (error) {
             console.error("Error creating blob from IPFS data:", error);
-            throw error;
+            return null; // Return null instead of throwing to prevent crashes
         }
     }
     

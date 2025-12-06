@@ -149,16 +149,16 @@ const VoteCard = ({
             ))}
           </HStack>
 
-          {/* Hat restriction and quorum display */}
+          {/* Who can vote and quorum display */}
           <HStack spacing={2} justify="center" flexWrap="wrap">
-            {proposal.isHatRestricted && restrictedRoles.length > 0 && (
-              <HStack spacing={1}>
-                <Icon as={LockIcon} color="purple.300" boxSize={3} />
-                <Text fontSize="xs" color="gray.400">
-                  {restrictedRoles.join(", ")}
-                </Text>
-              </HStack>
-            )}
+            <HStack spacing={1}>
+              <Icon as={LockIcon} color="purple.300" boxSize={3} />
+              <Text fontSize="xs" color="gray.400">
+                {proposal.isHatRestricted && restrictedRoles.length > 0
+                  ? restrictedRoles.join(", ")
+                  : "Members"}
+              </Text>
+            </HStack>
             {proposal.quorum > 0 && (
               <Text fontSize="xs" color="gray.400">
                 Quorum: {proposal.quorum}%

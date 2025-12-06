@@ -252,16 +252,16 @@ const HistoryCard = ({ proposal, onPollClick }) => {
             <Text fontWeight="extrabold" fontSize="sm">
               Winner: <Text as="span" color="rgba(148, 115, 220, 1)">{WinnerName}</Text>
             </Text>
-            {/* Hat restriction and quorum display */}
+            {/* Who can vote and quorum display */}
             <HStack spacing={2} justify="center" flexWrap="wrap">
-              {proposal.isHatRestricted && restrictedRoles.length > 0 && (
-                <HStack spacing={1}>
-                  <Icon as={LockIcon} color="purple.300" boxSize={3} />
-                  <Text fontSize="xs" color="gray.400">
-                    {restrictedRoles.join(", ")}
-                  </Text>
-                </HStack>
-              )}
+              <HStack spacing={1}>
+                <Icon as={LockIcon} color="purple.300" boxSize={3} />
+                <Text fontSize="xs" color="gray.400">
+                  {proposal.isHatRestricted && restrictedRoles.length > 0
+                    ? restrictedRoles.join(", ")
+                    : "Members"}
+                </Text>
+              </HStack>
               {proposal.quorum > 0 && (
                 <Text fontSize="xs" color={proposal.isValid ? "green.400" : "orange.400"}>
                   Quorum: {proposal.quorum}% {proposal.isValid ? "✓" : ""}

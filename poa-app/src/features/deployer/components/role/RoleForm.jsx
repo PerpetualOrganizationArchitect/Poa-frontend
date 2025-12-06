@@ -30,8 +30,9 @@ import {
   Checkbox,
   Tooltip,
   Icon,
+  IconButton,
 } from '@chakra-ui/react';
-import { InfoIcon, ChevronDownIcon, ChevronUpIcon } from '@chakra-ui/icons';
+import { InfoIcon, ChevronDownIcon, ChevronUpIcon, AddIcon, CloseIcon } from '@chakra-ui/icons';
 import { useDeployer } from '../../context/DeployerContext';
 import { wouldCreateCycle, getValidParentOptions } from '../../utils/hierarchyUtils';
 
@@ -363,12 +364,16 @@ export function RoleForm({
 
               <HStack spacing={8}>
                 <FormControl display="flex" alignItems="center">
-                  <FormLabel mb={0} fontSize="sm">Mint to Deployer</FormLabel>
+                  <FormLabel mb={0} fontSize="sm">Assign to Me</FormLabel>
                   <Switch
                     isChecked={formData.distribution.mintToDeployer}
                     onChange={(e) => updateField('distribution.mintToDeployer', e.target.checked)}
                     size="sm"
+                    colorScheme="green"
                   />
+                  <Tooltip label="You will receive this role when the org is deployed">
+                    <Icon as={InfoIcon} ml={2} color="gray.400" boxSize={3} />
+                  </Tooltip>
                 </FormControl>
 
                 <FormControl display="flex" alignItems="center">
@@ -380,6 +385,59 @@ export function RoleForm({
                   />
                 </FormControl>
               </HStack>
+
+              {/* Additional Members by Username */}
+              <FormControl mt={4}>
+                <FormLabel fontSize="sm">
+                  Additional Members
+                  <Tooltip label="Enter usernames of people who should receive this role when the org is deployed. Usernames must be registered in the system.">
+                    <Icon as={InfoIcon} ml={2} color="gray.400" boxSize={3} />
+                  </Tooltip>
+                </FormLabel>
+                <VStack align="stretch" spacing={2}>
+                  {(formData.distribution.additionalWearerUsernames || []).map((username, idx) => (
+                    <HStack key={idx}>
+                      <Input
+                        size="sm"
+                        value={username}
+                        onChange={(e) => {
+                          const current = [...(formData.distribution.additionalWearerUsernames || [])];
+                          current[idx] = e.target.value;
+                          updateField('distribution.additionalWearerUsernames', current);
+                        }}
+                        placeholder="Enter username"
+                      />
+                      <IconButton
+                        size="sm"
+                        icon={<CloseIcon boxSize={2} />}
+                        onClick={() => {
+                          const current = formData.distribution.additionalWearerUsernames || [];
+                          updateField('distribution.additionalWearerUsernames',
+                            current.filter((_, i) => i !== idx));
+                        }}
+                        aria-label="Remove member"
+                        variant="ghost"
+                        colorScheme="red"
+                      />
+                    </HStack>
+                  ))}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    leftIcon={<AddIcon boxSize={2} />}
+                    onClick={() => {
+                      const current = formData.distribution.additionalWearerUsernames || [];
+                      updateField('distribution.additionalWearerUsernames', [...current, '']);
+                    }}
+                    alignSelf="flex-start"
+                  >
+                    Add Member
+                  </Button>
+                </VStack>
+                <FormHelperText fontSize="xs">
+                  These users will receive this role when the org is deployed
+                </FormHelperText>
+              </FormControl>
             </VStack>
           </Collapse>
         </Box>

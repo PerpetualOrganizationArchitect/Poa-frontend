@@ -32,35 +32,39 @@ export function generateOrgId(orgName) {
 export function mapRole(role, index, totalRoles) {
   // Determine adminRoleIndex
   // null in UI = top-level = MaxUint256 for contract
+  // Use plain numbers for non-null cases (matching buildRoles() in newDeployment.js)
   const adminRoleIndex = role.hierarchy.adminRoleIndex === null
     ? ethers.constants.MaxUint256
-    : ethers.BigNumber.from(role.hierarchy.adminRoleIndex);
+    : Number(role.hierarchy.adminRoleIndex);
 
+  // Ensure all numeric values are numbers, not strings (React forms can return strings)
   return {
-    name: role.name,
-    image: role.image || '',
-    canVote: role.canVote,
+    name: String(role.name || ''),
+    image: String(role.image || ''),
+    canVote: Boolean(role.canVote),
     vouching: {
-      enabled: role.vouching.enabled,
-      quorum: role.vouching.quorum,
-      voucherRoleIndex: role.vouching.voucherRoleIndex,
-      combineWithHierarchy: role.vouching.combineWithHierarchy,
+      enabled: Boolean(role.vouching.enabled),
+      quorum: Number(role.vouching.quorum) || 0,
+      voucherRoleIndex: Number(role.vouching.voucherRoleIndex) || 0,
+      combineWithHierarchy: Boolean(role.vouching.combineWithHierarchy),
     },
     defaults: {
-      eligible: role.defaults.eligible,
-      standing: role.defaults.standing,
+      eligible: Boolean(role.defaults.eligible),
+      standing: Boolean(role.defaults.standing),
     },
     hierarchy: {
       adminRoleIndex: adminRoleIndex,
     },
     distribution: {
-      mintToDeployer: role.distribution.mintToDeployer,
-      mintToExecutor: role.distribution.mintToExecutor,
-      additionalWearers: role.distribution.additionalWearers || [],
+      mintToDeployer: Boolean(role.distribution.mintToDeployer),
+      mintToExecutor: Boolean(role.distribution.mintToExecutor),
+      additionalWearers: Array.isArray(role.distribution.additionalWearers)
+        ? role.distribution.additionalWearers
+        : [],
     },
     hatConfig: {
-      maxSupply: role.hatConfig.maxSupply,
-      mutableHat: role.hatConfig.mutableHat,
+      maxSupply: Number(role.hatConfig.maxSupply) || 1000,
+      mutableHat: Boolean(role.hatConfig.mutableHat),
     },
   };
 }

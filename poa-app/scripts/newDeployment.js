@@ -22,7 +22,8 @@ export async function main(
     quorumPercentageDD,
     quorumPercentagePV,
     username,
-    wallet
+    wallet,
+    customRoles = null  // Optional: pre-configured roles with additionalWearers
   ) {
     console.log("Creating new DAO with OrgDeployer...");
 
@@ -76,8 +77,8 @@ export async function main(
       participationVoteWeight
     );
 
-    // Build roles from member types
-    const roles = buildRoles(memberTypeNames, executivePermissionNames);
+    // Build roles - use customRoles if provided, otherwise generate from member types
+    const roles = customRoles || buildRoles(memberTypeNames, executivePermissionNames);
 
     // Build role assignments
     const roleAssignments = buildRoleAssignments(memberTypeNames, executivePermissionNames);
@@ -101,6 +102,19 @@ export async function main(
     console.log("Deploying new DAO with the following parameters:", deploymentParams);
     console.log("OrgDeployer address:", ORG_DEPLOYER_ADDRESS);
     console.log("OrgDeployer ABI loaded:", Array.isArray(OrgDeployer) ? `${OrgDeployer.length} entries` : typeof OrgDeployer);
+
+    // Debug: Log detailed role structure
+    console.log("=== ROLES DETAIL ===");
+    console.log("Using customRoles:", customRoles !== null);
+    deploymentParams.roles.forEach((role, idx) => {
+      console.log(`Role [${idx}]:`, JSON.stringify(role, (key, value) => {
+        // Handle BigNumber serialization
+        if (value && value._isBigNumber) {
+          return `BigNumber(${value.toString()})`;
+        }
+        return value;
+      }, 2));
+    });
 
     const orgDeployer = new ethers.Contract(ORG_DEPLOYER_ADDRESS, OrgDeployer, wallet);
     console.log("OrgDeployer contract instance created");

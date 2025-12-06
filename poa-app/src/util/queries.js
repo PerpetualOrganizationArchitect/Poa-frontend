@@ -105,6 +105,28 @@ export const FETCH_USERNAME_NEW = gql`
   }
 `;
 
+// Lookup account by username (returns address)
+export const GET_ACCOUNT_BY_USERNAME = gql`
+  query GetAccountByUsername($username: String!) {
+    accounts(where: { username: $username }, first: 1) {
+      id
+      user
+      username
+    }
+  }
+`;
+
+// Lookup multiple accounts by usernames (batch lookup)
+export const GET_ACCOUNTS_BY_USERNAMES = gql`
+  query GetAccountsByUsernames($usernames: [String!]!) {
+    accounts(where: { username_in: $usernames }) {
+      id
+      user
+      username
+    }
+  }
+`;
+
 // Lookup organization by name (returns ID for further queries)
 export const GET_ORG_BY_NAME = gql`
   query GetOrgByName($name: String!) {

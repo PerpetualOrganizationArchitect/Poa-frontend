@@ -81,9 +81,9 @@ const VoteCard = ({
             pb={1}
             textAlign="center"
             noOfLines={2}
-            title={proposal.name}
+            title={proposal.title}
           >
-            {proposal.name}
+            {proposal.title}
           </Text>
         </Box>
         
@@ -105,7 +105,7 @@ const VoteCard = ({
           ) : (
             <VStack spacing={1}>
               <Badge colorScheme="purple" fontSize="xs" mb={1}>Time Remaining</Badge>
-              <CountDown duration={calculateRemainingTime(proposal?.experationTimestamp)} />
+              <CountDown duration={calculateRemainingTime(proposal?.endTimestamp)} />
             </VStack>
           )}
         </Flex>

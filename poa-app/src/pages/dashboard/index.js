@@ -348,14 +348,10 @@ const PerpetualOrgDashboard = () => {
                       <Link2 href={`/tasks/?task=${task.id}&projectId=${encodeURIComponent(decodeURIComponent(task.projectId))}&userDAO=${userDAO}`}>
                         <VStack textColor="white" align="stretch" spacing={3}>
                           <Text mt="-2" fontSize={textSize} lineHeight="99%" fontWeight="extrabold">
-                            {task.isIndexing ? 'Indexing...' : task.taskInfo?.name}
+                            {task.isIndexing ? 'Indexing...' : task.title}
                           </Text>
                           <HStack justify="space-between">
-                            {task.isIndexing ? (
-                              <Badge colorScheme="purple">Indexing from IPFS</Badge>
-                            ) : (
-                              <Badge colorScheme={difficultyColorScheme[task.taskInfo?.difficulty?.toLowerCase().replace(" ", "")]}>{task.taskInfo?.difficulty}</Badge>
-                            )}
+                            <Badge colorScheme="purple">{task.status}</Badge>
                             <Text fontWeight="bold">{task.payout} Tokens</Text>
                           </HStack>
                         </VStack>

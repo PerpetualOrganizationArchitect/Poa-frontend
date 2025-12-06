@@ -108,13 +108,13 @@ const ConfirmationModal = ({
           </Button>
 
           {display ? (
-            chainId === 80002 ? (
+            chainId === 560048 ? (
               <Button colorScheme="blue" onClick={onSave} >
                 Confirm
               </Button>
             ) : (
               <Button colorScheme="blue" onClick={openChainModal}>
-                Switch to Polygon Amoy
+                Switch to Hoodi
               </Button>
             )
           ) : (

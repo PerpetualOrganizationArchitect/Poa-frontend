@@ -1,19 +1,15 @@
-// Web3Context.js
+// Web3Context.js - Updated for POP contracts on Hoodi testnet
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { ethers } from 'ethers';
 import { useIPFScontext } from './ipfsContext';
 
-import DirectDemocracyVoting from "../../abi/DirectDemocracyVoting.json";
-import ParticipationVoting from "../../abi/ParticipationVoting.json";
-import HybridVoting from "../../abi/HybridVoting.json";
-
-import TaskManager from "../../abi/TaskManager.json";
-import NFTMembership from "../../abi/NFTMembership.json";
-import Treasury from "../../abi/Treasury.json";
-import DirectDemocracyToken from '../../abi/DirectDemocracyToken.json';
-import AccountManager from '../../abi/AccountManager.json';
-import QuickJoin from '../../abi/QuickJoin.json';
-import EducationHub from '../../abi/EducationHub.json';
+// New POP ABIs
+import UniversalAccountRegistry from "../../abi/UniversalAccountRegistry.json";
+import QuickJoin from "../../abi/QuickJoinNew.json";
+import HybridVoting from "../../abi/HybridVotingNew.json";
+import DirectDemocracyVoting from "../../abi/DirectDemocracyVotingNew.json";
+import TaskManager from "../../abi/TaskManagerNew.json";
+import EducationHub from "../../abi/EducationHubNew.json";
 
 import { useAccount } from "wagmi";
 import { useEthersProvider, useEthersSigner } from '@/components/ProviderConverter';
@@ -28,6 +24,9 @@ export const useWeb3Context = () => {
     return useContext(Web3Context);
 }
 
+// Infrastructure address on Hoodi testnet
+const UNIVERSAL_ACCOUNT_REGISTRY_ADDRESS = "0xDdB1DA30020861d92c27aE981ac0f4Fe8BA536F2";
+
 export const Web3Provider = ({ children }) => {
     const [isNetworkModalOpen, setNetworkModalOpen] = useState(false);
     const [account, setAccount] = useState("0x00");
@@ -38,8 +37,8 @@ export const Web3Provider = ({ children }) => {
 
     const {refetch} = useVotingContext();
 
-    // Define a uniform gas price of 43 Gwei
-    const GAS_PRICE = ethers.utils.parseUnits('43', 'gwei');
+    // Define a uniform gas price
+    const GAS_PRICE = ethers.utils.parseUnits('1', 'gwei');
 
     useEffect(() => {
         console.log("provider: ", provider);
@@ -50,14 +49,12 @@ export const Web3Provider = ({ children }) => {
 
     const { addToIpfs, fetchFromIpfs } = useIPFScontext();
 
-    const AccountManagerAddress = "0x2347046e7D8Bde6B6dCF1C493F0c0AC2406be93f";
-
     const getContractInstance = (contractAddress, contractABI) => {
         return new ethers.Contract(contractAddress, contractABI, signer);
     };
 
     const checkNetwork = () => {
-        if (chainId !== 80002) {
+        if (chainId !== 560048) {
             setNetworkModalOpen(true);
             return false;
         }
@@ -71,42 +68,31 @@ export const Web3Provider = ({ children }) => {
     // Import the notification context functions
     const { addNotification, updateNotification } = useNotificationContext();
 
-    // Helper function to estimate gas and return gas options
-    const getGasOptions = async (contractMethod, args = []) => {
-        try {
-            const gasEstimate = await contractMethod(...args).then(tx => tx.estimateGas());
-            const gasLimit = gasEstimate.mul(127).div(100); // Add 27% buffer
-            return {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-        } catch (error) {
-            console.error("Gas estimation failed:", error);
-            // Set a default gas limit if estimation fails
-            return {
-                gasLimit: ethers.utils.hexlify(800000), // Default gas limit
-                gasPrice: GAS_PRICE,
-            };
-        }
+    // Helper: Convert string to bytes
+    const stringToBytes = (str) => {
+        return ethers.utils.toUtf8Bytes(str);
     };
 
-    // Example of updating all web3 functions with notifications
+    // Helper: Convert string to bytes32 hash (for IPFS hashes, descriptions, etc.)
+    const stringToBytes32 = (str) => {
+        return ethers.utils.keccak256(ethers.utils.toUtf8Bytes(str));
+    };
+
+    // ============================================
+    // User Account Functions (UniversalAccountRegistry)
+    // ============================================
 
     // Create New User
     async function createNewUser(username) {
         if (!checkNetwork()) {
             return;
         }
-        const address = AccountManagerAddress;
-        const contract = getContractInstance(address, AccountManager.abi);
+        const contract = getContractInstance(UNIVERSAL_ACCOUNT_REGISTRY_ADDRESS, UniversalAccountRegistry);
         const notificationId = addNotification('Creating new user...', 'loading');
 
         try {
-          
-
-            // Estimate gas
             const gasEstimate = await contract.estimateGas.registerAccount(username);
-            const gasLimit = gasEstimate.mul(127).div(100); // Add 27% buffer
+            const gasLimit = gasEstimate.mul(127).div(100);
             const gasOptions = {
                 gasLimit: gasLimit,
                 gasPrice: GAS_PRICE,
@@ -128,17 +114,12 @@ export const Web3Provider = ({ children }) => {
         if (!checkNetwork()) {
             return;
         }
-        const address = AccountManagerAddress;
-        const contract = getContractInstance(address, AccountManager.abi);
-
+        const contract = getContractInstance(UNIVERSAL_ACCOUNT_REGISTRY_ADDRESS, UniversalAccountRegistry);
         const notificationId = addNotification('Changing username...', 'loading');
 
         try {
-          
-
-            // Estimate gas
             const gasEstimate = await contract.estimateGas.changeUsername(username);
-            const gasLimit = gasEstimate.mul(127).div(100); // Add 27% buffer
+            const gasLimit = gasEstimate.mul(127).div(100);
             const gasOptions = {
                 gasLimit: gasLimit,
                 gasPrice: GAS_PRICE,
@@ -155,875 +136,11 @@ export const Web3Provider = ({ children }) => {
         }
     }
 
-    // Create Proposal Participation Voting
-    async function createProposalParticipationVoting(contractAddress, proposalName, proposalDescription, proposalDuration, options, receiverAddress, triggerSpendIndex, amount, canSend) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, HybridVoting.abi);
-        let tokenAddress = "0x0000000000000000000000000000000000001010";
-
-        const notificationId = addNotification('Creating participation proposal...', 'loading');
-
-        try {
-          
-
-            // Estimate gas
-            const gasEstimate = await contract.estimateGas.createProposal(
-                proposalName,
-                proposalDescription,
-                proposalDuration,
-                options,
-                receiverAddress,
-                triggerSpendIndex,
-                amount,
-                canSend,
-                tokenAddress
-            );
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.createProposal(
-                proposalName,
-                proposalDescription,
-                proposalDuration,
-                options,
-                receiverAddress,
-                triggerSpendIndex,
-                amount,
-                canSend,
-                tokenAddress,
-                gasOptions
-            );
-            await tx.wait();
-            console.log("Hybrid proposal created");
-            updateNotification(notificationId,'Participation proposal created successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error creating hybrid proposal:", error);
-            updateNotification(notificationId,'Error creating participation proposal.', 'error');
-        }
-    }
-
-    // Hybrid Vote
-    async function hybridVote(contractAddress, proposalID, voterAddress, optionIndex) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, HybridVoting.abi);
-
-        const notificationId = addNotification('Casting hybrid vote...', 'loading');
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.vote(proposalID, voterAddress, optionIndex);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.vote(proposalID, voterAddress, optionIndex, gasOptions);
-            await tx.wait();
-            console.log("Voted in hybrid voting");
-            updateNotification(notificationId,'Hybrid vote cast successfully!', 'success');
-        } catch (error) {
-            console.error("Error voting in hybrid voting:", error);
-            updateNotification(notificationId,'Error casting hybrid vote.', 'error');
-        }
-    }
-
-    // Create Proposal for Election
-    async function createProposalElection(
-        contractAddress,proposalName,proposalDescription,proposalDuration,options,candidateAddresses,candidateNames,triggerSpendIndex = 0,receiverAddress = "0x0000000000000000000000000000000000000000",amount = "0",
-        canSend = false,
-        electionEnabled = true
-    ) {
-        if (!checkNetwork()) {
-            return;
-        }
-
-        console.log("Creating proposal for election");
-
-        //log all params 
-        console.log("contractAddress",contractAddress);
-        console.log("proposalName",proposalName);
-        console.log("proposalDescription",proposalDescription);
-        console.log("proposalDuration",proposalDuration);
-        console.log("options",options);
-        console.log("triggerSpendIndex",triggerSpendIndex);
-        console.log("receiverAddress",receiverAddress);
-        console.log("amount",amount);
-        console.log("canSend",canSend);
-        console.log("electionEnabled",electionEnabled);
-        console.log("candidateAddresses",candidateAddresses);
-        console.log("candidateNames",candidateNames);
-        
-
-        let tokenAddress = "0x0000000000000000000000000000000000001010";
-        let amountConverted = ethers.utils.parseUnits(amount, 18);
-        const contract = getContractInstance(contractAddress, DirectDemocracyVoting.abi);
-
-        const notificationId = addNotification("Creating Election proposal...", "loading");
-
-        try {
-            // Estimate gas for the election proposal creation
-            const gasEstimate = await contract.estimateGas.createProposal(
-                proposalName,proposalDescription,proposalDuration,options,
-                triggerSpendIndex,
-                receiverAddress,
-                amountConverted,
-                canSend,
-                tokenAddress,
-                electionEnabled,
-                candidateAddresses,
-                candidateNames
-            );
-
-            const gasLimit = gasEstimate.mul(127).div(100); // Add a buffer for gas
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            // Send transaction to create the election proposal
-            const tx = await contract.createProposal(
-                proposalName,
-                proposalDescription,
-                proposalDuration,options,triggerSpendIndex,receiverAddress,
-                amountConverted,
-                canSend,
-                tokenAddress,
-                electionEnabled,
-                candidateAddresses,
-                candidateNames,
-                gasOptions
-            );
-
-            // Wait for the transaction to complete
-            await tx.wait();
-
-            // Refetch the proposals to update UI
-            refetch();
-            console.log("Election proposal created");
-            updateNotification(notificationId, "Election proposal created successfully!", "success");
-        } catch (error) {
-            console.error("Error creating election proposal:", error);
-            updateNotification(notificationId, "Error creating Election proposal.", "error");
-        }
-    }
-
-
-    // Create Proposal Direct Democracy Voting
-    async function createProposalDDVoting(contractAddress, proposalName, proposalDescription, proposalDuration, options, triggerSpendIndex, receiverAddress, amount, canSend, electionEnabled = false,
-        candidateAddresses = [],
-        candidateNames = []) {
-        if (!checkNetwork()) {
-            return;
-        }
-
-
-        let tokenAddress = "0x0000000000000000000000000000000000001010";
-        let amountConverted = ethers.utils.parseUnits(amount, 18);
-        const contract = getContractInstance(contractAddress, DirectDemocracyVoting.abi);
-
-        const notificationId = addNotification('Creating Direct Democracy proposal...', 'loading');
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.createProposal(
-                proposalName,
-                proposalDescription,
-                proposalDuration,
-                options,
-                triggerSpendIndex,
-                receiverAddress,
-                amountConverted,
-                canSend,
-                tokenAddress,
-                electionEnabled,
-                candidateAddresses,
-                candidateNames
-            );
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.createProposal(
-                proposalName,
-                proposalDescription,
-                proposalDuration,
-                options,
-                triggerSpendIndex,
-                receiverAddress,
-                amountConverted,
-                canSend,
-                tokenAddress,
-                electionEnabled,
-                candidateAddresses,
-                candidateNames,
-                gasOptions
-            );
-            await tx.wait();
-
-            refetch();
-            console.log("DD proposal created");
-            updateNotification(notificationId,'Direct Democracy proposal created successfully!', 'success');
-        } catch (error) {
-            console.error("Error creating DD proposal:", error);
-            updateNotification(notificationId,'Error creating Direct Democracy proposal.', 'error');
-        }
-    }
-
-    // DD Vote
-    async function ddVote(contractAddress, proposalID, optionIndices, weights) {
-        if (!checkNetwork()) {
-            return;
-        }
-
-        const voterAddress = account;
-        const contract = getContractInstance(contractAddress, DirectDemocracyVoting.abi);
-
-        const notificationId = addNotification('Casting Direct Democracy vote...', 'loading');
-
-        try {
-           
-
-            // Ensure the total weight is 100
-            const totalWeight = weights.reduce((a, b) => a + b, 0);
-            if (totalWeight !== 100) {
-                throw new Error("Total weight must sum to 100");
-            }
-
-            // Estimate gas
-            const gasEstimate = await contract.estimateGas.vote(proposalID, voterAddress, optionIndices, weights);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            // Send vote transaction
-            const tx = await contract.vote(proposalID, voterAddress, optionIndices, weights, gasOptions);
-            await tx.wait();
-            console.log("Voted in DD voting");
-            updateNotification(notificationId,'Direct Democracy vote cast successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error voting in DD voting:", error);
-            updateNotification(notificationId,'Error casting Direct Democracy vote.', 'error');
-        }
-    }
-
-    // Get Winner DD Voting
-    async function getWinnerDDVoting(contractAddress, proposalID) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, DirectDemocracyVoting.abi);
-
-        const notificationId = addNotification('Announcing winner...', 'loading');
-
-        try {
-          
-
-            const gasEstimate = await contract.estimateGas.announceWinner(proposalID);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.announceWinner(proposalID, gasOptions);
-            await tx.wait();
-            console.log("Winner announced");
-            updateNotification(notificationId,'Winner announced successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error announcing winner:", error);
-            updateNotification(notificationId,'Error announcing winner.', 'error');
-        }
-    }
-
-    // Participation Voting - Create Proposal
-    async function createProposalPtVoting(contractAddress, proposalName, proposalDescription, proposalDuration, options, triggerSpend, receiverAddress, amount, canSend) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, ParticipationVoting.abi);
-
-        const notificationId = addNotification('Creating participation proposal...', 'loading');
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.createProposal(
-                proposalName,
-                proposalDescription,
-                proposalDuration,
-                options,
-                triggerSpend,
-                receiverAddress,
-                amount,
-                canSend
-            );
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.createProposal(
-                proposalName,
-                proposalDescription,
-                proposalDuration,
-                options,
-                triggerSpend,
-                receiverAddress,
-                amount,
-                canSend,
-                gasOptions
-            );
-            await tx.wait();
-            console.log("Participation proposal created");
-            updateNotification(notificationId,'Participation proposal created successfully!', 'success');
-        } catch (error) {
-            console.error("Error creating participation proposal:", error);
-            updateNotification(notificationId,'Error creating participation proposal.', 'error');
-        }
-    }
-
-    // Participation Vote
-    async function PtVote(contractAddress, proposalID, voterAddress, optionIndex) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, ParticipationVoting.abi);
-
-        const notificationId = addNotification('Casting participation vote...', 'loading');
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.vote(proposalID, voterAddress, optionIndex);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.vote(proposalID, voterAddress, optionIndex, gasOptions);
-            await tx.wait();
-            console.log("Voted in participation voting");
-            updateNotification(notificationId,'Participation vote cast successfully!', 'success');
-        } catch (error) {
-            console.error("Error voting in participation voting:", error);
-            updateNotification(notificationId,'Error casting participation vote.', 'error');
-        }
-    }
-
-    // Task Manager - Create Project
-    async function createProject(contractAddress, projectName) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, TaskManager.abi);
-
-        const notificationId = addNotification('Creating project...', 'loading');
-
-        try {
-          
-
-            const gasEstimate = await contract.estimateGas.createProject(projectName);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.createProject(projectName, gasOptions);
-            await tx.wait();
-            console.log("Project created");
-            updateNotification(notificationId,'Project created successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error creating project:", error);
-            updateNotification(notificationId,'Error creating project.', 'error');
-        }
-    }
-
-    // Task Manager - Create Task
-    async function createTask(contractAddress, payout, taskDescription, projectName, estHours, difficulty, taskLocation, taskName) {
-        if (!checkNetwork()) {
-            return;
-        }
-        let ipfsHash = await ipfsAddTask(taskName, taskDescription, taskLocation, difficulty, estHours, "");
-        let ipfsHashString = ipfsHash.path;
-        const contract = getContractInstance(contractAddress, TaskManager.abi);
-
-        const notificationId = addNotification('Creating task...', 'loading');
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.createTask(payout, ipfsHashString, projectName);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.createTask(payout, ipfsHashString, projectName, gasOptions);
-            await tx.wait();
-            console.log("Task created");
-            console.log("tx", tx);
-            updateNotification(notificationId,'Task created successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error creating task:", error);
-            updateNotification(notificationId,'Error creating task.', 'error');
-            throw error;
-        }
-    }
-
-    // Task Manager - Claim Task
-    async function claimTask(contractAddress, taskID) {
-        if (!checkNetwork()) {
-            return;
-        }
-
-        console.log("Claiming task with ID:", taskID);
-        const contract = getContractInstance(contractAddress, TaskManager.abi);
-        const newTaskID = taskID.split("-")[0];
-        const notificationId = addNotification('Claiming task...', 'loading');
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.claimTask(newTaskID);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.claimTask(newTaskID, gasOptions);
-            await tx.wait();
-            console.log("Task claimed");
-            updateNotification(notificationId,'Task claimed successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error claiming task:", error);
-            updateNotification(notificationId,'Error claiming task.', 'error');
-            throw error;
-        }
-    }
-
-    // Task Manager - Complete Task
-    async function completeTask(contractAddress, taskID) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, TaskManager.abi);
-        const newTaskID = taskID.split("-")[0];
-
-        const notificationId = addNotification('Completing task...', 'loading');
-
-        try {
-          
-
-            const gasEstimate = await contract.estimateGas.completeTask(newTaskID);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.completeTask(newTaskID, gasOptions);
-            await tx.wait();
-            console.log("Task completed");
-            updateNotification(notificationId,'Task completed successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error completing task:", error);
-            updateNotification(notificationId,'Error completing task.', 'error');
-            throw error;
-        }
-    }
-
-    // Task Manager - Update Task
-    async function updateTask(contractAddress, taskID, payout, ipfsHash) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, TaskManager.abi);
-        const newTaskID = taskID.split("-")[0];
-
-        const notificationId = addNotification('Updating task...', 'loading');
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.updateTask(newTaskID, payout, ipfsHash);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.updateTask(newTaskID, payout, ipfsHash, gasOptions);
-            await tx.wait();
-            console.log("Task updated");
-            updateNotification(notificationId,'Task updated successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error updating task:", error);
-            updateNotification(notificationId,'Error updating task.', 'error');
-            throw error;
-        }
-    }
-
-    // Task Manager - Submit Task
-    async function submitTask(contractAddress, taskID, ipfsHash) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, TaskManager.abi);
-        const newTaskID = taskID.split("-")[0];
-
-        const notificationId = addNotification('Submitting task...', 'loading');
-
-        try {
-          
-
-            const gasEstimate = await contract.estimateGas.submitTask(newTaskID, ipfsHash);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.submitTask(newTaskID, ipfsHash, gasOptions);
-            await tx.wait();
-            console.log("Task submitted");
-            updateNotification(notificationId,'Task submitted successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error submitting task:", error);
-            updateNotification(notificationId,'Error submitting task.', 'error');
-            throw error;
-        }
-    }
-
-    // Task Manager - Edit Task
-    async function editTaskWeb3(contractAddress, payout, taskDescription, projectName, estHours, difficulty, taskLocation, taskName, taskID) {
-        if (!checkNetwork()) {
-            return;
-        }
-        let ipfsHash = await ipfsAddTask(taskName, taskDescription, taskLocation, difficulty, estHours, "");
-        let ipfsHashString = ipfsHash.path;
-        const contract = getContractInstance(contractAddress, TaskManager.abi);
-        let newTaskID = taskID.split("-")[0];
-
-        const notificationId = addNotification('Editing task...', 'loading');
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.updateTask(newTaskID, payout, ipfsHashString);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.updateTask(newTaskID, payout, ipfsHashString, gasOptions);
-            await tx.wait();
-            console.log("Task edited");
-            updateNotification(notificationId,'Task edited successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error editing task:", error);
-            updateNotification(notificationId,'Error editing task.', 'error');
-            throw error;
-        }
-    }
-
-    // Task Manager - Delete Project
-    async function deleteProject(contractAddress, projectName) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, TaskManager.abi);
-        const notificationId = addNotification('Deleting project...', 'loading');
-        try {
-            const gasEstimate = await contract.estimateGas.deleteProject(projectName);
-            const gasLimit = gasEstimate.mul(133).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-            const tx = await contract.deleteProject(projectName, gasOptions);
-            await tx.wait();
-            console.log("Project deleted");
-            updateNotification(notificationId,'Project deleted successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error deleting project:", error);
-            updateNotification(notificationId,'Error deleting project.', 'error');
-        }
-    }
-
-    // Task Manager - Delete Task
-    async function deleteTaskWeb3(contractAddress, taskID) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, TaskManager.abi);
-        const newTaskID = taskID.split("-")[0];
-        const notificationId = addNotification('Deleting task...', 'loading');
-        try {
-            const gasEstimate = await contract.estimateGas.updateTask(newTaskID, 0,"x");
-            const gasLimit = gasEstimate.mul(133).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-            const tx = await contract.updateTask(newTaskID, 0, "x", gasOptions);
-            await tx.wait();
-            console.log("Task deleted");
-            updateNotification(notificationId,'Task deleted successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error deleting task:", error);
-            updateNotification(notificationId,'Error deleting task.', 'error');
-            throw error;
-        }
-    }
-
-    // NFT Membership - Check Executive
-    async function checkIsExecutive(contractAddress, userAddress) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, NFTMembership.abi);
-
-        
-        try {
-
-            const isExec = await contract.checkIsExecutive(userAddress);
-            console.log(`Is ${userAddress} an executive?`, isExec);
-           
-            return isExec;
-        } catch (error) {
-            console.error("Error checking executive status:", error);
-            
-            return false;
-        }
-    }
-
-    // NFT Membership - Mint NFT
-    async function mintNFT(contractAddress, membershipType) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, NFTMembership.abi);
-        const notificationId = addNotification('Minting NFT...', 'loading');
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.mintNFT(account, membershipType);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.mintNFT(account, membershipType, gasOptions);
-            await tx.wait();
-            console.log("NFT minted");
-            updateNotification(notificationId,'NFT minted successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error minting NFT:", error);
-            updateNotification(notificationId,'Error minting NFT.', 'error');
-        }
-    }
-
-    // NFT Membership - Mint Default NFT
-    async function mintDefaultNFT(contractAddress) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, NFTMembership.abi);
-
-        const notificationId = addNotification('Minting default NFT...', 'loading');
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.mintDefaultNFT();
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.mintDefaultNFT(gasOptions);
-            await tx.wait();
-            console.log("Default NFT minted");
-            updateNotification(notificationId,'Default NFT minted successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error minting default NFT:", error);
-            updateNotification(notificationId,'Error minting default NFT.', 'error');
-        }
-    }
-
-    // NFT Membership - Update NFT
-    async function updateNFT(contractAddress, userAddress, membershipType) {
-        const contract = getContractInstance(contractAddress, NFTMembership.abi);
-
-        const notificationId = addNotification('Updating NFT...', 'loading');
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.changeMembershipType(userAddress, membershipType);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.changeMembershipType(userAddress, membershipType, gasOptions);
-            await tx.wait();
-            console.log("NFT updated");
-            updateNotification(notificationId,'NFT updated successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error updating NFT:", error);
-            updateNotification(notificationId,'Error updating NFT.', 'error');
-        }
-    }
-
-    // NFT Membership - Set Image URL
-    async function setImageURL(contractAddress, memberTypeName, imageURL) {
-        const contract = getContractInstance(contractAddress, NFTMembership.abi);
-
-        const notificationId = addNotification('Setting image URL...', 'loading');
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.setMemberTypeImage(memberTypeName, imageURL);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.setMemberTypeImage(memberTypeName, imageURL, gasOptions);
-            await tx.wait();
-            console.log("Image URL updated");
-            updateNotification(notificationId,'Image URL updated successfully!', 'success');
-        } catch (error) {
-            console.error("Error setting image URL:", error);
-            updateNotification(notificationId,'Error setting image URL.', 'error');
-        }
-    }
-
-    // Treasury - Transfer Funds
-    async function transferFunds(contractAddress, tokenAddress, amount) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, Treasury.abi);
-
-        const notificationId = addNotification('Transferring funds...', 'loading');
-
-
-        try {
-           
-
-            const gasEstimate = await contract.estimateGas.receiveTokens(tokenAddress, amount);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.receiveTokens(tokenAddress, amount, gasOptions);
-            await tx.wait();
-            console.log("Funds transferred");
-            updateNotification(notificationId,'Funds transferred successfully!', 'success');
-        } catch (error) {
-            console.error("Error transferring funds:", error);
-            updateNotification(notificationId,'Error transferring funds.', 'error');
-        }
-    }
-
-    // Treasury - Send to Treasury
-    async function sendToTreasury(contractAddress, tokenAddress, amount) {
-        const notificationId = addNotification('Sending tokens to treasury...', 'loading');
-        try {
-            const contract = getContractInstance(contractAddress, Treasury.abi);
-          
-
-            const gasEstimate = await contract.estimateGas.receiveTokens(tokenAddress, account, amount);
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: ethers.utils.hexlify(20000000), // Adjust the gas limit as needed
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.receiveTokens(tokenAddress, account, amount, gasOptions);
-            await tx.wait();
-            console.log("Tokens sent to treasury");
-            updateNotification(notificationId,'Tokens sent to treasury successfully!', 'success');
-        } catch (error) {
-            console.error("Error sending tokens to treasury:", error);
-            updateNotification(notificationId,'Error sending tokens to treasury.', 'error');
-        }
-    }
-
-    // Direct Democracy Token - Mint Tokens
-    async function mintDDtokens(contractAddress) {
-        if (!checkNetwork()) {
-            return;
-        }
-        const contract = getContractInstance(contractAddress, DirectDemocracyToken.abi);
-
-        const notificationId = addNotification('Minting tokens...', 'loading');
-
-        try {
-            const gasEstimate = await contract.estimateGas.mint();
-            const gasLimit = gasEstimate.mul(127).div(100);
-            const gasOptions = {
-                gasLimit: gasLimit,
-                gasPrice: GAS_PRICE,
-            };
-
-            const tx = await contract.mint(gasOptions);
-            await tx.wait();
-            console.log("Tokens minted");
-            updateNotification(notificationId,'Tokens minted successfully!', 'success');
-            refetch();
-        } catch (error) {
-            console.error("Error minting tokens:", error);
-            updateNotification(notificationId,'Error minting tokens.', 'error');
-        }
-    }
-
-    // Quick Join - No User
+    // ============================================
+    // Quick Join Functions
+    // ============================================
+
+    // Quick Join - No User (creates account + joins org)
     async function quickJoinNoUser(contractAddress, username) {
         console.log("Username being passed:", username);
         console.log("Contract address:", contractAddress);
@@ -1032,12 +149,10 @@ export const Web3Provider = ({ children }) => {
             return;
         }
 
-        const notificationId = addNotification('Joining without user...', 'loading');
+        const notificationId = addNotification('Joining organization...', 'loading');
 
         try {
-            const contract = getContractInstance(contractAddress, QuickJoin.abi);
-
-          
+            const contract = getContractInstance(contractAddress, QuickJoin);
 
             const gasEstimate = await contract.estimateGas.quickJoinNoUser(username);
             const gasLimit = gasEstimate.mul(127).div(100);
@@ -1058,14 +173,14 @@ export const Web3Provider = ({ children }) => {
             refetch();
         } catch (error) {
             console.error("Error during quickJoinNoUser:", error);
-            updateNotification(notificationId,'Error joining user.', 'error');
+            updateNotification(notificationId,'Error joining organization.', 'error');
 
             if (error.reason) {
                 console.error("Revert reason:", error.reason);
             } else if (error.error && error.error.reason) {
                 console.error("Revert reason:", error.error.reason);
             } else if (error.data) {
-                const iface = new ethers.utils.Interface(QuickJoin.abi);
+                const iface = new ethers.utils.Interface(QuickJoin);
                 try {
                     const decodedError = iface.parseError(error.data);
                     console.error("Decoded error:", decodedError);
@@ -1078,18 +193,16 @@ export const Web3Provider = ({ children }) => {
         }
     }
 
-    // Quick Join - With User
+    // Quick Join - With User (already has account, just joins org)
     async function quickJoinWithUser(contractAddress) {
         if (!checkNetwork()) {
             return;
         }
 
-        const notificationId = addNotification('Joining with existing user...', 'loading');
+        const notificationId = addNotification('Joining organization...', 'loading');
 
         try {
-            const contract = getContractInstance(contractAddress, QuickJoin.abi);
-
-          
+            const contract = getContractInstance(contractAddress, QuickJoin);
 
             const gasEstimate = await contract.estimateGas.quickJoinWithUser();
             const gasLimit = gasEstimate.mul(127).div(100);
@@ -1105,18 +218,704 @@ export const Web3Provider = ({ children }) => {
             refetch();
         } catch (error) {
             console.error("Error joining with existing username:", error);
-            updateNotification(notificationId,'Error joining user.', 'error');
+            updateNotification(notificationId,'Error joining organization.', 'error');
         }
     }
 
-    // Education Hub - Create Education Module
-    async function createEduModule(contractAddress, moduleTitle, moduleDescription, moduleLink, moduleQuestion, payout, answers, correctAnswer) {
+    // ============================================
+    // Hybrid Voting Functions
+    // ============================================
+
+    // Create Proposal for Hybrid Voting
+    async function createProposalParticipationVoting(
+        contractAddress,
+        proposalName,
+        proposalDescription,
+        proposalDurationMinutes,
+        numOptions,
+        batches = [],  // Array of Call[][] for execution
+        hatIds = []    // Optional hat IDs to restrict voting
+    ) {
+        if (!checkNetwork()) {
+            return;
+        }
+        const contract = getContractInstance(contractAddress, HybridVoting);
+
+        const notificationId = addNotification('Creating hybrid proposal...', 'loading');
+
+        try {
+            // Convert title to bytes and description to bytes32 hash
+            const titleBytes = stringToBytes(proposalName);
+            const descriptionHash = stringToBytes32(proposalDescription);
+
+            // Duration is in minutes
+            const durationMinutes = Math.max(1, Math.floor(proposalDurationMinutes));
+
+            const gasEstimate = await contract.estimateGas.createProposal(
+                titleBytes,
+                descriptionHash,
+                durationMinutes,
+                numOptions,
+                batches,
+                hatIds
+            );
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.createProposal(
+                titleBytes,
+                descriptionHash,
+                durationMinutes,
+                numOptions,
+                batches,
+                hatIds,
+                gasOptions
+            );
+            await tx.wait();
+            console.log("Hybrid proposal created");
+            updateNotification(notificationId,'Hybrid proposal created successfully!', 'success');
+            refetch();
+        } catch (error) {
+            console.error("Error creating hybrid proposal:", error);
+            updateNotification(notificationId,'Error creating hybrid proposal.', 'error');
+        }
+    }
+
+    // Hybrid Vote - Now uses msg.sender, supports weighted votes
+    async function hybridVote(contractAddress, proposalID, optionIndices, weights) {
+        if (!checkNetwork()) {
+            return;
+        }
+        const contract = getContractInstance(contractAddress, HybridVoting);
+
+        const notificationId = addNotification('Casting hybrid vote...', 'loading');
+
+        try {
+            // Ensure weights sum to 100
+            const totalWeight = weights.reduce((a, b) => a + b, 0);
+            if (totalWeight !== 100) {
+                throw new Error("Total weight must sum to 100");
+            }
+
+            const gasEstimate = await contract.estimateGas.vote(proposalID, optionIndices, weights);
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.vote(proposalID, optionIndices, weights, gasOptions);
+            await tx.wait();
+            console.log("Voted in hybrid voting");
+            updateNotification(notificationId,'Hybrid vote cast successfully!', 'success');
+            refetch();
+        } catch (error) {
+            console.error("Error voting in hybrid voting:", error);
+            updateNotification(notificationId,'Error casting hybrid vote.', 'error');
+        }
+    }
+
+    // Get Winner Hybrid Voting
+    async function getWinnerHybridVoting(contractAddress, proposalID) {
+        if (!checkNetwork()) {
+            return;
+        }
+        const contract = getContractInstance(contractAddress, HybridVoting);
+
+        const notificationId = addNotification('Announcing winner...', 'loading');
+
+        try {
+            const gasEstimate = await contract.estimateGas.announceWinner(proposalID);
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.announceWinner(proposalID, gasOptions);
+            const receipt = await tx.wait();
+            console.log("Winner announced");
+            updateNotification(notificationId,'Winner announced successfully!', 'success');
+            refetch();
+            return receipt;
+        } catch (error) {
+            console.error("Error announcing winner:", error);
+            updateNotification(notificationId,'Error announcing winner.', 'error');
+        }
+    }
+
+    // ============================================
+    // Direct Democracy Voting Functions
+    // ============================================
+
+    // Create Proposal Direct Democracy Voting
+    async function createProposalDDVoting(
+        contractAddress,
+        proposalName,
+        proposalDescription,
+        proposalDurationMinutes,
+        numOptions,
+        batches = [],  // Array of Call[][] for execution
+        hatIds = []    // Optional hat IDs to restrict voting
+    ) {
         if (!checkNetwork()) {
             return;
         }
 
-        const contract = getContractInstance(contractAddress, EducationHub.abi);
+        const contract = getContractInstance(contractAddress, DirectDemocracyVoting);
 
+        const notificationId = addNotification('Creating Direct Democracy proposal...', 'loading');
+
+        try {
+            // Convert title to bytes and description to bytes32 hash
+            const titleBytes = stringToBytes(proposalName);
+            const descriptionHash = stringToBytes32(proposalDescription);
+
+            // Duration is in minutes
+            const durationMinutes = Math.max(1, Math.floor(proposalDurationMinutes));
+
+            const gasEstimate = await contract.estimateGas.createProposal(
+                titleBytes,
+                descriptionHash,
+                durationMinutes,
+                numOptions,
+                batches,
+                hatIds
+            );
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.createProposal(
+                titleBytes,
+                descriptionHash,
+                durationMinutes,
+                numOptions,
+                batches,
+                hatIds,
+                gasOptions
+            );
+            await tx.wait();
+
+            refetch();
+            console.log("DD proposal created");
+            updateNotification(notificationId,'Direct Democracy proposal created successfully!', 'success');
+        } catch (error) {
+            console.error("Error creating DD proposal:", error);
+            updateNotification(notificationId,'Error creating Direct Democracy proposal.', 'error');
+        }
+    }
+
+    // DD Vote - Now uses msg.sender
+    async function ddVote(contractAddress, proposalID, optionIndices, weights) {
+        if (!checkNetwork()) {
+            return;
+        }
+
+        const contract = getContractInstance(contractAddress, DirectDemocracyVoting);
+
+        const notificationId = addNotification('Casting Direct Democracy vote...', 'loading');
+
+        try {
+            // Ensure the total weight is 100
+            const totalWeight = weights.reduce((a, b) => a + b, 0);
+            if (totalWeight !== 100) {
+                throw new Error("Total weight must sum to 100");
+            }
+
+            // Convert to uint8 arrays
+            const idxs = optionIndices.map(i => Number(i));
+            const wts = weights.map(w => Number(w));
+
+            const gasEstimate = await contract.estimateGas.vote(proposalID, idxs, wts);
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.vote(proposalID, idxs, wts, gasOptions);
+            await tx.wait();
+            console.log("Voted in DD voting");
+            updateNotification(notificationId,'Direct Democracy vote cast successfully!', 'success');
+            refetch();
+        } catch (error) {
+            console.error("Error voting in DD voting:", error);
+            updateNotification(notificationId,'Error casting Direct Democracy vote.', 'error');
+        }
+    }
+
+    // Get Winner DD Voting
+    async function getWinnerDDVoting(contractAddress, proposalID) {
+        if (!checkNetwork()) {
+            return;
+        }
+        const contract = getContractInstance(contractAddress, DirectDemocracyVoting);
+
+        const notificationId = addNotification('Announcing winner...', 'loading');
+
+        try {
+            const gasEstimate = await contract.estimateGas.announceWinner(proposalID);
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.announceWinner(proposalID, gasOptions);
+            await tx.wait();
+            console.log("Winner announced");
+            updateNotification(notificationId,'Winner announced successfully!', 'success');
+            refetch();
+        } catch (error) {
+            console.error("Error announcing winner:", error);
+            updateNotification(notificationId,'Error announcing winner.', 'error');
+        }
+    }
+
+    // ============================================
+    // Task Manager Functions
+    // ============================================
+
+    // Create Project
+    async function createProject(
+        contractAddress,
+        projectName,
+        metadataHash = "",
+        cap = 0,
+        managers = [],
+        createHats = [],
+        claimHats = [],
+        reviewHats = [],
+        assignHats = []
+    ) {
+        if (!checkNetwork()) {
+            return;
+        }
+        const contract = getContractInstance(contractAddress, TaskManager);
+
+        const notificationId = addNotification('Creating project...', 'loading');
+
+        try {
+            const titleBytes = stringToBytes(projectName);
+            const metaHash = metadataHash ? stringToBytes32(metadataHash) : ethers.constants.HashZero;
+
+            const gasEstimate = await contract.estimateGas.createProject(
+                titleBytes,
+                metaHash,
+                cap,
+                managers,
+                createHats,
+                claimHats,
+                reviewHats,
+                assignHats
+            );
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.createProject(
+                titleBytes,
+                metaHash,
+                cap,
+                managers,
+                createHats,
+                claimHats,
+                reviewHats,
+                assignHats,
+                gasOptions
+            );
+            const receipt = await tx.wait();
+            console.log("Project created");
+            updateNotification(notificationId,'Project created successfully!', 'success');
+            refetch();
+
+            // Return the project ID from the event
+            const projectCreatedEvent = receipt.events?.find(e => e.event === 'ProjectCreated');
+            return projectCreatedEvent?.args?.id;
+        } catch (error) {
+            console.error("Error creating project:", error);
+            updateNotification(notificationId,'Error creating project.', 'error');
+        }
+    }
+
+    // Create Task
+    async function createTask(
+        contractAddress,
+        payout,
+        taskDescription,
+        projectId, // bytes32 project ID
+        estHours,
+        difficulty,
+        taskLocation,
+        taskName,
+        bountyToken = ethers.constants.AddressZero,
+        bountyPayout = 0,
+        requiresApplication = false
+    ) {
+        if (!checkNetwork()) {
+            return;
+        }
+
+        // Create IPFS metadata
+        let ipfsHash = await ipfsAddTask(taskName, taskDescription, taskLocation, difficulty, estHours, "");
+        let metadataHash = stringToBytes32(ipfsHash.path);
+
+        const contract = getContractInstance(contractAddress, TaskManager);
+
+        const notificationId = addNotification('Creating task...', 'loading');
+
+        try {
+            const titleBytes = stringToBytes(taskName);
+
+            // If projectId is a string (old format), convert to bytes32
+            const pid = typeof projectId === 'string' && !projectId.startsWith('0x')
+                ? stringToBytes32(projectId)
+                : projectId;
+
+            const gasEstimate = await contract.estimateGas.createTask(
+                payout,
+                titleBytes,
+                metadataHash,
+                pid,
+                bountyToken,
+                bountyPayout,
+                requiresApplication
+            );
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.createTask(
+                payout,
+                titleBytes,
+                metadataHash,
+                pid,
+                bountyToken,
+                bountyPayout,
+                requiresApplication,
+                gasOptions
+            );
+            await tx.wait();
+            console.log("Task created");
+            updateNotification(notificationId,'Task created successfully!', 'success');
+            refetch();
+        } catch (error) {
+            console.error("Error creating task:", error);
+            updateNotification(notificationId,'Error creating task.', 'error');
+            throw error;
+        }
+    }
+
+    // Claim Task
+    async function claimTask(contractAddress, taskID) {
+        if (!checkNetwork()) {
+            return;
+        }
+
+        console.log("Claiming task with ID:", taskID);
+        const contract = getContractInstance(contractAddress, TaskManager);
+        // In POP subgraph, task ID format is "taskManagerAddress-taskId"
+        const newTaskID = taskID.toString().includes("-") ? taskID.split("-")[1] : taskID;
+
+        const notificationId = addNotification('Claiming task...', 'loading');
+
+        try {
+            const gasEstimate = await contract.estimateGas.claimTask(newTaskID);
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.claimTask(newTaskID, gasOptions);
+            await tx.wait();
+            console.log("Task claimed");
+            updateNotification(notificationId,'Task claimed successfully!', 'success');
+            refetch();
+        } catch (error) {
+            console.error("Error claiming task:", error);
+            updateNotification(notificationId,'Error claiming task.', 'error');
+            throw error;
+        }
+    }
+
+    // Complete Task
+    async function completeTask(contractAddress, taskID) {
+        if (!checkNetwork()) {
+            return;
+        }
+        const contract = getContractInstance(contractAddress, TaskManager);
+        // In POP subgraph, task ID format is "taskManagerAddress-taskId"
+        const newTaskID = taskID.toString().includes("-") ? taskID.split("-")[1] : taskID;
+
+        const notificationId = addNotification('Completing task...', 'loading');
+
+        try {
+            const gasEstimate = await contract.estimateGas.completeTask(newTaskID);
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.completeTask(newTaskID, gasOptions);
+            await tx.wait();
+            console.log("Task completed");
+            updateNotification(notificationId,'Task completed successfully!', 'success');
+            refetch();
+        } catch (error) {
+            console.error("Error completing task:", error);
+            updateNotification(notificationId,'Error completing task.', 'error');
+            throw error;
+        }
+    }
+
+    // Submit Task
+    async function submitTask(contractAddress, taskID, submissionData) {
+        if (!checkNetwork()) {
+            return;
+        }
+        const contract = getContractInstance(contractAddress, TaskManager);
+        // In POP subgraph, task ID format is "taskManagerAddress-taskId"
+        const newTaskID = taskID.toString().includes("-") ? taskID.split("-")[1] : taskID;
+
+        const notificationId = addNotification('Submitting task...', 'loading');
+
+        try {
+            // Convert submission to bytes32 hash
+            const submissionHash = stringToBytes32(submissionData);
+
+            const gasEstimate = await contract.estimateGas.submitTask(newTaskID, submissionHash);
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.submitTask(newTaskID, submissionHash, gasOptions);
+            await tx.wait();
+            console.log("Task submitted");
+            updateNotification(notificationId,'Task submitted successfully!', 'success');
+            refetch();
+        } catch (error) {
+            console.error("Error submitting task:", error);
+            updateNotification(notificationId,'Error submitting task.', 'error');
+            throw error;
+        }
+    }
+
+    // Update Task
+    async function updateTask(
+        contractAddress,
+        taskID,
+        payout,
+        taskName,
+        metadataHash,
+        bountyToken = ethers.constants.AddressZero,
+        bountyPayout = 0
+    ) {
+        if (!checkNetwork()) {
+            return;
+        }
+        const contract = getContractInstance(contractAddress, TaskManager);
+        // In POP subgraph, task ID format is "taskManagerAddress-taskId"
+        const newTaskID = taskID.toString().includes("-") ? taskID.split("-")[1] : taskID;
+
+        const notificationId = addNotification('Updating task...', 'loading');
+
+        try {
+            const titleBytes = stringToBytes(taskName);
+            const metaHash = stringToBytes32(metadataHash);
+
+            const gasEstimate = await contract.estimateGas.updateTask(
+                newTaskID,
+                payout,
+                titleBytes,
+                metaHash,
+                bountyToken,
+                bountyPayout
+            );
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.updateTask(
+                newTaskID,
+                payout,
+                titleBytes,
+                metaHash,
+                bountyToken,
+                bountyPayout,
+                gasOptions
+            );
+            await tx.wait();
+            console.log("Task updated");
+            updateNotification(notificationId,'Task updated successfully!', 'success');
+            refetch();
+        } catch (error) {
+            console.error("Error updating task:", error);
+            updateNotification(notificationId,'Error updating task.', 'error');
+            throw error;
+        }
+    }
+
+    // Edit Task (wrapper around updateTask with IPFS)
+    async function editTaskWeb3(
+        contractAddress,
+        payout,
+        taskDescription,
+        projectName,
+        estHours,
+        difficulty,
+        taskLocation,
+        taskName,
+        taskID
+    ) {
+        if (!checkNetwork()) {
+            return;
+        }
+        let ipfsHash = await ipfsAddTask(taskName, taskDescription, taskLocation, difficulty, estHours, "");
+
+        const contract = getContractInstance(contractAddress, TaskManager);
+        // In POP subgraph, task ID format is "taskManagerAddress-taskId"
+        const newTaskID = taskID.toString().includes("-") ? taskID.split("-")[1] : taskID;
+
+        const notificationId = addNotification('Editing task...', 'loading');
+
+        try {
+            const titleBytes = stringToBytes(taskName);
+            const metaHash = stringToBytes32(ipfsHash.path);
+
+            const gasEstimate = await contract.estimateGas.updateTask(
+                newTaskID,
+                payout,
+                titleBytes,
+                metaHash,
+                ethers.constants.AddressZero,
+                0
+            );
+            const gasLimit = gasEstimate.mul(127).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+
+            const tx = await contract.updateTask(
+                newTaskID,
+                payout,
+                titleBytes,
+                metaHash,
+                ethers.constants.AddressZero,
+                0,
+                gasOptions
+            );
+            await tx.wait();
+            console.log("Task edited");
+            updateNotification(notificationId,'Task edited successfully!', 'success');
+            refetch();
+        } catch (error) {
+            console.error("Error editing task:", error);
+            updateNotification(notificationId,'Error editing task.', 'error');
+            throw error;
+        }
+    }
+
+    // Delete Project
+    async function deleteProject(contractAddress, projectId) {
+        if (!checkNetwork()) {
+            return;
+        }
+        const contract = getContractInstance(contractAddress, TaskManager);
+
+        const notificationId = addNotification('Deleting project...', 'loading');
+
+        try {
+            // Convert project name to bytes32 if it's a string
+            const pid = typeof projectId === 'string' && !projectId.startsWith('0x')
+                ? stringToBytes32(projectId)
+                : projectId;
+
+            const gasEstimate = await contract.estimateGas.deleteProject(pid);
+            const gasLimit = gasEstimate.mul(133).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+            const tx = await contract.deleteProject(pid, gasOptions);
+            await tx.wait();
+            console.log("Project deleted");
+            updateNotification(notificationId,'Project deleted successfully!', 'success');
+            refetch();
+        } catch (error) {
+            console.error("Error deleting project:", error);
+            updateNotification(notificationId,'Error deleting project.', 'error');
+        }
+    }
+
+    // Cancel/Delete Task
+    async function deleteTaskWeb3(contractAddress, taskID) {
+        if (!checkNetwork()) {
+            return;
+        }
+        const contract = getContractInstance(contractAddress, TaskManager);
+        // In POP subgraph, task ID format is "taskManagerAddress-taskId"
+        const newTaskID = taskID.toString().includes("-") ? taskID.split("-")[1] : taskID;
+
+        const notificationId = addNotification('Cancelling task...', 'loading');
+
+        try {
+            const gasEstimate = await contract.estimateGas.cancelTask(newTaskID);
+            const gasLimit = gasEstimate.mul(133).div(100);
+            const gasOptions = {
+                gasLimit: gasLimit,
+                gasPrice: GAS_PRICE,
+            };
+            const tx = await contract.cancelTask(newTaskID, gasOptions);
+            await tx.wait();
+            console.log("Task cancelled");
+            updateNotification(notificationId,'Task cancelled successfully!', 'success');
+            refetch();
+        } catch (error) {
+            console.error("Error cancelling task:", error);
+            updateNotification(notificationId,'Error cancelling task.', 'error');
+            throw error;
+        }
+    }
+
+    // ============================================
+    // Education Hub Functions
+    // ============================================
+
+    // Create Education Module
+    async function createEduModule(
+        contractAddress,
+        moduleTitle,
+        moduleDescription,
+        moduleLink,
+        moduleQuestion,
+        payout,
+        answers,
+        correctAnswer
+    ) {
+        if (!checkNetwork()) {
+            return;
+        }
+
+        const contract = getContractInstance(contractAddress, EducationHub);
+
+        // Create content object and upload to IPFS
         const data = {
             title: moduleTitle,
             description: moduleDescription,
@@ -1126,17 +925,18 @@ export const Web3Provider = ({ children }) => {
         };
 
         const ipfsHash = await addToIpfs(JSON.stringify(data));
+        const contentHash = stringToBytes32(ipfsHash.path);
 
         let correctAnswerIndex = answers.indexOf(correctAnswer);
 
         const notificationId = addNotification('Creating education module...', 'loading');
 
         try {
-          
+            const titleBytes = stringToBytes(moduleTitle);
 
             const gasEstimate = await contract.estimateGas.createModule(
-                moduleTitle,
-                ipfsHash.path,
+                titleBytes,
+                contentHash,
                 payout,
                 correctAnswerIndex
             );
@@ -1147,8 +947,8 @@ export const Web3Provider = ({ children }) => {
             };
 
             const tx = await contract.createModule(
-                moduleTitle,
-                ipfsHash.path,
+                titleBytes,
+                contentHash,
                 payout,
                 correctAnswerIndex,
                 gasOptions
@@ -1163,26 +963,30 @@ export const Web3Provider = ({ children }) => {
         }
     }
 
-    // Education Hub - Complete Module
+    // Complete Module
     async function completeModule(contractAddress, moduleId, answer) {
-        const contract = getContractInstance(contractAddress, EducationHub.abi);
+        if (!checkNetwork()) {
+            return;
+        }
 
-        const [actualModuleId, address] = moduleId.split('-');
+        const contract = getContractInstance(contractAddress, EducationHub);
+
+        // In POP subgraph, module ID format is "educationHubAddress-moduleId"
+        const actualModuleId = moduleId.toString().includes('-')
+            ? moduleId.split('-')[1]
+            : moduleId;
 
         if (!actualModuleId) {
             console.error(`Invalid moduleId: ${moduleId}`);
-            updateNotification(notificationId,'Invalid module ID.', 'error');
             return false;
         }
 
         const notificationId = addNotification('Completing module...', 'loading');
 
         try {
-          
-
             console.log(`Completing module ${actualModuleId} with answer ${answer}`);
             const gasEstimate = await contract.estimateGas.completeModule(actualModuleId, answer);
-            const gasLimit = gasEstimate.mul(127).div(100); // Add a buffer for gas limit
+            const gasLimit = gasEstimate.mul(127).div(100);
 
             const tx = await contract.completeModule(actualModuleId, answer, {
                 gasLimit,
@@ -1200,9 +1004,9 @@ export const Web3Provider = ({ children }) => {
         }
     }
 
-    // Treasury - Transfer Funds (Already Included Above)
-
-    // Direct Democracy Token - Mint Tokens (Already Included Above)
+    // ============================================
+    // IPFS Helper Functions
+    // ============================================
 
     // IPFS Add Task
     async function ipfsAddTask(taskName, taskDescription, taskLocation, difficulty, estHours, submission) {
@@ -1220,48 +1024,102 @@ export const Web3Provider = ({ children }) => {
         return ipfsHash;
     }
 
+    // ============================================
+    // Stub Functions (Features removed in POP migration)
+    // These prevent crashes - UI stays intact but functions are no-ops
+    // ============================================
+
+    // NFT Membership stubs (replaced by Hats Protocol)
+    async function checkIsExecutive(contractAddress, userAddress) {
+        console.warn("checkIsExecutive is deprecated - use Hats Protocol");
+        return false;
+    }
+
+    async function updateNFT(contractAddress, address, membershipType) {
+        console.warn("updateNFT is deprecated - use Hats Protocol");
+    }
+
+    async function mintNFT(contractAddress, address, membershipType) {
+        console.warn("mintNFT is deprecated - use Hats Protocol");
+    }
+
+    async function mintDefaultNFT(contractAddress, address) {
+        console.warn("mintDefaultNFT is deprecated - use Hats Protocol");
+    }
+
+    // Election stub (feature removed)
+    async function createProposalElection(...args) {
+        console.warn("createProposalElection is deprecated - elections not supported in POP");
+    }
+
+    // Treasury stubs (replaced by Executor/PaymentManager)
+    async function transferFunds(...args) {
+        console.warn("transferFunds is deprecated - use Executor batches");
+    }
+
+    async function sendToTreasury(...args) {
+        console.warn("sendToTreasury is deprecated");
+    }
+
+    // DD Token stub (removed)
+    async function mintDDtokens(...args) {
+        console.warn("mintDDtokens is deprecated - no DD token in POP");
+    }
+
+    // KUBIX token stub (replaced by ParticipationToken auto-minting on task completion)
+    async function mintKUBIX(address, amount, isTaskCompletion = false) {
+        console.warn("mintKUBIX is deprecated - ParticipationToken is auto-minted on task completion in POP");
+        // In POP, completeTask automatically mints participation tokens
+        return true;
+    }
+
     return (
         <Web3Context.Provider value={{
             address,
             chainId,
-            quickJoinNoUser,
-            quickJoinWithUser,
-            sendToTreasury,
-            changeUsername,
-            submitTask,
-            editTaskWeb3,
             signer,
             isNetworkModalOpen,
             closeNetworkModal,
-            mintDDtokens,
-            mintDefaultNFT,
-            mintNFT,
             setAccount,
+            // User Account Functions
+            createNewUser,
+            changeUsername,
+            // Quick Join Functions
+            quickJoinNoUser,
+            quickJoinWithUser,
+            // Hybrid Voting Functions
+            createProposalParticipationVoting,
+            hybridVote,
+            getWinnerHybridVoting,
+            // DD Voting Functions
+            createProposalDDVoting,
             ddVote,
             getWinnerDDVoting,
-            completeTask,
-            ipfsAddTask,
-            createTask,
+            // Task Manager Functions
             createProject,
+            createTask,
             claimTask,
+            completeTask,
+            submitTask,
             updateTask,
-            createProposalDDVoting,
-            createNewUser,
+            editTaskWeb3,
+            deleteProject,
+            deleteTaskWeb3,
+            // Education Hub Functions
             createEduModule,
+            completeModule,
+            // IPFS Helper
+            ipfsAddTask,
+            // Stub functions (deprecated - prevent crashes)
             checkIsExecutive,
             updateNFT,
-            createProposalParticipationVoting,
-            completeModule,
-            transferFunds,
-            setImageURL,
-            checkIsExecutive,
-            mintDefaultNFT,
-            mintDDtokens,
             mintNFT,
-            sendToTreasury,
+            mintDefaultNFT,
             createProposalElection,
-            deleteProject,
-            deleteTaskWeb3
+            transferFunds,
+            sendToTreasury,
+            mintDDtokens,
+            mintKUBIX,
         }}>
             {children}
         </Web3Context.Provider>

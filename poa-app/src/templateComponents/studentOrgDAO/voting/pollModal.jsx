@@ -50,15 +50,17 @@ const PollModal = ({
   const vote = () => {
 
     handleModalClose();
-  
-    const optionIndices = selectedPoll?.options?.map((_, index) => index);
-  
-    const weights = selectedPoll?.options?.map((_, index) => {
-      return index === parseInt(selectedOption) ? 100 : 0;
-    });
-  
-    let newPollId = selectedPoll.id.split("-")[0];
-  
+
+    // Only send the selected option with 100% weight
+    // Contract expects arrays of [selectedOptionIndex] and [100]
+    const selectedOptionIndex = parseInt(selectedOption);
+    const optionIndices = [selectedOptionIndex];
+    const weights = [100];
+
+    // In POP subgraph, id format is "contractAddress-proposalId"
+    // Use proposalId directly if available, otherwise extract from id
+    let newPollId = selectedPoll.proposalId || selectedPoll.id.split("-")[1];
+
     handleVote(contractAddress, newPollId, optionIndices, weights);
   };
 
@@ -86,7 +88,7 @@ const PollModal = ({
           fontWeight={"extrabold"}
           fontSize={"2xl"}
         >
-          {selectedPoll?.name}
+          {selectedPoll?.title}
         </ModalHeader>
         <ModalCloseButton />
         <ModalBody>
@@ -100,7 +102,7 @@ const PollModal = ({
 
             <CountDown
               duration={
-                selectedPoll?.expirationTimestamp -
+                parseInt(selectedPoll?.endTimestamp || 0) -
                 Math.floor(Date.now() / 1000)
               }
             />

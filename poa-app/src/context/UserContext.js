@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@apollo/client';
 import { useAccount } from 'wagmi';
-import { FETCH_USER_DETAILS, FETCH_PO_AND_USER_DETAILS, FETCH_ALL_PO_DATA } from '../util/queries'; 
+import { FETCH_USER_DATA_NEW } from '../util/queries';
 import { useRouter } from 'next/router';
-import { useWeb3Context } from './web3Context';
+import { usePOContext } from './POContext';
+import { formatTokenAmount } from '../util/formatToken';
 
 const UserContext = createContext();
 
@@ -11,102 +12,123 @@ export const useUserContext = () => useContext(UserContext);
 
 export const UserProvider = ({ children }) => {
     const { address } = useAccount();
+    const router = useRouter();
+    const { userDAO } = router.query;
+    const { orgId, roleHatIds } = usePOContext();
+
     const [userData, setUserData] = useState({});
     const [graphUsername, setGraphUsername] = useState('');
     const [hasExecNFT, setHasExecNFT] = useState(false);
     const [hasMemberNFT, setHasMemberNFT] = useState(false);
     const [claimedTasks, setClaimedTasks] = useState([]);
     const [userProposals, setUserProposals] = useState([]);
-    const [completedModules, setCompletedModules] = useState([]); // New state for completed modules
+    const [completedModules, setCompletedModules] = useState([]);
     const [userDataLoading, setUserDataLoading] = useState(true);
-    const router = useRouter();
-    const { userDAO } = router.query;
 
-    const [account, setAccount] = useState('0x00');
+    const [account, setAccount] = useState(null);
 
     useEffect(() => {
         if (address) {
-            setAccount(address);
+            setAccount(address.toLowerCase());
         }
-    } , [address]);
+    }, [address]);
 
-    const combinedID = `${userDAO}-${account?.toLowerCase()}`;
+    // Construct the org-specific user ID
+    const orgUserID = orgId && account ? `${orgId}-${account}` : null;
 
-    const { data, error } = useQuery(FETCH_ALL_PO_DATA, {
-        variables: { id: account?.toLowerCase(), poName: userDAO, combinedID: combinedID },
-        skip: !account || !userDAO || !combinedID,
-        fetchPolicy: 'cache-first',
-        onCompleted: () => {
-            console.log('Query user context completed successfully');
-            console.log('data', data);
+    const { data, error, loading } = useQuery(FETCH_USER_DATA_NEW, {
+        variables: {
+            orgUserID: orgUserID,
+            userAddress: account,
         },
+        skip: !orgUserID || !account,
+        fetchPolicy: 'cache-first',
     });
 
     useEffect(() => {
         if (data) {
-            console.log("data", data);
-            const { user, account, perpetualOrganization } = data;
+            const { user, account: accountData } = data;
 
-            const execRoles = perpetualOrganization?.NFTMembership?.executiveRoles || [];
-            const hasExecNFT = user ? execRoles.includes(user.memberType.memberTypeName) : false;
-            const hasMemberNFT = !!user;
-            const username = account?.userName || '';
-            const userTasks = user?.tasks || [];
-            const tasksCompleted = userTasks.filter(task => task.completed).length;
+            setGraphUsername(accountData?.username || '');
+            setHasMemberNFT(!!user);
 
-            // Extract the completed modules
-            const completedModulesList = user?.modulesCompleted?.map(mc => mc.module) || [];
-            setCompletedModules(completedModulesList); // Set the completed modules
+            if (user) {
+                // Executive check: second role hat is typically executive
+                const userHatIds = user.currentHatIds || [];
+                const execHatId = roleHatIds?.[1];
+                setHasExecNFT(execHatId && userHatIds.includes(execHatId));
 
-            setGraphUsername(username);
-            setHasExecNFT(hasExecNFT);
-            setHasMemberNFT(hasMemberNFT);
-            setClaimedTasks(userTasks.filter(task => !task.completed));
-
-            if (hasMemberNFT) {
                 setUserData({
                     id: user.id,
-                    ptTokenBalance: user.ptTokenBalance,
-                    ddTokenBalance: user.ddTokenBalance,
-                    memberType: user.memberType.memberTypeName,
-                    imageURL: user.memberType.imageURL,
-                    tasksCompleted,
-                    totalVotes: user.totalVotes,
-                    dateJoined: user.dateJoined,
+                    address: user.address,
+                    participationTokenBalance: formatTokenAmount(user.participationTokenBalance || '0'),
+                    hatIds: userHatIds,
+                    tasksCompleted: user.totalTasksCompleted || 0,
+                    totalVotes: user.totalVotes || 0,
+                    firstSeenAt: user.firstSeenAt || null,
+                    membershipStatus: user.membershipStatus,
+                    completedTasks: (user.completedTasks || []).map(task => ({
+                        id: task.id,
+                        taskId: task.taskId,
+                        title: task.title,
+                        payout: formatTokenAmount(task.payout || '0'),
+                        status: 'Completed',
+                    })),
                 });
+
+                setClaimedTasks((user.assignedTasks || []).map(task => ({
+                    id: task.id,
+                    taskId: task.taskId,
+                    title: task.title,
+                    payout: formatTokenAmount(task.payout || '0'),
+                    status: task.status,
+                })));
+
+                setCompletedModules((user.modulesCompleted || []).map(m => ({
+                    moduleId: m.moduleId,
+                    completedAt: m.completedAt,
+                })));
+
+                const proposals = user.hybridProposalsCreated || [];
+                setUserProposals(proposals.map(p => ({
+                    id: p.id,
+                    proposalId: p.proposalId,
+                    title: p.title,
+                    type: 'Hybrid',
+                    startTimestamp: p.startTimestamp,
+                    endTimestamp: p.endTimestamp,
+                    status: p.status,
+                })).sort((a, b) => {
+                    const aCompleted = a.status !== 'Active';
+                    const bCompleted = b.status !== 'Active';
+                    if (aCompleted && !bCompleted) return 1;
+                    if (!aCompleted && bCompleted) return -1;
+                    return parseInt(a.endTimestamp) - parseInt(b.endTimestamp);
+                }));
+            } else {
+                setHasExecNFT(false);
+                setUserData({});
+                setClaimedTasks([]);
+                setCompletedModules([]);
+                setUserProposals([]);
             }
 
-            const proposals = [
-                ...(data.user?.ptProposals || []).map(proposal => ({ ...proposal, type: 'Participation' })),
-                ...(data.user?.ddProposals || []).map(proposal => ({ ...proposal, type: 'Direct Democracy' })),
-                ...(data.user?.hybridProposals || []).map(proposal => ({ ...proposal, type: 'Hybrid' })),
-            ];
-
-            const currentTime = Math.floor(Date.now() / 1000); 
-
-            proposals.sort((a, b) => {
-                const aIsCompleted = a.experationTimestamp < currentTime;
-                const bIsCompleted = b.experationTimestamp < currentTime;
-
-                if (aIsCompleted && !bIsCompleted) {
-                    return 1; 
-                } else if (!aIsCompleted && bIsCompleted) {
-                    return -1; 
-                } else if (!aIsCompleted && !bIsCompleted) {
-                    return a.experationTimestamp - b.experationTimestamp; 
-                } else {
-                    return a.experationTimestamp - b.experationTimestamp; 
-                }
-            });
-
-            setUserProposals(proposals);
             setUserDataLoading(false);
-        } else {
-            setUserDataLoading(false); 
         }
-    }, [data]);
+    }, [data, roleHatIds]);
 
-    // Memoize the context value to avoid unnecessary re-renders
+    useEffect(() => {
+        if (!orgId && userDAO) {
+            setUserDataLoading(true);
+        }
+    }, [orgId, userDAO]);
+
+    useEffect(() => {
+        if (!account && !loading) {
+            setUserDataLoading(false);
+        }
+    }, [account, loading]);
+
     const contextValue = useMemo(() => ({
         userDataLoading,
         userProposals,
@@ -115,13 +137,22 @@ export const UserProvider = ({ children }) => {
         hasExecNFT,
         hasMemberNFT,
         claimedTasks,
-        completedModules, 
+        completedModules,
         error,
-    }), [userDataLoading, userProposals, userData, graphUsername, hasExecNFT, hasMemberNFT, claimedTasks, completedModules, error]);
+    }), [
+        userDataLoading,
+        userProposals,
+        userData,
+        graphUsername,
+        hasExecNFT,
+        hasMemberNFT,
+        claimedTasks,
+        completedModules,
+        error,
+    ]);
 
     return (
         <UserContext.Provider value={contextValue}>
-            {error && <div>Error: {error.message}</div>}
             {children}
         </UserContext.Provider>
     );

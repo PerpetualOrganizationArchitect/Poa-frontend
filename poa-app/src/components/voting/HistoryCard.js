@@ -115,9 +115,11 @@ const HistoryCard = ({ proposal, onPollClick }) => {
   }];
   
   let WinnerName = "No Winner";
-  if (proposal.validWinner !== false && proposal.winningOptionIndex !== undefined && 
-      normalizedOptions[proposal.winningOptionIndex]) {
-    WinnerName = normalizedOptions[proposal.winningOptionIndex].name;
+  if (proposal.isValid !== false &&
+      proposal.winningOption !== undefined &&
+      proposal.winningOption !== null &&
+      normalizedOptions[proposal.winningOption]) {
+    WinnerName = normalizedOptions[proposal.winningOption].name;
   }
 
   return (
@@ -170,9 +172,9 @@ const HistoryCard = ({ proposal, onPollClick }) => {
             pb={1}
             textAlign="center"
             noOfLines={2}
-            title={proposal.name}
+            title={proposal.title}
           >
-            {proposal.name}
+            {proposal.title}
           </Text>
         </Box>
         

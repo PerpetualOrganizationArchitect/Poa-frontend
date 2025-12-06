@@ -38,6 +38,7 @@ import {
   mapStateToDeploymentParams,
   createDeploymentConfig,
 } from "@/features/deployer";
+import { resolveRoleUsernames } from "@/features/deployer/utils/usernameResolver";
 
 /**
  * Inner component that has access to DeployerContext
@@ -266,6 +267,9 @@ function DeployerPageContent() {
     setIsDeploying(true);
 
     try {
+      // Resolve all usernames to addresses before deployment
+      const rolesWithResolvedAddresses = await resolveRoleUsernames(state.roles);
+
       // Upload description and links to IPFS first
       const links = state.organization.links || [];
       const jsonData = {
@@ -284,10 +288,39 @@ function DeployerPageContent() {
         actions.setIPFSHash(infoIPFSHash);
       }
 
-      // Get deployment params
-      const deployParams = mapStateToDeploymentParams(state, address);
+      // Get deployment params with resolved addresses
+      const stateWithResolvedRoles = {
+        ...state,
+        roles: rolesWithResolvedAddresses,
+      };
+      const deployParams = mapStateToDeploymentParams(stateWithResolvedRoles, address);
 
+      console.log('=== DEPLOYMENT DEBUG ===');
       console.log('Deploying with params:', deployParams);
+
+      // Check if any role has additionalWearers
+      const hasAdditionalWearers = deployParams.roles.some(
+        role => role.distribution.additionalWearers && role.distribution.additionalWearers.length > 0
+      );
+      console.log('Has additional wearers:', hasAdditionalWearers);
+
+      console.log('Roles structure:');
+      deployParams.roles.forEach((role, idx) => {
+        console.log(`  Role [${idx}] ${role.name}:`, {
+          canVote: role.canVote,
+          vouching: role.vouching,
+          defaults: role.defaults,
+          hierarchy: {
+            adminRoleIndex: role.hierarchy.adminRoleIndex?.toString?.() || role.hierarchy.adminRoleIndex
+          },
+          distribution: {
+            mintToDeployer: role.distribution.mintToDeployer,
+            mintToExecutor: role.distribution.mintToExecutor,
+            additionalWearers: role.distribution.additionalWearers,
+          },
+          hatConfig: role.hatConfig,
+        });
+      });
 
       // Call the deployment function
       // Note: The existing `main` function signature may need to be updated
@@ -299,6 +332,11 @@ function DeployerPageContent() {
 
       const hasQuadratic = state.voting.classes.some(c => c.quadratic);
       const hybridVotingEnabled = state.voting.classes.length > 1;
+
+      // Only pass customRoles if there are additionalWearers to assign
+      // This preserves original behavior when no usernames are added
+      const customRoles = hasAdditionalWearers ? deployParams.roles : null;
+      console.log('Passing customRoles:', customRoles !== null);
 
       await main(
         membershipTypeNames,
@@ -317,7 +355,8 @@ function DeployerPageContent() {
         state.voting.ddQuorum,
         state.voting.hybridQuorum,
         state.organization.username || '',
-        signer
+        signer,
+        customRoles  // Only pass custom roles if there are additionalWearers
       );
 
       toast({

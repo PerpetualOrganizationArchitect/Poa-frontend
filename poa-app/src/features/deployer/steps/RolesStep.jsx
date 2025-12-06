@@ -16,9 +16,11 @@ import {
   Alert,
   AlertIcon,
   Divider,
+  Spinner,
 } from '@chakra-ui/react';
 import { useDeployer } from '../context/DeployerContext';
 import { validateRolesStep } from '../validation/schemas';
+import { validateAllUsernames } from '../utils/usernameResolver';
 import StepHeader from '../components/common/StepHeader';
 import NavigationButtons from '../components/common/NavigationButtons';
 import ValidationSummary from '../components/common/ValidationSummary';
@@ -28,8 +30,10 @@ import RoleHierarchyTree from '../components/role/RoleHierarchyTree';
 export function RolesStep() {
   const { state, actions } = useDeployer();
   const [tabIndex, setTabIndex] = useState(0);
+  const [isValidating, setIsValidating] = useState(false);
+  const [usernameErrors, setUsernameErrors] = useState({});
 
-  // Validate the current step
+  // Validate the current step (sync validation)
   const validationResult = validateRolesStep(state.roles);
 
   // Check for top-level role requirement
@@ -40,10 +44,38 @@ export function RolesStep() {
   // Check for at least one voting role
   const hasVotingRole = state.roles.some((r) => r.canVote);
 
-  const handleNext = () => {
-    if (validationResult.isValid) {
-      actions.nextStep();
+  // Check if any roles have additional members specified
+  const hasAdditionalMembers = state.roles.some(
+    (r) => (r.distribution?.additionalWearerUsernames || []).filter(u => u?.trim()).length > 0
+  );
+
+  const handleNext = async () => {
+    // First, check sync validation
+    if (!validationResult.isValid) {
+      return;
     }
+
+    // Clear previous username errors
+    setUsernameErrors({});
+
+    // If there are additional members to validate, do async validation
+    if (hasAdditionalMembers) {
+      setIsValidating(true);
+      try {
+        const usernameResult = await validateAllUsernames(state.roles);
+        if (!usernameResult.isValid) {
+          setUsernameErrors(usernameResult.errors);
+          return;
+        }
+      } catch (error) {
+        setUsernameErrors({ usernames: `Validation failed: ${error.message}` });
+        return;
+      } finally {
+        setIsValidating(false);
+      }
+    }
+
+    actions.nextStep();
   };
 
   const handleBack = () => {
@@ -149,14 +181,34 @@ export function RolesStep() {
           <ValidationSummary errors={validationResult.errors} />
         )}
 
+        {/* Username validation errors */}
+        {Object.keys(usernameErrors).length > 0 && (
+          <Alert status="error" borderRadius="md">
+            <AlertIcon />
+            <Box>
+              <Text fontWeight="medium">Username Validation Failed</Text>
+              <Text fontSize="sm">{usernameErrors.usernames}</Text>
+            </Box>
+          </Alert>
+        )}
+
+        {/* Validating indicator */}
+        {isValidating && (
+          <HStack spacing={2} color="blue.600">
+            <Spinner size="sm" />
+            <Text fontSize="sm">Validating usernames...</Text>
+          </HStack>
+        )}
+
         <Divider />
 
         {/* Navigation */}
         <NavigationButtons
           onBack={handleBack}
           onNext={handleNext}
-          isNextDisabled={!validationResult.isValid}
-          nextLabel="Continue to Permissions"
+          nextDisabled={!validationResult.isValid || isValidating}
+          isLoading={isValidating}
+          nextLabel={isValidating ? 'Validating...' : 'Continue to Permissions'}
         />
       </VStack>
     </Box>

@@ -4,13 +4,12 @@ import { LockIcon } from "@chakra-ui/icons";
 import CountDown from "@/templateComponents/studentOrgDAO/voting/countDown";
 import { usePOContext } from "@/context/POContext";
 
-// Helper to map hat IDs to role names
+// Helper to map hat IDs to role indices
+// Role names would need to be fetched from org IPFS metadata for proper labels
 const getRestrictedRoleNames = (restrictedHatIds, roleHatIds) => {
     if (!restrictedHatIds?.length || !roleHatIds?.length) return [];
     return restrictedHatIds.map(hatId => {
         const roleIndex = roleHatIds?.findIndex(rh => rh === hatId || String(rh) === String(hatId));
-        if (roleIndex === 0) return "Members";
-        if (roleIndex === 1) return "Executives";
         if (roleIndex >= 0) return `Role ${roleIndex + 1}`;
         return null;
     }).filter(Boolean);
@@ -156,7 +155,7 @@ const VoteCard = ({
               <Text fontSize="xs" color="gray.400">
                 {proposal.isHatRestricted && restrictedRoles.length > 0
                   ? restrictedRoles.join(", ")
-                  : "Members"}
+                  : "Role 1"}
               </Text>
             </HStack>
             {proposal.quorum > 0 && (

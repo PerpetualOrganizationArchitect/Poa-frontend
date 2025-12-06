@@ -157,7 +157,7 @@ export const POProvider = ({ children }) => {
             setNFTMembershipContractAddress(''); // Replaced by Hats Protocol
 
             // Calculate task counts from users
-            const totalTasksCompleted = org.users?.reduce((sum, u) => sum + (u.totalTasksCompleted || 0), 0) || 0;
+            const totalTasksCompleted = org.users?.reduce((sum, u) => sum + (parseInt(u.totalTasksCompleted, 10) || 0), 0) || 0;
             setCompletedTaskAmount(totalTasksCompleted);
             // Active tasks need to be calculated from ProjectContext
             setActiveTaskAmount(0);

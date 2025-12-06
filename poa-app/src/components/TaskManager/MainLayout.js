@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Flex, Box, Heading, useBreakpointValue, Select, Text, Button, VStack, HStack, IconButton, useDisclosure, Input, FormControl, FormLabel, Tooltip, Badge } from '@chakra-ui/react';
 import { AddIcon, InfoIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon } from '@chakra-ui/icons';
 import ProjectSidebar from './ProjectSidebar';
 import TaskBoard from './TaskBoard';
 import { TaskBoardProvider } from '../../context/TaskBoardContext';
 import { useDataBaseContext} from '../../context/dataBaseContext';
-import { useWeb3Context } from '../../context/web3Context';
+import { useAccount } from 'wagmi';
+import { useWeb3 } from '../../hooks';
 import { usePOContext } from '@/context/POContext';
 import { useRouter } from 'next/router';
 import { DndProvider } from 'react-dnd';
@@ -31,15 +32,16 @@ const MainLayout = () => {
     handleUpdateColumns,
   } = useDataBaseContext();
 
-  const {account, createProject}= useWeb3Context();
-  const {taskManagerContractAddress} = usePOContext();
+  const { address: account } = useAccount();
+  const { task: taskService, executeWithNotification } = useWeb3();
+  const { taskManagerContractAddress } = usePOContext();
   const router = useRouter();
   const isMobile = useBreakpointValue({ base: true, md: false });
   const [showMobileProjectCreator, setShowMobileProjectCreator] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [showHelp, setShowHelp] = useState(true);
-  
+
   // State to track sidebar visibility
   const [sidebarVisible, setSidebarVisible] = useState(true);
 
@@ -54,9 +56,25 @@ const MainLayout = () => {
     console.log('selected', selected);
   };
 
+  // Create project using the new service
+  const handleCreateProject = useCallback(async (projectName) => {
+    if (!taskService) return;
+
+    await executeWithNotification(
+      () => taskService.createProject(taskManagerContractAddress, {
+        name: projectName,
+      }),
+      {
+        pendingMessage: 'Creating project...',
+        successMessage: 'Project created successfully!',
+        refreshEvent: 'project:created',
+      }
+    );
+  }, [taskService, executeWithNotification, taskManagerContractAddress]);
+
   const handleCreateNewProject = () => {
     if (newProjectName.trim()) {
-      createProject(taskManagerContractAddress, newProjectName.trim());
+      handleCreateProject(newProjectName.trim());
       setNewProjectName('');
       setShowMobileProjectCreator(false);
       setShowHelp(false);
@@ -261,7 +279,7 @@ const MainLayout = () => {
               projects={projects}
               selectedProject={selectedProject}
               onSelectProject={handleSelectProject}
-              onCreateProject={(projectName) => createProject(taskManagerContractAddress, projectName)}
+              onCreateProject={handleCreateProject}
               onToggleSidebar={toggleSidebar}
             />
           </Box>

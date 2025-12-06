@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery } from '@apollo/client';
 import { FETCH_VOTING_DATA_NEW } from '../util/queries';
 import { useRouter } from 'next/router';
 import { useAccount } from 'wagmi';
 import { usePOContext } from './POContext';
+import { useRefreshSubscription, RefreshEvent } from './RefreshContext';
 
 const VotingContext = createContext();
 
@@ -115,6 +116,21 @@ export const VotingProvider = ({ children }) => {
         fetchPolicy: 'cache-first',
         notifyOnNetworkStatusChange: true,
     });
+
+    // Memoize refetch handler for stable reference
+    const handleRefresh = useCallback(() => {
+        if (orgId) {
+            console.log('VotingContext: Refreshing voting data');
+            refetch();
+        }
+    }, [orgId, refetch]);
+
+    // Subscribe to refresh events from Web3Context
+    useRefreshSubscription(
+        [RefreshEvent.ALL, RefreshEvent.PROPOSAL_CREATED, RefreshEvent.PROPOSAL_VOTED, RefreshEvent.PROPOSAL_COMPLETED],
+        handleRefresh,
+        [handleRefresh]
+    );
 
     useEffect(() => {
         if (data?.organization) {

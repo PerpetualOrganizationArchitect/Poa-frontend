@@ -8,6 +8,8 @@ import { UserProvider } from "@/context/UserContext";
 import { POProvider } from "@/context/POContext";
 import { VotingProvider } from "@/context/VotingContext";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { RefreshProvider } from "@/context/RefreshContext";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import '@rainbow-me/rainbowkit/styles.css';
 import '../styles/globals.css';
 import '/public/css/prism.css';
@@ -71,37 +73,41 @@ const theme = extendTheme({
 
 function MyApp({ Component, pageProps }) {
   return (
-    <WagmiProvider config={config}>
-      <ApolloProvider client={client}>
-      <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider initialChain={hoodi}>
-          <IPFSprovider>
-            <ProfileHubProvider>
-              <POProvider>
-                <VotingProvider>
-                  <ProjectProvider>
-                  <UserProvider>
-                    <NotificationProvider>
-                      <Web3Provider>
-                        <DataBaseProvider>
-                          <ChakraProvider theme={theme}>
-                            <NetworkModalControl />
-                            <Notification />  
-                            <Component {...pageProps} />
-                          </ChakraProvider>
-                        </DataBaseProvider>
-                      </Web3Provider>
-                    </NotificationProvider>
-                    </UserProvider>
-                  </ProjectProvider>
-                </VotingProvider>
-              </POProvider>
-            </ProfileHubProvider>
-          </IPFSprovider>
-        </RainbowKitProvider>
-      </QueryClientProvider>
-      </ApolloProvider>
-    </WagmiProvider>
+    <ErrorBoundary>
+      <WagmiProvider config={config}>
+        <ApolloProvider client={client}>
+          <QueryClientProvider client={queryClient}>
+            <RainbowKitProvider initialChain={hoodi}>
+              <RefreshProvider>
+              <IPFSprovider>
+                <ProfileHubProvider>
+                  <POProvider>
+                    <VotingProvider>
+                      <ProjectProvider>
+                        <UserProvider>
+                          <NotificationProvider>
+                            <Web3Provider>
+                              <DataBaseProvider>
+                                <ChakraProvider theme={theme}>
+                                  <NetworkModalControl />
+                                  <Notification />
+                                  <Component {...pageProps} />
+                                </ChakraProvider>
+                              </DataBaseProvider>
+                            </Web3Provider>
+                          </NotificationProvider>
+                        </UserProvider>
+                      </ProjectProvider>
+                    </VotingProvider>
+                  </POProvider>
+                </ProfileHubProvider>
+              </IPFSprovider>
+              </RefreshProvider>
+            </RainbowKitProvider>
+          </QueryClientProvider>
+        </ApolloProvider>
+      </WagmiProvider>
+    </ErrorBoundary>
   );
 }
 

@@ -24,7 +24,8 @@ import ArchitectInput from "@/components/Architect/ArchitectInput";
 import LogoDropzoneModal from "@/components/Architect/LogoDropzoneModal";
 import LinksModal from "@/components/Architect/LinksModal";
 import ConversationLog from "@/components/Architect/ConversationLog";
-import { useWeb3Context } from "@/context/web3Context";
+import { useAccount } from "wagmi";
+import { useEthersSigner } from "@/components/ProviderConverter";
 import { useIPFScontext } from "@/context/ipfsContext";
 import { main } from "../../../scripts/newDeployment";
 import { useRouter } from "next/router";
@@ -42,7 +43,8 @@ import {
  * Inner component that has access to DeployerContext
  */
 function DeployerPageContent() {
-  const { signer, address } = useWeb3Context();
+  const { address } = useAccount();
+  const signer = useEthersSigner();
   const { addToIpfs } = useIPFScontext();
   const toast = useToast();
   const router = useRouter();

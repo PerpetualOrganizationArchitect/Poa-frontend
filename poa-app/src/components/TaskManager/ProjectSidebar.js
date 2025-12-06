@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Box,
   VStack,
@@ -19,7 +19,7 @@ import {
   Collapse,
   useToast,
 } from '@chakra-ui/react';
-import { useWeb3Context } from '../../context/web3Context';
+import { useWeb3 } from '../../hooks';
 import { useDataBaseContext } from '@/context/dataBaseContext';
 import DraggableProject from './DraggableProject';
 import TrashBin from './TrashBin';
@@ -45,7 +45,7 @@ const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onCreatePr
   const [searchTerm, setSearchTerm] = useState('');
   const [showProjects, setShowProjects] = useState(true);
   const { hasExecRole } = useUserContext();
-  const { deleteProject: handleDeleteProject } = useWeb3Context();
+  const { task: taskService, executeWithNotification } = useWeb3();
   const toast = useToast();
 
   const { taskManagerContractAddress } = usePOContext();
@@ -69,10 +69,9 @@ const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onCreatePr
     }
   };
 
-  const onDeleteProject = (projectName) => {
-    if (hasExecRole) {
-      handleDeleteProject(taskManagerContractAddress, projectName);
-    } else {
+  // Delete project using the new service
+  const onDeleteProject = useCallback(async (projectId) => {
+    if (!hasExecRole) {
       toast({
         title: 'Permission Required',
         description: 'You must be an executive to delete a project.',
@@ -81,8 +80,20 @@ const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onCreatePr
         isClosable: true,
         position: 'top',
       });
+      return;
     }
-  };
+
+    if (!taskService) return;
+
+    await executeWithNotification(
+      () => taskService.deleteProject(taskManagerContractAddress, projectId),
+      {
+        pendingMessage: 'Deleting project...',
+        successMessage: 'Project deleted successfully!',
+        refreshEvent: 'project:deleted',
+      }
+    );
+  }, [hasExecRole, taskService, executeWithNotification, taskManagerContractAddress, toast]);
 
   // Filter projects based on search term
   const filteredProjects = searchTerm 

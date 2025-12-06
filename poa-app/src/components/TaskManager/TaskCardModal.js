@@ -26,7 +26,6 @@ import { CheckIcon } from '@chakra-ui/icons';
 import { hasBounty as checkHasBounty, getTokenByAddress } from '../../util/tokens';
 import EditTaskModal from './EditTaskModal';
 import { useTaskBoard } from '../../context/TaskBoardContext';
-import { useWeb3Context } from '../../context/web3Context';
 import { useDataBaseContext } from '@/context/dataBaseContext';
 import { useUserContext } from '@/context/UserContext';
 import { useRouter } from 'next/router';

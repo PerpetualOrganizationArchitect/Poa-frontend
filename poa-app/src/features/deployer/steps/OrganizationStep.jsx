@@ -84,6 +84,7 @@ export function OrganizationStep() {
         name: link.name,
         url: link.url,
       })),
+      template: organization.template || 'default',
     };
 
     try {

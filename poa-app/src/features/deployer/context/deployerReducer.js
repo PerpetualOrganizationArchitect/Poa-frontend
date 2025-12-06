@@ -142,6 +142,7 @@ export const initialState = {
     infoIPFSHash: '',
     autoUpgrade: true,
     username: '',
+    template: 'default',
   },
 
   // Roles configuration (Step 2)

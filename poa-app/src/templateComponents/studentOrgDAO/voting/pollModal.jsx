@@ -23,11 +23,24 @@ import {
   SliderFilledTrack,
   SliderThumb,
   Box,
+  Icon,
 } from "@chakra-ui/react";
+import { LockIcon } from "@chakra-ui/icons";
 import { ethers } from "ethers";
 import CountDown from "./countDown";
 import { useRouter } from "next/router";
 import { useAccount } from "wagmi";
+import { usePOContext } from "@/context/POContext";
+
+// Helper to map hat IDs to role indices
+const getRestrictedRoleNames = (restrictedHatIds, roleHatIds) => {
+    if (!restrictedHatIds?.length || !roleHatIds?.length) return [];
+    return restrictedHatIds.map(hatId => {
+        const roleIndex = roleHatIds?.findIndex(rh => rh === hatId || String(rh) === String(hatId));
+        if (roleIndex >= 0) return `Role ${roleIndex + 1}`;
+        return null;
+    }).filter(Boolean);
+};
 
 
 const glassLayerStyle = {
@@ -54,6 +67,10 @@ const PollModal = ({
   const router = useRouter();
   const { userDAO } = router.query;
   const { address } = useAccount();
+  const { roleHatIds } = usePOContext();
+
+  // Get role names for restricted voting
+  const restrictedRoles = getRestrictedRoleNames(selectedPoll?.restrictedHatIds, roleHatIds);
 
   // Weighted voting state (for Hybrid voting)
   const [isWeightedMode, setIsWeightedMode] = useState(false);
@@ -182,6 +199,26 @@ const PollModal = ({
                 Math.floor(Date.now() / 1000)
               }
             />
+
+            {/* Who can vote and quorum display */}
+            <HStack spacing={4} justify="center" flexWrap="wrap">
+              <HStack spacing={2}>
+                <Icon as={LockIcon} color="purple.300" boxSize={4} />
+                <Text fontSize="sm" color="gray.300">
+                  Who can vote:{" "}
+                  <Text as="span" color="purple.300" fontWeight="medium">
+                    {selectedPoll?.isHatRestricted && restrictedRoles.length > 0
+                      ? restrictedRoles.join(", ")
+                      : "Role 1"}
+                  </Text>
+                </Text>
+              </HStack>
+              {selectedPoll?.quorum > 0 && (
+                <Text fontSize="sm" color="gray.400">
+                  Quorum: {selectedPoll.quorum}%
+                </Text>
+              )}
+            </HStack>
 
             {/* Already voted alert */}
             {hasVoted && (

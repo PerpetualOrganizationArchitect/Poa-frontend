@@ -274,6 +274,7 @@ function DeployerPageContent() {
           name: link.name,
           url: link.url,
         })),
+        template: state.organization.template || 'default',
       };
 
       let infoIPFSHash = state.organization.infoIPFSHash;

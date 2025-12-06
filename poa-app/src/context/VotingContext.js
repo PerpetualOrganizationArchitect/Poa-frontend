@@ -9,36 +9,63 @@ const VotingContext = createContext();
 
 export const useVotingContext = () => useContext(VotingContext);
 
-function transformProposal(proposal, votingTypeId, type) {
+function transformProposal(proposal, votingTypeId, type, quorum = 0) {
     const currentTime = Math.floor(Date.now() / 1000);
     const endTime = parseInt(proposal.endTimestamp) || 0;
     const isOngoing = proposal.status === 'Active' && endTime > currentTime;
 
-    // Aggregate votes per option
+    // Aggregate votes per option - different logic for Hybrid vs DD
     const optionVotes = {};
-    (proposal.votes || []).forEach(vote => {
-        (vote.optionIndexes || []).forEach((optionIndex, i) => {
-            // Use ?? instead of || to preserve 0 weights (0 || 1 = 1, but 0 ?? 1 = 0)
-            const weight = vote.optionWeights?.[i] ?? 1;
-            optionVotes[optionIndex] = (optionVotes[optionIndex] || 0) + weight;
-        });
-    });
+    let totalVotes = 0;
 
-    // Create options array
-    const options = [];
-    for (let i = 0; i < (proposal.numOptions || 2); i++) {
-        options.push({
-            id: `${proposal.id}-option-${i}`,
-            name: `Option ${i + 1}`,
-            votes: optionVotes[i] || 0,
+    if (type === 'Hybrid') {
+        // For Hybrid voting, use classRawPowers to calculate weighted voting power
+        (proposal.votes || []).forEach(vote => {
+            // Sum all class powers for this voter (BigInt handling)
+            const classRawPowers = vote.classRawPowers || [];
+            const votePower = classRawPowers.reduce((sum, p) => {
+                const powerValue = typeof p === 'string' ? BigInt(p) : BigInt(p || 0);
+                return sum + powerValue;
+            }, BigInt(0));
+
+            // Apply vote weights to each selected option
+            (vote.optionIndexes || []).forEach((optionIndex, i) => {
+                const weight = vote.optionWeights?.[i] ?? 100;
+                // Calculate power contribution: (votePower * weight) / 100
+                const optionPower = (votePower * BigInt(weight)) / BigInt(100);
+                const current = optionVotes[optionIndex] || BigInt(0);
+                optionVotes[optionIndex] = current + optionPower;
+            });
+
+            totalVotes += Number(votePower);
+        });
+
+        // Convert BigInt to Number for display
+        Object.keys(optionVotes).forEach(k => {
+            optionVotes[k] = Number(optionVotes[k]);
+        });
+    } else {
+        // For Direct Democracy, simple 1-person-1-vote with weight distribution
+        (proposal.votes || []).forEach(vote => {
+            (vote.optionIndexes || []).forEach((optionIndex, i) => {
+                const weight = vote.optionWeights?.[i] ?? 100;
+                optionVotes[optionIndex] = (optionVotes[optionIndex] || 0) + weight;
+            });
+            totalVotes += 100; // Each voter contributes 100 points total
         });
     }
 
-    // Calculate percentages
-    const totalVotes = Object.values(optionVotes).reduce((sum, v) => sum + v, 0);
-    if (totalVotes > 0) {
-        options.forEach((opt, i) => {
-            opt.percentage = ((optionVotes[i] || 0) / totalVotes) * 100;
+    // Create options array
+    const options = [];
+    const totalOptionVotes = Object.values(optionVotes).reduce((sum, v) => sum + v, 0);
+    for (let i = 0; i < (proposal.numOptions || 2); i++) {
+        const votes = optionVotes[i] || 0;
+        options.push({
+            id: `${proposal.id}-option-${i}`,
+            name: `Option ${i + 1}`,
+            votes: votes,
+            percentage: totalOptionVotes > 0 ? (votes / totalOptionVotes) * 100 : 0,
+            currentPercentage: totalOptionVotes > 0 ? Math.round((votes / totalOptionVotes) * 100) : 0,
         });
     }
 
@@ -64,6 +91,7 @@ function transformProposal(proposal, votingTypeId, type) {
         votes: proposal.votes || [],
         votingTypeId,
         type,
+        quorum,
         isHatRestricted: proposal.isHatRestricted,
         restrictedHatIds: proposal.restrictedHatIds || [],
     };
@@ -100,8 +128,9 @@ export const VotingProvider = ({ children }) => {
 
             // Process Hybrid Voting proposals
             if (org.hybridVoting) {
+                const hybridQuorum = org.hybridVoting.quorum || 0;
                 const hybridProposals = (org.hybridVoting.proposals || []).map(p =>
-                    transformProposal(p, org.hybridVoting.id, 'Hybrid')
+                    transformProposal(p, org.hybridVoting.id, 'Hybrid', hybridQuorum)
                 );
                 setHybridVotingOngoing(hybridProposals.filter(p => p.isOngoing));
                 setHybridVotingCompleted(hybridProposals.filter(p => !p.isOngoing));
@@ -112,8 +141,9 @@ export const VotingProvider = ({ children }) => {
 
             // Process Direct Democracy Voting proposals
             if (org.directDemocracyVoting) {
+                const ddQuorum = org.directDemocracyVoting.quorumPercentage || 0;
                 const ddProposals = (org.directDemocracyVoting.ddvProposals || []).map(p =>
-                    transformProposal(p, org.directDemocracyVoting.id, 'Direct Democracy')
+                    transformProposal(p, org.directDemocracyVoting.id, 'Direct Democracy', ddQuorum)
                 );
                 setDemocracyVotingOngoing(ddProposals.filter(p => p.isOngoing));
                 setDemocracyVotingCompleted(ddProposals.filter(p => !p.isOngoing));
@@ -125,10 +155,10 @@ export const VotingProvider = ({ children }) => {
             // Combine all ongoing polls
             const allOngoing = [
                 ...(org.hybridVoting?.proposals || []).map(p =>
-                    transformProposal(p, org.hybridVoting?.id, 'Hybrid')
+                    transformProposal(p, org.hybridVoting?.id, 'Hybrid', org.hybridVoting?.quorum || 0)
                 ).filter(p => p.isOngoing),
                 ...(org.directDemocracyVoting?.ddvProposals || []).map(p =>
-                    transformProposal(p, org.directDemocracyVoting?.id, 'Direct Democracy')
+                    transformProposal(p, org.directDemocracyVoting?.id, 'Direct Democracy', org.directDemocracyVoting?.quorumPercentage || 0)
                 ).filter(p => p.isOngoing),
             ];
             setOngoingPolls(allOngoing);

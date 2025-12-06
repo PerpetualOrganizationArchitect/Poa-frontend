@@ -1,6 +1,20 @@
 import React from "react";
-import { Box, Text, Button, HStack, VStack, Badge, Flex, useBreakpointValue } from "@chakra-ui/react";
+import { Box, Text, Button, HStack, VStack, Badge, Flex, useBreakpointValue, Icon } from "@chakra-ui/react";
+import { LockIcon } from "@chakra-ui/icons";
 import CountDown from "@/templateComponents/studentOrgDAO/voting/countDown";
+import { usePOContext } from "@/context/POContext";
+
+// Helper to map hat IDs to role names
+const getRestrictedRoleNames = (restrictedHatIds, roleHatIds) => {
+    if (!restrictedHatIds?.length || !roleHatIds?.length) return [];
+    return restrictedHatIds.map(hatId => {
+        const roleIndex = roleHatIds?.findIndex(rh => rh === hatId || String(rh) === String(hatId));
+        if (roleIndex === 0) return "Members";
+        if (roleIndex === 1) return "Executives";
+        if (roleIndex >= 0) return `Role ${roleIndex + 1}`;
+        return null;
+    }).filter(Boolean);
+};
 
 const glassLayerStyle = {
   position: "absolute",
@@ -14,18 +28,23 @@ const glassLayerStyle = {
   border: "1px solid rgba(148, 115, 220, 0.2)",
 };
 
-const VoteCard = ({ 
-  proposal, 
-  showDetermineWinner, 
-  getWinner, 
-  calculateRemainingTime, 
-  onPollClick, 
-  contractAddress 
+const VoteCard = ({
+  proposal,
+  showDetermineWinner,
+  getWinner,
+  calculateRemainingTime,
+  onPollClick,
+  contractAddress
 }) => {
+  const { roleHatIds } = usePOContext();
+
   // Use responsive sizing based on breakpoints
   const titleFontSize = useBreakpointValue({ base: "sm", sm: "md" });
-  const cardHeight = useBreakpointValue({ base: "180px", sm: "200px" });
+  const cardHeight = useBreakpointValue({ base: "180px", sm: "220px" });
   const cardPadding = useBreakpointValue({ base: 3, sm: 4 });
+
+  // Get role names for restricted voting
+  const restrictedRoles = getRestrictedRoleNames(proposal.restrictedHatIds, roleHatIds);
   
   return (
     <Box
@@ -94,7 +113,7 @@ const VoteCard = ({
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                getWinner(contractAddress, proposal.id);
+                getWinner(contractAddress, proposal.id, proposal.type === 'Hybrid');
               }}
               variant="outline"
               borderColor="rgba(148, 115, 220, 0.6)"
@@ -110,15 +129,15 @@ const VoteCard = ({
           )}
         </Flex>
         
-        <VStack align="stretch" mt={{ base: 0, sm: 1 }}>
+        <VStack align="stretch" mt={{ base: 0, sm: 1 }} spacing={1}>
           <Text fontWeight="bold" fontSize="xs" color="rgba(148, 115, 220, 0.9)">
             Voting Options:
           </Text>
           <HStack mb={1} spacing={2} flexWrap="wrap" justify="center">
             {proposal.options.map((option, index) => (
-              <Badge 
-                key={index} 
-                colorScheme={index % 2 === 0 ? "purple" : "blue"} 
+              <Badge
+                key={index}
+                colorScheme={index % 2 === 0 ? "purple" : "blue"}
                 variant="subtle"
                 px={2}
                 py={1}
@@ -128,6 +147,23 @@ const VoteCard = ({
                 {option.name}
               </Badge>
             ))}
+          </HStack>
+
+          {/* Hat restriction and quorum display */}
+          <HStack spacing={2} justify="center" flexWrap="wrap">
+            {proposal.isHatRestricted && restrictedRoles.length > 0 && (
+              <HStack spacing={1}>
+                <Icon as={LockIcon} color="purple.300" boxSize={3} />
+                <Text fontSize="xs" color="gray.400">
+                  {restrictedRoles.join(", ")}
+                </Text>
+              </HStack>
+            )}
+            {proposal.quorum > 0 && (
+              <Text fontSize="xs" color="gray.400">
+                Quorum: {proposal.quorum}%
+              </Text>
+            )}
           </HStack>
         </VStack>
       </VStack>

@@ -4,9 +4,11 @@ import {
   Center,
   Spinner,
   TabPanel,
-  useDisclosure
+  useDisclosure,
+  useToast,
 } from "@chakra-ui/react";
 import { useRouter } from "next/router";
+import { ethers } from "ethers";
 import { useWeb3Context } from "@/context/web3Context";
 import { usePOContext } from "@/context/POContext";
 import { useVotingContext } from "@/context/VotingContext";
@@ -24,14 +26,16 @@ import CreateVoteModal from "./CreateVoteModal";
 const VotingPage = () => {
   const router = useRouter();
   const { userDAO } = router.query;
+  const toast = useToast();
 
   const {
     createProposalDDVoting,
     getWinnerDDVoting,
+    getWinnerHybridVoting,
     createProposalParticipationVoting,
     ddVote,
+    hybridVote,
     account,
-    createProposalElection
   } = useWeb3Context();
   
   const { isOpen: isCompletedOpen, onOpen: onCompletedOpen, onClose: onCompletedClose } = useDisclosure();
@@ -75,19 +79,12 @@ const VotingPage = () => {
     execution: "",
     time: 0,
     options: [],
-    candidateNames: [],
-    candidateAddresses: [],
     type: "normal",
     transferAddress: "",
     transferAmount: "",
-    transferOption: "",
     id: 0,
   };
   const [proposal, setProposal] = useState(defaultProposal);
-  const [candidateList, setCandidateList] = useState([
-    { name: "", address: "" },
-    { name: "", address: "" },
-  ]);
 
   // Safe array handling - POP uses HybridVoting (no separate ParticipationVoting)
   const safeVotingOngoing = Array.isArray(selectedTab === 0 ? democracyVotingOngoing : hybridVotingOngoing)
@@ -124,11 +121,15 @@ const VotingPage = () => {
     }
   };
   
-  const getWinner = async (address, proposalId) => {
+  const getWinner = async (contractAddress, proposalId, isHybrid = false) => {
     // In POP subgraph, id format is "contractAddress-proposalId"
     // Extract the actual proposalId (second part after split)
     const newID = proposalId.split("-")[1] || proposalId;
-    const tx = await getWinnerDDVoting(address, newID);
+    if (isHybrid) {
+      await getWinnerHybridVoting(contractAddress, newID);
+    } else {
+      await getWinnerDDVoting(contractAddress, newID);
+    }
   };
   
   const handleTabsChange = (index) => {
@@ -188,13 +189,6 @@ const VotingPage = () => {
   const handleProposalTypeChange = (e) => {
     const newType = e.target.value;
     setProposal({ ...proposal, type: newType });
-    if (newType === "election") {
-      // Reset candidates for election type
-      setCandidateList([
-        { name: "", address: "" },
-        { name: "", address: "" },
-      ]);
-    }
   };
 
   const handleTransferAddressChange = (e) => {
@@ -205,53 +199,91 @@ const VotingPage = () => {
     setProposal({ ...proposal, transferAmount: e.target.value });
   };
 
-  const handleTransferOptionChange = (e) => {
-    setProposal({ ...proposal, transferOption: e.target.value });
-  };
-
-  const handleCandidateChange = (index, field, value) => {
-    const updatedCandidates = [...candidateList];
-    updatedCandidates[index][field] = value;
-    setCandidateList(updatedCandidates);
-  };
-
-  const addCandidate = () => {
-    setCandidateList([...candidateList, { name: "", address: "" }]);
-  };
-
   const handlePollCreated = async () => {
     setLoadingSubmit(true);
     try {
-      const election = proposal.type === "election";
+      let numOptions;
+      let batches = [];
 
-      if (election) {
-        // Elections are deprecated in POP - show warning
-        console.warn("Elections are not supported in POP. Use a normal proposal instead.");
-        alert("Elections are not supported. Please create a normal proposal.");
-        setLoadingSubmit(false);
-        return;
+      if (proposal.type === "transferFunds") {
+        // Validate transfer inputs
+        if (!proposal.transferAddress || !ethers.isAddress(proposal.transferAddress)) {
+          toast({
+            title: "Invalid Address",
+            description: "Please enter a valid recipient address.",
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+          });
+          setLoadingSubmit(false);
+          return;
+        }
+
+        const amount = parseFloat(proposal.transferAmount);
+        if (isNaN(amount) || amount <= 0) {
+          toast({
+            title: "Invalid Amount",
+            description: "Please enter a valid transfer amount.",
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+          });
+          setLoadingSubmit(false);
+          return;
+        }
+
+        // Build batch execution for Yes/No vote
+        // batches[0] = calls to execute if "Yes" (option 0) wins
+        // batches[1] = calls to execute if "No" (option 1) wins (empty)
+        const transferCall = {
+          target: proposal.transferAddress,
+          value: ethers.parseEther(proposal.transferAmount).toString(),
+          data: "0x", // Empty data for ETH transfer
+        };
+
+        batches = [
+          [transferCall], // Yes wins: execute transfer
+          [],             // No wins: do nothing
+        ];
+        numOptions = 2;
+      } else {
+        // Normal proposal - use custom options or default to 2
+        numOptions = proposal.options?.length || 2;
+        batches = [];
       }
-
-      // POP DDV function signature:
-      // createProposalDDVoting(contractAddress, proposalName, proposalDescription, durationMinutes, numOptions, batches, hatIds)
-      // Options array like ["Yes", "No"] -> numOptions = 2
-      const numOptions = proposal.options?.length || 2;
 
       await createProposalDDVoting(
         directDemocracyVotingContractAddress,
         proposal.name,
         proposal.description,
         proposal.time,        // duration in minutes
-        numOptions,           // number of options (not the options array)
-        [],                   // batches - empty for non-executable proposals
+        numOptions,           // number of options
+        batches,              // batches for execution
         []                    // hatIds - empty for unrestricted voting
       );
 
       setLoadingSubmit(false);
       setShowCreatePoll(false);
       setProposal(defaultProposal);
+
+      toast({
+        title: "Proposal Created",
+        description: proposal.type === "transferFunds"
+          ? `Transfer proposal created. If "Yes" wins, ${proposal.transferAmount} ETH will be sent to ${proposal.transferAddress.slice(0, 6)}...${proposal.transferAddress.slice(-4)}`
+          : "Your proposal has been created successfully.",
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+      });
     } catch (error) {
       console.error("Error creating poll:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create proposal.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
       setLoadingSubmit(false);
     }
   };
@@ -383,18 +415,14 @@ const VotingPage = () => {
             handleProposalTypeChange={handleProposalTypeChange}
             handleTransferAddressChange={handleTransferAddressChange}
             handleTransferAmountChange={handleTransferAmountChange}
-            handleTransferOptionChange={handleTransferOptionChange}
-            handleCandidateChange={handleCandidateChange}
-            addCandidate={addCandidate}
             handlePollCreated={handlePollCreated}
             loadingSubmit={loadingSubmit}
-            candidateList={candidateList}
           />
           
           <PollModal
             isOpen={isOpen}
             onClose={onClose}
-            handleVote={ddVote}
+            handleVote={votingTypeSelected === "Direct Democracy" ? ddVote : hybridVote}
             contractAddress={votingTypeSelected === "Direct Democracy" ? directDemocracyVotingContractAddress : votingContractAddress}
             selectedPoll={selectedPoll}
             selectedOption={selectedOption}

@@ -1,6 +1,20 @@
 import React from "react";
-import { Box, Text, Flex, Badge, VStack } from "@chakra-ui/react";
+import { Box, Text, Flex, Badge, VStack, HStack, Icon } from "@chakra-ui/react";
+import { LockIcon } from "@chakra-ui/icons";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { usePOContext } from "@/context/POContext";
+
+// Helper to map hat IDs to role names
+const getRestrictedRoleNames = (restrictedHatIds, roleHatIds) => {
+    if (!restrictedHatIds?.length || !roleHatIds?.length) return [];
+    return restrictedHatIds.map(hatId => {
+        const roleIndex = roleHatIds?.findIndex(rh => rh === hatId || String(rh) === String(hatId));
+        if (roleIndex === 0) return "Members";
+        if (roleIndex === 1) return "Executives";
+        if (roleIndex >= 0) return `Role ${roleIndex + 1}`;
+        return null;
+    }).filter(Boolean);
+};
 
 const glassLayerStyle = {
   position: "absolute",
@@ -15,8 +29,11 @@ const glassLayerStyle = {
 };
 
 const HistoryCard = ({ proposal, onPollClick }) => {
-  console.log("History Card Proposal Data:", JSON.stringify(proposal, null, 2));
-  
+  const { roleHatIds } = usePOContext();
+
+  // Get role names for restricted voting
+  const restrictedRoles = getRestrictedRoleNames(proposal.restrictedHatIds, roleHatIds);
+
   const predefinedColors = [
     "#9B59B6", // Purple
     "#3498DB", // Blue
@@ -228,13 +245,29 @@ const HistoryCard = ({ proposal, onPollClick }) => {
             )}
           </Box>
           
-          <VStack mt={1}>
+          <VStack mt={1} spacing={1}>
             <Badge colorScheme="purple" px={2} py={1} borderRadius="md" fontSize="xs">
               Results
             </Badge>
             <Text fontWeight="extrabold" fontSize="sm">
               Winner: <Text as="span" color="rgba(148, 115, 220, 1)">{WinnerName}</Text>
             </Text>
+            {/* Hat restriction and quorum display */}
+            <HStack spacing={2} justify="center" flexWrap="wrap">
+              {proposal.isHatRestricted && restrictedRoles.length > 0 && (
+                <HStack spacing={1}>
+                  <Icon as={LockIcon} color="purple.300" boxSize={3} />
+                  <Text fontSize="xs" color="gray.400">
+                    {restrictedRoles.join(", ")}
+                  </Text>
+                </HStack>
+              )}
+              {proposal.quorum > 0 && (
+                <Text fontSize="xs" color={proposal.isValid ? "green.400" : "orange.400"}>
+                  Quorum: {proposal.quorum}% {proposal.isValid ? "✓" : ""}
+                </Text>
+              )}
+            </HStack>
           </VStack>
         </Flex>
       </VStack>

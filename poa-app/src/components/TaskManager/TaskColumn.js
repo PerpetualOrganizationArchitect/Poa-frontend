@@ -5,7 +5,7 @@ import { useDrop } from 'react-dnd';
 import TaskCard from './TaskCard';
 import { useTaskBoard } from '../../context/TaskBoardContext';
 import AddTaskModal from './AddTaskModal';
-import { useWeb3Context } from '../../context/web3Context';
+import { useAccount } from 'wagmi';
 import {usePOContext} from '@/context/POContext';
 import { useToast } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
@@ -32,9 +32,9 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   const {userDAO} = router.query;
   const { moveTask, addTask, editTask } = useTaskBoard();
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
-  const {account, createTask } = useWeb3Context();
-  const { taskManagerContractAddress,  } = usePOContext();
-  const {taskCount, } = useProjectContext();
+  const { address: account } = useAccount();
+  const { taskManagerContractAddress } = usePOContext();
+  const { taskCount } = useProjectContext();
   const toast = useToast();
   const { graphUsername, hasExecRole: userHasExecRole, hasMemberRole: userHasMemberRole } = useUserContext();
 
@@ -91,26 +91,14 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
     setIsAddTaskModalOpen(false);
   };
   
-  const handleAddTask =  async (updatedTask) => {
+  const handleAddTask = async (updatedTask) => {
     if (title === 'Open') {
-      let Payout = calculatePayout(updatedTask.difficulty, updatedTask.estHours);
-
-      let hexTaskCount = taskCount.toString(16); 
-      let newTaskId = `0x${hexTaskCount}-${taskManagerContractAddress}`;
-
-      let newTask = {
-        ...updatedTask,
-        id: `${newTaskId}`,
-        claimedBy: "",
-        claimerUsername: "",
-        submission: "",
-        Payout: Payout,
-        projectId: projectName + "-"+taskManagerContractAddress
-      };
-      moveTask(newTask, 'open', 'open', 0, " ", 0);
-      await createTask(taskManagerContractAddress,Payout,  updatedTask.description, projectName, updatedTask.estHours,  updatedTask.difficulty, "Open", updatedTask.name,);
-     
-     
+      // addTask from TaskBoardContext handles:
+      // - Payout calculation
+      // - Optimistic UI update
+      // - Blockchain transaction via TaskService
+      // - Notifications and error handling
+      await addTask(updatedTask, 'open');
     }
   };
   

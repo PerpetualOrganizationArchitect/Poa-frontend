@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Box,
   Spinner,
@@ -26,20 +26,20 @@ import {
   FormErrorMessage,
   useDisclosure,
   useToast,
-  Progress, 
-  Icon, 
+  Progress,
+  Icon,
 } from '@chakra-ui/react';
-import { CheckIcon } from '@chakra-ui/icons'; 
+import { CheckIcon } from '@chakra-ui/icons';
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import { usePOContext } from '@/context/POContext';
-import { useWeb3Context } from '@/context/web3Context';
+import { useWeb3 } from '@/hooks';
 import { useUserContext } from '@/context/UserContext';
 import QuizModal from '@/components/eduHub/QuizModal';
 
 const EducationHub = () => {
   const { poContextLoading, educationModules, educationHubAddress } = usePOContext();
   const { completedModules, hasExecRole, userDataLoading } = useUserContext();
-  const { createEduModule, address } = useWeb3Context();
+  const { education, executeWithNotification } = useWeb3();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const toast = useToast();
 
@@ -57,49 +57,42 @@ const EducationHub = () => {
   const isExecutive = hasExecRole;
   const isLoadingExecCheck = userDataLoading;
 
-  const handleAddModule = async () => {
-          // Reset form
-          setModuleTitle('');
-          setModuleDescription('');
-          setModuleLink('');
-          setModuleQuestion('');
-          setPayout(0);
-          setAnswers(['', '', '', '']);
-          setCorrectAnswerIndex(null);
-          onClose();
-    try {
-      const selectedAnswer = answers[correctAnswerIndex];
-      await createEduModule(
-        educationHubAddress,
-        moduleTitle,
-        moduleDescription,
-        moduleLink, 
-        moduleQuestion,
-        payout,
-        answers,
-        selectedAnswer
-      );
-      toast({
-        title: "Module Created",
-        description: "Your module has been successfully created.",
-        status: "success",
-        duration: 5000,
-        isClosable: true,
-      });
+  const handleAddModule = useCallback(async () => {
+    if (!education) return;
 
-    } catch (error) {
-      console.error("Error creating module:", error);
-      toast({
-        title: "Error",
-        description: "There was an error creating the module.",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    setIsSubmitting(true);
+
+    // Reset form immediately and close modal
+    const formData = {
+      name: moduleTitle,
+      description: moduleDescription,
+      link: moduleLink,
+      quiz: [moduleQuestion],
+      answers: [answers],
+      correctAnswers: [correctAnswerIndex],
+      payout,
+    };
+
+    setModuleTitle('');
+    setModuleDescription('');
+    setModuleLink('');
+    setModuleQuestion('');
+    setPayout(0);
+    setAnswers(['', '', '', '']);
+    setCorrectAnswerIndex(null);
+    onClose();
+
+    const result = await executeWithNotification(
+      () => education.createModule(educationHubAddress, formData),
+      {
+        pendingMessage: 'Creating education module...',
+        successMessage: 'Module created successfully!',
+        refreshEvent: 'module:created',
+      }
+    );
+
+    setIsSubmitting(false);
+  }, [education, executeWithNotification, educationHubAddress, moduleTitle, moduleDescription, moduleLink, moduleQuestion, answers, correctAnswerIndex, payout, onClose]);
 
 
   const totalModules = educationModules.length;

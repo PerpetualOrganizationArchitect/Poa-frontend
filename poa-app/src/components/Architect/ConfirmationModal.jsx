@@ -11,8 +11,8 @@ import {
   VStack,
   Text,
 } from "@chakra-ui/react";
-import { ConnectButton, useChainModal} from "@rainbow-me/rainbowkit";
-import { useWeb3Context } from "@/context/web3Context";
+import { ConnectButton, useChainModal } from "@rainbow-me/rainbowkit";
+import { useChainId } from "wagmi";
 
 const ConfirmationModal = ({
   isOpen,
@@ -25,8 +25,7 @@ const ConfirmationModal = ({
   const connected = wallet ? true : false;
   const [display, setDisplay] = useState(connected);
 
-  const { chainId } = useWeb3Context();
-  console.log(chainId);
+  const chainId = useChainId();
 
 
   const { openChainModal } = useChainModal();

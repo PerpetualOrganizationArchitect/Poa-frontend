@@ -21,7 +21,6 @@ import {
 import { SettingsIcon } from '@chakra-ui/icons';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import AccountSettingsModal from '@/components/userPage/AccountSettingsModal';
-import { useWeb3Context } from '@/context/web3Context';
 import { useVotingContext } from '@/context/VotingContext';
 import { useUserContext } from '@/context/UserContext';
 import { useProjectContext } from '@/context/ProjectContext';

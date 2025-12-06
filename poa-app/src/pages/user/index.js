@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useWeb3Context } from "@/context/web3Context";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useWeb3 } from "@/hooks";
 import { usePOContext } from "@/context/POContext";
 import { useUserContext } from "@/context/UserContext";
 import { useRouter } from 'next/router';
@@ -66,7 +66,7 @@ const User = () => {
   const { hasMemberRole, graphUsername } = useUserContext();
   const { address } = useAccount();
   const { quickJoinContractAddress, poDescription, logoHash } = usePOContext();
-  const { quickJoinNoUser, quickJoinWithUser } = useWeb3Context();
+  const { organization, executeWithNotification } = useWeb3();
   const router = useRouter();
   const { userDAO } = router.query;
   const usernameInputRef = useRef(null);
@@ -111,36 +111,28 @@ const User = () => {
     }
   }, [hasMemberRole, address]);
 
-  const handleJoinWithUser = async () => {
-    setLoading(true);
-    try {
-      await quickJoinWithUser(quickJoinContractAddress);
-      toast({
-        title: "Joining DAO",
-        description: "Your transaction is being processed. You'll be redirected soon!",
-        status: "info",
-        duration: 5000,
-        isClosable: true,
-        position: "top",
-      });
-    } catch (error) {
-      console.error(error);
-      toast({
-        title: "Error joining",
-        description: "There was a problem processing your request. Please try again.",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-        position: "top",
-      });
-      setLoading(false);
-      return;
-    }
-    router.push(`/profileHub/?userDAO=${userDAO}`);
-    setLoading(false);
-  };
+  const handleJoinWithUser = useCallback(async () => {
+    if (!organization) return;
 
-  const handleJoinNewUser = async () => {
+    setLoading(true);
+    const result = await executeWithNotification(
+      () => organization.quickJoinWithUser(quickJoinContractAddress),
+      {
+        pendingMessage: 'Joining organization...',
+        successMessage: 'Successfully joined! Redirecting...',
+        refreshEvent: 'member:joined',
+      }
+    );
+
+    if (result.success) {
+      router.push(`/profileHub/?userDAO=${userDAO}`);
+    }
+    setLoading(false);
+  }, [organization, executeWithNotification, quickJoinContractAddress, router, userDAO]);
+
+  const handleJoinNewUser = useCallback(async () => {
+    if (!organization) return;
+
     if (!newUsername.trim()) {
       usernameInputRef.current.focus();
       toast({
@@ -155,32 +147,20 @@ const User = () => {
     }
 
     setLoading(true);
-    try {
-      await quickJoinNoUser(quickJoinContractAddress, newUsername);
-      toast({
-        title: "Creating account",
-        description: "Setting up your account. You'll be redirected soon!",
-        status: "info",
-        duration: 5000,
-        isClosable: true,
-        position: "top",
-      });
-    } catch (error) {
-      console.error(error);
-      toast({
-        title: "Error creating account",
-        description: "There was a problem creating your account. Please try again.",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-        position: "top",
-      });
-      setLoading(false);
-      return;
+    const result = await executeWithNotification(
+      () => organization.quickJoinNoUser(quickJoinContractAddress, newUsername),
+      {
+        pendingMessage: 'Creating account and joining...',
+        successMessage: 'Account created! Redirecting...',
+        refreshEvent: 'user:created',
+      }
+    );
+
+    if (result.success) {
+      router.push(`/profileHub/?userDAO=${userDAO}`);
     }
-    router.push(`/profileHub/?userDAO=${userDAO}`);
     setLoading(false);
-  };
+  }, [organization, executeWithNotification, quickJoinContractAddress, newUsername, router, userDAO, toast]);
 
   const benefits = [
     { 

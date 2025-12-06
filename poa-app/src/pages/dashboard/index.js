@@ -18,7 +18,6 @@ import {
   Wrap,
   WrapItem,
 } from '@chakra-ui/react';
-import { useWeb3Context } from '@/context/web3Context';
 import { useVotingContext } from '@/context/VotingContext';
 import { usePOContext } from '@/context/POContext';
 import { useProjectContext } from '@/context/ProjectContext';

@@ -4,8 +4,9 @@ import { useDrag } from 'react-dnd';
 import TaskCardModal from './TaskCardModal';
 import { useRouter } from 'next/router';
 import { TimeIcon, StarIcon, CheckIcon, InfoIcon } from '@chakra-ui/icons';
+import { hasBounty as checkHasBounty, getTokenByAddress } from '../../util/tokens';
 
-const TaskCard = ({ id, name, description, difficulty, estHours, index, columnId, submission, claimedBy, claimerUsername, onEditTask, moveTask, projectId, Payout, isMobile }) => {
+const TaskCard = ({ id, name, description, difficulty, estHours, index, columnId, submission, claimedBy, claimerUsername, onEditTask, moveTask, projectId, Payout, bountyToken, bountyPayout, isMobile }) => {
   const router = useRouter();
   const { userDAO } = router.query;
   const isCardMobile = useBreakpointValue({ base: true, md: false }) || isMobile;
@@ -179,16 +180,27 @@ const TaskCard = ({ id, name, description, difficulty, estHours, index, columnId
           
           {/* Reward and assigned user */}
           <Flex justify="space-between" align="center" mt={1}>
-            {Payout && (
-              <Tooltip label="Reward for completing this task" placement="top">
-                <Flex align="center" bg="purple.50" px={2} py={0.5} borderRadius="full">
-                  <StarIcon boxSize={3} mr={1} color="purple.500" />
-                  <Text fontWeight="bold" color="purple.700" fontSize="xs">
-                    {Payout}
-                  </Text>
-                </Flex>
-              </Tooltip>
-            )}
+            <HStack spacing={1}>
+              {Payout && (
+                <Tooltip label="Participation token reward" placement="top">
+                  <Flex align="center" bg="purple.50" px={2} py={0.5} borderRadius="full">
+                    <StarIcon boxSize={3} mr={1} color="purple.500" />
+                    <Text fontWeight="bold" color="purple.700" fontSize="xs">
+                      {Payout} PT
+                    </Text>
+                  </Flex>
+                </Tooltip>
+              )}
+              {checkHasBounty(bountyToken, bountyPayout) && (
+                <Tooltip label={`Token bounty: ${getTokenByAddress(bountyToken).name}`} placement="top">
+                  <Flex align="center" bg="green.50" px={2} py={0.5} borderRadius="full">
+                    <Text fontWeight="bold" color="green.700" fontSize="xs">
+                      +{bountyPayout} {getTokenByAddress(bountyToken).symbol}
+                    </Text>
+                  </Flex>
+                </Tooltip>
+              )}
+            </HStack>
             
             {claimerUsername && (
               <Tooltip label={`Assigned to: ${claimerUsername}`} placement="top">
@@ -215,7 +227,7 @@ const TaskCard = ({ id, name, description, difficulty, estHours, index, columnId
       <TaskCardModal
         isOpen={isOpen}
         onClose={onClose}
-        task={{ id, name, description, difficulty, estHours, Payout, submission, claimedBy, claimerUsername, projectId }}
+        task={{ id, name, description, difficulty, estHours, Payout, submission, claimedBy, claimerUsername, projectId, bountyToken, bountyPayout }}
         columnId={columnId}
         onEditTask={onEditTask}
         moveTask={moveTask}

@@ -18,8 +18,8 @@ export const UserProvider = ({ children }) => {
 
     const [userData, setUserData] = useState({});
     const [graphUsername, setGraphUsername] = useState('');
-    const [hasExecNFT, setHasExecNFT] = useState(false);
-    const [hasMemberNFT, setHasMemberNFT] = useState(false);
+    const [hasExecRole, setHasExecRole] = useState(false);
+    const [hasMemberRole, setHasMemberRole] = useState(false);
     const [claimedTasks, setClaimedTasks] = useState([]);
     const [userProposals, setUserProposals] = useState([]);
     const [completedModules, setCompletedModules] = useState([]);
@@ -50,13 +50,13 @@ export const UserProvider = ({ children }) => {
             const { user, account: accountData } = data;
 
             setGraphUsername(accountData?.username || '');
-            setHasMemberNFT(!!user);
+            setHasMemberRole(!!user);
 
             if (user) {
                 // Executive check: second role hat is typically executive
                 const userHatIds = user.currentHatIds || [];
                 const execHatId = roleHatIds?.[1];
-                setHasExecNFT(execHatId && userHatIds.includes(execHatId));
+                setHasExecRole(execHatId && userHatIds.includes(execHatId));
 
                 setUserData({
                     id: user.id,
@@ -106,7 +106,7 @@ export const UserProvider = ({ children }) => {
                     return parseInt(a.endTimestamp) - parseInt(b.endTimestamp);
                 }));
             } else {
-                setHasExecNFT(false);
+                setHasExecRole(false);
                 setUserData({});
                 setClaimedTasks([]);
                 setCompletedModules([]);
@@ -134,8 +134,8 @@ export const UserProvider = ({ children }) => {
         userProposals,
         userData,
         graphUsername,
-        hasExecNFT,
-        hasMemberNFT,
+        hasExecRole,
+        hasMemberRole,
         claimedTasks,
         completedModules,
         error,
@@ -144,8 +144,8 @@ export const UserProvider = ({ children }) => {
         userProposals,
         userData,
         graphUsername,
-        hasExecNFT,
-        hasMemberNFT,
+        hasExecRole,
+        hasMemberRole,
         claimedTasks,
         completedModules,
         error,

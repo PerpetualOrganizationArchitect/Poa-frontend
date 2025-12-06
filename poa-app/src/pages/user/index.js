@@ -63,7 +63,7 @@ const pulse = keyframes`
 const MotionBox = motion(Box);
 
 const User = () => {
-  const { hasMemberNFT, graphUsername } = useUserContext();
+  const { hasMemberRole, graphUsername } = useUserContext();
   const { address } = useAccount();
   const { quickJoinContractAddress, poDescription, logoHash } = usePOContext();
   const { quickJoinNoUser, quickJoinWithUser } = useWeb3Context();
@@ -106,10 +106,10 @@ const User = () => {
   }, [userDAO]);
 
   useEffect(() => {
-    if (hasMemberNFT) {
+    if (hasMemberRole) {
       router.push(`/profileHub/?userDAO=${userDAO}`);
     }
-  }, [hasMemberNFT, address]);
+  }, [hasMemberRole, address]);
 
   const handleJoinWithUser = async () => {
     setLoading(true);

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useDataBaseContext } from './dataBaseContext';
 import { useWeb3Context } from './web3Context';
 import { usePOContext } from './POContext';
+import { calculatePayout } from '../util/taskUtils';
 
 const TaskBoardContext = createContext();
 
@@ -120,21 +121,7 @@ export const TaskBoardProvider = ({
   };
 
   const addTask = async (task, destColumnId) => {
-    // Calculate kubixPayout
-    const calculateKubixPayout = (difficulty, estimatedHours) => {
-      const difficulties = {
-        easy: { baseKubix: 1, multiplier: 16.5 },
-        medium: { baseKubix: 4, multiplier: 24 },
-        hard: { baseKubix: 10, multiplier: 30 },
-        veryHard: { baseKubix: 25, multiplier: 37.5 },
-      };
-
-      const { baseKubix, multiplier } = difficulties[difficulty];
-      const totalKubix = Math.round(baseKubix + multiplier * estimatedHours);
-      return totalKubix;
-    };
-
-    const kubixPayout = calculateKubixPayout(task.difficulty, task.estHours);
+    const kubixPayout = calculatePayout(task.difficulty, task.estHours);
 
     // Save previous state
     const previousTaskColumns = JSON.parse(JSON.stringify(taskColumns));
@@ -188,19 +175,6 @@ export const TaskBoardProvider = ({
     // Optimistically update the UI
     const newTaskColumns = [...taskColumns];
     const destColumn = newTaskColumns.find((column) => column.id === destColumnId);
-
-    const calculatePayout = (difficulty, estimatedHours) => {
-      const difficulties = {
-        easy: { base: 1, multiplier: 16.5 },
-        medium: { base: 4, multiplier: 24 },
-        hard: { base: 10, multiplier: 30 },
-        veryHard: { base: 25, multiplier: 37.5 },
-      };
-
-      const { base, multiplier } = difficulties[difficulty];
-      const total = Math.round(base + multiplier * estimatedHours);
-      return total;
-    };
 
     const Payout = calculatePayout(updatedTask.difficulty, updatedTask.estHours);
 

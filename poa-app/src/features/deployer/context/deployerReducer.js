@@ -1,32 +1,56 @@
 /**
  * Deployer Reducer - Manages the complete state for the DAO deployment wizard
  *
- * This reducer handles all state transitions for the 5-step deployment process:
- * 1. Organization Details
- * 2. Roles & Hierarchy
- * 3. Permissions
- * 4. Voting Configuration
- * 5. Review & Deploy
+ * This reducer handles all state transitions for the deployment process.
+ * Supports both Simple mode (4 steps + template) and Advanced mode (5 steps).
+ *
+ * Simple Mode Flow:
+ * Template → Identity → Team → Governance → Launch
+ *
+ * Advanced Mode Flow:
+ * Organization → Roles → Permissions → Voting → Review
  */
 
 import { v4 as uuidv4 } from 'uuid';
 
-// Step constants
+// Step constants - New flow
 export const STEPS = {
-  ORGANIZATION: 0,
-  ROLES: 1,
-  PERMISSIONS: 2,
+  TEMPLATE: 0,        // Template selection (Simple mode)
+  IDENTITY: 1,        // Organization details (replaces ORGANIZATION)
+  TEAM: 2,            // Roles (simplified in Simple mode)
+  GOVERNANCE: 3,      // Philosophy + Powers (replaces Permissions + Voting)
+  LAUNCH: 4,          // Review & Deploy
+
+  // Legacy step aliases for Advanced mode compatibility
+  ORGANIZATION: 1,
+  ROLES: 2,
+  PERMISSIONS: 3,
   VOTING: 3,
   REVIEW: 4,
 };
 
 export const STEP_NAMES = [
+  'Choose Template',
+  'Identity',
+  'Team',
+  'Governance',
+  'Launch',
+];
+
+// Advanced mode step names (for backwards compatibility)
+export const ADVANCED_STEP_NAMES = [
+  'Template',
   'Organization Details',
   'Roles & Hierarchy',
-  'Permissions',
-  'Voting Configuration',
+  'Permissions & Voting',
   'Review & Deploy',
 ];
+
+// UI Modes
+export const UI_MODES = {
+  SIMPLE: 'simple',
+  ADVANCED: 'advanced',
+};
 
 // Voting strategies
 export const VOTING_STRATEGY = {
@@ -131,10 +155,41 @@ export const createDefaultVotingClass = (slicePct = 100) => ({
 
 // Initial state for the deployer
 export const initialState = {
-  // Current step in the wizard
-  currentStep: STEPS.ORGANIZATION,
+  // Current step in the wizard (starts at template selection)
+  currentStep: STEPS.TEMPLATE,
 
-  // Organization details (Step 1)
+  // UI State - Controls simple vs advanced mode
+  ui: {
+    mode: UI_MODES.SIMPLE,        // 'simple' | 'advanced'
+    selectedTemplate: null,       // Template ID or null
+    templateApplied: false,       // Has template been applied to state?
+    showGuidance: true,           // Show guidance panel
+    expandedSections: [],         // Which review sections are expanded
+  },
+
+  // Template Journey State - Discovery questions and variations
+  templateJourney: {
+    discoveryAnswers: {},         // { questionId: answerValue }
+    selfAssessmentAnswers: {},    // { questionId: answerValue } (for custom template)
+    matchedVariation: null,       // Key of the matched variation
+    variationConfirmed: false,    // Has user confirmed the variation?
+    currentQuestionIndex: 0,      // For step-by-step discovery
+    showPhilosophy: false,        // Show philosophy explanation
+    showGrowthPath: false,        // Show growth path visualization
+    showPitfalls: false,          // Show relevant pitfalls
+  },
+
+  // Philosophy State (Simple Mode) - High-level governance choices
+  philosophy: {
+    slider: 50,                   // 0 = delegated, 50 = hybrid, 100 = democratic
+    powerBundles: {
+      admin: [1],                 // Role indices with admin bundle
+      member: [0, 1],             // Role indices with member bundle
+      creator: [0, 1],            // Role indices with creator bundle
+    },
+  },
+
+  // Organization details
   organization: {
     name: '',
     description: '',
@@ -146,7 +201,7 @@ export const initialState = {
     template: 'default',
   },
 
-  // Roles configuration (Step 2)
+  // Roles configuration
   roles: [
     {
       ...createDefaultRole(0, 'Member'),
@@ -161,7 +216,7 @@ export const initialState = {
     },
   ],
 
-  // Permissions configuration (Step 3)
+  // Permissions configuration
   // Arrays of role indices that have each permission
   permissions: {
     quickJoinRoles: [0],           // Member can quick join
@@ -175,7 +230,7 @@ export const initialState = {
     ddCreatorRoles: [0, 1],        // Both can create polls
   },
 
-  // Voting configuration (Step 4)
+  // Voting configuration
   voting: {
     mode: 'DIRECT', // 'DIRECT' or 'HYBRID'
     hybridQuorum: 50,
@@ -212,6 +267,34 @@ export const ACTION_TYPES = {
   SET_STEP: 'SET_STEP',
   NEXT_STEP: 'NEXT_STEP',
   PREV_STEP: 'PREV_STEP',
+
+  // UI Mode & Templates
+  SET_UI_MODE: 'SET_UI_MODE',
+  SELECT_TEMPLATE: 'SELECT_TEMPLATE',
+  APPLY_TEMPLATE: 'APPLY_TEMPLATE',
+  CLEAR_TEMPLATE: 'CLEAR_TEMPLATE',
+  TOGGLE_GUIDANCE: 'TOGGLE_GUIDANCE',
+  EXPAND_SECTION: 'EXPAND_SECTION',
+
+  // Philosophy (Simple Mode)
+  SET_PHILOSOPHY_SLIDER: 'SET_PHILOSOPHY_SLIDER',
+  SET_POWER_BUNDLE: 'SET_POWER_BUNDLE',
+  TOGGLE_POWER_BUNDLE: 'TOGGLE_POWER_BUNDLE',
+  APPLY_PHILOSOPHY: 'APPLY_PHILOSOPHY',
+
+  // Template Journey (Discovery Flow)
+  SET_DISCOVERY_ANSWER: 'SET_DISCOVERY_ANSWER',
+  SET_SELF_ASSESSMENT_ANSWER: 'SET_SELF_ASSESSMENT_ANSWER',
+  SET_MATCHED_VARIATION: 'SET_MATCHED_VARIATION',
+  CONFIRM_VARIATION: 'CONFIRM_VARIATION',
+  SET_CURRENT_QUESTION_INDEX: 'SET_CURRENT_QUESTION_INDEX',
+  NEXT_DISCOVERY_QUESTION: 'NEXT_DISCOVERY_QUESTION',
+  PREV_DISCOVERY_QUESTION: 'PREV_DISCOVERY_QUESTION',
+  TOGGLE_PHILOSOPHY_VIEW: 'TOGGLE_PHILOSOPHY_VIEW',
+  TOGGLE_GROWTH_PATH_VIEW: 'TOGGLE_GROWTH_PATH_VIEW',
+  TOGGLE_PITFALLS_VIEW: 'TOGGLE_PITFALLS_VIEW',
+  RESET_TEMPLATE_JOURNEY: 'RESET_TEMPLATE_JOURNEY',
+  APPLY_VARIATION: 'APPLY_VARIATION',
 
   // Organization
   UPDATE_ORGANIZATION: 'UPDATE_ORGANIZATION',
@@ -330,14 +413,297 @@ export function deployerReducer(state, action) {
     case ACTION_TYPES.NEXT_STEP:
       return {
         ...state,
-        currentStep: Math.min(state.currentStep + 1, STEPS.REVIEW),
+        currentStep: Math.min(state.currentStep + 1, STEPS.LAUNCH),
       };
 
     case ACTION_TYPES.PREV_STEP:
       return {
         ...state,
-        currentStep: Math.max(state.currentStep - 1, STEPS.ORGANIZATION),
+        currentStep: Math.max(state.currentStep - 1, STEPS.TEMPLATE),
       };
+
+    // UI Mode & Templates
+    case ACTION_TYPES.SET_UI_MODE:
+      return {
+        ...state,
+        ui: { ...state.ui, mode: action.payload },
+      };
+
+    case ACTION_TYPES.SELECT_TEMPLATE:
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          selectedTemplate: action.payload,
+          templateApplied: false,
+        },
+      };
+
+    case ACTION_TYPES.APPLY_TEMPLATE: {
+      // Payload contains the template defaults from getTemplateDefaults()
+      const { roles, permissions, voting, features, governancePhilosophy } = action.payload;
+
+      // Map governancePhilosophy to slider value
+      const sliderValue = governancePhilosophy === 'democratic' ? 85
+        : governancePhilosophy === 'delegated' ? 15
+        : 50;
+
+      return {
+        ...state,
+        roles,
+        permissions,
+        voting,
+        features,
+        philosophy: {
+          ...state.philosophy,
+          slider: sliderValue,
+        },
+        ui: {
+          ...state.ui,
+          templateApplied: true,
+        },
+      };
+    }
+
+    case ACTION_TYPES.CLEAR_TEMPLATE:
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          selectedTemplate: null,
+          templateApplied: false,
+        },
+      };
+
+    case ACTION_TYPES.TOGGLE_GUIDANCE:
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          showGuidance: action.payload !== undefined ? action.payload : !state.ui.showGuidance,
+        },
+      };
+
+    case ACTION_TYPES.EXPAND_SECTION: {
+      const section = action.payload;
+      const expanded = state.ui.expandedSections;
+      const isExpanded = expanded.includes(section);
+
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          expandedSections: isExpanded
+            ? expanded.filter(s => s !== section)
+            : [...expanded, section],
+        },
+      };
+    }
+
+    // Philosophy (Simple Mode)
+    case ACTION_TYPES.SET_PHILOSOPHY_SLIDER:
+      return {
+        ...state,
+        philosophy: { ...state.philosophy, slider: action.payload },
+      };
+
+    case ACTION_TYPES.SET_POWER_BUNDLE: {
+      const { bundleKey, roleIndices } = action.payload;
+      return {
+        ...state,
+        philosophy: {
+          ...state.philosophy,
+          powerBundles: {
+            ...state.philosophy.powerBundles,
+            [bundleKey]: roleIndices,
+          },
+        },
+      };
+    }
+
+    case ACTION_TYPES.TOGGLE_POWER_BUNDLE: {
+      const { bundleKey, roleIndex } = action.payload;
+      const currentRoles = state.philosophy.powerBundles[bundleKey] || [];
+      const hasBundle = currentRoles.includes(roleIndex);
+
+      return {
+        ...state,
+        philosophy: {
+          ...state.philosophy,
+          powerBundles: {
+            ...state.philosophy.powerBundles,
+            [bundleKey]: hasBundle
+              ? currentRoles.filter(idx => idx !== roleIndex)
+              : [...currentRoles, roleIndex],
+          },
+        },
+      };
+    }
+
+    case ACTION_TYPES.APPLY_PHILOSOPHY: {
+      // Apply philosophy slider and power bundles to actual permissions and voting
+      // This is called when user advances from Governance step in Simple mode
+      const { voting, permissions } = action.payload;
+      return {
+        ...state,
+        voting: voting || state.voting,
+        permissions: permissions || state.permissions,
+      };
+    }
+
+    // Template Journey (Discovery Flow)
+    case ACTION_TYPES.SET_DISCOVERY_ANSWER: {
+      const { questionId, answer } = action.payload;
+      return {
+        ...state,
+        templateJourney: {
+          ...state.templateJourney,
+          discoveryAnswers: {
+            ...state.templateJourney.discoveryAnswers,
+            [questionId]: answer,
+          },
+        },
+      };
+    }
+
+    case ACTION_TYPES.SET_SELF_ASSESSMENT_ANSWER: {
+      const { questionId, answer } = action.payload;
+      return {
+        ...state,
+        templateJourney: {
+          ...state.templateJourney,
+          selfAssessmentAnswers: {
+            ...state.templateJourney.selfAssessmentAnswers,
+            [questionId]: answer,
+          },
+        },
+      };
+    }
+
+    case ACTION_TYPES.SET_MATCHED_VARIATION:
+      return {
+        ...state,
+        templateJourney: {
+          ...state.templateJourney,
+          matchedVariation: action.payload,
+        },
+      };
+
+    case ACTION_TYPES.CONFIRM_VARIATION:
+      return {
+        ...state,
+        templateJourney: {
+          ...state.templateJourney,
+          variationConfirmed: true,
+        },
+      };
+
+    case ACTION_TYPES.SET_CURRENT_QUESTION_INDEX:
+      return {
+        ...state,
+        templateJourney: {
+          ...state.templateJourney,
+          currentQuestionIndex: action.payload,
+        },
+      };
+
+    case ACTION_TYPES.NEXT_DISCOVERY_QUESTION:
+      return {
+        ...state,
+        templateJourney: {
+          ...state.templateJourney,
+          currentQuestionIndex: state.templateJourney.currentQuestionIndex + 1,
+        },
+      };
+
+    case ACTION_TYPES.PREV_DISCOVERY_QUESTION:
+      return {
+        ...state,
+        templateJourney: {
+          ...state.templateJourney,
+          currentQuestionIndex: Math.max(0, state.templateJourney.currentQuestionIndex - 1),
+        },
+      };
+
+    case ACTION_TYPES.TOGGLE_PHILOSOPHY_VIEW:
+      return {
+        ...state,
+        templateJourney: {
+          ...state.templateJourney,
+          showPhilosophy: action.payload !== undefined
+            ? action.payload
+            : !state.templateJourney.showPhilosophy,
+        },
+      };
+
+    case ACTION_TYPES.TOGGLE_GROWTH_PATH_VIEW:
+      return {
+        ...state,
+        templateJourney: {
+          ...state.templateJourney,
+          showGrowthPath: action.payload !== undefined
+            ? action.payload
+            : !state.templateJourney.showGrowthPath,
+        },
+      };
+
+    case ACTION_TYPES.TOGGLE_PITFALLS_VIEW:
+      return {
+        ...state,
+        templateJourney: {
+          ...state.templateJourney,
+          showPitfalls: action.payload !== undefined
+            ? action.payload
+            : !state.templateJourney.showPitfalls,
+        },
+      };
+
+    case ACTION_TYPES.RESET_TEMPLATE_JOURNEY:
+      return {
+        ...state,
+        templateJourney: {
+          discoveryAnswers: {},
+          selfAssessmentAnswers: {},
+          matchedVariation: null,
+          variationConfirmed: false,
+          currentQuestionIndex: 0,
+          showPhilosophy: false,
+          showGrowthPath: false,
+          showPitfalls: false,
+        },
+      };
+
+    case ACTION_TYPES.APPLY_VARIATION: {
+      // Apply a matched variation's settings to the state
+      const { variation, template } = action.payload;
+      if (!variation?.settings) {
+        return state;
+      }
+
+      const { democracyWeight, participationWeight, quorum } = variation.settings;
+
+      // Update philosophy slider based on democracy weight
+      const sliderValue = democracyWeight !== undefined ? democracyWeight : state.philosophy.slider;
+
+      return {
+        ...state,
+        philosophy: {
+          ...state.philosophy,
+          slider: sliderValue,
+        },
+        voting: {
+          ...state.voting,
+          democracyWeight: democracyWeight ?? state.voting.democracyWeight,
+          participationWeight: participationWeight ?? state.voting.participationWeight,
+          hybridQuorum: quorum ?? state.voting.hybridQuorum,
+          ddQuorum: quorum ?? state.voting.ddQuorum,
+        },
+        templateJourney: {
+          ...state.templateJourney,
+          variationConfirmed: true,
+        },
+      };
+    }
 
     // Organization
     case ACTION_TYPES.UPDATE_ORGANIZATION:

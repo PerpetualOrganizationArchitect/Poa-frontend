@@ -1,10 +1,81 @@
 import OrgDeployer from "../abi/OrgDeployer.json";
 import { ethers } from "ethers";
+import bs58 from "bs58";
 
-// Infrastructure addresses on Hoodi testnet
-const ORG_DEPLOYER_ADDRESS = "0x888daCE32d8BCdDD95BA9D490643663C25810ded";
-const UNIVERSAL_REGISTRY_ADDRESS = "0xDdB1DA30020861d92c27aE981ac0f4Fe8BA536F2";
+/**
+ * Convert IPFS CIDv0 to bytes32 sha256 digest
+ * CIDv0 = base58( 0x1220 + sha256_digest )
+ * We decode and strip the 0x1220 prefix to get the 32-byte digest
+ */
+function cidToBytes32(cid) {
+  console.log("[CID->BYTES32] Input CID:", cid);
+  console.log("[CID->BYTES32] CID type:", typeof cid);
+  console.log("[CID->BYTES32] CID length:", cid?.length);
 
+  if (!cid || cid.length === 0) {
+    console.log("[CID->BYTES32] Empty CID, returning zero hash");
+    return ethers.constants.HashZero;
+  }
+
+  try {
+    // Decode base58 CID to bytes
+    console.log("[CID->BYTES32] Decoding base58...");
+    const decoded = bs58.decode(cid);
+    console.log("[CID->BYTES32] Decoded bytes length:", decoded.length);
+    console.log("[CID->BYTES32] First 4 bytes:", Array.from(decoded.slice(0, 4)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+
+    // CIDv0 should be 34 bytes: 2-byte prefix (0x1220) + 32-byte sha256
+    if (decoded.length !== 34) {
+      console.warn(`[CID->BYTES32] CID has unexpected length: ${decoded.length}, expected 34`);
+      return ethers.constants.HashZero;
+    }
+
+    // Verify multihash prefix (0x12 = sha256, 0x20 = 32 bytes)
+    if (decoded[0] !== 0x12 || decoded[1] !== 0x20) {
+      console.warn(`[CID->BYTES32] CID has unexpected prefix: 0x${decoded[0].toString(16)}${decoded[1].toString(16)}`);
+      return ethers.constants.HashZero;
+    }
+
+    // Extract the 32-byte sha256 digest (skip 2-byte prefix)
+    const sha256Digest = decoded.slice(2);
+    const bytes32Hex = "0x" + Buffer.from(sha256Digest).toString("hex");
+
+    console.log("[CID->BYTES32] Conversion successful!");
+    console.log("[CID->BYTES32] SHA256 digest (bytes32):", bytes32Hex);
+    console.log("[CID->BYTES32] This bytes32 should be stored in contract");
+
+    // Convert to hex string with 0x prefix
+    return bytes32Hex;
+  } catch (error) {
+    console.error("[CID->BYTES32] Failed to decode CID:", error);
+    return ethers.constants.HashZero;
+  }
+}
+
+/**
+ * Deploy a new organization
+ * @param {Array<string>} memberTypeNames - Names of member types/roles
+ * @param {Array<string>} executivePermissionNames - Names of executive roles
+ * @param {string} POname - Organization name
+ * @param {boolean} quadraticVotingEnabled - Enable quadratic voting
+ * @param {number} democracyVoteWeight - Direct democracy weight percentage
+ * @param {number} participationVoteWeight - Participation token weight percentage
+ * @param {boolean} hybridVotingEnabled - Enable hybrid voting
+ * @param {boolean} participationVotingEnabled - Enable participation voting
+ * @param {boolean} electionEnabled - Enable elections
+ * @param {boolean} educationHubEnabled - Enable education hub
+ * @param {string} logoURL - Logo URL (IPFS)
+ * @param {string} infoIPFSHash - IPFS hash for org metadata
+ * @param {string} votingControlType - Voting control type
+ * @param {number} quorumPercentageDD - Direct democracy quorum percentage
+ * @param {number} quorumPercentagePV - Participation voting quorum percentage
+ * @param {string} username - Deployer username
+ * @param {Object} wallet - Ethers signer/wallet
+ * @param {Array|null} customRoles - Optional pre-configured roles
+ * @param {Object} infrastructureAddresses - Addresses fetched from subgraph (required)
+ * @param {string} infrastructureAddresses.orgDeployerAddress - OrgDeployer contract address
+ * @param {string} infrastructureAddresses.registryAddress - Universal Registry address
+ */
 export async function main(
     memberTypeNames,
     executivePermissionNames,
@@ -23,8 +94,20 @@ export async function main(
     quorumPercentagePV,
     username,
     wallet,
-    customRoles = null  // Optional: pre-configured roles with additionalWearers
+    customRoles = null,
+    infrastructureAddresses = {}
   ) {
+    // Validate infrastructure addresses - these must be fetched from subgraph
+    const orgDeployerAddress = infrastructureAddresses.orgDeployerAddress;
+    const registryAddress = infrastructureAddresses.registryAddress;
+
+    if (!orgDeployerAddress) {
+      throw new Error("OrgDeployer address not found. Please ensure the subgraph is synced and returning infrastructure addresses.");
+    }
+    if (!registryAddress) {
+      throw new Error("Registry address not found. Please ensure the subgraph is synced and returning infrastructure addresses.");
+    }
+
     console.log("Creating new DAO with OrgDeployer...");
 
     // Validate wallet/signer
@@ -84,10 +167,16 @@ export async function main(
     const roleAssignments = buildRoleAssignments(memberTypeNames, executivePermissionNames);
 
     // Construct DeploymentParams
+    // Convert IPFS CID to bytes32 sha256 digest for the contract
+    // If no CID provided, uses zero hash (valid per contract)
+    const metadataHash = cidToBytes32(infoIPFSHash);
+    console.log("Metadata hash from CID:", { cid: infoIPFSHash, metadataHash });
+
     const deploymentParams = {
       orgId: orgId,
       orgName: POname,
-      registryAddr: UNIVERSAL_REGISTRY_ADDRESS,
+      metadataHash: metadataHash,
+      registryAddr: registryAddress,
       deployerAddress: deployerAddress,
       deployerUsername: username || "",
       autoUpgrade: true,
@@ -100,7 +189,7 @@ export async function main(
     };
 
     console.log("Deploying new DAO with the following parameters:", deploymentParams);
-    console.log("OrgDeployer address:", ORG_DEPLOYER_ADDRESS);
+    console.log("OrgDeployer address:", orgDeployerAddress);
     console.log("OrgDeployer ABI loaded:", Array.isArray(OrgDeployer) ? `${OrgDeployer.length} entries` : typeof OrgDeployer);
 
     // Debug: Log detailed role structure
@@ -116,7 +205,7 @@ export async function main(
       }, 2));
     });
 
-    const orgDeployer = new ethers.Contract(ORG_DEPLOYER_ADDRESS, OrgDeployer, wallet);
+    const orgDeployer = new ethers.Contract(orgDeployerAddress, OrgDeployer, wallet);
     console.log("OrgDeployer contract instance created");
 
     try {

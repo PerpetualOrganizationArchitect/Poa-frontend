@@ -121,13 +121,34 @@ export const IPFSprovider = ({ children }) => {
      * @throws {IPFSError} If add operation fails
      */
     const addToIpfs = useCallback(async (content) => {
+        console.log("[IPFS] Starting upload to The Graph's IPFS endpoint...");
+        console.log("[IPFS] Content type:", typeof content);
+        console.log("[IPFS] Content length:", typeof content === 'string' ? content.length : content?.length || 'unknown');
+        if (typeof content === 'string') {
+            console.log("[IPFS] Content preview:", content.substring(0, 200) + (content.length > 200 ? '...' : ''));
+        }
+
         try {
             const addedData = await withRetry(async () => {
-                return await addIpfs.add({ content });
+                console.log("[IPFS] Attempting add to api.thegraph.com/ipfs...");
+                const result = await addIpfs.add({ content });
+                console.log("[IPFS] Add successful!");
+                console.log("[IPFS] Result:", JSON.stringify(result, null, 2));
+                return result;
             });
+
+            console.log("[IPFS] Final CID (path):", addedData.path);
+            console.log("[IPFS] CID format check - starts with 'Qm':", addedData.path?.startsWith('Qm'));
+            console.log("[IPFS] Full result object:", addedData);
+            console.log("[IPFS] You can verify at: https://api.thegraph.com/ipfs/api/v0/cat?arg=" + addedData.path);
+            console.log("[IPFS] Public gateway: https://ipfs.io/ipfs/" + addedData.path);
+
             return addedData;
         } catch (error) {
-            console.error("An error occurred while adding to IPFS via The Graph:", error);
+            console.error("[IPFS] ERROR - Failed to add to IPFS via The Graph:", error);
+            console.error("[IPFS] Error name:", error.name);
+            console.error("[IPFS] Error message:", error.message);
+            console.error("[IPFS] Error stack:", error.stack);
 
             // If already an IPFSError, rethrow
             if (error instanceof IPFSError) {

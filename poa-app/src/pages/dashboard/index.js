@@ -29,45 +29,46 @@ import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import { FaLink } from 'react-icons/fa';
 import { useIPFScontext } from "@/context/ipfsContext";
 
-function generateAbbreviatedConstitution(poData) {
+function generateOrgStructurePreview(poData, roleCount) {
   const {
     HybridVoting = null,
     DirectDemocracyVoting = null,
-    ParticipationVoting = null,
-    NFTMembership = null,
-    Treasury = null
   } = poData;
 
   let descriptions = [];
 
-  const addVotingSystemDescription = (name, system) => {
-    if (system) {
-      descriptions.push(<Text key={name} ml="2">{name}: {system.quorum}% approval</Text>);
-    }
-  };
+  // Roles summary
+  descriptions.push(
+    <Text fontWeight="bold" fontSize="lg" key="roles-header" ml="2" mt="2">
+      Roles
+    </Text>
+  );
+  descriptions.push(
+    <Text key="role-count" ml="2" mt="1">
+      {roleCount > 0 ? `${roleCount} roles defined` : 'Roles loading...'}
+    </Text>
+  );
 
-  descriptions.push(<Text fontWeight="bold" fontSize="lg" key="voting-types" ml="2" mt="2">Voting Types</Text>);
-  addVotingSystemDescription("Hybrid Voting", HybridVoting);
-  addVotingSystemDescription("Direct Democracy Voting", DirectDemocracyVoting);
-  addVotingSystemDescription("Participation Voting", ParticipationVoting);
+  // Voting summary
+  descriptions.push(
+    <Text fontWeight="bold" fontSize="lg" key="governance-header" ml="2" mt="3">
+      Governance
+    </Text>
+  );
 
-  if (NFTMembership) {
-    descriptions.push(<Text fontWeight={"bold"} fontSize={"lg"} key="member-types" ml="2" mt="2">Member Types</Text>);
-    descriptions.push(<Text key="member-type-names" ml="2" mt="2">All Member Types: {NFTMembership.memberTypeNames.join(', ')}</Text>);
-    descriptions.push(<Text key="executive-roles" ml="2" mt="0">Executive Roles: {NFTMembership.executiveRoles.join(', ')}</Text>);
+  if (HybridVoting) {
+    descriptions.push(
+      <Text key="hybrid" ml="2" mt="1">
+        Hybrid Voting: {HybridVoting.quorum}% quorum
+      </Text>
+    );
   }
-
-  if (Treasury) {
-    let treasuryControl = "an unidentified voting system";
-    if (HybridVoting && Treasury.votingContract === HybridVoting.id) {
-      treasuryControl = "Hybrid Voting";
-    } else if (DirectDemocracyVoting && Treasury.votingContract === DirectDemocracyVoting.id) {
-      treasuryControl = "Direct Democracy Voting";
-    } else if (ParticipationVoting && Treasury.votingContract === ParticipationVoting.id) {
-      treasuryControl = "Participation Voting";
-    }
-    descriptions.push(<Text fontSize={"lg"} fontWeight={"bold"} key="treasury-control-Text" ml="2" mt="2">Treasury and Upgrade Control</Text>);
-    descriptions.push(<Text key="treasury-control" ml="2" mt="2">Controlled by: {treasuryControl}</Text>);
+  if (DirectDemocracyVoting) {
+    descriptions.push(
+      <Text key="dd" ml="2" mt="1">
+        Direct Democracy: {DirectDemocracyVoting.quorum}% quorum
+      </Text>
+    );
   }
 
   return descriptions;
@@ -76,13 +77,13 @@ function generateAbbreviatedConstitution(poData) {
 const PerpetualOrgDashboard = () => {
   const { ongoingPolls } = useVotingContext();
   console.log("ongoingPolls", ongoingPolls);
-  const { poContextLoading, poDescription, poLinks, logoHash, activeTaskAmount, completedTaskAmount, ptTokenBalance, poMembers, rules, educationModules } = usePOContext();
+  const { poContextLoading, poDescription, poLinks, logoHash, activeTaskAmount, completedTaskAmount, ptTokenBalance, poMembers, rules, educationModules, roleHatIds } = usePOContext();
 
   const router = useRouter();
   const { userDAO } = router.query;
   const [imageURL, setImageURL] = useState({});
   const [imageFetched, setImageFetched] = useState(false);
-  const [constitutionElements, setConstitutionElements] = useState([]);
+  const [orgStructurePreview, setOrgStructurePreview] = useState([]);
   const { fetchImageFromIpfs } = useIPFScontext();
 
   // Responsive design breakpoints
@@ -106,9 +107,9 @@ const PerpetualOrgDashboard = () => {
 
   useEffect(() => {
     if (rules) {
-      setConstitutionElements(generateAbbreviatedConstitution(rules));
+      setOrgStructurePreview(generateOrgStructurePreview(rules, roleHatIds?.length || 0));
     }
-  }, [rules]);
+  }, [rules, roleHatIds]);
 
   const { leaderboardData } = usePOContext();
   const { recommendedTasks } = useProjectContext();
@@ -161,13 +162,13 @@ const PerpetualOrgDashboard = () => {
                   'tasks'
                   'polls'
                   'leaderboard'
-                  'constitution'
+                  'orgStructure'
                   'learnAndEarn'
                 `,
                 md: `
                   'orgInfo orgStats'
                   'tasks polls'
-                  'leaderboard constitution'
+                  'leaderboard orgStructure'
                   'learnAndEarn learnAndEarn'
                 `,
               }}
@@ -431,7 +432,7 @@ const PerpetualOrgDashboard = () => {
               </Link2>
             </GridItem>
 
-            <GridItem area={'constitution'}>
+            <GridItem area={'orgStructure'}>
               <Box
                 w="100%"
                 borderRadius="2xl"
@@ -444,23 +445,22 @@ const PerpetualOrgDashboard = () => {
                 <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
                   <div style={glassLayerStyle} />
                   <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
-                    Constitution
+                    Org Structure
                   </Text>
                 </VStack>
                 <Box pl={{ base: 3, md: 6 }} pr={{ base: 3, md: 6 }} pb={4}>
-                  {constitutionElements}
+                  {orgStructurePreview}
                   <HStack mt="2" spacing={4} align="center">
-                    <Link2 href={`/constitution?userDAO=${userDAO}`}>
+                    <Link2 href={`/org-structure?userDAO=${userDAO}`}>
                       <Button
                         mt={2}
-                        colorScheme="teal"
+                        colorScheme="purple"
                         size={{ base: "xs", md: "sm" }}
                         ml="2"
                       >
-                        View Full Constitution
+                        View Full Structure
                       </Button>
                     </Link2>
-
                   </HStack>
                 </Box>
               </Box>

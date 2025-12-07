@@ -20,6 +20,7 @@ import { OrganizationService, createOrganizationService } from '../services/web3
 import { VotingService, VotingType, createVotingService } from '../services/web3/domain/VotingService';
 import { TaskService, createTaskService } from '../services/web3/domain/TaskService';
 import { EducationService, createEducationService } from '../services/web3/domain/EducationService';
+import { EligibilityService, createEligibilityService } from '../services/web3/domain/EligibilityService';
 
 /**
  * Hook to access all Web3 services
@@ -52,6 +53,7 @@ export function useWeb3Services(options = {}) {
         voting: null,
         task: null,
         education: null,
+        eligibility: null,
       };
     }
 
@@ -61,6 +63,7 @@ export function useWeb3Services(options = {}) {
       voting: createVotingService(factory, txManager),
       task: createTaskService(factory, txManager, ipfsService),
       education: createEducationService(factory, txManager, ipfsService),
+      eligibility: createEligibilityService(factory, txManager),
     };
   }, [factory, txManager, ipfsService]);
 
@@ -95,7 +98,7 @@ export function useWeb3Services(options = {}) {
  * Wraps service calls with loading states and automatic notifications
  */
 export function useTransactionWithNotification() {
-  const { addNotification } = useNotification();
+  const { addNotification, updateNotification } = useNotification();
   const { emit } = useRefreshEmit();
 
   /**
@@ -119,15 +122,15 @@ export function useTransactionWithNotification() {
       refreshData = {},
     }
   ) => {
-    // Show pending notification
-    const pendingId = addNotification(pendingMessage, 'info');
+    // Show pending notification with loading status (blue spinner)
+    const pendingId = addNotification(pendingMessage, 'loading');
 
     try {
       const result = await transactionFn();
 
       if (result.success) {
-        // Remove pending and show success
-        addNotification(successMessage, 'success');
+        // Update pending notification to success
+        updateNotification(pendingId, successMessage, 'success');
 
         // Emit refresh event if specified
         if (refreshEvent) {
@@ -137,23 +140,23 @@ export function useTransactionWithNotification() {
           });
         }
       } else {
-        // Show error
+        // Update to error
         const message = errorMessage || result.error?.userMessage || 'Transaction failed';
-        addNotification(message, 'error');
+        updateNotification(pendingId, message, 'error');
       }
 
       return result;
     } catch (error) {
-      // Handle unexpected errors
+      // Handle unexpected errors - update to error
       const message = errorMessage || error.message || 'An unexpected error occurred';
-      addNotification(message, 'error');
+      updateNotification(pendingId, message, 'error');
 
       return {
         success: false,
         error,
       };
     }
-  }, [addNotification, emit]);
+  }, [addNotification, updateNotification, emit]);
 
   /**
    * Create a transaction handler for common operations

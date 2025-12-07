@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Spinner,
   Center,
@@ -20,6 +20,7 @@ import {
 } from "@chakra-ui/react";
 import { ChevronLeftIcon, CloseIcon } from "@chakra-ui/icons";
 import OpenAI from "openai";
+import { useQuery } from "@apollo/client";
 import ArchitectInput from "@/components/Architect/ArchitectInput";
 import LogoDropzoneModal from "@/components/Architect/LogoDropzoneModal";
 import LinksModal from "@/components/Architect/LinksModal";
@@ -29,6 +30,7 @@ import { useEthersSigner } from "@/components/ProviderConverter";
 import { useIPFScontext } from "@/context/ipfsContext";
 import { main } from "../../../scripts/newDeployment";
 import { useRouter } from "next/router";
+import { FETCH_INFRASTRUCTURE_ADDRESSES } from "@/util/queries";
 
 // New deployer imports
 import {
@@ -50,6 +52,71 @@ function DeployerPageContent() {
   const toast = useToast();
   const router = useRouter();
   const { state, actions } = useDeployer();
+
+  // Fetch infrastructure addresses from subgraph
+  const { data: infraData, loading: infraLoading, error: infraError } = useQuery(FETCH_INFRASTRUCTURE_ADDRESSES, {
+    fetchPolicy: 'network-only',
+  });
+
+  // Debug logging for infrastructure addresses
+  console.log('Infrastructure query:', { loading: infraLoading, error: infraError, data: infraData });
+
+  // Extract addresses from subgraph data
+  const infrastructureAddresses = useMemo(() => {
+    const poaManager = infraData?.poaManagerContracts?.[0];
+
+    // Infrastructure PROXY addresses (from PoaManager - these are what you actually call)
+    const orgDeployerAddress = poaManager?.orgDeployerProxy || null;
+    const orgRegistryProxy = poaManager?.orgRegistryProxy || null;
+    const paymasterHubProxy = poaManager?.paymasterHubProxy || null;
+    const globalAccountRegistryProxy = poaManager?.globalAccountRegistryProxy || null;
+
+    // Use globalAccountRegistryProxy as registryAddress (this is the UniversalAccountRegistry)
+    const registryAddress = globalAccountRegistryProxy;
+    const poaManagerAddress = poaManager?.id || null;
+    const orgRegistryAddress = orgRegistryProxy;
+
+    // Helper to find beacon by type name (beacons are for org-level contract implementations)
+    const findBeacon = (typeName) => {
+      const beacon = infraData?.beacons?.find(b => b.typeName === typeName);
+      return beacon?.beaconAddress || null;
+    };
+
+    // Extract beacon addresses (for reference - not typically called directly)
+    const taskManagerBeacon = findBeacon('TaskManager');
+    const hybridVotingBeacon = findBeacon('HybridVoting');
+    const directDemocracyVotingBeacon = findBeacon('DirectDemocracyVoting');
+    const educationHubBeacon = findBeacon('EducationHub');
+    const participationTokenBeacon = findBeacon('ParticipationToken');
+    const quickJoinBeacon = findBeacon('QuickJoin');
+    const executorBeacon = findBeacon('Executor');
+    const paymentManagerBeacon = findBeacon('PaymentManager');
+    const eligibilityModuleBeacon = findBeacon('EligibilityModule');
+    const toggleModuleBeacon = findBeacon('ToggleModule');
+
+    return {
+      // Core contracts
+      registryAddress,
+      poaManagerAddress,
+      orgRegistryAddress,
+      // Infrastructure proxies (the actual contracts to interact with)
+      orgDeployerAddress,
+      orgRegistryProxy,
+      paymasterHubProxy,
+      globalAccountRegistryProxy,
+      // Beacons (for reference)
+      taskManagerBeacon,
+      hybridVotingBeacon,
+      directDemocracyVotingBeacon,
+      educationHubBeacon,
+      participationTokenBeacon,
+      quickJoinBeacon,
+      executorBeacon,
+      paymentManagerBeacon,
+      eligibilityModuleBeacon,
+      toggleModuleBeacon,
+    };
+  }, [infraData]);
 
   // AI Chatbot state
   const [userInput, setUserInput] = useState("");
@@ -281,21 +348,34 @@ function DeployerPageContent() {
         template: state.organization.template || 'default',
       };
 
+      console.log('[DEPLOY] Preparing IPFS metadata:', jsonData);
+
       let infoIPFSHash = state.organization.infoIPFSHash;
       if (!infoIPFSHash) {
+        console.log('[DEPLOY] No existing IPFS hash, uploading new metadata...');
         const result = await addToIpfs(JSON.stringify(jsonData));
         infoIPFSHash = result.path;
+        console.log('[DEPLOY] IPFS upload complete. CID:', infoIPFSHash);
+        console.log('[DEPLOY] Verify content at: https://api.thegraph.com/ipfs/api/v0/cat?arg=' + infoIPFSHash);
         actions.setIPFSHash(infoIPFSHash);
+      } else {
+        console.log('[DEPLOY] Using existing IPFS hash:', infoIPFSHash);
       }
+
+      console.log('[DEPLOY] Final infoIPFSHash for deployment:', infoIPFSHash);
 
       // Get deployment params with resolved addresses
       const stateWithResolvedRoles = {
         ...state,
         roles: rolesWithResolvedAddresses,
       };
-      const deployParams = mapStateToDeploymentParams(stateWithResolvedRoles, address);
 
       console.log('=== DEPLOYMENT DEBUG ===');
+      console.log('Infrastructure addresses:', infrastructureAddresses);
+
+      const deployParams = mapStateToDeploymentParams(stateWithResolvedRoles, address, infrastructureAddresses);
+
+      console.log('Deployment params:', deployParams);
       console.log('Deploying with params:', deployParams);
 
       // Check if any role has additionalWearers
@@ -356,7 +436,8 @@ function DeployerPageContent() {
         state.voting.hybridQuorum,
         state.organization.username || '',
         signer,
-        customRoles  // Only pass custom roles if there are additionalWearers
+        customRoles,  // Only pass custom roles if there are additionalWearers
+        infrastructureAddresses  // Addresses fetched from subgraph
       );
 
       toast({

@@ -118,7 +118,7 @@ export const TaskBoardProvider = ({
     // Perform the Web3 operations asynchronously
     try {
       if (destColumnId === 'inProgress') {
-        addNotification('Claiming task...', 'info');
+        addNotification('Claiming task...', 'loading');
         const result = await taskService.claimTask(taskManagerContractAddress, draggedTask.id);
         if (result.success) {
           addNotification('Task claimed successfully!', 'success');
@@ -130,7 +130,7 @@ export const TaskBoardProvider = ({
         if (!submissionData) {
           throw new Error('Please enter a submission.');
         }
-        addNotification('Submitting task...', 'info');
+        addNotification('Submitting task...', 'loading');
         const ipfsHash = await createTaskMetadata(
           draggedTask.name,
           draggedTask.description,
@@ -151,7 +151,7 @@ export const TaskBoardProvider = ({
           throw new Error(result.error?.userMessage || 'Failed to submit task');
         }
       } else if (destColumnId === 'completed') {
-        addNotification('Completing task...', 'info');
+        addNotification('Completing task...', 'loading');
         const result = await taskService.completeTask(taskManagerContractAddress, draggedTask.id);
         if (result.success) {
           addNotification('Task completed successfully!', 'success');
@@ -213,7 +213,7 @@ export const TaskBoardProvider = ({
     setTaskColumns(newTaskColumns);
 
     try {
-      addNotification('Creating task...', 'info');
+      addNotification('Creating task...', 'loading');
 
       const result = await taskService.createTask(taskManagerContractAddress, {
         payout: kubixPayout,
@@ -281,7 +281,7 @@ export const TaskBoardProvider = ({
     setTaskColumns(newTaskColumns);
 
     try {
-      addNotification('Updating task...', 'info');
+      addNotification('Updating task...', 'loading');
 
       const result = await taskService.editTask(taskManagerContractAddress, updatedTask.id, {
         payout,
@@ -342,7 +342,7 @@ export const TaskBoardProvider = ({
     setTaskColumns(newTaskColumns);
 
     try {
-      addNotification('Deleting task...', 'info');
+      addNotification('Deleting task...', 'loading');
 
       const result = await taskService.cancelTask(taskManagerContractAddress, taskId);
 

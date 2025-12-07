@@ -144,6 +144,16 @@ export const FETCH_ORG_FULL_DATA = gql`
       id
       name
       metadataHash
+      metadata {
+        id
+        description
+        template
+        links {
+          name
+          url
+          index
+        }
+      }
       deployedAt
       topHatId
       roleHatIds
@@ -374,6 +384,151 @@ export const FETCH_EDUCATION_DATA = gql`
           }
         }
       }
+    }
+  }
+`;
+
+// Fetch organization structure data for /org-structure page
+export const FETCH_ORG_STRUCTURE_DATA = gql`
+  query FetchOrgStructureData($orgId: Bytes!) {
+    organization(id: $orgId) {
+      id
+      name
+      metadataHash
+      metadata {
+        id
+        description
+        template
+        links {
+          name
+          url
+        }
+      }
+      deployedAt
+      topHatId
+      roleHatIds
+
+      roles {
+        id
+        hatId
+        hat {
+          hatId
+          parentHatId
+          level
+          defaultEligible
+          mintedCount
+          wearers {
+            wearer
+            wearerUsername
+            eligible
+            standing
+          }
+          vouchConfig {
+            enabled
+            quorum
+            membershipHatId
+          }
+        }
+        permissions {
+          permissionRole
+          contractType
+          allowed
+        }
+        wearers {
+          wearer
+          wearerUsername
+          isActive
+        }
+      }
+
+      hybridVoting {
+        id
+        quorum
+      }
+
+      directDemocracyVoting {
+        id
+        quorumPercentage
+      }
+
+      hatPermissions {
+        hatId
+        permissionRole
+        contractType
+        allowed
+      }
+
+      users(first: 200) {
+        id
+        address
+        username
+        participationTokenBalance
+        membershipStatus
+        currentHatIds
+        totalTasksCompleted
+        totalVotes
+        firstSeenAt
+        lastActiveAt
+      }
+
+      quickJoin {
+        id
+      }
+
+      taskManager {
+        id
+      }
+
+      educationHub {
+        id
+      }
+
+      executorContract {
+        id
+      }
+
+      participationToken {
+        id
+        name
+        symbol
+        totalSupply
+      }
+
+      eligibilityModule {
+        id
+      }
+    }
+  }
+`;
+
+// Fetch infrastructure contract addresses from the subgraph
+// This replaces hardcoded addresses with dynamic lookups
+// Fetches: PoaManager (with infrastructure proxies), OrgRegistry, UniversalAccountRegistry, and all Beacons
+export const FETCH_INFRASTRUCTURE_ADDRESSES = gql`
+  query FetchInfrastructureAddresses {
+    universalAccountRegistries(first: 1) {
+      id
+      totalAccounts
+    }
+    poaManagerContracts(first: 1) {
+      id
+      registry
+      # Infrastructure proxy addresses (the actual contracts to call)
+      orgDeployerProxy
+      orgRegistryProxy
+      paymasterHubProxy
+      globalAccountRegistryProxy
+    }
+    orgRegistryContracts(first: 1) {
+      id
+      totalOrgs
+    }
+    beacons {
+      id
+      typeName
+      beaconAddress
+      currentImplementation
+      version
     }
   }
 `;

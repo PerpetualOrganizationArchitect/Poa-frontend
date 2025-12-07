@@ -176,6 +176,7 @@ export const FETCH_ORG_FULL_DATA = gql`
       }
       taskManager {
         id
+        creatorHatIds
       }
       educationHub {
         id
@@ -279,12 +280,20 @@ export const FETCH_PROJECTS_DATA_NEW = gql`
       id
       taskManager {
         id
+        creatorHatIds
         projects(where: { deleted: false }, first: 50) {
           id
           title
           metadataHash
           cap
           createdAt
+          rolePermissions {
+            hatId
+            canCreate
+            canClaim
+            canReview
+            canAssign
+          }
           tasks(first: 100) {
             id
             taskId

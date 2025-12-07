@@ -38,6 +38,21 @@ const REVERT_PATTERNS = {
   'Invalid task': 'This task does not exist.',
   'Project not found': 'This project does not exist.',
 
+  // TaskManager custom errors (from POP contracts)
+  'NotCreator': 'You don\'t have permission to create projects. Contact your organization admin to get creator permissions.',
+  'NotExecutor': 'Only the executor can perform this action.',
+  'NotFound': 'The requested resource was not found.',
+  'BudgetExceeded': 'This operation would exceed the project budget.',
+  'BadStatus': 'Invalid task status for this operation.',
+  'EmptyTitle': 'Title cannot be empty.',
+  'TitleTooLong': 'Title exceeds maximum length.',
+  'InvalidPayout': 'Invalid payout amount.',
+  'AlreadyApplied': 'You have already applied for this task.',
+  'RequiresApplication': 'This task requires an application before claiming.',
+  'NoApplicationRequired': 'This task does not accept applications.',
+  'NotApplicant': 'You are not an applicant for this task.',
+  'NotClaimer': 'Only the task claimer can perform this action.',
+
   // Token errors
   'Insufficient balance': 'Insufficient token balance for this operation.',
   'Transfer failed': 'Token transfer failed.',
@@ -223,7 +238,8 @@ export function parseError(error, abi = null) {
     if (!userMessage && abi) {
       const decoded = tryDecodeCustomError(error, abi);
       if (decoded) {
-        userMessage = `Contract error: ${decoded.name}`;
+        // Check if we have a user-friendly message for this custom error name
+        userMessage = matchRevertPattern(decoded.name) || `Contract error: ${decoded.name}`;
       }
     }
 

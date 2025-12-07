@@ -34,7 +34,7 @@ const MainLayout = () => {
 
   const { address: account } = useAccount();
   const { task: taskService, executeWithNotification } = useWeb3();
-  const { taskManagerContractAddress } = usePOContext();
+  const { taskManagerContractAddress, roleHatIds } = usePOContext();
   const router = useRouter();
   const isMobile = useBreakpointValue({ base: true, md: false });
   const [showMobileProjectCreator, setShowMobileProjectCreator] = useState(false);
@@ -60,9 +60,25 @@ const MainLayout = () => {
   const handleCreateProject = useCallback(async (projectName) => {
     if (!taskService) return;
 
+    // Get hat IDs for permissions from org's roleHatIds
+    // roleHatIds[0] = Member, roleHatIds[1] = Executive, etc.
+    // Members can claim tasks, non-members (executives+) can create/review/assign
+    const nonMemberHatIds = roleHatIds?.slice(1) || [];
+
+    // All roles (member + non-member) can claim tasks
+    const claimHats = roleHatIds || [];
+    // Non-member roles (executive+) can create, review, and assign
+    const createHats = nonMemberHatIds;
+    const reviewHats = nonMemberHatIds;
+    const assignHats = nonMemberHatIds;
+
     await executeWithNotification(
       () => taskService.createProject(taskManagerContractAddress, {
         name: projectName,
+        createHats,
+        claimHats,
+        reviewHats,
+        assignHats,
       }),
       {
         pendingMessage: 'Creating project...',
@@ -70,7 +86,7 @@ const MainLayout = () => {
         refreshEvent: 'project:created',
       }
     );
-  }, [taskService, executeWithNotification, taskManagerContractAddress]);
+  }, [taskService, executeWithNotification, taskManagerContractAddress, roleHatIds]);
 
   const handleCreateNewProject = () => {
     if (newProjectName.trim()) {
@@ -342,7 +358,7 @@ const MainLayout = () => {
             </Box>
           ) : (
             <Box flex="1" width="100%">
-              <Flex 
+              <Flex
                 flexDirection="column"
                 justifyContent="center"
                 alignItems="center"
@@ -354,13 +370,53 @@ const MainLayout = () => {
               >
                 <Heading size="md" mb={2}>Create Your First Project</Heading>
                 <Text fontSize="md" mb={4}>Get started by creating a project</Text>
-                <Button 
-                  colorScheme="purple" 
-                  onClick={() => setShowMobileProjectCreator(true)}
-                  leftIcon={<AddIcon />}
-                >
-                  Create Project
-                </Button>
+
+                {/* Desktop/Mobile project creator */}
+                {showMobileProjectCreator ? (
+                  <VStack spacing={3} w="100%" maxW="300px">
+                    <Input
+                      placeholder="Project name"
+                      value={newProjectName}
+                      onChange={(e) => setNewProjectName(e.target.value)}
+                      bg="whiteAlpha.100"
+                      color="white"
+                      size="md"
+                      _placeholder={{ color: "whiteAlpha.500" }}
+                      borderColor="whiteAlpha.300"
+                      _hover={{ borderColor: "purple.300" }}
+                      _focus={{ borderColor: "purple.400", boxShadow: "0 0 0 1px rgba(128, 90, 213, 0.6)" }}
+                    />
+                    <HStack spacing={2} w="100%">
+                      <Button
+                        colorScheme="gray"
+                        variant="outline"
+                        onClick={() => {
+                          setShowMobileProjectCreator(false);
+                          setNewProjectName('');
+                        }}
+                        flex="1"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        colorScheme="purple"
+                        onClick={handleCreateNewProject}
+                        isDisabled={!newProjectName.trim()}
+                        flex="1"
+                      >
+                        Create
+                      </Button>
+                    </HStack>
+                  </VStack>
+                ) : (
+                  <Button
+                    colorScheme="purple"
+                    onClick={() => setShowMobileProjectCreator(true)}
+                    leftIcon={<AddIcon />}
+                  >
+                    Create Project
+                  </Button>
+                )}
               </Flex>
             </Box>
           )}

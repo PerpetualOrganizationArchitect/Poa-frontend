@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   Box,
   VStack,
@@ -25,7 +25,9 @@ import DraggableProject from './DraggableProject';
 import TrashBin from './TrashBin';
 import { usePOContext } from '@/context/POContext';
 import { useUserContext } from '@/context/UserContext';
+import { useProjectContext } from '@/context/ProjectContext';
 import { AddIcon, SearchIcon, ChevronLeftIcon } from '@chakra-ui/icons';
+import { PERMISSION_MESSAGES, ROLE_INDICES } from '../../util/permissions';
 
 const glassLayerStyle = {
   position: 'absolute',
@@ -44,26 +46,69 @@ const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onCreatePr
   const [showInput, setShowInput] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showProjects, setShowProjects] = useState(true);
-  const { hasExecRole } = useUserContext();
+  const { userData } = useUserContext();
+  const { projectsData } = useProjectContext();
   const { task: taskService, executeWithNotification } = useWeb3();
   const toast = useToast();
 
-  const { taskManagerContractAddress } = usePOContext();
+  const { taskManagerContractAddress, roleHatIds, creatorHatIds } = usePOContext();
+
+  // Get user's current hat IDs for permission checking
+  const userHatIds = userData?.hatIds || [];
+
+  // Normalize hat IDs for comparison
+  const normalizeHatId = (id) => String(id).trim();
+
+  // Check if user can create projects
+  // Project creation requires one of the creatorHatIds from the TaskManager
+  const canManageProjects = useMemo(() => {
+    if (!userHatIds.length) {
+      console.debug('[ProjectSidebar] No user hat IDs, cannot manage projects');
+      return false;
+    }
+
+    // Normalize user's hat IDs for comparison
+    const normalizedUserHats = userHatIds.map(normalizeHatId);
+
+    // Check if user has one of the creatorHatIds from TaskManager
+    if (creatorHatIds && creatorHatIds.length > 0) {
+      const hasCreatorHat = creatorHatIds.some(creatorHatId =>
+        normalizedUserHats.includes(normalizeHatId(creatorHatId))
+      );
+      if (hasCreatorHat) {
+        console.debug('[ProjectSidebar] User has a creator hat, can manage projects');
+        return true;
+      }
+    }
+
+    // Fallback: Check if user has a non-member role (executive or higher)
+    // This is for backwards compatibility when creatorHatIds aren't indexed yet
+    if (roleHatIds && roleHatIds.length > 1 && (!creatorHatIds || creatorHatIds.length === 0)) {
+      const nonMemberRoles = roleHatIds.slice(ROLE_INDICES.EXECUTIVE);
+      const hasNonMemberRole = nonMemberRoles.some(roleId =>
+        normalizedUserHats.includes(normalizeHatId(roleId))
+      );
+      if (hasNonMemberRole) {
+        console.debug('[ProjectSidebar] User has executive+ role (fallback), can manage projects');
+        return true;
+      }
+    }
+
+    // If no creatorHatIds configured and no projects exist, allow members to create first project
+    if ((!creatorHatIds || creatorHatIds.length === 0) && !projectsData?.length && userHatIds.length > 0) {
+      console.debug('[ProjectSidebar] No creatorHatIds configured and no projects, allowing first project creation');
+      return true;
+    }
+
+    console.debug('[ProjectSidebar] User cannot manage projects - no creator hat found');
+    return false;
+  }, [userHatIds, projectsData, roleHatIds, creatorHatIds]);
 
   const handleCreateProject = () => {
-    if (hasExecRole) {
-      onCreateProject(newProjectName);
-      setNewProjectName('');
-      setShowInput(false);
-    } else {
-      toast({
-        title: 'Permission Required',
-        description: 'You must be an executive to create a project.',
-        status: 'warning',
-        duration: 4000,
-        isClosable: true,
-        position: 'top',
-      });
+    if (newProjectName.trim()) {
+      // Let the smart contract enforce permissions - it will reject if user doesn't have creator hat
+      // The executeWithNotification in MainLayout will show appropriate error if it fails
+      onCreateProject(newProjectName.trim());
       setNewProjectName('');
       setShowInput(false);
     }
@@ -71,10 +116,10 @@ const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onCreatePr
 
   // Delete project using the new service
   const onDeleteProject = useCallback(async (projectId) => {
-    if (!hasExecRole) {
+    if (!canManageProjects) {
       toast({
         title: 'Permission Required',
-        description: 'You must be an executive to delete a project.',
+        description: PERMISSION_MESSAGES.REQUIRE_CREATE,
         status: 'warning',
         duration: 4000,
         isClosable: true,
@@ -93,7 +138,7 @@ const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onCreatePr
         refreshEvent: 'project:deleted',
       }
     );
-  }, [hasExecRole, taskService, executeWithNotification, taskManagerContractAddress, toast]);
+  }, [canManageProjects, taskService, executeWithNotification, taskManagerContractAddress, toast]);
 
   // Filter projects based on search term
   const filteredProjects = searchTerm 

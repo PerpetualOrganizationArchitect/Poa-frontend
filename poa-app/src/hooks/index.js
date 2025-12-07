@@ -21,3 +21,7 @@ export { usePollNavigation } from './usePollNavigation';
 export { useVotingPagination } from './useVotingPagination';
 export { useProposalForm } from './useProposalForm';
 export { useWinnerStatus } from './useWinnerStatus';
+
+// Organization Structure
+export { useOrgStructure } from './useOrgStructure';
+export { useClaimRole } from './useClaimRole';

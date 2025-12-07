@@ -29,8 +29,10 @@ import {
   CheckCircleIcon,
   WarningIcon,
 } from '@chakra-ui/icons';
+import { useQuery } from '@apollo/client';
 import { useDeployer, STEPS, STEP_NAMES } from '../context/DeployerContext';
 import { mapStateToDeploymentParams, createDeploymentConfig } from '../utils/deploymentMapper';
+import { FETCH_INFRASTRUCTURE_ADDRESSES } from '../../../util/queries';
 import OrganizationStep from '../steps/OrganizationStep';
 import RolesStep from '../steps/RolesStep';
 import PermissionsStep from '../steps/PermissionsStep';
@@ -84,6 +86,68 @@ export function DeployerWizard({
   const bgColor = useColorModeValue('gray.50', 'gray.900');
   const cardBg = useColorModeValue('white', 'gray.800');
 
+  // Fetch infrastructure addresses from subgraph
+  const { data: infraData } = useQuery(FETCH_INFRASTRUCTURE_ADDRESSES, {
+    fetchPolicy: 'network-only',
+  });
+
+  // Extract infrastructure addresses from subgraph data
+  const infrastructureAddresses = useMemo(() => {
+    const poaManager = infraData?.poaManagerContracts?.[0];
+
+    // Infrastructure PROXY addresses (from PoaManager - these are what you actually call)
+    const orgDeployerAddress = poaManager?.orgDeployerProxy || null;
+    const orgRegistryProxy = poaManager?.orgRegistryProxy || null;
+    const paymasterHubProxy = poaManager?.paymasterHubProxy || null;
+    const globalAccountRegistryProxy = poaManager?.globalAccountRegistryProxy || null;
+
+    // Use globalAccountRegistryProxy as registryAddress (this is the UniversalAccountRegistry)
+    const registryAddress = globalAccountRegistryProxy;
+    const poaManagerAddress = poaManager?.id || null;
+    const orgRegistryAddress = orgRegistryProxy;
+
+    // Helper to find beacon by type name (beacons are for org-level contract implementations)
+    const findBeacon = (typeName) => {
+      const beacon = infraData?.beacons?.find(b => b.typeName === typeName);
+      return beacon?.beaconAddress || null;
+    };
+
+    // Extract beacon addresses (for reference - not typically called directly)
+    const taskManagerBeacon = findBeacon('TaskManager');
+    const hybridVotingBeacon = findBeacon('HybridVoting');
+    const directDemocracyVotingBeacon = findBeacon('DirectDemocracyVoting');
+    const educationHubBeacon = findBeacon('EducationHub');
+    const participationTokenBeacon = findBeacon('ParticipationToken');
+    const quickJoinBeacon = findBeacon('QuickJoin');
+    const executorBeacon = findBeacon('Executor');
+    const paymentManagerBeacon = findBeacon('PaymentManager');
+    const eligibilityModuleBeacon = findBeacon('EligibilityModule');
+    const toggleModuleBeacon = findBeacon('ToggleModule');
+
+    return {
+      // Core contracts
+      registryAddress,
+      poaManagerAddress,
+      orgRegistryAddress,
+      // Infrastructure proxies (the actual contracts to interact with)
+      orgDeployerAddress,
+      orgRegistryProxy,
+      paymasterHubProxy,
+      globalAccountRegistryProxy,
+      // Beacons (for reference)
+      taskManagerBeacon,
+      hybridVotingBeacon,
+      directDemocracyVotingBeacon,
+      educationHubBeacon,
+      participationTokenBeacon,
+      quickJoinBeacon,
+      executorBeacon,
+      paymentManagerBeacon,
+      eligibilityModuleBeacon,
+      toggleModuleBeacon,
+    };
+  }, [infraData]);
+
   // Current step component
   const CurrentStepComponent = useMemo(() => {
     return STEP_CONFIG[state.currentStep]?.component || OrganizationStep;
@@ -105,8 +169,8 @@ export function DeployerWizard({
     setIsDeploying(true);
 
     try {
-      // Create deployment config
-      const config = createDeploymentConfig(state, deployerAddress);
+      // Create deployment config with fetched infrastructure addresses
+      const config = createDeploymentConfig(state, deployerAddress, infrastructureAddresses);
 
       // Log for debugging
       console.log('Deployment Config:', config);

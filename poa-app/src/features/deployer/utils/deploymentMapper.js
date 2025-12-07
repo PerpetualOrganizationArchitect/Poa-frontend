@@ -9,9 +9,6 @@ import { ethers } from 'ethers';
 import { indicesToBitmap } from './bitmapUtils';
 import { VOTING_STRATEGY } from '../context/deployerReducer';
 
-// Infrastructure addresses on Hoodi testnet
-const UNIVERSAL_REGISTRY_ADDRESS = '0xDdB1DA30020861d92c27aE981ac0f4Fe8BA536F2';
-
 /**
  * Generate organization ID from name
  * @param {string} orgName - Organization name
@@ -110,10 +107,17 @@ export function buildRoleAssignments(permissions) {
  * Main mapper function - converts full deployer state to DeploymentParams
  * @param {Object} state - Deployer state from context
  * @param {string} deployerAddress - Address of the deployer wallet
+ * @param {Object} [options={}] - Additional options
+ * @param {string} [options.registryAddress] - Universal Account Registry address (fetched from subgraph, required)
  * @returns {Object} DeploymentParams for contract
  */
-export function mapStateToDeploymentParams(state, deployerAddress) {
+export function mapStateToDeploymentParams(state, deployerAddress, options = {}) {
   const { organization, roles, permissions, voting, features } = state;
+  const registryAddress = options.registryAddress;
+
+  if (!registryAddress) {
+    throw new Error('Registry address not found. Please ensure the subgraph is synced and returning infrastructure addresses.');
+  }
 
   // Generate orgId
   const orgId = generateOrgId(organization.name);
@@ -130,7 +134,7 @@ export function mapStateToDeploymentParams(state, deployerAddress) {
   return {
     orgId,
     orgName: organization.name,
-    registryAddr: UNIVERSAL_REGISTRY_ADDRESS,
+    registryAddr: registryAddress,
     deployerAddress,
     deployerUsername: organization.username || '',
     autoUpgrade: organization.autoUpgrade,
@@ -147,10 +151,12 @@ export function mapStateToDeploymentParams(state, deployerAddress) {
  * Create the full deployment configuration including metadata
  * @param {Object} state - Deployer state from context
  * @param {string} deployerAddress - Address of the deployer wallet
+ * @param {Object} [options={}] - Additional options
+ * @param {string} [options.registryAddress] - Universal Account Registry address (fetched from subgraph, required)
  * @returns {Object} Full deployment config with metadata
  */
-export function createDeploymentConfig(state, deployerAddress) {
-  const params = mapStateToDeploymentParams(state, deployerAddress);
+export function createDeploymentConfig(state, deployerAddress, options = {}) {
+  const params = mapStateToDeploymentParams(state, deployerAddress, options);
 
   return {
     params,

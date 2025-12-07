@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useLazyQuery } from '@apollo/client';
 import { GET_ORG_BY_NAME, FETCH_ORG_FULL_DATA } from '../util/queries';
 import { useRouter } from 'next/router';
 import { useAccount } from 'wagmi';
 import { formatTokenAmount } from '../util/formatToken';
+import { useRefreshSubscription, RefreshEvent } from './RefreshContext';
 
 const POContext = createContext();
 
@@ -118,14 +119,37 @@ export const POProvider = ({ children }) => {
     });
 
     // Step 2: Fetch full org data using bytes ID
-    const { data: orgData, loading: orgDataLoading, error: orgDataError } = useQuery(FETCH_ORG_FULL_DATA, {
+    const { data: orgData, loading: orgDataLoading, error: orgDataError, refetch: refetchOrgData } = useQuery(FETCH_ORG_FULL_DATA, {
         variables: { orgId: orgId },
         skip: !orgId,
-        fetchPolicy: 'cache-first',
+        fetchPolicy: 'cache-and-network',
         onCompleted: () => {
             console.log('Org data query completed successfully');
         },
     });
+
+    // Handle refresh events from Web3 transactions
+    const handleRefresh = useCallback(() => {
+        console.log('[POContext] Refresh triggered, refetching org data...');
+        if (orgId && refetchOrgData) {
+            // Small delay to allow subgraph to index the new data
+            setTimeout(() => {
+                refetchOrgData();
+            }, 2000);
+        }
+    }, [orgId, refetchOrgData]);
+
+    // Subscribe to relevant events
+    useRefreshSubscription(
+        [
+            RefreshEvent.MEMBER_JOINED,
+            RefreshEvent.MODULE_CREATED,
+            RefreshEvent.MODULE_COMPLETED,
+            RefreshEvent.TASK_COMPLETED, // Updates user stats
+        ],
+        handleRefresh,
+        [handleRefresh]
+    );
 
     // Process org data when available
     useEffect(() => {
@@ -189,11 +213,20 @@ export const POProvider = ({ children }) => {
                 } : null,
             });
 
-            // TODO: Fetch IPFS metadata for description/links using org.metadataHash
-            // For now, use placeholder
-            if (org.metadataHash) {
+            // Use metadata from subgraph (indexed from IPFS)
+            if (org.metadata) {
+                setPODescription(org.metadata.description || 'No description provided');
+                // Transform links array to object format for compatibility
+                if (org.metadata.links && org.metadata.links.length > 0) {
+                    const linksObj = {};
+                    org.metadata.links.forEach(link => {
+                        linksObj[link.name] = link.url;
+                    });
+                    setPOLinks(linksObj);
+                }
+            } else if (org.metadataHash) {
+                // Metadata not yet indexed, show loading state
                 setPODescription('Organization description loading from IPFS...');
-                // In the future, fetch from IPFS: fetchIPFSMetadata(org.metadataHash)
             }
 
             setPoContextLoading(false);

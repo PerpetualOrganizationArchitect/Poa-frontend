@@ -6,6 +6,19 @@
   },
   {
     "type": "function",
+    "name": "VERSION",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "batchRegisterContracts",
     "inputs": [
       {
@@ -72,6 +85,11 @@
             "name": "orgName",
             "type": "string",
             "internalType": "string"
+          },
+          {
+            "name": "metadataHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
           },
           {
             "name": "registryAddr",

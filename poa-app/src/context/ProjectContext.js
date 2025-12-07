@@ -81,6 +81,7 @@ export const ProjectProvider = ({ children }) => {
                     name: projectTitle, // Alias for TaskManager components
                     metadataHash: project.metadataHash,
                     cap: project.cap,
+                    rolePermissions: project.rolePermissions || [],
                     columns: [
                         { id: 'open', title: 'Open', tasks: [] },
                         { id: 'inProgress', title: 'In Progress', tasks: [] },

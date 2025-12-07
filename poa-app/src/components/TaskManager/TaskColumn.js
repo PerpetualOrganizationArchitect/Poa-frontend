@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, use, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { AddIcon } from '@chakra-ui/icons';
 import { Box, Heading, IconButton, Toast, Flex, Text } from '@chakra-ui/react';
 import { useDrop } from 'react-dnd';
@@ -12,6 +12,7 @@ import { useRouter } from 'next/router';
 import { useProjectContext } from '@/context/ProjectContext';
 import { useUserContext } from '@/context/UserContext';
 import { calculatePayout } from '../../util/taskUtils';
+import { userCanCreateTask, userCanReviewTask, PERMISSION_MESSAGES, ROLE_INDICES } from '../../util/permissions';
 
 
 const glassLayerStyle = {
@@ -33,10 +34,71 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   const { moveTask, addTask, editTask } = useTaskBoard();
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
   const { address: account } = useAccount();
-  const { taskManagerContractAddress } = usePOContext();
-  const { taskCount } = useProjectContext();
+  const { taskManagerContractAddress, roleHatIds } = usePOContext();
+  const { taskCount, projectsData } = useProjectContext();
   const toast = useToast();
-  const { graphUsername, hasExecRole: userHasExecRole, hasMemberRole: userHasMemberRole } = useUserContext();
+  const { graphUsername, hasMemberRole: userHasMemberRole, userData } = useUserContext();
+
+  // Get user's current hat IDs for permission checking
+  const userHatIds = userData?.hatIds || [];
+
+  // Normalize hat IDs for comparison
+  const normalizeHatId = (id) => String(id).trim();
+
+  // Find the current project's role permissions
+  const currentProject = useMemo(() => {
+    return projectsData?.find(p => p.name === projectName || p.title === projectName);
+  }, [projectsData, projectName]);
+
+  const projectRolePermissions = currentProject?.rolePermissions || [];
+
+  // Check if user has a non-member role (executive+)
+  const hasNonMemberRole = useMemo(() => {
+    if (!userHatIds.length || !roleHatIds?.length) return false;
+    const normalizedUserHats = userHatIds.map(normalizeHatId);
+    // roleHatIds[0] = member, roleHatIds[1] = executive, etc.
+    if (roleHatIds.length > 1) {
+      const nonMemberRoles = roleHatIds.slice(ROLE_INDICES.EXECUTIVE);
+      return nonMemberRoles.some(roleId =>
+        normalizedUserHats.includes(normalizeHatId(roleId))
+      );
+    }
+    return false;
+  }, [userHatIds, roleHatIds]);
+
+  // Check if user can create tasks in this project
+  // Falls back to checking if user has executive+ role when permissions are not configured
+  const canCreateTask = useMemo(() => {
+    const hasPermission = userCanCreateTask(userHatIds, projectRolePermissions);
+    if (hasPermission) {
+      console.debug('[TaskColumn] User has create permission via project role permissions');
+      return true;
+    }
+    // Fallback: If no project permissions configured, check if user has executive+ role
+    if (!projectRolePermissions?.length && hasNonMemberRole) {
+      console.debug('[TaskColumn] No project permissions configured, falling back to executive role check');
+      return true;
+    }
+    console.debug('[TaskColumn] User cannot create tasks');
+    return false;
+  }, [userHatIds, projectRolePermissions, hasNonMemberRole]);
+
+  // Check if user can review tasks in this project
+  // Falls back to checking if user has executive+ role when permissions are not configured
+  const canReviewTask = useMemo(() => {
+    const hasPermission = userCanReviewTask(userHatIds, projectRolePermissions);
+    if (hasPermission) {
+      console.debug('[TaskColumn] User has review permission via project role permissions');
+      return true;
+    }
+    // Fallback: If no project permissions configured, check if user has executive+ role
+    if (!projectRolePermissions?.length && hasNonMemberRole) {
+      console.debug('[TaskColumn] No project permissions configured, falling back to executive role check');
+      return true;
+    }
+    console.debug('[TaskColumn] User cannot review tasks');
+    return false;
+  }, [userHatIds, projectRolePermissions, hasNonMemberRole]);
 
   // Empty state icons and messages, moved from TaskBoard for consistency
   const emptyStateIcons = {
@@ -53,21 +115,20 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
     'Completed': 'The finish line is waiting for your first completed task. Keep pushing!'
   };
 
-  let hasExecRole = userHasExecRole;
   let hasMemberRole = userHasMemberRole;
   const hasMemberRoleRef = useRef(hasMemberRole);
-  const hasExecRoleRef = useRef(hasExecRole);
+  const canReviewTaskRef = useRef(canReviewTask);
 
   // Expose methods via ref
   useImperativeHandle(ref, () => ({
     handleOpenAddTaskModal: () => {
       if (title === 'Open') {
-        if (hasExecRole) {
+        if (canCreateTask) {
           setIsAddTaskModalOpen(true);
         } else {
           toast({
             title: 'Permission Required',
-            description: 'You must be an executive to add a task.',
+            description: PERMISSION_MESSAGES.REQUIRE_CREATE,
             status: 'warning',
             duration: 4000,
             isClosable: true,
@@ -76,15 +137,15 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
         }
       }
     }
-  }));
+  }), [title, canCreateTask, toast]);
 
   useEffect(() => {
     hasMemberRoleRef.current = hasMemberRole;
   }, [hasMemberRole]);
 
   useEffect(() => {
-    hasExecRoleRef.current = hasExecRole;
-  }, [hasExecRole]);
+    canReviewTaskRef.current = canReviewTask;
+  }, [canReviewTask]);
 
   
   const handleCloseAddTaskModal = () => {
@@ -141,10 +202,10 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
         });
         return;
       }
-      else if (!hasExecRoleRef.current && title === 'Completed') {
+      else if (!canReviewTaskRef.current && title === 'Completed') {
         toast({
           title: 'Permission Required',
-          description: 'You must be an executive to review tasks.',
+          description: PERMISSION_MESSAGES.REQUIRE_REVIEW,
           status: 'warning',
           duration: 4000,
           isClosable: true,
@@ -265,12 +326,12 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
 
   const handleOpenAddTaskModal = () => {
     if (title === 'Open') {
-      if (hasExecRole) {
+      if (canCreateTask) {
         setIsAddTaskModalOpen(true);
       } else {
         toast({
           title: 'Permission Required',
-          description: 'You must be an executive to add a task.',
+          description: PERMISSION_MESSAGES.REQUIRE_CREATE,
           status: 'warning',
           duration: 4000,
           isClosable: true,

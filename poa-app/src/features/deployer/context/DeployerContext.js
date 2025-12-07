@@ -12,12 +12,15 @@ import {
   ACTION_TYPES,
   STEPS,
   STEP_NAMES,
+  ADVANCED_STEP_NAMES,
+  UI_MODES,
   PERMISSION_KEYS,
   PERMISSION_DESCRIPTIONS,
   createDefaultRole,
   createDefaultVotingClass,
   VOTING_STRATEGY,
 } from './deployerReducer';
+import { getTemplateById, getTemplateDefaults, TEMPLATE_LIST } from '../templates';
 
 // Create the context
 const DeployerContext = createContext(null);
@@ -35,6 +38,60 @@ export function DeployerProvider({ children }) {
     nextStep: () => dispatch({ type: ACTION_TYPES.NEXT_STEP }),
     prevStep: () => dispatch({ type: ACTION_TYPES.PREV_STEP }),
     goToStep: (stepIndex) => dispatch({ type: ACTION_TYPES.SET_STEP, payload: stepIndex }),
+
+    // UI Mode & Templates
+    setUIMode: (mode) =>
+      dispatch({ type: ACTION_TYPES.SET_UI_MODE, payload: mode }),
+    selectTemplate: (templateId) =>
+      dispatch({ type: ACTION_TYPES.SELECT_TEMPLATE, payload: templateId }),
+    applyTemplate: (templateId) => {
+      const defaults = getTemplateDefaults(templateId);
+      if (defaults) {
+        dispatch({ type: ACTION_TYPES.APPLY_TEMPLATE, payload: defaults });
+      }
+    },
+    clearTemplate: () =>
+      dispatch({ type: ACTION_TYPES.CLEAR_TEMPLATE }),
+    toggleGuidance: (value) =>
+      dispatch({ type: ACTION_TYPES.TOGGLE_GUIDANCE, payload: value }),
+    expandSection: (section) =>
+      dispatch({ type: ACTION_TYPES.EXPAND_SECTION, payload: section }),
+
+    // Philosophy (Simple Mode)
+    setPhilosophySlider: (value) =>
+      dispatch({ type: ACTION_TYPES.SET_PHILOSOPHY_SLIDER, payload: value }),
+    setPowerBundle: (bundleKey, roleIndices) =>
+      dispatch({ type: ACTION_TYPES.SET_POWER_BUNDLE, payload: { bundleKey, roleIndices } }),
+    togglePowerBundle: (bundleKey, roleIndex) =>
+      dispatch({ type: ACTION_TYPES.TOGGLE_POWER_BUNDLE, payload: { bundleKey, roleIndex } }),
+    applyPhilosophy: (voting, permissions) =>
+      dispatch({ type: ACTION_TYPES.APPLY_PHILOSOPHY, payload: { voting, permissions } }),
+
+    // Template Journey (Discovery Flow)
+    setDiscoveryAnswer: (questionId, answer) =>
+      dispatch({ type: ACTION_TYPES.SET_DISCOVERY_ANSWER, payload: { questionId, answer } }),
+    setSelfAssessmentAnswer: (questionId, answer) =>
+      dispatch({ type: ACTION_TYPES.SET_SELF_ASSESSMENT_ANSWER, payload: { questionId, answer } }),
+    setMatchedVariation: (variationKey) =>
+      dispatch({ type: ACTION_TYPES.SET_MATCHED_VARIATION, payload: variationKey }),
+    confirmVariation: () =>
+      dispatch({ type: ACTION_TYPES.CONFIRM_VARIATION }),
+    setCurrentQuestionIndex: (index) =>
+      dispatch({ type: ACTION_TYPES.SET_CURRENT_QUESTION_INDEX, payload: index }),
+    nextDiscoveryQuestion: () =>
+      dispatch({ type: ACTION_TYPES.NEXT_DISCOVERY_QUESTION }),
+    prevDiscoveryQuestion: () =>
+      dispatch({ type: ACTION_TYPES.PREV_DISCOVERY_QUESTION }),
+    togglePhilosophyView: (value) =>
+      dispatch({ type: ACTION_TYPES.TOGGLE_PHILOSOPHY_VIEW, payload: value }),
+    toggleGrowthPathView: (value) =>
+      dispatch({ type: ACTION_TYPES.TOGGLE_GROWTH_PATH_VIEW, payload: value }),
+    togglePitfallsView: (value) =>
+      dispatch({ type: ACTION_TYPES.TOGGLE_PITFALLS_VIEW, payload: value }),
+    resetTemplateJourney: () =>
+      dispatch({ type: ACTION_TYPES.RESET_TEMPLATE_JOURNEY }),
+    applyVariation: (variation, template) =>
+      dispatch({ type: ACTION_TYPES.APPLY_VARIATION, payload: { variation, template } }),
 
     // Organization
     updateOrganization: (updates) =>
@@ -115,8 +172,42 @@ export function DeployerProvider({ children }) {
 
   // Computed values / selectors
   const selectors = useMemo(() => ({
-    // Get current step name
-    getCurrentStepName: () => STEP_NAMES[state.currentStep],
+    // UI Mode
+    isSimpleMode: () => state.ui.mode === UI_MODES.SIMPLE,
+    isAdvancedMode: () => state.ui.mode === UI_MODES.ADVANCED,
+
+    // Templates
+    getSelectedTemplate: () => state.ui.selectedTemplate ? getTemplateById(state.ui.selectedTemplate) : null,
+    isTemplateApplied: () => state.ui.templateApplied,
+    getTemplateList: () => TEMPLATE_LIST,
+
+    // Template Journey
+    getDiscoveryAnswers: () => state.templateJourney.discoveryAnswers,
+    getSelfAssessmentAnswers: () => state.templateJourney.selfAssessmentAnswers,
+    getMatchedVariation: () => state.templateJourney.matchedVariation,
+    isVariationConfirmed: () => state.templateJourney.variationConfirmed,
+    getCurrentQuestionIndex: () => state.templateJourney.currentQuestionIndex,
+    isShowingPhilosophy: () => state.templateJourney.showPhilosophy,
+    isShowingGrowthPath: () => state.templateJourney.showGrowthPath,
+    isShowingPitfalls: () => state.templateJourney.showPitfalls,
+
+    // Get current step name (respects mode)
+    getCurrentStepName: () => {
+      const names = state.ui.mode === UI_MODES.ADVANCED ? ADVANCED_STEP_NAMES : STEP_NAMES;
+      return names[state.currentStep];
+    },
+
+    // Philosophy
+    getPhilosophyType: () => {
+      const slider = state.philosophy.slider;
+      if (slider <= 30) return 'delegated';
+      if (slider <= 70) return 'hybrid';
+      return 'democratic';
+    },
+
+    // Check if a role has a power bundle
+    hasPowerBundle: (bundleKey, roleIndex) =>
+      (state.philosophy.powerBundles[bundleKey] || []).includes(roleIndex),
 
     // Check if a role has a specific permission
     hasPermission: (permissionKey, roleIndex) =>
@@ -297,11 +388,16 @@ export function useDeployerSelectors() {
 export {
   STEPS,
   STEP_NAMES,
+  ADVANCED_STEP_NAMES,
+  UI_MODES,
   PERMISSION_KEYS,
   PERMISSION_DESCRIPTIONS,
   VOTING_STRATEGY,
   createDefaultRole,
   createDefaultVotingClass,
+  TEMPLATE_LIST,
+  getTemplateById,
+  getTemplateDefaults,
 };
 
 export default DeployerContext;

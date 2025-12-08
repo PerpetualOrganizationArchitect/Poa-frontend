@@ -31,7 +31,7 @@ const VoteCard = ({
   const cardHeight = useBreakpointValue({ base: "180px", sm: "220px" });
   const cardPadding = useBreakpointValue({ base: 3, sm: 4 });
 
-  // Get role names for restricted voting - use first role as default
+// Get role names for restricted voting - use first role as default
   const restrictedRolesText = proposal.isHatRestricted && proposal.restrictedHatIds?.length > 0
     ? getRoleNamesString(proposal.restrictedHatIds)
     : allRoles?.[0]?.name || "All Members";

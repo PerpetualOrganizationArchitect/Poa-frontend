@@ -366,13 +366,13 @@ function DeployerPageContent() {
       console.log('[DEPLOY] Final infoIPFSHash for deployment:', infoIPFSHash);
 
       // Upload role metadata to IPFS for roles with descriptions
+      // Note: Role names are stored on-chain and indexed directly, not via IPFS
       console.log('[DEPLOY] Uploading role metadata to IPFS...');
       const rolesWithMetadata = await Promise.all(
         rolesWithResolvedAddresses.map(async (role) => {
           // Only upload metadata if role has a description
           if (role.description && role.description.trim()) {
             const roleMetadata = {
-              name: role.name,
               description: role.description,
               image: role.image || '',
             };

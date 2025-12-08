@@ -4,11 +4,15 @@ import { LockIcon } from "@chakra-ui/icons";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { usePOContext } from "@/context/POContext";
 
-// Helper to map hat IDs to role indices
-// Role names would need to be fetched from org IPFS metadata for proper labels
-const getRestrictedRoleNames = (restrictedHatIds, roleHatIds) => {
+// Helper to map hat IDs to role names
+const getRestrictedRoleNames = (restrictedHatIds, roleHatIds, roleNames = {}) => {
     if (!restrictedHatIds?.length || !roleHatIds?.length) return [];
     return restrictedHatIds.map(hatId => {
+        // First try to get name from roleNames map
+        const name = roleNames[hatId] || roleNames[String(hatId)];
+        if (name) return name;
+
+        // Fallback to "Role N" based on index
         const roleIndex = roleHatIds?.findIndex(rh => rh === hatId || String(rh) === String(hatId));
         if (roleIndex >= 0) return `Role ${roleIndex + 1}`;
         return null;
@@ -28,10 +32,10 @@ const glassLayerStyle = {
 };
 
 const HistoryCard = ({ proposal, onPollClick }) => {
-  const { roleHatIds } = usePOContext();
+  const { roleHatIds, roleNames } = usePOContext();
 
   // Get role names for restricted voting
-  const restrictedRoles = getRestrictedRoleNames(proposal.restrictedHatIds, roleHatIds);
+  const restrictedRoles = getRestrictedRoleNames(proposal.restrictedHatIds, roleHatIds, roleNames);
 
   const predefinedColors = [
     "#9B59B6", // Purple

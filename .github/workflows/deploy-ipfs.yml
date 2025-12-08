@@ -21,16 +21,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: ${{ env.WORKING_DIRECTORY }}/package-lock.json
+          cache: 'yarn'
+          cache-dependency-path: ${{ env.WORKING_DIRECTORY }}/yarn.lock
 
       - name: Install dependencies
         working-directory: ${{ env.WORKING_DIRECTORY }}
-        run: npm ci
+        run: yarn install --frozen-lockfile
 
       - name: Build static site
         working-directory: ${{ env.WORKING_DIRECTORY }}
-        run: npm run build
+        run: yarn build
 
       - name: Upload to Pinata
         id: pinata
@@ -39,7 +39,7 @@ jobs:
           PINATA_JWT: ${{ secrets.PINATA_JWT }}
           PINATA_GATEWAY: ${{ secrets.PINATA_GATEWAY }}
         run: |
-          npm install pinata
+          yarn add pinata
 
           node << 'EOF'
           const { PinataSDK } = require("pinata");

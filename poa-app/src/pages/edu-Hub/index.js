@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Box,
   Spinner,
@@ -35,13 +35,23 @@ import { usePOContext } from '@/context/POContext';
 import { useWeb3 } from '@/hooks';
 import { useUserContext } from '@/context/UserContext';
 import QuizModal from '@/components/eduHub/QuizModal';
+import { useRouter } from 'next/router';
 
 const EducationHub = () => {
-  const { poContextLoading, educationModules, educationHubAddress } = usePOContext();
+  const { poContextLoading, educationModules, educationHubAddress, educationHubEnabled } = usePOContext();
   const { completedModules, hasExecRole, userDataLoading } = useUserContext();
   const { education, executeWithNotification } = useWeb3();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const toast = useToast();
+  const router = useRouter();
+  const { userDAO } = router.query;
+
+  // Redirect to dashboard if education hub is disabled for this organization
+  useEffect(() => {
+    if (!poContextLoading && !educationHubEnabled && userDAO) {
+      router.replace(`/dashboard/?userDAO=${userDAO}`);
+    }
+  }, [poContextLoading, educationHubEnabled, userDAO, router]);
 
   // Form state
   const [moduleTitle, setModuleTitle] = useState('');

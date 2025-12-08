@@ -107,7 +107,7 @@ jobs:
         run: |
           # Get existing _dnslink record ID
           RECORD_ID=$(curl -s -X GET \
-            "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records?name=_dnslink.poa.community&type=TXT" \
+            "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records?name=_dnslink.poa.earth&type=TXT" \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             -H "Content-Type: application/json" | jq -r '.result[0].id // empty')
 
@@ -119,7 +119,7 @@ jobs:
               "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records/${RECORD_ID}" \
               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
               -H "Content-Type: application/json" \
-              --data "{\"type\":\"TXT\",\"name\":\"_dnslink.poa.community\",\"content\":\"${DNSLINK_VALUE}\",\"ttl\":300}"
+              --data "{\"type\":\"TXT\",\"name\":\"_dnslink.poa.earth\",\"content\":\"${DNSLINK_VALUE}\",\"ttl\":300}"
             echo "Updated existing DNSLink record"
           else
             # Create new record
@@ -127,7 +127,7 @@ jobs:
               "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records" \
               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
               -H "Content-Type: application/json" \
-              --data "{\"type\":\"TXT\",\"name\":\"_dnslink.poa.community\",\"content\":\"${DNSLINK_VALUE}\",\"ttl\":300}"
+              --data "{\"type\":\"TXT\",\"name\":\"_dnslink.poa.earth\",\"content\":\"${DNSLINK_VALUE}\",\"ttl\":300}"
             echo "Created new DNSLink record"
           fi
 
@@ -141,4 +141,4 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Preview URLs:**" >> $GITHUB_STEP_SUMMARY
           echo "- Gateway: https://${{ secrets.PINATA_GATEWAY }}/ipfs/${{ steps.pinata.outputs.ipfs_hash }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Production: https://poa.community" >> $GITHUB_STEP_SUMMARY
+          echo "- Production: https://poa.earth" >> $GITHUB_STEP_SUMMARY

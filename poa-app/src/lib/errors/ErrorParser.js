@@ -30,13 +30,33 @@ const REVERT_PATTERNS = {
   'Voting ended': 'Voting has ended for this proposal.',
   'Invalid vote weight': 'Vote weights must sum to 100.',
 
-  // Task errors
+  // Task errors (legacy string patterns)
   'Task already claimed': 'This task has already been claimed.',
   'Task not claimed': 'This task has not been claimed yet.',
   'Not task claimer': 'Only the task claimer can perform this action.',
   'Task completed': 'This task has already been completed.',
   'Invalid task': 'This task does not exist.',
   'Project not found': 'This project does not exist.',
+
+  // TaskManager custom errors (POP contracts)
+  'BadStatus': 'Task is not in the correct state for this action.',
+  'NotClaimer': 'Only the person who claimed this task can perform this action.',
+  'NotFound': 'This task does not exist.',
+  'NotCreator': 'Only the task creator can perform this action.',
+  'NotExecutor': 'Unauthorized: caller is not the executor.',
+  'AlreadyApplied': 'You have already applied for this task.',
+  'NoApplicationRequired': 'This task does not require an application.',
+  'NotApplicant': 'You have not applied for this task.',
+  'RequiresApplication': 'This task requires an application before claiming.',
+  'BudgetExceeded': 'Project budget has been exceeded.',
+  'EmptyTitle': 'Task title cannot be empty.',
+  'TitleTooLong': 'Task title is too long.',
+  'InvalidPayout': 'Invalid payout amount.',
+  'InvalidString': 'Invalid string input.',
+  'ZeroAddress': 'Address cannot be zero.',
+  'CapBelowCommitted': 'Cap cannot be lower than committed amount.',
+  'SpentUnderflow': 'Spent amount underflow.',
+  'InvalidIndex': 'Invalid index.',
 
   // Token errors
   'Insufficient balance': 'Insufficient token balance for this operation.',

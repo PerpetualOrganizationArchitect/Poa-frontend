@@ -10,13 +10,14 @@ import { ethers } from 'ethers';
  */
 export const GAS_CONFIG = {
   // Default gas price in gwei (fallback if dynamic pricing fails)
-  defaultGasPriceGwei: '1',
+  // Increased to 3 gwei for faster transaction confirmation
+  defaultGasPriceGwei: '3',
 
-  // Gas limit multiplier as percentage (127 = 27% buffer)
-  gasLimitMultiplier: 127,
+  // Gas limit multiplier as percentage (130 = 30% buffer for faster inclusion)
+  gasLimitMultiplier: 130,
 
-  // Higher multiplier for delete/cancel operations (133 = 33% buffer)
-  deleteGasMultiplier: 133,
+  // Higher multiplier for delete/cancel operations (140 = 40% buffer)
+  deleteGasMultiplier: 140,
 
   // Divisor for percentage calculation
   gasLimitDivisor: 100,

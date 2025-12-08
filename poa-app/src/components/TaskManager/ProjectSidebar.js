@@ -39,9 +39,7 @@ const glassLayerStyle = {
   boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
 };
 
-const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onCreateProject, onToggleSidebar }) => {
-  const [newProjectName, setNewProjectName] = useState('');
-  const [showInput, setShowInput] = useState(false);
+const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onOpenCreateModal, onToggleSidebar }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showProjects, setShowProjects] = useState(true);
   const { hasExecRole } = useUserContext();
@@ -52,9 +50,7 @@ const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onCreatePr
 
   const handleCreateProject = () => {
     if (hasExecRole) {
-      onCreateProject(newProjectName);
-      setNewProjectName('');
-      setShowInput(false);
+      onOpenCreateModal();
     } else {
       toast({
         title: 'Permission Required',
@@ -64,8 +60,6 @@ const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onCreatePr
         isClosable: true,
         position: 'top',
       });
-      setNewProjectName('');
-      setShowInput(false);
     }
   };
 
@@ -229,37 +223,20 @@ const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onCreatePr
       
       {/* Create project section */}
       <Flex direction="column" p={3} bg="whiteAlpha.050">
-        {showInput && (
-          <FormControl>
-            <Input
-              color="white"
-              placeholder="New project name"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              bg="whiteAlpha.100"
-              border="1px solid rgba(255, 255, 255, 0.15)"
-              borderRadius="md"
-              _hover={{ borderColor: "blue.300" }}
-              _focus={{ borderColor: "blue.400", boxShadow: "0 0 0 1px rgba(66, 153, 225, 0.6)" }}
-              mb={2}
-            />
-          </FormControl>
-        )}
         <Button
-          onClick={showInput ? handleCreateProject : () => setShowInput(true)}
-          disabled={showInput && !newProjectName.trim()}
+          onClick={handleCreateProject}
           width="100%"
           size="md"
           colorScheme="blue"
           variant="solid"
-          _hover={{ 
+          _hover={{
             transform: "translateY(-2px)",
             boxShadow: "0 4px 12px rgba(45, 134, 255, 0.4)"
           }}
           leftIcon={<AddIcon />}
           transition="all 0.2s ease"
         >
-          {showInput ? 'Save Project' : 'Create Project'}
+          Create Project
         </Button>
       </Flex>
     </Box>

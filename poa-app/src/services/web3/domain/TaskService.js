@@ -17,6 +17,7 @@ import {
   requireString,
   requireValidPayout,
 } from '../utils/validation';
+import { getTokenByAddress } from '../../../util/tokens';
 
 /**
  * TaskService - Project and task management
@@ -71,6 +72,23 @@ export class TaskService {
 
     const titleBytes = stringToBytes(name);
     const metaHash = metadataHash ? stringToBytes32(metadataHash) : ethers.constants.HashZero;
+
+    // Debug logging
+    console.log('=== createProject DEBUG ===');
+    console.log('Contract address:', contractAddress);
+    console.log('Name:', name);
+    console.log('Title bytes:', titleBytes);
+    console.log('Title bytes length:', titleBytes?.length || 'undefined');
+    console.log('Metadata hash:', metaHash);
+    console.log('Cap (raw):', cap);
+    console.log('Cap (toString):', cap?.toString?.() || cap);
+    console.log('Cap type:', typeof cap);
+    console.log('Managers:', managers);
+    console.log('CreateHats:', createHats);
+    console.log('ClaimHats:', claimHats);
+    console.log('ReviewHats:', reviewHats);
+    console.log('AssignHats:', assignHats);
+    console.log('=== END DEBUG ===');
 
     return this.txManager.execute(
       contract,
@@ -160,10 +178,37 @@ export class TaskService {
     const titleBytes = stringToBytes(name);
     const pid = parseProjectId(projectId);
 
+    // Convert payout to wei (18 decimals for participation token)
+    const payoutWei = ethers.utils.parseUnits(payout.toString(), 18);
+
+    // Convert bounty payout to wei based on token decimals
+    let bountyPayoutWei = 0;
+    if (bountyPayout && Number(bountyPayout) > 0 && bountyToken !== ethers.constants.AddressZero) {
+      const tokenInfo = getTokenByAddress(bountyToken);
+      bountyPayoutWei = ethers.utils.parseUnits(bountyPayout.toString(), tokenInfo.decimals);
+    }
+
+    // Debug logging
+    console.log('=== createTask DEBUG ===');
+    console.log('Contract address:', contractAddress);
+    console.log('Task name:', name);
+    console.log('Title bytes:', titleBytes);
+    console.log('Title bytes length:', titleBytes?.length || 'undefined');
+    console.log('Metadata hash:', metadataHash);
+    console.log('Project ID (raw):', projectId);
+    console.log('Project ID (parsed):', pid);
+    console.log('Payout (raw):', payout);
+    console.log('Payout (wei):', payoutWei?.toString?.() || payoutWei);
+    console.log('Bounty token:', bountyToken);
+    console.log('Bounty payout (raw):', bountyPayout);
+    console.log('Bounty payout (wei):', bountyPayoutWei?.toString?.() || bountyPayoutWei);
+    console.log('Requires application:', requiresApplication);
+    console.log('=== END createTask DEBUG ===');
+
     return this.txManager.execute(
       contract,
       'createTask',
-      [payout, titleBytes, metadataHash, pid, bountyToken, bountyPayout, requiresApplication],
+      [payoutWei, titleBytes, metadataHash, pid, bountyToken, bountyPayoutWei, requiresApplication],
       options
     );
   }
@@ -190,16 +235,24 @@ export class TaskService {
    * Submit a task for review
    * @param {string} contractAddress - TaskManager contract address
    * @param {string|number} taskId - Task ID
-   * @param {string} submissionData - Submission data/notes
+   * @param {string} submissionCid - IPFS CID of submission metadata
    * @param {Object} [options={}] - Transaction options
    * @returns {Promise<TransactionResult>}
    */
-  async submitTask(contractAddress, taskId, submissionData, options = {}) {
+  async submitTask(contractAddress, taskId, submissionCid, options = {}) {
     requireAddress(contractAddress, 'TaskManager contract address');
 
     const contract = this.factory.createWritable(contractAddress, TaskManagerABI);
     const parsedTaskId = parseTaskId(taskId);
-    const submissionHash = stringToBytes32(submissionData);
+    // submissionCid is an IPFS CID (Qm...), convert to bytes32 properly
+    const submissionHash = ipfsCidToBytes32(submissionCid);
+
+    console.log('=== submitTask DEBUG ===');
+    console.log('Task ID (raw):', taskId);
+    console.log('Task ID (parsed):', parsedTaskId);
+    console.log('Submission CID:', submissionCid);
+    console.log('Submission hash (bytes32):', submissionHash);
+    console.log('=== END submitTask DEBUG ===');
 
     return this.txManager.execute(
       contract,
@@ -256,10 +309,20 @@ export class TaskService {
     const titleBytes = stringToBytes(name);
     const metaHash = metadataHash ? stringToBytes32(metadataHash) : ethers.constants.HashZero;
 
+    // Convert payout to wei (18 decimals for participation token)
+    const payoutWei = ethers.utils.parseUnits(payout.toString(), 18);
+
+    // Convert bounty payout to wei based on token decimals
+    let bountyPayoutWei = 0;
+    if (bountyPayout && Number(bountyPayout) > 0 && bountyToken !== ethers.constants.AddressZero) {
+      const tokenInfo = getTokenByAddress(bountyToken);
+      bountyPayoutWei = ethers.utils.parseUnits(bountyPayout.toString(), tokenInfo.decimals);
+    }
+
     return this.txManager.execute(
       contract,
       'updateTask',
-      [parsedTaskId, payout, titleBytes, metaHash, bountyToken, bountyPayout],
+      [parsedTaskId, payoutWei, titleBytes, metaHash, bountyToken, bountyPayoutWei],
       options
     );
   }
@@ -284,6 +347,8 @@ export class TaskService {
       location = '',
       difficulty = 'medium',
       estHours = 0,
+      bountyToken = ethers.constants.AddressZero,
+      bountyPayout = 0,
     } = taskData;
 
     // Upload new metadata to IPFS if service available
@@ -305,10 +370,20 @@ export class TaskService {
     const parsedTaskId = parseTaskId(taskId);
     const titleBytes = stringToBytes(name);
 
+    // Convert payout to wei (18 decimals for participation token)
+    const payoutWei = ethers.utils.parseUnits(payout.toString(), 18);
+
+    // Convert bounty payout to wei based on token decimals
+    let bountyPayoutWei = 0;
+    if (bountyPayout && Number(bountyPayout) > 0 && bountyToken !== ethers.constants.AddressZero) {
+      const tokenInfo = getTokenByAddress(bountyToken);
+      bountyPayoutWei = ethers.utils.parseUnits(bountyPayout.toString(), tokenInfo.decimals);
+    }
+
     return this.txManager.execute(
       contract,
       'updateTask',
-      [parsedTaskId, payout, titleBytes, metadataHash, ethers.constants.AddressZero, 0],
+      [parsedTaskId, payoutWei, titleBytes, metadataHash, bountyToken, bountyPayoutWei],
       options
     );
   }
@@ -331,6 +406,154 @@ export class TaskService {
       'cancelTask',
       [parsedTaskId],
       { ...options, isDelete: true }
+    );
+  }
+
+  // ============================================
+  // Application Functions
+  // ============================================
+
+  /**
+   * Apply for a task that requires application
+   * @param {string} contractAddress - TaskManager contract address
+   * @param {string|number} taskId - Task ID
+   * @param {Object} applicationData - Application data to upload to IPFS
+   * @param {Object} [options={}] - Transaction options
+   * @returns {Promise<TransactionResult>}
+   */
+  async applyForTask(contractAddress, taskId, applicationData, options = {}) {
+    requireAddress(contractAddress, 'TaskManager contract address');
+
+    // Upload application to IPFS
+    let applicationHash = ethers.constants.HashZero;
+    if (this.ipfs && applicationData) {
+      const ipfsResult = await this.ipfs.addToIpfs(JSON.stringify(applicationData));
+      applicationHash = ipfsCidToBytes32(ipfsResult.path);
+    }
+
+    const contract = this.factory.createWritable(contractAddress, TaskManagerABI);
+    const parsedTaskId = parseTaskId(taskId);
+
+    return this.txManager.execute(
+      contract,
+      'applyForTask',
+      [parsedTaskId, applicationHash],
+      options
+    );
+  }
+
+  /**
+   * Approve an application for a task
+   * @param {string} contractAddress - TaskManager contract address
+   * @param {string|number} taskId - Task ID
+   * @param {string} applicantAddress - Address of applicant to approve
+   * @param {Object} [options={}] - Transaction options
+   * @returns {Promise<TransactionResult>}
+   */
+  async approveApplication(contractAddress, taskId, applicantAddress, options = {}) {
+    requireAddress(contractAddress, 'TaskManager contract address');
+    requireAddress(applicantAddress, 'Applicant address');
+
+    const contract = this.factory.createWritable(contractAddress, TaskManagerABI);
+    const parsedTaskId = parseTaskId(taskId);
+
+    return this.txManager.execute(
+      contract,
+      'approveApplication',
+      [parsedTaskId, applicantAddress],
+      options
+    );
+  }
+
+  // ============================================
+  // Assignment Functions
+  // ============================================
+
+  /**
+   * Assign a task to a specific user
+   * @param {string} contractAddress - TaskManager contract address
+   * @param {string|number} taskId - Task ID
+   * @param {string} assigneeAddress - Address to assign the task to
+   * @param {Object} [options={}] - Transaction options
+   * @returns {Promise<TransactionResult>}
+   */
+  async assignTask(contractAddress, taskId, assigneeAddress, options = {}) {
+    requireAddress(contractAddress, 'TaskManager contract address');
+    requireAddress(assigneeAddress, 'Assignee address');
+
+    const contract = this.factory.createWritable(contractAddress, TaskManagerABI);
+    const parsedTaskId = parseTaskId(taskId);
+
+    return this.txManager.execute(
+      contract,
+      'assignTask',
+      [parsedTaskId, assigneeAddress],
+      options
+    );
+  }
+
+  /**
+   * Create and immediately assign a task to a specific user
+   * @param {string} contractAddress - TaskManager contract address
+   * @param {Object} taskData - Task data (same as createTask)
+   * @param {string} assigneeAddress - Address to assign the task to
+   * @param {Object} [options={}] - Transaction options
+   * @returns {Promise<TransactionResult>}
+   */
+  async createAndAssignTask(contractAddress, taskData, assigneeAddress, options = {}) {
+    requireAddress(contractAddress, 'TaskManager contract address');
+    requireAddress(assigneeAddress, 'Assignee address');
+    requireString(taskData.name, 'Task name');
+    requireValidPayout(taskData.payout);
+
+    const {
+      payout,
+      name,
+      description = '',
+      projectId,
+      location = '',
+      difficulty = 'medium',
+      estHours = 0,
+      bountyToken = ethers.constants.AddressZero,
+      bountyPayout = 0,
+      requiresApplication = false,
+    } = taskData;
+
+    // Upload metadata to IPFS if service available
+    let metadataHash = ethers.constants.HashZero;
+    if (this.ipfs) {
+      const ipfsData = {
+        name,
+        description,
+        location,
+        difficulty,
+        estHours,
+        submission: '',
+      };
+      const ipfsResult = await this.ipfs.addToIpfs(JSON.stringify(ipfsData));
+      metadataHash = ipfsCidToBytes32(ipfsResult.path);
+    }
+
+    const contract = this.factory.createWritable(contractAddress, TaskManagerABI);
+
+    const titleBytes = stringToBytes(name);
+    const pid = parseProjectId(projectId);
+
+    // Convert payout to wei (18 decimals for participation token)
+    const payoutWei = ethers.utils.parseUnits(payout.toString(), 18);
+
+    // Convert bounty payout to wei based on token decimals
+    let bountyPayoutWei = 0;
+    if (bountyPayout && Number(bountyPayout) > 0 && bountyToken !== ethers.constants.AddressZero) {
+      const tokenInfo = getTokenByAddress(bountyToken);
+      bountyPayoutWei = ethers.utils.parseUnits(bountyPayout.toString(), tokenInfo.decimals);
+    }
+
+    return this.txManager.execute(
+      contract,
+      'createAndAssignTask',
+      [payoutWei, titleBytes, metadataHash, pid, assigneeAddress, bountyToken, bountyPayoutWei, requiresApplication],
+      options
     );
   }
 }

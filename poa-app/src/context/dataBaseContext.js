@@ -24,7 +24,22 @@ export const DataBaseProvider = ({ children }) => {
         if (typeof projectsData === 'object' && projectsData !== null && Object.keys(projectsData).length !== 0) {
             console.log("projectsData", projectsData);
             setProjects(projectsData);
-            setSelectedProject(projectsData[0]);
+
+            // Only set selectedProject if:
+            // 1. No project is currently selected, OR
+            // 2. The currently selected project is no longer in the list
+            // This preserves the user's selection when data is refreshed
+            setSelectedProject(prev => {
+                // If we have a selection and it still exists in the new data, update it with fresh data
+                if (prev && prev.id) {
+                    const updatedProject = projectsData.find(p => p.id === prev.id);
+                    if (updatedProject) {
+                        return updatedProject;
+                    }
+                }
+                // Otherwise default to first project
+                return projectsData[0];
+            });
         }
     },[projectsData])
 

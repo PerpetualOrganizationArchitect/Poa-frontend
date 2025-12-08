@@ -135,6 +135,20 @@ export class TransactionManager {
       return TransactionResult.success(receipt);
 
     } catch (error) {
+      // Enhanced error logging for debugging
+      console.error('=== TRANSACTION ERROR DEBUG ===');
+      console.error('Method:', method);
+      console.error('Args:', args);
+      console.error('Raw error:', error);
+      console.error('Error message:', error.message);
+      console.error('Error reason:', error.reason);
+      console.error('Error code:', error.code);
+      console.error('Error data:', error.data);
+      console.error('Nested error:', error.error);
+      console.error('Nested error data:', error.error?.data);
+      console.error('Nested error message:', error.error?.message);
+      console.error('=== END TRANSACTION ERROR DEBUG ===');
+
       const parsedError = parseError(error, abi);
 
       // State: Error
@@ -143,6 +157,8 @@ export class TransactionManager {
       });
 
       console.error(`Transaction failed: ${method}`, parsedError.technicalMessage);
+      console.error('Parsed error category:', parsedError.category);
+      console.error('Parsed error userMessage:', parsedError.userMessage);
 
       return TransactionResult.failure(parsedError);
     }

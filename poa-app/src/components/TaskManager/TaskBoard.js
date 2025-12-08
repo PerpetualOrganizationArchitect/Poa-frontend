@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { VStack, Box, useBreakpointValue } from '@chakra-ui/react';
+import { VStack, Box } from '@chakra-ui/react';
 import { useTaskBoard } from '../../context/TaskBoardContext';
 import TaskBoardMobile from './TaskBoardMobile';
 import TaskBoardDesktop from './TaskBoardDesktop';
@@ -17,10 +17,12 @@ const TaskBoard = ({
   hideTitleBar,
   sidebarVisible,
   toggleSidebar,
-  isDesktop,
+  isDesktop = true, // Default to desktop to prevent flash
 }) => {
   const { taskColumns, setTaskColumns } = useTaskBoard();
-  const isMobile = useBreakpointValue({ base: true, md: false });
+  // Use the stable isDesktop prop from MainLayout instead of our own breakpoint detection
+  // This prevents flash when component remounts during project switches
+  const isMobile = !isDesktop;
   const mobileRef = useRef(null);
   const desktopRef = useRef(null);
 

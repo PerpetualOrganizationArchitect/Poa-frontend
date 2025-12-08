@@ -1,10 +1,12 @@
-import React, { useState, useCallback } from 'react';
-import { Flex, Box, Heading, useBreakpointValue, Select, Text, Button, VStack, HStack, IconButton, useDisclosure, Input, FormControl, FormLabel, Tooltip, Badge } from '@chakra-ui/react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { Flex, Box, Heading, useMediaQuery, Select, Text, Button, VStack, HStack, IconButton, useDisclosure, Input, FormControl, FormLabel, Tooltip, Badge } from '@chakra-ui/react';
 import { AddIcon, InfoIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon } from '@chakra-ui/icons';
 import ProjectSidebar from './ProjectSidebar';
 import TaskBoard from './TaskBoard';
+import CreateProjectModal from './CreateProjectModal';
 import { TaskBoardProvider } from '../../context/TaskBoardContext';
 import { useDataBaseContext} from '../../context/dataBaseContext';
+import { useIPFScontext } from '../../context/ipfsContext';
 import { useAccount } from 'wagmi';
 import { useWeb3 } from '../../hooks';
 import { usePOContext } from '@/context/POContext';
@@ -35,11 +37,37 @@ const MainLayout = () => {
   const { address: account } = useAccount();
   const { task: taskService, executeWithNotification } = useWeb3();
   const { taskManagerContractAddress } = usePOContext();
+  const { addToIpfs } = useIPFScontext();
   const router = useRouter();
-  const isMobile = useBreakpointValue({ base: true, md: false });
+
+  // Use useMediaQuery for more stable breakpoint detection
+  // Returns [isMatch] where isMatch is false by default on SSR to prevent flash
+  // Chakra's md breakpoint is 48em (768px)
+  const [isMobileQuery] = useMediaQuery('(max-width: 47.99em)', { ssr: false, fallback: false });
+
+  // Use stable state to prevent flash during re-renders
+  // Only update when genuinely changing (prevents flicker from brief query glitches)
+  const [isMobile, setIsMobile] = useState(false);
+  const isInitializedRef = useRef(false);
+
+  useEffect(() => {
+    // On first load, set the value
+    if (!isInitializedRef.current) {
+      setIsMobile(isMobileQuery);
+      isInitializedRef.current = true;
+    } else if (isMobile !== isMobileQuery) {
+      // Only update if genuinely different (debounce rapid changes)
+      const timeoutId = setTimeout(() => {
+        setIsMobile(isMobileQuery);
+      }, 50); // Small delay to filter out render glitches
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isMobileQuery, isMobile]);
+
   const [showMobileProjectCreator, setShowMobileProjectCreator] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const { isOpen: isProjectModalOpen, onOpen: onProjectModalOpen, onClose: onProjectModalClose } = useDisclosure();
   const [showHelp, setShowHelp] = useState(true);
 
   // State to track sidebar visibility
@@ -57,20 +85,56 @@ const MainLayout = () => {
   };
 
   // Create project using the new service
-  const handleCreateProject = useCallback(async (projectName) => {
+  const handleCreateProject = useCallback(async (projectData) => {
     if (!taskService) return;
 
+    console.log('=== handleCreateProject DEBUG ===');
+    console.log('Raw projectData:', projectData);
+    console.log('projectData type:', typeof projectData);
+
+    // Handle both simple string (for backwards compat) and full object
+    const isSimpleCreate = typeof projectData === 'string';
+    const projectName = isSimpleCreate ? projectData : projectData.name;
+
+    console.log('isSimpleCreate:', isSimpleCreate);
+    console.log('projectName:', projectName);
+
+    // Upload description to IPFS if provided
+    let metadataHash = '';
+    if (!isSimpleCreate && projectData.description && addToIpfs) {
+      try {
+        const result = await addToIpfs(JSON.stringify({ description: projectData.description }));
+        metadataHash = result.path;
+        console.log('IPFS metadataHash:', metadataHash);
+      } catch (error) {
+        console.warn('Failed to upload project metadata to IPFS:', error);
+      }
+    }
+
+    const createProjectData = {
+      name: projectName,
+      metadataHash,
+      cap: isSimpleCreate ? 0 : (projectData.cap || 0),
+      managers: isSimpleCreate ? [] : (projectData.managers || []),
+      createHats: isSimpleCreate ? [] : (projectData.createHats || []),
+      claimHats: isSimpleCreate ? [] : (projectData.claimHats || []),
+      reviewHats: isSimpleCreate ? [] : (projectData.reviewHats || []),
+      assignHats: isSimpleCreate ? [] : (projectData.assignHats || []),
+    };
+
+    console.log('Final createProjectData:', createProjectData);
+    console.log('taskManagerContractAddress:', taskManagerContractAddress);
+    console.log('=== END handleCreateProject DEBUG ===');
+
     await executeWithNotification(
-      () => taskService.createProject(taskManagerContractAddress, {
-        name: projectName,
-      }),
+      () => taskService.createProject(taskManagerContractAddress, createProjectData),
       {
         pendingMessage: 'Creating project...',
         successMessage: 'Project created successfully!',
         refreshEvent: 'project:created',
       }
     );
-  }, [taskService, executeWithNotification, taskManagerContractAddress]);
+  }, [taskService, executeWithNotification, taskManagerContractAddress, addToIpfs]);
 
   const handleCreateNewProject = () => {
     if (newProjectName.trim()) {
@@ -279,7 +343,7 @@ const MainLayout = () => {
               projects={projects}
               selectedProject={selectedProject}
               onSelectProject={handleSelectProject}
-              onCreateProject={handleCreateProject}
+              onOpenCreateModal={onProjectModalOpen}
               onToggleSidebar={toggleSidebar}
             />
           </Box>
@@ -342,7 +406,7 @@ const MainLayout = () => {
             </Box>
           ) : (
             <Box flex="1" width="100%">
-              <Flex 
+              <Flex
                 flexDirection="column"
                 justifyContent="center"
                 alignItems="center"
@@ -354,9 +418,9 @@ const MainLayout = () => {
               >
                 <Heading size="md" mb={2}>Create Your First Project</Heading>
                 <Text fontSize="md" mb={4}>Get started by creating a project</Text>
-                <Button 
-                  colorScheme="purple" 
-                  onClick={() => setShowMobileProjectCreator(true)}
+                <Button
+                  colorScheme="purple"
+                  onClick={onProjectModalOpen}
                   leftIcon={<AddIcon />}
                 >
                   Create Project
@@ -366,6 +430,13 @@ const MainLayout = () => {
           )}
         </Box>
       </Flex>
+
+      {/* Create Project Modal */}
+      <CreateProjectModal
+        isOpen={isProjectModalOpen}
+        onClose={onProjectModalClose}
+        onCreateProject={handleCreateProject}
+      />
     </DndProvider>
   );
 };

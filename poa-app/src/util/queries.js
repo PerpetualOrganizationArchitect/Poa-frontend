@@ -176,6 +176,13 @@ export const FETCH_ORG_FULL_DATA = gql`
       }
       taskManager {
         id
+        projects(where: { deleted: false }, first: 100) {
+          id
+          tasks(first: 200) {
+            id
+            status
+          }
+        }
       }
       educationHub {
         id

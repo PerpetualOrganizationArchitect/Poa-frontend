@@ -21,13 +21,19 @@ import {
   Switch,
   Text,
   Box,
+  Divider,
+  Tooltip,
+  Icon,
 } from '@chakra-ui/react';
+import { InfoIcon } from '@chakra-ui/icons';
 import { BOUNTY_TOKEN_OPTIONS, BOUNTY_TOKENS } from '../../util/tokens';
+import { useUserContext } from '../../context/UserContext';
+import { ethers } from 'ethers';
+import { resolveUsernames } from '@/features/deployer/utils/usernameResolver';
 
 
 const AddTaskModal = ({ isOpen, onClose, onAddTask }) => {
-
-
+  const { hasExecRole } = useUserContext();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -36,34 +42,75 @@ const AddTaskModal = ({ isOpen, onClose, onAddTask }) => {
   const [hasBounty, setHasBounty] = useState(false);
   const [bountyToken, setBountyToken] = useState(BOUNTY_TOKENS.BREAD.address);
   const [bountyAmount, setBountyAmount] = useState('');
+  const [requiresApplication, setRequiresApplication] = useState(false);
+  const [assignTo, setAssignTo] = useState('');
 
   const [loading, setLoading] = useState(false)
 
   const toast = useToast();
 
-  const handleSubmit = () => {
-    const handleAddTask = async () => {
-      setLoading(true);
-      await onAddTask({
+  const handleSubmit = async () => {
+    setLoading(true);
+
+    try {
+      // Resolve assignTo if provided (supports both username and address)
+      let resolvedAssignTo = null;
+      if (assignTo.trim()) {
+        const input = assignTo.trim();
+        if (ethers.utils.isAddress(input)) {
+          resolvedAssignTo = input;
+        } else {
+          // Try to resolve as username
+          const { resolved, notFound } = await resolveUsernames([input]);
+          if (notFound.length > 0 || !resolved.has(input.toLowerCase())) {
+            toast({
+              title: 'User Not Found',
+              description: `No user found with username "${input}". Please check the spelling or use a wallet address.`,
+              status: 'error',
+              duration: 4000,
+            });
+            setLoading(false);
+            return;
+          }
+          resolvedAssignTo = resolved.get(input.toLowerCase());
+        }
+      }
+
+      // Prepare task data
+      const taskData = {
         name,
         description,
         difficulty,
         estHours,
         bountyToken: hasBounty ? bountyToken : BOUNTY_TOKENS.NONE.address,
         bountyAmount: hasBounty ? bountyAmount : '0',
-      });
+        requiresApplication,
+        assignTo: resolvedAssignTo,
+      };
 
-      setLoading(false);
+      // Reset form immediately for better UX
       setDescription('');
       setName('');
       setHasBounty(false);
       setBountyAmount('');
-    };
+      setRequiresApplication(false);
+      setAssignTo('');
+      setDifficulty('easy');
+      setEstHours(.5);
 
-    handleAddTask();
-    setDifficulty('easy');
-    setEstHours(.5);
-    onClose();
+      // Fire off the task creation - onAddTask handles closing the modal and running the transaction
+      onAddTask(taskData);
+    } catch (error) {
+      console.error('Error adding task:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to add task',
+        status: 'error',
+        duration: 4000,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -177,6 +224,43 @@ const AddTaskModal = ({ isOpen, onClose, onAddTask }) => {
                   </Text>
                 </VStack>
               </Box>
+            )}
+
+            <Divider />
+
+            <FormControl id="task-requires-application">
+              <HStack justify="space-between">
+                <HStack spacing={1}>
+                  <FormLabel mb={0}>Require Application</FormLabel>
+                  <Tooltip label="Members must apply and be approved before claiming this task" placement="top">
+                    <InfoIcon color="gray.400" boxSize={3} />
+                  </Tooltip>
+                </HStack>
+                <Switch
+                  isChecked={requiresApplication}
+                  onChange={(e) => setRequiresApplication(e.target.checked)}
+                  colorScheme="purple"
+                />
+              </HStack>
+            </FormControl>
+
+            {hasExecRole && (
+              <FormControl id="task-assign-to">
+                <HStack spacing={1}>
+                  <FormLabel>Assign To (Optional)</FormLabel>
+                  <Tooltip label="Directly assign this task to a specific user" placement="top">
+                    <InfoIcon color="gray.400" boxSize={3} />
+                  </Tooltip>
+                </HStack>
+                <Input
+                  placeholder="Username or 0x... address"
+                  value={assignTo}
+                  onChange={(e) => setAssignTo(e.target.value)}
+                />
+                <Text fontSize="xs" color="gray.500" mt={1}>
+                  Leave empty for open claiming, or enter a username/address to assign immediately
+                </Text>
+              </FormControl>
             )}
 
           </VStack>

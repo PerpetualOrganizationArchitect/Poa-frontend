@@ -221,6 +221,17 @@ export const FETCH_VOTING_DATA_NEW = gql`
       hybridVoting {
         id
         quorum
+        votingClasses(where: { isActive: true }, orderBy: classIndex, orderDirection: asc) {
+          id
+          classIndex
+          strategy
+          slicePct
+          quadratic
+          minBalance
+          asset
+          hatIds
+          isActive
+        }
         proposals(orderBy: startTimestamp, orderDirection: desc, first: 50) {
           id
           proposalId

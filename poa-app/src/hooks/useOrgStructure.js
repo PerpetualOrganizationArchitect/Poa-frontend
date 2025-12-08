@@ -56,7 +56,7 @@ function normalizeHatId(id) {
 
 /**
  * Transform raw role data into display format
- * @param {Array} roles - Raw roles from subgraph
+ * @param {Array} roles - Raw roles from subgraph (already filtered by isUserRole: true)
  * @param {Array} roleHatIds - Role hat IDs in order
  * @param {Object} roleNamesFromIPFS - Role names from IPFS metadata
  * @param {Array} users - Users from subgraph to calculate member counts
@@ -68,30 +68,26 @@ function transformRolesData(roles, roleHatIds, roleNamesFromIPFS = {}, users = [
   // Convert roleHatIds to normalized strings for comparison
   const normalizedRoleHatIds = (roleHatIds || []).map(id => normalizeHatId(id));
 
-  // Filter to only include user-defined roles (exclude system hats like TopHat and EligibilityAdminHat)
-  // System hats are NOT included in roleHatIds
-  const userRoles = roles.filter(role => {
-    const hatIdNorm = normalizeHatId(role.hatId);
-    return normalizedRoleHatIds.includes(hatIdNorm);
-  });
+  // Note: Roles are already filtered by isUserRole: true in the GraphQL query
+  // No need for frontend filtering
 
   // Debug: Log data to understand the structure
   console.log('[OrgStructure] transformRolesData called with:', {
-    totalRolesCount: roles.length,
-    filteredRolesCount: userRoles.length,
+    rolesCount: roles.length,
     roleHatIds,
     roleNamesFromIPFS,
     usersCount: users?.length || 0,
     // Log all roles with names to debug
-    rolesWithNames: userRoles.map(r => ({
+    rolesWithNames: roles.map(r => ({
       hatId: r.hatId,
       roleName: r.name,
       roleCanVote: r.canVote,
+      isUserRole: r.isUserRole,
       hatName: r.hat?.name,
     }))
   });
 
-  return userRoles.map((role, index) => {
+  return roles.map((role, index) => {
     const hatId = role.hatId;
     const hatIdNorm = normalizeHatId(hatId);
 

@@ -87,12 +87,13 @@ export const FETCH_ORG_BY_ID = gql`
         membershipStatus
         currentHatIds
       }
-      roles {
+      roles(where: { isUserRole: true }) {
         id
         hatId
         name
         image
         canVote
+        isUserRole
       }
     }
   }
@@ -215,12 +216,13 @@ export const FETCH_ORG_FULL_DATA = gql`
         totalVotes
         firstSeenAt
       }
-      roles {
+      roles(where: { isUserRole: true }) {
         id
         hatId
         name
         image
         canVote
+        isUserRole
         hat {
           name
         }
@@ -424,12 +426,13 @@ export const FETCH_ORG_STRUCTURE_DATA = gql`
       topHatId
       roleHatIds
 
-      roles {
+      roles(where: { isUserRole: true }) {
         id
         hatId
         name
         image
         canVote
+        isUserRole
         hat {
           hatId
           parentHatId

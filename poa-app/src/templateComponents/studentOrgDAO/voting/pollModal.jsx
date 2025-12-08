@@ -32,10 +32,15 @@ import { useRouter } from "next/router";
 import { useAccount } from "wagmi";
 import { usePOContext } from "@/context/POContext";
 
-// Helper to map hat IDs to role indices
-const getRestrictedRoleNames = (restrictedHatIds, roleHatIds) => {
+// Helper to map hat IDs to role names
+const getRestrictedRoleNames = (restrictedHatIds, roleHatIds, roleNames = {}) => {
     if (!restrictedHatIds?.length || !roleHatIds?.length) return [];
     return restrictedHatIds.map(hatId => {
+        // First try to get name from roleNames map
+        const name = roleNames[hatId] || roleNames[String(hatId)];
+        if (name) return name;
+
+        // Fallback to "Role N" based on index
         const roleIndex = roleHatIds?.findIndex(rh => rh === hatId || String(rh) === String(hatId));
         if (roleIndex >= 0) return `Role ${roleIndex + 1}`;
         return null;
@@ -67,10 +72,10 @@ const PollModal = ({
   const router = useRouter();
   const { userDAO } = router.query;
   const { address } = useAccount();
-  const { roleHatIds } = usePOContext();
+  const { roleHatIds, roleNames } = usePOContext();
 
   // Get role names for restricted voting
-  const restrictedRoles = getRestrictedRoleNames(selectedPoll?.restrictedHatIds, roleHatIds);
+  const restrictedRoles = getRestrictedRoleNames(selectedPoll?.restrictedHatIds, roleHatIds, roleNames);
 
   // Weighted voting state (for Hybrid voting)
   const [isWeightedMode, setIsWeightedMode] = useState(false);

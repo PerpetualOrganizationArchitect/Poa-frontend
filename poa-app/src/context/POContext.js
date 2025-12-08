@@ -96,6 +96,7 @@ export const POProvider = ({ children }) => {
     const [educationModules, setEducationModules] = useState([]);
     const [roleHatIds, setRoleHatIds] = useState([]);
     const [topHatId, setTopHatId] = useState(null);
+    const [roleNames, setRoleNames] = useState({});
 
     const [account, setAccount] = useState('0x00');
 
@@ -162,6 +163,20 @@ export const POProvider = ({ children }) => {
             setPtTokenBalance(formatTokenAmount(org.participationToken?.totalSupply || '0'));
             setTopHatId(org.topHatId);
             setRoleHatIds(org.roleHatIds || []);
+
+            // Build role names map from roles data
+            if (org.roles && Array.isArray(org.roles)) {
+                const names = {};
+                org.roles.forEach((role, index) => {
+                    const hatId = role.hatId;
+                    // Priority: role.name (from RolesCreated event) > role.hat.name (from IPFS) > fallback
+                    const name = role.name || role.hat?.name || `Role ${index + 1}`;
+                    names[hatId] = name;
+                    // Also store with normalized string key for comparison
+                    names[String(hatId)] = name;
+                });
+                setRoleNames(names);
+            }
 
             // Contract addresses
             setQuickJoinContractAddress(org.quickJoin?.id || '');
@@ -294,6 +309,7 @@ export const POProvider = ({ children }) => {
         // New POP-specific data
         roleHatIds,
         topHatId,
+        roleNames,
     }), [
         orgId,
         poDescription,
@@ -322,6 +338,7 @@ export const POProvider = ({ children }) => {
         educationModules,
         roleHatIds,
         topHatId,
+        roleNames,
     ]);
 
     return (

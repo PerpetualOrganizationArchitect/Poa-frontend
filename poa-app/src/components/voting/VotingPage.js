@@ -16,7 +16,7 @@ import { useWeb3 } from "@/hooks";
 import { VotingType } from "@/services/web3/domain/VotingService";
 
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
-import HeadingVote from "@/templateComponents/studentOrgDAO/voting/header";
+import VotingEducationHeader from "./VotingEducationHeader";
 import PollModal from "@/templateComponents/studentOrgDAO/voting/pollModal";
 import CompletedPollModal from "@/templateComponents/studentOrgDAO/voting/CompletedPollModal";
 
@@ -111,7 +111,7 @@ const VotingPage = () => {
         durationMinutes: proposalData.time,
         numOptions: proposalData.numOptions,
         batches: proposalData.batches || [],
-        hatIds: [],
+        hatIds: proposalData.hatIds || [],
       }),
       {
         pendingMessage: 'Creating proposal...',
@@ -133,6 +133,11 @@ const VotingPage = () => {
     handleProposalTypeChange,
     handleTransferAddressChange,
     handleTransferAmountChange,
+    handleElectionRoleChange,
+    addCandidate,
+    removeCandidate,
+    handleRestrictedToggle,
+    toggleRestrictedRole,
     handleSubmit,
   } = useProposalForm({
     onSubmit: handleProposalSubmit,
@@ -200,7 +205,7 @@ const VotingPage = () => {
         </Center>
       ) : (
         <Container maxW="container.2xl" py={{ base: 20, md: 4 }} px={{ base: "1%", md: "3%" }}>
-          <HeadingVote selectedTab={selectedTab} PTVoteType={PTVoteType} />
+          <VotingEducationHeader selectedTab={selectedTab} PTVoteType={PTVoteType} />
 
           <VotingTabs
             selectedTab={selectedTab}
@@ -252,6 +257,11 @@ const VotingPage = () => {
             handleProposalTypeChange={handleProposalTypeChange}
             handleTransferAddressChange={handleTransferAddressChange}
             handleTransferAmountChange={handleTransferAmountChange}
+            handleElectionRoleChange={handleElectionRoleChange}
+            addCandidate={addCandidate}
+            removeCandidate={removeCandidate}
+            handleRestrictedToggle={handleRestrictedToggle}
+            toggleRestrictedRole={toggleRestrictedRole}
             handlePollCreated={handleSubmit}
             loadingSubmit={loadingSubmit}
           />

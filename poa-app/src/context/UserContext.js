@@ -50,7 +50,9 @@ export const UserProvider = ({ children }) => {
             const { user, account: accountData } = data;
 
             setGraphUsername(accountData?.username || '');
-            setHasMemberRole(!!user);
+            // Check both that user exists AND has Active membership status
+            const isActiveMember = user && user.membershipStatus === 'Active';
+            setHasMemberRole(isActiveMember);
 
             if (user) {
                 // Executive check: second role hat is typically executive

@@ -105,6 +105,7 @@ export const VotingProvider = ({ children }) => {
     const [democracyVotingCompleted, setDemocracyVotingCompleted] = useState([]);
     const [ongoingPolls, setOngoingPolls] = useState([]);
     const [votingType, setVotingType] = useState('Hybrid');
+    const [votingClasses, setVotingClasses] = useState([]);
 
     const { address } = useAccount();
     const router = useRouter();
@@ -142,7 +143,7 @@ export const VotingProvider = ({ children }) => {
                 setVotingType('Direct Democracy');
             }
 
-            // Process Hybrid Voting proposals
+            // Process Hybrid Voting proposals and classes
             if (org.hybridVoting) {
                 const hybridQuorum = org.hybridVoting.quorum || 0;
                 const hybridProposals = (org.hybridVoting.proposals || []).map(p =>
@@ -150,9 +151,24 @@ export const VotingProvider = ({ children }) => {
                 );
                 setHybridVotingOngoing(hybridProposals.filter(p => p.isOngoing));
                 setHybridVotingCompleted(hybridProposals.filter(p => !p.isOngoing));
+
+                // Process voting classes - convert to usable format
+                console.log('[VotingContext] Raw voting classes from subgraph:', org.hybridVoting.votingClasses);
+                const classes = (org.hybridVoting.votingClasses || []).map(c => ({
+                    classIndex: c.classIndex,
+                    strategy: c.strategy,
+                    slicePct: c.slicePct,
+                    quadratic: c.quadratic,
+                    minBalance: c.minBalance?.toString() || '0',
+                    asset: c.asset,
+                    hatIds: (c.hatIds || []).map(h => h.toString()),
+                }));
+                console.log('[VotingContext] Processed voting classes:', classes);
+                setVotingClasses(classes);
             } else {
                 setHybridVotingOngoing([]);
                 setHybridVotingCompleted([]);
+                setVotingClasses([]);
             }
 
             // Process Direct Democracy Voting proposals
@@ -190,6 +206,7 @@ export const VotingProvider = ({ children }) => {
         error,
         ongoingPolls,
         votingType,
+        votingClasses,
         refetch,
     }), [
         hybridVotingOngoing,
@@ -200,6 +217,7 @@ export const VotingProvider = ({ children }) => {
         error,
         ongoingPolls,
         votingType,
+        votingClasses,
         refetch,
     ]);
 

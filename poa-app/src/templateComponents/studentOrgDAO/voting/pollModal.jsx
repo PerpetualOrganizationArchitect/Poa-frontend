@@ -24,23 +24,13 @@ import {
   SliderThumb,
   Box,
   Icon,
+  Tooltip,
 } from "@chakra-ui/react";
-import { LockIcon } from "@chakra-ui/icons";
-import { ethers } from "ethers";
+import { LockIcon, InfoOutlineIcon } from "@chakra-ui/icons";
 import CountDown from "./countDown";
 import { useRouter } from "next/router";
 import { useAccount } from "wagmi";
-import { usePOContext } from "@/context/POContext";
-
-// Helper to map hat IDs to role indices
-const getRestrictedRoleNames = (restrictedHatIds, roleHatIds) => {
-    if (!restrictedHatIds?.length || !roleHatIds?.length) return [];
-    return restrictedHatIds.map(hatId => {
-        const roleIndex = roleHatIds?.findIndex(rh => rh === hatId || String(rh) === String(hatId));
-        if (roleIndex >= 0) return `Role ${roleIndex + 1}`;
-        return null;
-    }).filter(Boolean);
-};
+import { useRoleNames, useVotingPower } from "@/hooks";
 
 
 const glassLayerStyle = {
@@ -67,10 +57,20 @@ const PollModal = ({
   const router = useRouter();
   const { userDAO } = router.query;
   const { address } = useAccount();
-  const { roleHatIds } = usePOContext();
+  const { getRoleNamesString, allRoles } = useRoleNames();
+  const {
+    membershipPower,
+    contributionPower,
+    classWeights,
+    isHybrid,
+    hasVotingPower,
+    message: votingPowerMessage,
+  } = useVotingPower();
 
   // Get role names for restricted voting
-  const restrictedRoles = getRestrictedRoleNames(selectedPoll?.restrictedHatIds, roleHatIds);
+  const restrictedRolesText = selectedPoll?.isHatRestricted && selectedPoll?.restrictedHatIds?.length > 0
+    ? getRoleNamesString(selectedPoll.restrictedHatIds)
+    : allRoles?.[0]?.name || "All Members";
 
   // Weighted voting state (for Hybrid voting)
   const [isWeightedMode, setIsWeightedMode] = useState(false);
@@ -200,25 +200,106 @@ const PollModal = ({
               }
             />
 
-            {/* Who can vote and quorum display */}
-            <HStack spacing={4} justify="center" flexWrap="wrap">
-              <HStack spacing={2}>
-                <Icon as={LockIcon} color="purple.300" boxSize={4} />
-                <Text fontSize="sm" color="gray.300">
-                  Who can vote:{" "}
-                  <Text as="span" color="purple.300" fontWeight="medium">
-                    {selectedPoll?.isHatRestricted && restrictedRoles.length > 0
-                      ? restrictedRoles.join(", ")
-                      : "Role 1"}
+            {/* Who can vote, quorum, and participation display */}
+            <VStack spacing={2}>
+              <HStack spacing={4} justify="center" flexWrap="wrap">
+                <HStack spacing={2}>
+                  <Icon as={LockIcon} color="purple.300" boxSize={4} />
+                  <Text fontSize="sm" color="gray.300">
+                    Who can vote:{" "}
+                    <Text as="span" color="purple.300" fontWeight="medium">
+                      {restrictedRolesText}
+                    </Text>
                   </Text>
-                </Text>
+                </HStack>
+                {selectedPoll?.quorum > 0 && (
+                  <Tooltip
+                    label="The winning option must receive enough support to be considered valid"
+                    placement="top"
+                    hasArrow
+                    bg="gray.700"
+                  >
+                    <HStack spacing={1} cursor="help">
+                      <Text fontSize="sm" color="gray.400">
+                        {selectedPoll.quorum}% participation needed
+                      </Text>
+                      <InfoOutlineIcon boxSize={3} color="gray.500" />
+                    </HStack>
+                  </Tooltip>
+                )}
               </HStack>
-              {selectedPoll?.quorum > 0 && (
-                <Text fontSize="sm" color="gray.400">
-                  Quorum: {selectedPoll.quorum}%
+
+              {/* Participation count */}
+              {selectedPoll?.votes?.length > 0 && (
+                <Text fontSize="sm" color="green.300" fontWeight="medium">
+                  {selectedPoll.votes.length} {selectedPoll.votes.length === 1 ? 'person has' : 'people have'} voted so far
                 </Text>
               )}
-            </HStack>
+            </VStack>
+
+            {/* Voting Power Breakdown for Hybrid voting */}
+            {isHybrid && selectedPoll?.type === "Hybrid" && hasVotingPower && !hasVoted && (
+              <Box
+                p={3}
+                bg="whiteAlpha.50"
+                borderRadius="lg"
+                border="1px solid"
+                borderColor="whiteAlpha.100"
+                w="100%"
+                maxW="350px"
+              >
+                <VStack spacing={2}>
+                  <Text fontSize="xs" color="gray.400" fontWeight="medium">
+                    Your Voting Power
+                  </Text>
+
+                  {/* Two-voice mini bar */}
+                  <HStack w="100%" h="20px" borderRadius="full" overflow="hidden" bg="gray.700" spacing={0}>
+                    <Tooltip
+                      label={`Membership: Equal vote as a member (${classWeights?.democracy ?? 50}% weight)`}
+                      placement="top"
+                      hasArrow
+                      bg="gray.600"
+                    >
+                      <Box
+                        w={`${classWeights?.democracy ?? 50}%`}
+                        h="100%"
+                        bg="linear-gradient(90deg, #805AD5, #9F7AEA)"
+                        cursor="help"
+                      />
+                    </Tooltip>
+                    <Tooltip
+                      label={`Work: Based on your contributions (${classWeights?.contribution ?? 50}% weight)`}
+                      placement="top"
+                      hasArrow
+                      bg="gray.600"
+                    >
+                      <Box
+                        w={`${classWeights?.contribution ?? 50}%`}
+                        h="100%"
+                        bg="linear-gradient(90deg, #3182CE, #63B3ED)"
+                        cursor="help"
+                      />
+                    </Tooltip>
+                  </HStack>
+
+                  <HStack spacing={4} justify="center">
+                    <HStack spacing={1}>
+                      <Box w="8px" h="8px" borderRadius="full" bg="purple.400" />
+                      <Text fontSize="xs" color="gray.400">
+                        {classWeights?.democracy ?? 50}% Membership
+                      </Text>
+                    </HStack>
+                    <HStack spacing={1}>
+                      <Box w="8px" h="8px" borderRadius="full" bg="blue.400" />
+                      <Text fontSize="xs" color="gray.400">
+                        {classWeights?.contribution ?? 50}% Work
+                      </Text>
+                    </HStack>
+                  </HStack>
+                </VStack>
+              </Box>
+            )}
 
             {/* Already voted alert */}
             {hasVoted && (
@@ -233,9 +314,19 @@ const PollModal = ({
             {/* Weighted voting toggle */}
             {!hasVoted && (
               <FormControl display="flex" alignItems="center" justifyContent="center">
-                <FormLabel htmlFor="weighted-mode" mb="0" color="gray.300" fontSize="sm">
-                  Split vote across options
-                </FormLabel>
+                <HStack spacing={1}>
+                  <FormLabel htmlFor="weighted-mode" mb="0" color="gray.300" fontSize="sm">
+                    Vote for multiple options
+                  </FormLabel>
+                  <Tooltip
+                    label="Distribute your voice across multiple choices you support, instead of picking just one"
+                    placement="top"
+                    hasArrow
+                    bg="gray.700"
+                  >
+                    <InfoOutlineIcon boxSize={3} color="gray.400" cursor="help" />
+                  </Tooltip>
+                </HStack>
                 <Switch
                   id="weighted-mode"
                   isChecked={isWeightedMode}
@@ -245,6 +336,7 @@ const PollModal = ({
                     setSelectedOption("");
                   }}
                   colorScheme="purple"
+                  ml={2}
                 />
               </FormControl>
             )}

@@ -90,6 +90,9 @@ export const FETCH_ORG_BY_ID = gql`
       roles {
         id
         hatId
+        name
+        image
+        canVote
       }
     }
   }
@@ -215,6 +218,12 @@ export const FETCH_ORG_FULL_DATA = gql`
       roles {
         id
         hatId
+        name
+        image
+        canVote
+        hat {
+          name
+        }
       }
     }
   }
@@ -418,6 +427,9 @@ export const FETCH_ORG_STRUCTURE_DATA = gql`
       roles {
         id
         hatId
+        name
+        image
+        canVote
         hat {
           hatId
           parentHatId

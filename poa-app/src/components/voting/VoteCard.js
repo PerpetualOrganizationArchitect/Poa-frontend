@@ -4,11 +4,15 @@ import { LockIcon } from "@chakra-ui/icons";
 import CountDown from "@/templateComponents/studentOrgDAO/voting/countDown";
 import { usePOContext } from "@/context/POContext";
 
-// Helper to map hat IDs to role indices
-// Role names would need to be fetched from org IPFS metadata for proper labels
-const getRestrictedRoleNames = (restrictedHatIds, roleHatIds) => {
+// Helper to map hat IDs to role names
+const getRestrictedRoleNames = (restrictedHatIds, roleHatIds, roleNames = {}) => {
     if (!restrictedHatIds?.length || !roleHatIds?.length) return [];
     return restrictedHatIds.map(hatId => {
+        // First try to get name from roleNames map
+        const name = roleNames[hatId] || roleNames[String(hatId)];
+        if (name) return name;
+
+        // Fallback to "Role N" based on index
         const roleIndex = roleHatIds?.findIndex(rh => rh === hatId || String(rh) === String(hatId));
         if (roleIndex >= 0) return `Role ${roleIndex + 1}`;
         return null;
@@ -35,7 +39,7 @@ const VoteCard = ({
   onPollClick,
   contractAddress
 }) => {
-  const { roleHatIds } = usePOContext();
+  const { roleHatIds, roleNames } = usePOContext();
 
   // Use responsive sizing based on breakpoints
   const titleFontSize = useBreakpointValue({ base: "sm", sm: "md" });
@@ -43,7 +47,7 @@ const VoteCard = ({
   const cardPadding = useBreakpointValue({ base: 3, sm: 4 });
 
   // Get role names for restricted voting
-  const restrictedRoles = getRestrictedRoleNames(proposal.restrictedHatIds, roleHatIds);
+  const restrictedRoles = getRestrictedRoleNames(proposal.restrictedHatIds, roleHatIds, roleNames);
   
   return (
     <Box

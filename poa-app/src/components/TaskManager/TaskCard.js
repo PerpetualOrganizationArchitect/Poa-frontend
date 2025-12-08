@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, useDisclosure, Text, HStack, Badge, Flex, Spacer, useBreakpointValue, Avatar, Tooltip, Icon } from '@chakra-ui/react';
+import { Box, useDisclosure, Text, HStack, Badge, Flex, Spacer, Avatar, Tooltip, Icon } from '@chakra-ui/react';
 import { useDrag } from 'react-dnd';
 import TaskCardModal from './TaskCardModal';
 import { useRouter } from 'next/router';
@@ -9,7 +9,10 @@ import { hasBounty as checkHasBounty, getTokenByAddress } from '../../util/token
 const TaskCard = ({ id, name, description, difficulty, estHours, index, columnId, submission, claimedBy, claimerUsername, onEditTask, moveTask, projectId, Payout, bountyToken, bountyPayout, isMobile }) => {
   const router = useRouter();
   const { userDAO } = router.query;
-  const isCardMobile = useBreakpointValue({ base: true, md: false }) || isMobile;
+  // Use the stable isMobile prop from parent (passed through TaskColumn)
+  // This prevents flash when components remount during project switches
+  // isMobile prop should always be provided from TaskColumn
+  const isCardMobile = isMobile ?? false;
 
   const openTask = () => {
     const safeProjectId = encodeURIComponent(decodeURIComponent(projectId));
@@ -21,7 +24,7 @@ const TaskCard = ({ id, name, description, difficulty, estHours, index, columnId
 
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'task',
-    item: { id, index, columnId, name, description, difficulty, estHours, claimedBy, claimerUsername, Payout, submission },
+    item: { id, index, columnId, name, description, difficulty, estHours, claimedBy, claimerUsername, Payout, submission, projectId },
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),

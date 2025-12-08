@@ -87,9 +87,13 @@ export const FETCH_ORG_BY_ID = gql`
         membershipStatus
         currentHatIds
       }
-      roles {
+      roles(where: { isUserRole: true }) {
         id
         hatId
+        name
+        image
+        canVote
+        isUserRole
       }
     }
   }
@@ -176,6 +180,13 @@ export const FETCH_ORG_FULL_DATA = gql`
       }
       taskManager {
         id
+        projects(where: { deleted: false }, first: 100) {
+          id
+          tasks(first: 200) {
+            id
+            status
+          }
+        }
       }
       educationHub {
         id
@@ -205,9 +216,16 @@ export const FETCH_ORG_FULL_DATA = gql`
         totalVotes
         firstSeenAt
       }
-      roles {
+      roles(where: { isUserRole: true }) {
         id
         hatId
+        name
+        image
+        canVote
+        isUserRole
+        hat {
+          name
+        }
       }
     }
   }
@@ -419,15 +437,23 @@ export const FETCH_ORG_STRUCTURE_DATA = gql`
       topHatId
       roleHatIds
 
-      roles {
+      roles(where: { isUserRole: true }) {
         id
         hatId
+        name
+        image
+        canVote
+        isUserRole
         hat {
           hatId
           parentHatId
           level
           defaultEligible
           mintedCount
+          name
+          metadataCID
+          metadataUpdatedAt
+          metadataUpdatedAtBlock
           wearers {
             wearer
             wearerUsername

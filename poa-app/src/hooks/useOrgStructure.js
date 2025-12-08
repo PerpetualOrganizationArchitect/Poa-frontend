@@ -56,7 +56,7 @@ function normalizeHatId(id) {
 
 /**
  * Transform raw role data into display format
- * @param {Array} roles - Raw roles from subgraph
+ * @param {Array} roles - Raw roles from subgraph (already filtered by isUserRole: true)
  * @param {Array} roleHatIds - Role hat IDs in order
  * @param {Object} roleNamesFromIPFS - Role names from IPFS metadata
  * @param {Array} users - Users from subgraph to calculate member counts
@@ -65,23 +65,27 @@ function normalizeHatId(id) {
 function transformRolesData(roles, roleHatIds, roleNamesFromIPFS = {}, users = []) {
   if (!roles || !Array.isArray(roles)) return [];
 
+  // Convert roleHatIds to normalized strings for comparison
+  const normalizedRoleHatIds = (roleHatIds || []).map(id => normalizeHatId(id));
+
+  // Note: Roles are already filtered by isUserRole: true in the GraphQL query
+  // No need for frontend filtering
+
   // Debug: Log data to understand the structure
   console.log('[OrgStructure] transformRolesData called with:', {
     rolesCount: roles.length,
     roleHatIds,
+    roleNamesFromIPFS,
     usersCount: users?.length || 0,
-    firstUser: users?.[0] ? {
-      username: users[0].username,
-      currentHatIds: users[0].currentHatIds
-    } : null,
-    firstRole: roles?.[0] ? {
-      hatId: roles[0].hatId,
-      wearersCount: roles[0].wearers?.length || 0
-    } : null
+    // Log all roles with names to debug
+    rolesWithNames: roles.map(r => ({
+      hatId: r.hatId,
+      roleName: r.name,
+      roleCanVote: r.canVote,
+      isUserRole: r.isUserRole,
+      hatName: r.hat?.name,
+    }))
   });
-
-  // Convert roleHatIds to normalized strings for comparison
-  const normalizedRoleHatIds = (roleHatIds || []).map(id => normalizeHatId(id));
 
   return roles.map((role, index) => {
     const hatId = role.hatId;
@@ -92,8 +96,9 @@ function transformRolesData(roles, roleHatIds, roleNamesFromIPFS = {}, users = [
     // Use found index if valid, otherwise use the array index
     const roleIndex = foundIndex >= 0 ? foundIndex : index;
 
-    // Get name from IPFS or use fallback
-    const name = roleNamesFromIPFS[hatIdNorm] || roleNamesFromIPFS[hatId] || getFallbackRoleName(roleIndex);
+    // Get name from Role entity (RolesCreated event), hat entity (IPFS), or use fallback
+    // Priority: role.name (from smart contract) > role.hat.name (from IPFS) > IPFS metadata > fallback
+    const name = role.name || role.hat?.name || roleNamesFromIPFS[hatIdNorm] || roleNamesFromIPFS[hatId] || getFallbackRoleName(roleIndex);
 
     // Method 1: Count from role.wearers (RoleWearer entities)
     const roleWearers = role.wearers || [];
@@ -133,6 +138,8 @@ function transformRolesData(roles, roleHatIds, roleNamesFromIPFS = {}, users = [
       id: role.id,
       hatId,
       name,
+      image: role.image || '',
+      canVote: role.canVote ?? true, // Default to true for voting roles
       level,
       parentHatId,
       memberCount,

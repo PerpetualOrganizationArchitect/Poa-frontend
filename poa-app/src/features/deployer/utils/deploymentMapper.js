@@ -38,6 +38,7 @@ export function mapRole(role, index, totalRoles) {
   return {
     name: String(role.name || ''),
     image: String(role.image || ''),
+    metadataCID: role.metadataCID || ethers.constants.HashZero, // Use existing CID or HashZero
     canVote: Boolean(role.canVote),
     vouching: {
       enabled: Boolean(role.vouching.enabled),
@@ -134,6 +135,7 @@ export function mapStateToDeploymentParams(state, deployerAddress, options = {})
   return {
     orgId,
     orgName: organization.name,
+    metadataHash: ethers.constants.HashZero, // Will be set by deployment script after IPFS upload
     registryAddr: registryAddress,
     deployerAddress,
     deployerUsername: organization.username || '',
@@ -144,6 +146,17 @@ export function mapStateToDeploymentParams(state, deployerAddress, options = {})
     ddInitialTargets: [], // Empty for now
     roles: contractRoles,
     roleAssignments,
+    // Passkey configuration (disabled by default)
+    passkeyConfig: {
+      enabled: false,
+      maxCredentialsPerAccount: 0,
+      defaultGuardian: ethers.constants.AddressZero,
+      recoveryDelay: 0,
+    },
+    // Education hub configuration
+    educationHubConfig: {
+      enabled: features.educationHubEnabled || false,
+    },
   };
 }
 

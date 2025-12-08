@@ -91,14 +91,20 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
     setIsAddTaskModalOpen(false);
   };
   
-  const handleAddTask = async (updatedTask) => {
+  const handleAddTask = (updatedTask) => {
     if (title === 'Open') {
+      // Close modal immediately for optimistic UX
+      handleCloseAddTaskModal();
+
       // addTask from TaskBoardContext handles:
       // - Payout calculation
       // - Optimistic UI update
       // - Blockchain transaction via TaskService
       // - Notifications and error handling
-      await addTask(updatedTask, 'open');
+      // Fire and forget - don't await, let it run in background
+      addTask(updatedTask, 'open').catch(error => {
+        console.error("Error adding task:", error);
+      });
     }
   };
   
@@ -186,17 +192,17 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
         };
         
         console.log(`Moving task from ${item.columnId} to ${columnId}, index: ${newIndex}`);
-        
-        // Fix URL update to include proper parameters (like the TaskCard openTask function does)
-        const safeProjectId = projectName ? encodeURIComponent(decodeURIComponent(projectName + "-" + taskManagerContractAddress)) : '';
-        
+
+        // Use the task's actual projectId (from subgraph), not constructed from projectName
+        const safeProjectId = item.projectId ? encodeURIComponent(decodeURIComponent(item.projectId)) : '';
+
         // Use the router.query.userDAO to maintain consistency
         router.push({
           pathname: `/tasks/`,
-          query: { 
-            userDAO: router.query.userDAO, 
+          query: {
+            userDAO: router.query.userDAO,
             projectId: safeProjectId,
-            task: draggedTask.id 
+            task: draggedTask.id
           }
         }, undefined, { shallow: true });
         

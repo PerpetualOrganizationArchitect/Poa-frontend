@@ -115,6 +115,7 @@ export const PERMISSION_DESCRIPTIONS = {
 export const createDefaultRole = (index = 0, name = 'New Role') => ({
   id: uuidv4(),
   name,
+  description: '', // Role description for IPFS metadata
   image: '',
   canVote: true,
   vouching: {

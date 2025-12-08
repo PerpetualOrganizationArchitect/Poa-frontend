@@ -26,6 +26,9 @@ export const RefreshEvent = {
   TASK_COMPLETED: 'task:completed',
   TASK_UPDATED: 'task:updated',
   TASK_CANCELLED: 'task:cancelled',
+  TASK_APPLICATION_SUBMITTED: 'task:application_submitted',
+  TASK_APPLICATION_APPROVED: 'task:application_approved',
+  TASK_ASSIGNED: 'task:assigned',
 
   // Education events
   MODULE_CREATED: 'module:created',

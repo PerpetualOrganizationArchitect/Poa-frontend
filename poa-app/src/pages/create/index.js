@@ -31,6 +31,7 @@ import { useIPFScontext } from "@/context/ipfsContext";
 import { main } from "../../../scripts/newDeployment";
 import { useRouter } from "next/router";
 import { FETCH_INFRASTRUCTURE_ADDRESSES } from "@/util/queries";
+import { ipfsCidToBytes32 } from "@/services/web3/utils/encoding";
 
 // New deployer imports
 import {
@@ -364,10 +365,46 @@ function DeployerPageContent() {
 
       console.log('[DEPLOY] Final infoIPFSHash for deployment:', infoIPFSHash);
 
-      // Get deployment params with resolved addresses
+      // Upload role metadata to IPFS for roles with descriptions
+      console.log('[DEPLOY] Uploading role metadata to IPFS...');
+      const rolesWithMetadata = await Promise.all(
+        rolesWithResolvedAddresses.map(async (role) => {
+          // Only upload metadata if role has a description
+          if (role.description && role.description.trim()) {
+            const roleMetadata = {
+              name: role.name,
+              description: role.description,
+              image: role.image || '',
+            };
+            console.log(`[DEPLOY] Uploading metadata for role "${role.name}":`, roleMetadata);
+
+            try {
+              const result = await addToIpfs(JSON.stringify(roleMetadata));
+              const metadataCID = result.path;
+              console.log(`[DEPLOY] Role "${role.name}" metadata CID:`, metadataCID);
+
+              // Convert IPFS CID to bytes32 for the smart contract
+              const metadataCIDBytes32 = ipfsCidToBytes32(metadataCID);
+              console.log(`[DEPLOY] Role "${role.name}" metadataCID (bytes32):`, metadataCIDBytes32);
+
+              return {
+                ...role,
+                metadataCID: metadataCIDBytes32,
+              };
+            } catch (error) {
+              console.error(`[DEPLOY] Failed to upload metadata for role "${role.name}":`, error);
+              // Continue without metadata if upload fails
+              return role;
+            }
+          }
+          return role;
+        })
+      );
+
+      // Get deployment params with resolved addresses and metadata
       const stateWithResolvedRoles = {
         ...state,
-        roles: rolesWithResolvedAddresses,
+        roles: rolesWithMetadata,
       };
 
       console.log('=== DEPLOYMENT DEBUG ===');

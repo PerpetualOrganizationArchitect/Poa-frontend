@@ -12,6 +12,7 @@ import {
   FormHelperText,
   FormErrorMessage,
   Input,
+  Textarea,
   Switch,
   Select,
   NumberInput,
@@ -153,6 +154,17 @@ export function RoleForm({
                 placeholder="e.g., Member, Executive, Manager"
               />
               <FormErrorMessage>{errors.name}</FormErrorMessage>
+            </FormControl>
+
+            <FormControl>
+              <FormLabel>Description</FormLabel>
+              <Textarea
+                value={formData.description || ''}
+                onChange={(e) => updateField('description', e.target.value)}
+                placeholder="Describe the responsibilities and purpose of this role..."
+                rows={3}
+              />
+              <FormHelperText>A brief description of this role's purpose and responsibilities</FormHelperText>
             </FormControl>
 
             <FormControl>

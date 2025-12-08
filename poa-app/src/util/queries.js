@@ -424,6 +424,10 @@ export const FETCH_ORG_STRUCTURE_DATA = gql`
           level
           defaultEligible
           mintedCount
+          name
+          metadataCID
+          metadataUpdatedAt
+          metadataUpdatedAtBlock
           wearers {
             wearer
             wearerUsername

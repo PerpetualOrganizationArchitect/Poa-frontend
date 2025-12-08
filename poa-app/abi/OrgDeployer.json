@@ -179,6 +179,11 @@
                 "internalType": "string"
               },
               {
+                "name": "metadataCID",
+                "type": "bytes32",
+                "internalType": "bytes32"
+              },
+              {
                 "name": "canVote",
                 "type": "bool",
                 "internalType": "bool"
@@ -331,6 +336,45 @@
                 "internalType": "uint256"
               }
             ]
+          },
+          {
+            "name": "passkeyConfig",
+            "type": "tuple",
+            "internalType": "struct AccessFactory.PasskeyConfig",
+            "components": [
+              {
+                "name": "enabled",
+                "type": "bool",
+                "internalType": "bool"
+              },
+              {
+                "name": "maxCredentialsPerAccount",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "defaultGuardian",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "recoveryDelay",
+                "type": "uint48",
+                "internalType": "uint48"
+              }
+            ]
+          },
+          {
+            "name": "educationHubConfig",
+            "type": "tuple",
+            "internalType": "struct ModulesFactory.EducationHubConfig",
+            "components": [
+              {
+                "name": "enabled",
+                "type": "bool",
+                "internalType": "bool"
+              }
+            ]
           }
         ]
       }
@@ -378,6 +422,11 @@
           },
           {
             "name": "paymentManager",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "passkeyAccountFactory",
             "type": "address",
             "internalType": "address"
           }

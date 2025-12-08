@@ -186,6 +186,17 @@ export async function main(
       ddInitialTargets: [],
       roles: roles,
       roleAssignments: roleAssignments,
+      // Passkey configuration (disabled by default)
+      passkeyConfig: {
+        enabled: false,
+        maxCredentialsPerAccount: 0,
+        defaultGuardian: ethers.constants.AddressZero,
+        recoveryDelay: 0,
+      },
+      // Education hub configuration
+      educationHubConfig: {
+        enabled: educationHubEnabled || false,
+      },
     };
 
     console.log("Deploying new DAO with the following parameters:", deploymentParams);
@@ -368,6 +379,7 @@ function buildRoles(memberTypes, executiveRoles) {
     return {
       name: name,
       image: "",
+      metadataCID: ethers.constants.HashZero, // No metadata for auto-generated roles
       canVote: true,
       vouching: {
         enabled: false,

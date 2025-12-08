@@ -23,6 +23,7 @@ import { useAccount } from 'wagmi';
 import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
 import { useOrgStructure, useClaimRole } from '@/hooks';
 import { useUserContext } from '@/context/UserContext';
+import { useVotingContext } from '@/context/VotingContext';
 import {
   OrgOverviewCard,
   RoleHierarchyTree,
@@ -40,6 +41,9 @@ const OrgStructurePage = () => {
   // Get user's current hat IDs
   const { userData } = useUserContext();
   const userHatIds = userData?.hatIds || [];
+
+  // Get voting classes for governance display
+  const { votingClasses } = useVotingContext();
 
   const {
     orgName,
@@ -218,6 +222,7 @@ const OrgStructurePage = () => {
             <GovernanceConfigSection
               governance={governance}
               tokenInfo={tokenInfo}
+              votingClasses={votingClasses}
               loading={loading}
             />
           </Box>

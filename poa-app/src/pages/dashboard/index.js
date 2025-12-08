@@ -77,7 +77,7 @@ function generateOrgStructurePreview(poData, roleCount) {
 const PerpetualOrgDashboard = () => {
   const { ongoingPolls } = useVotingContext();
   console.log("ongoingPolls", ongoingPolls);
-  const { poContextLoading, poDescription, poLinks, logoHash, activeTaskAmount, completedTaskAmount, ptTokenBalance, poMembers, rules, educationModules, roleHatIds } = usePOContext();
+  const { poContextLoading, poDescription, poLinks, logoHash, activeTaskAmount, completedTaskAmount, ptTokenBalance, poMembers, rules, educationModules, roleHatIds, educationHubEnabled } = usePOContext();
 
   const router = useRouter();
   const { userDAO } = router.query;
@@ -156,7 +156,7 @@ const PerpetualOrgDashboard = () => {
             <Grid
               color="whitesmoke"
               templateAreas={{
-                base: `
+                base: educationHubEnabled ? `
                   'orgInfo'
                   'orgStats'
                   'tasks'
@@ -164,12 +164,23 @@ const PerpetualOrgDashboard = () => {
                   'leaderboard'
                   'orgStructure'
                   'learnAndEarn'
+                ` : `
+                  'orgInfo'
+                  'orgStats'
+                  'tasks'
+                  'polls'
+                  'leaderboard'
+                  'orgStructure'
                 `,
-                md: `
+                md: educationHubEnabled ? `
                   'orgInfo orgStats'
                   'tasks polls'
                   'leaderboard orgStructure'
                   'learnAndEarn learnAndEarn'
+                ` : `
+                  'orgInfo orgStats'
+                  'tasks polls'
+                  'leaderboard orgStructure'
                 `,
               }}
               templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }}
@@ -465,69 +476,71 @@ const PerpetualOrgDashboard = () => {
                 </Box>
               </Box>
             </GridItem>
-            <GridItem area={'learnAndEarn'}>
-            <Box
-              h="100%"
-              w="100%"
-              borderRadius="2xl"
-              bg="transparent"
-              boxShadow="lg"
-              position="relative"
-              zIndex={2}
-            >
-              <div style={glassLayerStyle} />
-              <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                <div style={glassLayerStyle} />
-                <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
-                  Learn and Earn
-                </Text>
-              </VStack>
-              <Box p={{ base: 2, md: 4 }}>
-                {educationModules && educationModules.length > 0 ? (
-                  <Flex 
-                    direction={{ base: "column", md: "row" }}
-                    spacing={4} 
-                    gap={3} 
-                    align="flex-start"
-                  >
-                    {educationModules.slice(0,3).map((module) => (
-                      <Box
-                        key={module.id}
-                        w={{ base: "100%", md: "33%" }}
-                        h="auto"
-                        p={4}
-                        borderRadius="xl"
-                        onClick={() => router.push(`/edu-Hub`)}
-                        bg="black"
-                        _hover={{ boxShadow: "md", transform: "scale(1.02)" }}
-                        mb={{ base: 2, md: 0 }}
+            {educationHubEnabled && (
+              <GridItem area={'learnAndEarn'}>
+                <Box
+                  h="100%"
+                  w="100%"
+                  borderRadius="2xl"
+                  bg="transparent"
+                  boxShadow="lg"
+                  position="relative"
+                  zIndex={2}
+                >
+                  <div style={glassLayerStyle} />
+                  <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
+                    <div style={glassLayerStyle} />
+                    <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
+                      Learn and Earn
+                    </Text>
+                  </VStack>
+                  <Box p={{ base: 2, md: 4 }}>
+                    {educationModules && educationModules.length > 0 ? (
+                      <Flex
+                        direction={{ base: "column", md: "row" }}
+                        spacing={4}
+                        gap={3}
+                        align="flex-start"
                       >
-                        
-                          <Text fontSize={{ base: "lg", md: "xl" }} fontWeight="bold">
-                            {module.isIndexing ? 'Indexing...' : module.name}
-                          </Text>
-                          <HStack mt={6} justifyContent="space-between">
-                        {/* <Text mt={2}>{module.description}</Text> */}
-                        <Link2 href={`/edu-Hub`}>
-                          
-                          <Button colorScheme="teal" size={{ base: "xs", md: "sm" }}>
-                            {module.isIndexing ? 'Coming Soon' : 'Start Module'}
-                          </Button>
-                          
-                        </Link2>
-                        <Badge fontSize={{ base: "md", md: "lg" }} colorScheme="teal">{module.payout} Tokens</Badge>
-                        </HStack>
-                      </Box>
-                    ))}
-                  </Flex>
-                ) : (
-                  <Text pl={{ base: 3, md: 6 }} fontSize={textSize} mt={2}>
-                    No modules available at this time.
-                  </Text>
-                )}
-              </Box>
-            </Box>
-          </GridItem>
+                        {educationModules.slice(0,3).map((module) => (
+                          <Box
+                            key={module.id}
+                            w={{ base: "100%", md: "33%" }}
+                            h="auto"
+                            p={4}
+                            borderRadius="xl"
+                            onClick={() => router.push(`/edu-Hub`)}
+                            bg="black"
+                            _hover={{ boxShadow: "md", transform: "scale(1.02)" }}
+                            mb={{ base: 2, md: 0 }}
+                          >
+
+                              <Text fontSize={{ base: "lg", md: "xl" }} fontWeight="bold">
+                                {module.isIndexing ? 'Indexing...' : module.name}
+                              </Text>
+                              <HStack mt={6} justifyContent="space-between">
+                            {/* <Text mt={2}>{module.description}</Text> */}
+                            <Link2 href={`/edu-Hub`}>
+
+                              <Button colorScheme="teal" size={{ base: "xs", md: "sm" }}>
+                                {module.isIndexing ? 'Coming Soon' : 'Start Module'}
+                              </Button>
+
+                            </Link2>
+                            <Badge fontSize={{ base: "md", md: "lg" }} colorScheme="teal">{module.payout} Tokens</Badge>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </Flex>
+                    ) : (
+                      <Text pl={{ base: 3, md: 6 }} fontSize={textSize} mt={2}>
+                        No modules available at this time.
+                      </Text>
+                    )}
+                  </Box>
+                </Box>
+              </GridItem>
+            )}
           </Grid>
         </Box>
       )}

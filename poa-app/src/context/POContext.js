@@ -10,6 +10,9 @@ const POContext = createContext();
 
 export const usePOContext = () => useContext(POContext);
 
+// Zero address constant - educationHub.id will be this when edu hub is disabled
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
 // Transform users array to leaderboard format
 function transformLeaderboardData(users, roleHatIds) {
     if (!users || !Array.isArray(users)) {
@@ -96,6 +99,7 @@ export const POProvider = ({ children }) => {
     const [educationModules, setEducationModules] = useState([]);
     const [roleHatIds, setRoleHatIds] = useState([]);
     const [topHatId, setTopHatId] = useState(null);
+    const [educationHubEnabled, setEducationHubEnabled] = useState(false);
 
     const [account, setAccount] = useState('0x00');
 
@@ -168,7 +172,10 @@ export const POProvider = ({ children }) => {
             setTaskManagerContractAddress(org.taskManager?.id || '');
             setHybridVotingContractAddress(org.hybridVoting?.id || '');
             setDirectDemocracyVotingContractAddress(org.directDemocracyVoting?.id || '');
-            setEducationHubAddress(org.educationHub?.id || '');
+            const eduHubId = org.educationHub?.id || '';
+            setEducationHubAddress(eduHubId);
+            // Education hub is enabled if address exists and is not zero address
+            setEducationHubEnabled(eduHubId && eduHubId !== ZERO_ADDRESS);
             setExecutorContractAddress(org.executorContract?.id || '');
 
             // For backward compatibility, map hybrid voting to participation voting
@@ -294,6 +301,7 @@ export const POProvider = ({ children }) => {
         // New POP-specific data
         roleHatIds,
         topHatId,
+        educationHubEnabled,
     }), [
         orgId,
         poDescription,
@@ -322,6 +330,7 @@ export const POProvider = ({ children }) => {
         educationModules,
         roleHatIds,
         topHatId,
+        educationHubEnabled,
     ]);
 
     return (

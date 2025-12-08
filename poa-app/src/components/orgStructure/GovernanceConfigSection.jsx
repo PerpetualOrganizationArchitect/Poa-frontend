@@ -32,7 +32,7 @@ const glassLayerStyle = {
 /**
  * Card for a single voting system
  */
-function VotingCard({ title, description, quorum, icon, colorScheme = 'purple' }) {
+function VotingCard({ title, description, quorum, icon, colorScheme = 'purple', classWeights, isQuadratic }) {
   return (
     <Box
       position="relative"
@@ -64,7 +64,41 @@ function VotingCard({ title, description, quorum, icon, colorScheme = 'purple' }
           <Heading size="sm" color="white">
             {title}
           </Heading>
+          {isQuadratic && (
+            <Badge colorScheme="blue" variant="subtle" fontSize="2xs">
+              Quadratic
+            </Badge>
+          )}
         </HStack>
+
+        {/* Class Weights for Hybrid Voting */}
+        {classWeights && (
+          <Box
+            p={3}
+            bg="rgba(255, 255, 255, 0.05)"
+            borderRadius="lg"
+            border="1px solid rgba(255, 255, 255, 0.1)"
+          >
+            <Text fontSize="xs" color="gray.500" mb={2}>
+              Voting Power Split
+            </Text>
+            <HStack spacing={4} justify="center">
+              <VStack spacing={0}>
+                <Text fontSize="xl" fontWeight="bold" color="purple.300">
+                  {classWeights.democracy}%
+                </Text>
+                <Text fontSize="xs" color="gray.400">Democracy</Text>
+              </VStack>
+              <Text color="gray.600">/</Text>
+              <VStack spacing={0}>
+                <Text fontSize="xl" fontWeight="bold" color="blue.300">
+                  {classWeights.contribution}%
+                </Text>
+                <Text fontSize="xs" color="gray.400">Work</Text>
+              </VStack>
+            </HStack>
+          </Box>
+        )}
 
         {/* Description */}
         <Text color="gray.400" fontSize="sm" flex={1}>
@@ -100,9 +134,33 @@ function VotingCard({ title, description, quorum, icon, colorScheme = 'purple' }
 export function GovernanceConfigSection({
   governance = {},
   tokenInfo = null,
+  votingClasses = [],
   loading = false,
 }) {
   const { hybridVoting, directDemocracyVoting } = governance;
+
+  // Read class weights directly from subgraph data
+  let classWeights = null;
+  let isQuadratic = false;
+
+  if (votingClasses && votingClasses.length > 0) {
+    let democracyWeight = 0;
+    let contributionWeight = 0;
+
+    votingClasses.forEach(cls => {
+      if (cls.strategy === 'DIRECT') {
+        democracyWeight = Number(cls.slicePct);
+      } else if (cls.strategy === 'ERC20_BAL') {
+        contributionWeight = Number(cls.slicePct);
+        isQuadratic = cls.quadratic;
+      }
+    });
+
+    classWeights = {
+      democracy: democracyWeight,
+      contribution: contributionWeight,
+    };
+  }
 
   if (loading) {
     return (
@@ -156,6 +214,8 @@ export function GovernanceConfigSection({
             quorum={hybridVoting.quorum}
             icon={FiLayers}
             colorScheme="purple"
+            classWeights={classWeights}
+            isQuadratic={isQuadratic}
           />
         )}
 

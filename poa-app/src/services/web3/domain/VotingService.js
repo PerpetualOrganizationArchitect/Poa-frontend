@@ -197,6 +197,43 @@ export class VotingService {
   }
 
   // ============================================
+  // Read Methods
+  // ============================================
+
+  /**
+   * Get voting class configuration for Hybrid Voting
+   * @param {string} contractAddress - HybridVoting contract address
+   * @returns {Promise<Array>} Array of ClassConfig structs
+   */
+  async getHybridClasses(contractAddress) {
+    requireAddress(contractAddress, 'HybridVoting contract address');
+    const contract = this.factory.createReadable(contractAddress, HybridVotingABI);
+    return contract.getClasses();
+  }
+
+  /**
+   * Get quorum percentage for Hybrid Voting
+   * @param {string} contractAddress - HybridVoting contract address
+   * @returns {Promise<number>} Quorum percentage (1-100)
+   */
+  async getHybridQuorum(contractAddress) {
+    requireAddress(contractAddress, 'HybridVoting contract address');
+    const contract = this.factory.createReadable(contractAddress, HybridVotingABI);
+    return contract.quorumPct();
+  }
+
+  /**
+   * Get quorum percentage for Direct Democracy Voting
+   * @param {string} contractAddress - DirectDemocracyVoting contract address
+   * @returns {Promise<number>} Quorum percentage (1-100)
+   */
+  async getDDQuorum(contractAddress) {
+    requireAddress(contractAddress, 'DirectDemocracyVoting contract address');
+    const contract = this.factory.createReadable(contractAddress, DirectDemocracyVotingABI);
+    return contract.quorumPercentage();
+  }
+
+  // ============================================
   // Convenience Methods
   // ============================================
 

@@ -1,0 +1,144 @@
+name: Deploy to IPFS via Pinata
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  NODE_VERSION: '18.18.0'
+  WORKING_DIRECTORY: poa-app
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ${{ env.WORKING_DIRECTORY }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm ci
+
+      - name: Build static site
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm run build
+
+      - name: Upload to Pinata
+        id: pinata
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        env:
+          PINATA_JWT: ${{ secrets.PINATA_JWT }}
+          PINATA_GATEWAY: ${{ secrets.PINATA_GATEWAY }}
+        run: |
+          npm install pinata
+
+          node << 'EOF'
+          const { PinataSDK } = require("pinata");
+          const fs = require("fs");
+          const path = require("path");
+
+          async function uploadDirectory() {
+            const pinata = new PinataSDK({
+              pinataJwt: process.env.PINATA_JWT,
+              pinataGateway: process.env.PINATA_GATEWAY,
+            });
+
+            const outDir = "./out";
+
+            // Collect all files from the out directory
+            function getAllFiles(dir, baseDir = dir) {
+              const files = [];
+              const items = fs.readdirSync(dir);
+
+              for (const item of items) {
+                const fullPath = path.join(dir, item);
+                const stat = fs.statSync(fullPath);
+
+                if (stat.isDirectory()) {
+                  files.push(...getAllFiles(fullPath, baseDir));
+                } else {
+                  const relativePath = path.relative(baseDir, fullPath);
+                  files.push({ path: relativePath, fullPath });
+                }
+              }
+              return files;
+            }
+
+            const files = getAllFiles(outDir);
+            console.log(`Found ${files.length} files to upload`);
+
+            // Create File objects for upload
+            const fileObjects = files.map(({ path: relativePath, fullPath }) => {
+              const content = fs.readFileSync(fullPath);
+              return new File([content], relativePath);
+            });
+
+            // Upload as a folder
+            const upload = await pinata.upload.public.fileArray(fileObjects);
+
+            console.log("Upload successful!");
+            console.log(`CID: ${upload.cid}`);
+
+            // Write outputs for GitHub Actions
+            const outputFile = process.env.GITHUB_OUTPUT;
+            fs.appendFileSync(outputFile, `ipfs_hash=${upload.cid}\n`);
+          }
+
+          uploadDirectory().catch(err => {
+            console.error("Upload failed:", err);
+            process.exit(1);
+          });
+          EOF
+
+      - name: Update Cloudflare DNSLink
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          IPFS_CID: ${{ steps.pinata.outputs.ipfs_hash }}
+        run: |
+          # Get existing _dnslink record ID
+          RECORD_ID=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records?name=_dnslink.poa.earth&type=TXT" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" | jq -r '.result[0].id // empty')
+
+          DNSLINK_VALUE="dnslink=/ipfs/${IPFS_CID}"
+
+          if [ -n "$RECORD_ID" ]; then
+            # Update existing record
+            curl -s -X PUT \
+              "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records/${RECORD_ID}" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data "{\"type\":\"TXT\",\"name\":\"_dnslink.poa.earth\",\"content\":\"${DNSLINK_VALUE}\",\"ttl\":300}"
+            echo "Updated existing DNSLink record"
+          else
+            # Create new record
+            curl -s -X POST \
+              "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data "{\"type\":\"TXT\",\"name\":\"_dnslink.poa.earth\",\"content\":\"${DNSLINK_VALUE}\",\"ttl\":300}"
+            echo "Created new DNSLink record"
+          fi
+
+          echo "DNSLink updated to: ${DNSLINK_VALUE}"
+
+      - name: Deployment Summary
+        run: |
+          echo "### Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**IPFS CID:** \`${{ steps.pinata.outputs.ipfs_hash }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Preview URLs:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Gateway: https://${{ secrets.PINATA_GATEWAY }}/ipfs/${{ steps.pinata.outputs.ipfs_hash }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Production: https://poa.earth" >> $GITHUB_STEP_SUMMARY

@@ -31,6 +31,8 @@ import UserProposals from '@/components/userPage/UserProposals';
 import { useRouter } from 'next/router';
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import ExecutiveMenuModal from '@/components/profileHub/ExecutiveMenuModal';
+import { useOrgStructure } from '@/hooks';
+import WelcomeClaimPage from '@/components/profileHub/WelcomeClaimPage';
 
 const UserprofileHub = () => {
 
@@ -40,8 +42,11 @@ const UserprofileHub = () => {
   const { ongoingPolls,} = useVotingContext();
   const {recommendedTasks} = useProjectContext();
 
-  const {claimedTasks, userProposals, graphUsername, userDataLoading, error, userData, hasExecRole} = useUserContext();
+  const {claimedTasks, userProposals, graphUsername, userDataLoading, error, userData, hasExecRole, hasMemberRole} = useUserContext();
 
+  // Fetch org structure for claim page
+  const { roles, eligibilityModuleAddress, orgName, orgMetadata, loading: orgLoading } = useOrgStructure();
+  const claimableRoles = roles?.filter(r => r.defaultEligible) || [];
 
   const prefersReducedMotion = usePrefersReducedMotion();
   const [countFinished, setCountFinished] = useState(false);
@@ -154,6 +159,22 @@ const UserprofileHub = () => {
 
   const openSettingsModal = () => setSettingsModalOpen(true);
   const closeSettingsModal = () => setSettingsModalOpen(false);
+
+  // Check if user has claimed any roles (hatIds)
+  const userHatIds = userData?.hatIds || [];
+  const hasClaimedRole = userHatIds.length > 0;
+
+  // Show welcome/claim page if user hasn't claimed any role yet
+  if (!hasClaimedRole && !orgLoading && claimableRoles.length > 0) {
+    return (
+      <WelcomeClaimPage
+        orgName={orgName}
+        orgMetadata={orgMetadata}
+        claimableRoles={claimableRoles}
+        eligibilityModuleAddress={eligibilityModuleAddress}
+      />
+    );
+  }
 
   return (
     <>

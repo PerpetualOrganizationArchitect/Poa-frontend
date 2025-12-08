@@ -479,11 +479,16 @@ function DeployerPageContent() {
 
       toast({
         title: "Deployment successful!",
-        description: "Your organization has been created.",
+        description: "Redirecting to your organization...",
         status: "success",
-        duration: 10000,
+        duration: 5000,
         isClosable: true,
       });
+
+      // Delay redirect to allow subgraph indexing
+      setTimeout(() => {
+        router.push(`/profileHub?userDAO=${encodeURIComponent(state.organization.name)}`);
+      }, 3000);
 
     } catch (error) {
       console.error("Error deploying organization:", error);

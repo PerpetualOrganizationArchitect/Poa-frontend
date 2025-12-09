@@ -1,7 +1,5 @@
 import React, { useState, useMemo } from "react";
 import {
-  Spinner,
-  Center,
   Box,
   useToast,
   Button,
@@ -284,18 +282,8 @@ function DeployerPageContent() {
         infrastructureAddresses  // Addresses fetched from subgraph
       );
 
-      toast({
-        title: "Deployment successful!",
-        description: "Redirecting to your organization...",
-        status: "success",
-        duration: 5000,
-        isClosable: true,
-      });
-
-      // Delay redirect to allow subgraph indexing
-      setTimeout(() => {
-        router.push(`/profileHub?userDAO=${encodeURIComponent(state.organization.name)}`);
-      }, 3000);
+      // Return success - let DeployerWizard handle the celebration
+      return { success: true, orgName: state.organization.name };
 
     } catch (error) {
       console.error("Error deploying organization:", error);
@@ -306,9 +294,18 @@ function DeployerPageContent() {
         duration: 9000,
         isClosable: true,
       });
+      throw error; // Re-throw so DeployerWizard knows it failed
     } finally {
       setIsDeploying(false);
     }
+  };
+
+  // Handle navigation after deployment celebration
+  const handleDeploySuccess = () => {
+    // Delay redirect to allow subgraph indexing
+    setTimeout(() => {
+      router.push(`/profileHub?userDAO=${encodeURIComponent(state.organization.name)}`);
+    }, 2000);
   };
 
   // Handlers for modals that OrganizationStep needs
@@ -365,6 +362,7 @@ function DeployerPageContent() {
       >
         <DeployerWizard
           onDeployStart={handleDeployStart}
+          onDeploySuccess={handleDeploySuccess}
           deployerAddress={address}
         />
       </Box>
@@ -401,22 +399,7 @@ function DeployerPageContent() {
         </ModalContent>
       </Modal>
 
-      {isDeploying && (
-        <Center
-          position="fixed"
-          top="0"
-          left="0"
-          right="0"
-          bottom="0"
-          bg="blackAlpha.600"
-          zIndex={1000}
-        >
-          <Box textAlign="center" color="white">
-            <Spinner size="xl" mb={4} />
-            <Text fontSize="lg">Deploying your organization...</Text>
-          </Box>
-        </Center>
-      )}
+      {/* Deployment overlay is now handled by ReviewStep for a better UX */}
     </Box>
   );
 }

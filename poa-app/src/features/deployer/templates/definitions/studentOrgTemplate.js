@@ -198,6 +198,10 @@ decision needs full engagement.`,
         democracyWeight: 60,
         participationWeight: 40,
         quorum: 40,
+        features: {
+          educationHubEnabled: true,
+          electionHubEnabled: true,
+        },
       },
       reasoning: `Student government represents all students and needs legitimacy
 through democratic participation. Higher quorum ensures broad support for
@@ -221,6 +225,9 @@ who do the work. Task management and project creation are key capabilities.`,
         democracyWeight: 60,
         participationWeight: 40,
         quorum: 30,
+        features: {
+          educationHubEnabled: true,
+        },
       },
       reasoning: `High turnover requires accessible governance that new members
 can quickly understand and participate in. Education hub is essential.`,

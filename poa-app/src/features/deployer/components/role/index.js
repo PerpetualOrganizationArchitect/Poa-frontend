@@ -10,3 +10,4 @@ export { RoleCardSimple } from './RoleCardSimple';
 export { RoleCardAdvanced } from './RoleCardAdvanced';
 export { TeamPreview } from './TeamPreview';
 export { QuickAddRole } from './QuickAddRole';
+export { GranularPermissionsModal } from './GranularPermissionsModal';

@@ -43,8 +43,10 @@ import {
   PiImage,
   PiGear,
   PiUserPlus,
+  PiSliders,
 } from 'react-icons/pi';
 import { roleHasBundle } from '../../utils/powerBundles';
+import { GranularPermissionsModal } from './GranularPermissionsModal';
 
 /**
  * AssignToMeToggle - Prominent self-assignment toggle
@@ -650,9 +652,11 @@ export function RoleCardAdvanced({
   onUpdate,
   onDelete,
   onTogglePower,
+  onTogglePermission,
   canDelete = true,
 }) {
   const isTopLevel = role.hierarchy?.adminRoleIndex === null;
+  const { isOpen: isPermissionsOpen, onOpen: openPermissions, onClose: closePermissions } = useDisclosure();
 
   // Determine current join method
   const getJoinMethod = () => {
@@ -810,6 +814,22 @@ export function RoleCardAdvanced({
           onToggle={(bundleKey) => onTogglePower(roleIndex, bundleKey)}
         />
 
+        {/* Fine-tune permissions button */}
+        {onTogglePermission && (
+          <Button
+            size="sm"
+            variant="outline"
+            leftIcon={<Icon as={PiSliders} />}
+            onClick={openPermissions}
+            borderColor="warmGray.300"
+            color="warmGray.600"
+            _hover={{ bg: 'coral.50', borderColor: 'coral.300', color: 'coral.600' }}
+            alignSelf="flex-start"
+          >
+            Fine-tune permissions
+          </Button>
+        )}
+
         {/* Advanced Settings (collapsible) */}
         <AdvancedSettings
           role={role}
@@ -818,6 +838,18 @@ export function RoleCardAdvanced({
           onUpdate={onUpdate}
         />
       </VStack>
+
+      {/* Granular Permissions Modal */}
+      {onTogglePermission && (
+        <GranularPermissionsModal
+          isOpen={isPermissionsOpen}
+          onClose={closePermissions}
+          role={role}
+          roleIndex={roleIndex}
+          permissions={permissions}
+          onTogglePermission={onTogglePermission}
+        />
+      )}
     </Box>
   );
 }

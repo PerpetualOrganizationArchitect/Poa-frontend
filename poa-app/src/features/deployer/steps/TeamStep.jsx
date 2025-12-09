@@ -95,6 +95,11 @@ export function TeamStep() {
     });
   };
 
+  // Handle individual permission toggle (for granular permissions modal)
+  const handleTogglePermission = (permissionKey, roleIndex) => {
+    actions.togglePermission(permissionKey, roleIndex);
+  };
+
   // Handle adding new role
   const handleAddRole = (name) => {
     actions.addRole(name);
@@ -167,6 +172,7 @@ export function TeamStep() {
                 onUpdate={handleUpdateRole}
                 onDelete={handleDeleteRole}
                 onTogglePower={handleTogglePower}
+                onTogglePermission={isAdvanced ? handleTogglePermission : undefined}
                 canDelete={roles.length > 2}
               />
             ))}

@@ -38,36 +38,36 @@ export function getPhilosophyInfo(sliderValue) {
     case 'delegated':
       return {
         type: 'delegated',
-        name: 'Leader-Led',
-        shortDescription: 'Leaders make most decisions',
-        description: 'Leadership makes day-to-day decisions quickly. Members vote on major changes and elections.',
-        icon: '👔',
-        color: 'orange',
+        name: 'Contribution-Weighted',
+        shortDescription: 'Active contributors have more say',
+        description: 'Members who contribute more have more say. Ideal for recognizing active participation and rewarding engagement.',
+        icon: '⚡',
+        color: 'coral',
       };
     case 'hybrid':
       return {
         type: 'hybrid',
-        name: 'Balanced',
-        shortDescription: 'Leaders propose, members decide',
-        description: 'Leadership proposes ideas, but the community makes final decisions. Both participation and direct votes count.',
+        name: 'Balanced Approach',
+        shortDescription: 'Mix of participation and equal voice',
+        description: 'A mix of equal voting and rewarding participation. Works well for most organizations that value both fairness and engagement.',
         icon: '⚖️',
         color: 'blue',
       };
     case 'democratic':
       return {
         type: 'democratic',
-        name: 'Community-Led',
-        shortDescription: 'Everyone has equal voice',
-        description: 'Pure democracy where every member has equal voting power regardless of participation level.',
-        icon: '🗳️',
+        name: 'Equal Voice',
+        shortDescription: 'Every voice counts equally',
+        description: 'Every member has equal voting power regardless of participation level. Perfect for communities that prioritize equal representation.',
+        icon: '🤝',
         color: 'green',
       };
     default:
       return {
         type: 'hybrid',
-        name: 'Balanced',
-        shortDescription: 'Leaders propose, members decide',
-        description: 'A balanced approach between leadership and community input.',
+        name: 'Balanced Approach',
+        shortDescription: 'Mix of participation and equal voice',
+        description: 'A balanced approach that values both active participation and equal representation.',
         icon: '⚖️',
         color: 'blue',
       };
@@ -77,120 +77,123 @@ export function getPhilosophyInfo(sliderValue) {
 /**
  * Map slider value to voting configuration
  * Returns a voting object compatible with the deployer state
+ *
+ * Slider value directly maps to democracy/equal voice weight:
+ * - Slider 0 = 0% democracy, 100% participation (contribution-weighted)
+ * - Slider 100 = 100% democracy, 0% participation (pure equal voice)
+ *
+ * For slider 100, we use DIRECT mode (single voting class).
+ * For slider 0, we use a single ERC20_BAL class.
+ * For slider 1-99, we use HYBRID mode with two voting classes.
  */
 export function sliderToVotingConfig(sliderValue) {
-  const type = getPhilosophyType(sliderValue);
+  const clampedValue = Math.max(0, Math.min(100, sliderValue));
 
-  switch (type) {
-    case 'delegated':
-      return {
-        mode: 'HYBRID',
-        hybridQuorum: 30,
-        ddQuorum: 30,
-        quadraticEnabled: false,
-        democracyWeight: 30,
-        participationWeight: 70,
-        classes: [
-          {
-            id: uuidv4(),
-            strategy: VOTING_STRATEGY.DIRECT,
-            slicePct: 30,
-            quadratic: false,
-            minBalance: 0,
-            asset: null,
-            hatIds: [],
-          },
-          {
-            id: uuidv4(),
-            strategy: VOTING_STRATEGY.ERC20_BAL,
-            slicePct: 70,
-            quadratic: false,
-            minBalance: 0,
-            asset: null,
-            hatIds: [],
-          },
-        ],
-      };
+  // Democracy weight equals slider value directly
+  const democracyWeight = clampedValue;
+  const participationWeight = 100 - clampedValue;
 
-    case 'hybrid':
-      return {
-        mode: 'HYBRID',
-        hybridQuorum: 50,
-        ddQuorum: 50,
-        quadraticEnabled: false,
-        democracyWeight: 50,
-        participationWeight: 50,
-        classes: [
-          {
-            id: uuidv4(),
-            strategy: VOTING_STRATEGY.DIRECT,
-            slicePct: 50,
-            quadratic: false,
-            minBalance: 0,
-            asset: null,
-            hatIds: [],
-          },
-          {
-            id: uuidv4(),
-            strategy: VOTING_STRATEGY.ERC20_BAL,
-            slicePct: 50,
-            quadratic: false,
-            minBalance: 0,
-            asset: null,
-            hatIds: [],
-          },
-        ],
-      };
-
-    case 'democratic':
-    default:
-      return {
-        mode: 'DIRECT',
-        hybridQuorum: 60,
-        ddQuorum: 60,
-        quadraticEnabled: false,
-        democracyWeight: 100,
-        participationWeight: 0,
-        classes: [
-          {
-            id: uuidv4(),
-            strategy: VOTING_STRATEGY.DIRECT,
-            slicePct: 100,
-            quadratic: false,
-            minBalance: 0,
-            asset: null,
-            hatIds: [],
-          },
-        ],
-      };
+  // Pure democracy (slider = 100) uses DIRECT mode
+  if (clampedValue === 100) {
+    return {
+      mode: 'DIRECT',
+      hybridQuorum: 60,
+      ddQuorum: 60,
+      quadraticEnabled: false,
+      democracyWeight: 100,
+      participationWeight: 0,
+      classes: [
+        {
+          id: uuidv4(),
+          strategy: VOTING_STRATEGY.DIRECT,
+          slicePct: 100,
+          quadratic: false,
+          minBalance: 0,
+          asset: null,
+          hatIds: [],
+        },
+      ],
+    };
   }
+
+  // Pure contribution (slider = 0) - single ERC20_BAL class
+  if (clampedValue === 0) {
+    return {
+      mode: 'HYBRID',
+      hybridQuorum: 30,
+      ddQuorum: 30,
+      quadraticEnabled: false,
+      democracyWeight: 0,
+      participationWeight: 100,
+      classes: [
+        {
+          id: uuidv4(),
+          strategy: VOTING_STRATEGY.ERC20_BAL,
+          slicePct: 100,
+          quadratic: false,
+          minBalance: 0,
+          asset: null,
+          hatIds: [],
+        },
+      ],
+    };
+  }
+
+  // Hybrid mode (slider 1-99): two voting classes
+  // Quorum varies by zone for reasonable defaults
+  const quorum = clampedValue <= 30 ? 30 : clampedValue >= 71 ? 60 : 50;
+
+  return {
+    mode: 'HYBRID',
+    hybridQuorum: quorum,
+    ddQuorum: quorum,
+    quadraticEnabled: false,
+    democracyWeight,
+    participationWeight,
+    classes: [
+      {
+        id: uuidv4(),
+        strategy: VOTING_STRATEGY.DIRECT,
+        slicePct: democracyWeight,
+        quadratic: false,
+        minBalance: 0,
+        asset: null,
+        hatIds: [],
+      },
+      {
+        id: uuidv4(),
+        strategy: VOTING_STRATEGY.ERC20_BAL,
+        slicePct: participationWeight,
+        quadratic: false,
+        minBalance: 0,
+        asset: null,
+        hatIds: [],
+      },
+    ],
+  };
 }
 
 /**
  * Map voting configuration to slider value
  * Reverse mapping for displaying current state
+ *
+ * Since slider value = democracyWeight directly, we just return that value.
  */
 export function votingConfigToSlider(voting) {
   if (!voting) return 50;
 
-  // Pure direct democracy
-  if (voting.mode === 'DIRECT' || voting.democracyWeight >= 90) {
-    return 85; // Democratic range
+  // Pure direct democracy mode
+  if (voting.mode === 'DIRECT') {
+    return 100;
   }
 
-  // High participation weight (delegated)
-  if (voting.participationWeight >= 70) {
-    return 15; // Delegated range
+  // Use democracy weight directly as slider value
+  if (voting.democracyWeight !== undefined) {
+    return Math.round(voting.democracyWeight);
   }
 
-  // Balanced (hybrid)
-  if (voting.democracyWeight >= 40 && voting.democracyWeight <= 60) {
-    return 50; // Hybrid center
-  }
-
-  // Map based on democracy weight
-  // 0% democracy = 0 slider, 100% democracy = 100 slider
-  return Math.round(voting.democracyWeight);
+  // Fallback
+  return 50;
 }
 
 /**
@@ -230,21 +233,21 @@ export function describeVotingSetup(voting) {
   if (!voting) return 'No voting configured';
 
   if (voting.mode === 'DIRECT') {
-    return 'One person, one vote. Every member has equal say.';
+    return "Every member's vote counts equally. Perfect for communities that value equal representation.";
   }
 
   const ddWeight = voting.democracyWeight || 50;
   const partWeight = voting.participationWeight || 50;
 
   if (ddWeight >= 70) {
-    return `Mostly democratic (${ddWeight}% direct votes, ${partWeight}% participation).`;
+    return `Voting power is primarily based on equal membership, with some weight given to participation.`;
   }
 
   if (partWeight >= 70) {
-    return `Contribution-weighted (${partWeight}% participation, ${ddWeight}% direct votes).`;
+    return `Voting power reflects contribution levels. Active members have more say in decisions.`;
   }
 
-  return `Balanced (${ddWeight}% direct democracy, ${partWeight}% participation).`;
+  return `Voting combines equal membership with contribution weight. A balanced approach to decision-making.`;
 }
 
 export default {

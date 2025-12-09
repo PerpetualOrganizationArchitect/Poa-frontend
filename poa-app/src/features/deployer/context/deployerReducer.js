@@ -676,15 +676,32 @@ export function deployerReducer(state, action) {
 
     case ACTION_TYPES.APPLY_VARIATION: {
       // Apply a matched variation's settings to the state
+      // Supports voting settings, features, and permissions overrides
       const { variation, template } = action.payload;
       if (!variation?.settings) {
         return state;
       }
 
-      const { democracyWeight, participationWeight, quorum } = variation.settings;
+      const {
+        democracyWeight,
+        participationWeight,
+        quorum,
+        features: featureOverrides,
+        permissions: permissionOverrides,
+      } = variation.settings;
 
       // Update philosophy slider based on democracy weight
       const sliderValue = democracyWeight !== undefined ? democracyWeight : state.philosophy.slider;
+
+      // Apply feature overrides if present
+      const newFeatures = featureOverrides
+        ? { ...state.features, ...featureOverrides }
+        : state.features;
+
+      // Apply permission overrides if present
+      const newPermissions = permissionOverrides
+        ? { ...state.permissions, ...permissionOverrides }
+        : state.permissions;
 
       return {
         ...state,
@@ -699,6 +716,8 @@ export function deployerReducer(state, action) {
           hybridQuorum: quorum ?? state.voting.hybridQuorum,
           ddQuorum: quorum ?? state.voting.ddQuorum,
         },
+        features: newFeatures,
+        permissions: newPermissions,
         templateJourney: {
           ...state.templateJourney,
           variationConfirmed: true,

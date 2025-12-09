@@ -1,9 +1,11 @@
 /**
  * DeployerWizard - Main wizard component that orchestrates all deployment steps
  *
- * Supports two modes:
- * - Simple: Template → Identity → Team → Governance → Launch
- * - Advanced: Template → Identity → Roles → Permissions → Review
+ * Uses a unified flow for both Simple and Advanced modes:
+ * Template → Identity → Team → Governance → Launch
+ *
+ * Advanced mode controls what's shown WITHIN each step (e.g., RoleCardAdvanced
+ * instead of RoleCardSimple, granular permissions in GovernanceStep)
  */
 
 import React, { useState, useMemo } from 'react';
@@ -22,7 +24,7 @@ import {
 } from '@chakra-ui/react';
 import { PiCheck } from 'react-icons/pi';
 import { useQuery } from '@apollo/client';
-import { useDeployer, STEPS, STEP_NAMES, UI_MODES } from '../context/DeployerContext';
+import { useDeployer, STEPS, STEP_NAMES } from '../context/DeployerContext';
 import { mapStateToDeploymentParams, createDeploymentConfig } from '../utils/deploymentMapper';
 import { FETCH_INFRASTRUCTURE_ADDRESSES } from '../../../util/queries';
 
@@ -32,10 +34,7 @@ import IdentityStep from '../steps/IdentityStep';
 import TeamStep from '../steps/TeamStep';
 import GovernanceStep from '../steps/GovernanceStep';
 
-// Additional step components (for Advanced mode)
-import RolesStep from '../steps/RolesStep';
-import PermissionsStep from '../steps/PermissionsStep';
-import VotingStep from '../steps/VotingStep';
+// Review step (used by all modes)
 import ReviewStep from '../steps/ReviewStep';
 
 // Layout components
@@ -138,8 +137,9 @@ function StepProgressIndicator({ steps, currentStep }) {
   );
 }
 
-// Simple mode step configurations
-const SIMPLE_STEP_CONFIG = [
+// Unified step configuration (used for both Simple and Advanced modes)
+// Advanced mode only changes what's shown WITHIN each step, not the steps themselves
+const STEP_CONFIG = [
   {
     key: STEPS.TEMPLATE,
     title: 'Template',
@@ -167,40 +167,6 @@ const SIMPLE_STEP_CONFIG = [
   {
     key: STEPS.LAUNCH,
     title: 'Launch',
-    description: 'Deploy',
-    component: ReviewStep,
-  },
-];
-
-// Advanced mode step configurations
-const ADVANCED_STEP_CONFIG = [
-  {
-    key: STEPS.TEMPLATE,
-    title: 'Template',
-    description: 'Choose type',
-    component: TemplateStep,
-  },
-  {
-    key: STEPS.IDENTITY,
-    title: 'Identity',
-    description: 'Name & info',
-    component: IdentityStep,
-  },
-  {
-    key: STEPS.ROLES,
-    title: 'Roles',
-    description: 'Define roles',
-    component: RolesStep,
-  },
-  {
-    key: STEPS.PERMISSIONS,
-    title: 'Permissions',
-    description: 'Assign access',
-    component: PermissionsStep,
-  },
-  {
-    key: STEPS.REVIEW,
-    title: 'Review',
     description: 'Deploy',
     component: ReviewStep,
   },
@@ -283,14 +249,10 @@ export function DeployerWizard({
     };
   }, [infraData]);
 
-  // Get step config based on mode
-  const isSimpleMode = state.ui.mode === UI_MODES.SIMPLE;
-  const STEP_CONFIG = isSimpleMode ? SIMPLE_STEP_CONFIG : ADVANCED_STEP_CONFIG;
-
-  // Current step component
+  // Current step component (always uses unified STEP_CONFIG)
   const CurrentStepComponent = useMemo(() => {
     return STEP_CONFIG[state.currentStep]?.component || TemplateStep;
-  }, [state.currentStep, STEP_CONFIG]);
+  }, [state.currentStep]);
 
   // Handle deployment
   const handleDeploy = async () => {

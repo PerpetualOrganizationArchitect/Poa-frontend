@@ -9,6 +9,8 @@ import {
   Text,
   Switch,
   Icon,
+  FormControl,
+  FormLabel,
 } from '@chakra-ui/react';
 import { PiGear } from 'react-icons/pi';
 import { useDeployer, UI_MODES } from '../../context/DeployerContext';
@@ -22,41 +24,33 @@ export function ModeToggle() {
     actions.setUIMode(newMode);
   };
 
-  const handleSwitchChange = (e) => {
-    // Prevent double-firing with parent onClick
-    e.stopPropagation();
-    handleToggle();
-  };
-
   return (
-    <HStack
-      spacing={2}
-      cursor="pointer"
-      onClick={handleToggle}
-      role="button"
-      tabIndex={0}
-      _hover={{ opacity: 0.8 }}
-    >
+    <FormControl display="flex" alignItems="center" w="auto">
       <Icon
         as={PiGear}
         boxSize={4}
         color={isAdvanced ? 'coral.500' : 'warmGray.400'}
+        mr={2}
       />
-      <Text
+      <FormLabel
+        htmlFor="advanced-mode"
+        mb={0}
         fontSize="sm"
         color={isAdvanced ? 'coral.600' : 'warmGray.500'}
         fontWeight="500"
+        cursor="pointer"
         userSelect="none"
       >
         Advanced mode
-      </Text>
+      </FormLabel>
       <Switch
+        id="advanced-mode"
         size="sm"
         isChecked={isAdvanced}
-        onChange={handleSwitchChange}
+        onChange={handleToggle}
         colorScheme="coral"
       />
-    </HStack>
+    </FormControl>
   );
 }
 

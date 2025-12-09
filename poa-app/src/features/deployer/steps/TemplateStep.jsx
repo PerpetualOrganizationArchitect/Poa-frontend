@@ -479,7 +479,19 @@ export function TemplateStep() {
   // Finish template step and move to next
   const handleFinishTemplateStep = () => {
     if (selectedTemplateId) {
+      // Apply base template first
       actions.applyTemplate(selectedTemplateId);
+
+      // Re-apply variation if one was confirmed (to restore variation settings)
+      // This fixes the bug where applyTemplate() would overwrite variation settings
+      if (state.templateJourney.variationConfirmed && state.templateJourney.matchedVariation) {
+        const template = getTemplateById(selectedTemplateId);
+        const variation = template?.variations?.[state.templateJourney.matchedVariation];
+        if (variation) {
+          actions.applyVariation(variation, template);
+        }
+      }
+
       actions.nextStep();
     }
   };

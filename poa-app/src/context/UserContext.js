@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery } from '@apollo/client';
 import { useAccount } from 'wagmi';
 import { FETCH_USER_DATA_NEW } from '../util/queries';
 import { useRouter } from 'next/router';
 import { usePOContext } from './POContext';
 import { formatTokenAmount } from '../util/formatToken';
+import { useRefresh } from './RefreshContext';
 
 const UserContext = createContext();
 
@@ -36,7 +37,7 @@ export const UserProvider = ({ children }) => {
     // Construct the org-specific user ID
     const orgUserID = orgId && account ? `${orgId}-${account}` : null;
 
-    const { data, error, loading } = useQuery(FETCH_USER_DATA_NEW, {
+    const { data, error, loading, refetch } = useQuery(FETCH_USER_DATA_NEW, {
         variables: {
             orgUserID: orgUserID,
             userAddress: account,
@@ -44,6 +45,25 @@ export const UserProvider = ({ children }) => {
         skip: !orgUserID || !account,
         fetchPolicy: 'cache-first',
     });
+
+    // Subscribe to role:claimed event to refetch user data
+    const { subscribe } = useRefresh();
+
+    const refetchUserData = useCallback(() => {
+        if (orgUserID && account) {
+            refetch();
+        }
+    }, [refetch, orgUserID, account]);
+
+    useEffect(() => {
+        const unsubscribe = subscribe('role:claimed', () => {
+            // Wait for subgraph to index, then refetch user data
+            setTimeout(() => {
+                refetchUserData();
+            }, 1000);
+        });
+        return unsubscribe;
+    }, [subscribe, refetchUserData]);
 
     useEffect(() => {
         if (data) {
@@ -141,6 +161,7 @@ export const UserProvider = ({ children }) => {
         claimedTasks,
         completedModules,
         error,
+        refetchUserData,
     }), [
         userDataLoading,
         userProposals,
@@ -151,6 +172,7 @@ export const UserProvider = ({ children }) => {
         claimedTasks,
         completedModules,
         error,
+        refetchUserData,
     ]);
 
     return (

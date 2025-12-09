@@ -794,7 +794,6 @@ export function GovernanceStep() {
           onBack={handleBack}
           onNext={handleNext}
           nextLabel="Review & Launch"
-          isNextDisabled={isAdvancedMode && !validationResult.isValid}
         />
       </VStack>
     </>

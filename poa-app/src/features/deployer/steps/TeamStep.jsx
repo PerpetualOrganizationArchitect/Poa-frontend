@@ -111,30 +111,29 @@ export function TeamStep() {
     });
   };
 
-  // Validation before proceeding
+  // Validation before proceeding (informational only - doesn't block)
   const handleNext = () => {
     if (roles.length === 0) {
       toast({
-        title: 'Add at least one role',
-        description: 'Your organization needs roles for members to join.',
-        status: 'warning',
+        title: 'Step incomplete',
+        description: 'Add at least one role. You can come back to finish later.',
+        status: 'info',
         duration: 3000,
       });
-      return;
+    } else {
+      // Check for at least one top-level role
+      const hasTopLevel = roles.some((r) => r.hierarchy?.adminRoleIndex === null);
+      if (!hasTopLevel) {
+        toast({
+          title: 'Step incomplete',
+          description: 'At least one role should be top-level. You can fix this later.',
+          status: 'info',
+          duration: 3000,
+        });
+      }
     }
 
-    // Check for at least one top-level role
-    const hasTopLevel = roles.some((r) => r.hierarchy?.adminRoleIndex === null);
-    if (!hasTopLevel) {
-      toast({
-        title: 'Need a leader role',
-        description: 'At least one role must be top-level (not managed by another role).',
-        status: 'warning',
-        duration: 4000,
-      });
-      return;
-    }
-
+    // Always proceed to next step
     actions.nextStep();
   };
 

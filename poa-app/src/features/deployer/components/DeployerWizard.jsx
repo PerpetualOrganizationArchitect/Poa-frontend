@@ -22,7 +22,7 @@ import {
   Flex,
   keyframes,
 } from '@chakra-ui/react';
-import { PiCheck } from 'react-icons/pi';
+import { PiCheck, PiWarningCircle } from 'react-icons/pi';
 import { useQuery } from '@apollo/client';
 import { useDeployer, STEPS, STEP_NAMES } from '../context/DeployerContext';
 import { mapStateToDeploymentParams, createDeploymentConfig } from '../utils/deploymentMapper';
@@ -48,9 +48,10 @@ const pulseAnimation = keyframes`
 `;
 
 // Minimal Progress Indicator Component
-function StepProgressIndicator({ steps, currentStep, onStepClick }) {
+function StepProgressIndicator({ steps, currentStep, onStepClick, selectors }) {
   const activeBg = useColorModeValue('coral.500', 'coral.400');
-  const completedBg = useColorModeValue('coral.500', 'coral.400');
+  const completedValidBg = useColorModeValue('green.500', 'green.400');
+  const completedInvalidBg = useColorModeValue('orange.500', 'orange.400');
   const inactiveBg = useColorModeValue('warmGray.200', 'warmGray.600');
   const lineColor = useColorModeValue('warmGray.200', 'warmGray.600');
   const activeLineColor = useColorModeValue('coral.300', 'coral.600');
@@ -89,12 +90,38 @@ function StepProgressIndicator({ steps, currentStep, onStepClick }) {
           const isCompleted = index < currentStep;
           const isActive = index === currentStep;
           const isFuture = index > currentStep;
-          const isClickable = isCompleted;
+
+          // Check validation status for visited steps
+          const validation = selectors?.getStepValidationStatus(index) || { isValid: true };
+          const isVisitedButIncomplete = isCompleted && !validation.isValid;
+
+          // Allow clicking any step except the current one
+          const isClickable = !isActive;
 
           const handleClick = () => {
             if (isClickable && onStepClick) {
               onStepClick(index);
             }
+          };
+
+          // Determine background color based on state
+          const getBgColor = () => {
+            if (isActive) return activeBg;
+            if (isCompleted) {
+              return isVisitedButIncomplete ? completedInvalidBg : completedValidBg;
+            }
+            return 'white';
+          };
+
+          // Determine hover glow color based on state
+          const getHoverGlow = () => {
+            if (isVisitedButIncomplete) {
+              return '0 0 0 3px rgba(237, 137, 54, 0.25)'; // orange glow for incomplete
+            }
+            if (isCompleted) {
+              return '0 0 0 3px rgba(72, 187, 120, 0.25)'; // green glow for valid completed
+            }
+            return '0 0 0 3px rgba(160, 160, 160, 0.25)'; // gray glow for future steps
           };
 
           return (
@@ -104,7 +131,7 @@ function StepProgressIndicator({ steps, currentStep, onStepClick }) {
                 w={isActive ? "28px" : "22px"}
                 h={isActive ? "28px" : "22px"}
                 borderRadius="full"
-                bg={isCompleted || isActive ? (isActive ? activeBg : completedBg) : 'white'}
+                bg={getBgColor()}
                 border="2px solid"
                 borderColor={isCompleted || isActive ? 'transparent' : inactiveBg}
                 display="flex"
@@ -117,11 +144,15 @@ function StepProgressIndicator({ steps, currentStep, onStepClick }) {
                 onClick={handleClick}
                 _hover={isClickable ? {
                   transform: 'scale(1.1)',
-                  boxShadow: '0 0 0 3px rgba(240, 101, 67, 0.25)'
+                  boxShadow: getHoverGlow()
                 } : undefined}
               >
                 {isCompleted ? (
-                  <Icon as={PiCheck} color="white" boxSize={3} />
+                  isVisitedButIncomplete ? (
+                    <Icon as={PiWarningCircle} color="white" boxSize={3} />
+                  ) : (
+                    <Icon as={PiCheck} color="white" boxSize={3} />
+                  )
                 ) : (
                   <Text
                     fontSize="2xs"
@@ -391,6 +422,7 @@ export function DeployerWizard({
               steps={STEP_CONFIG}
               currentStep={state.currentStep}
               onStepClick={(stepIndex) => actions.goToStep(stepIndex)}
+              selectors={selectors}
             />
           </Box>
 

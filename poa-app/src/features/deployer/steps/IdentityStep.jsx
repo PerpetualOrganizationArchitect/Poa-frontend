@@ -504,21 +504,23 @@ export function IdentityStep() {
     if (!isValid) {
       setValidationErrors(errors);
       toast({
-        title: 'Please fill in required fields',
-        status: 'warning',
+        title: 'Step incomplete',
+        description: 'You can come back to finish this step later.',
+        status: 'info',
         duration: 3000,
         isClosable: true,
       });
-      return;
+      // Continue navigation even if validation fails
     }
 
-    setIsUploading(true);
-    const uploadSuccess = await uploadToIPFS();
-    setIsUploading(false);
-
-    if (uploadSuccess) {
-      actions.nextStep();
+    // Only attempt IPFS upload if we have required data
+    if (organization.name && organization.description) {
+      setIsUploading(true);
+      await uploadToIPFS();
+      setIsUploading(false);
     }
+
+    actions.nextStep();
   };
 
   const handleBack = () => {
@@ -713,7 +715,6 @@ export function IdentityStep() {
             <NavigationButtons
               onBack={handleBack}
               onNext={handleNext}
-              isNextDisabled={!organization.name || !organization.description}
               isLoading={isUploading}
               nextLabel="Continue"
             />

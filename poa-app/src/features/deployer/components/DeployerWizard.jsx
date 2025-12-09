@@ -196,8 +196,13 @@ export function DeployerWizard({
   deployerAddress,
 }) {
   const { state, actions, selectors } = useDeployer();
-  const [isDeploying, setIsDeploying] = useState(false);
+  // Deployment status: 'idle' | 'deploying' | 'success' | 'error'
+  const [deploymentStatus, setDeploymentStatus] = useState('idle');
+  const [deploymentResult, setDeploymentResult] = useState(null);
   const toast = useToast();
+
+  // Backwards compatibility - isDeploying derived from status
+  const isDeploying = deploymentStatus === 'deploying';
 
   // Use the new warm color palette
   const cardBg = useColorModeValue('rgba(255, 255, 255, 0.8)', 'rgba(51, 48, 44, 0.8)');
@@ -284,7 +289,7 @@ export function DeployerWizard({
       return;
     }
 
-    setIsDeploying(true);
+    setDeploymentStatus('deploying');
 
     try {
       // Create deployment config with fetched infrastructure addresses
@@ -293,14 +298,19 @@ export function DeployerWizard({
       // Log for debugging
       console.log('Deployment Config:', config);
 
-      // Notify parent component
+      // Call parent component's deploy handler and await result
       if (onDeployStart) {
-        onDeployStart(config);
+        const result = await onDeployStart(config);
+
+        // If deployment succeeded, transition to success state
+        if (result && result.success) {
+          setDeploymentResult(result);
+          setDeploymentStatus('success');
+          return;
+        }
       }
 
-      // The actual deployment would be handled by the parent component
-      // which has access to the contract and wallet
-
+      // If no onDeployStart or no result, just show info
       toast({
         title: 'Deployment initiated',
         description: 'Check your wallet to confirm the transaction',
@@ -310,6 +320,7 @@ export function DeployerWizard({
       });
     } catch (error) {
       console.error('Deployment error:', error);
+      setDeploymentStatus('error');
       toast({
         title: 'Deployment failed',
         description: error.message || 'An error occurred during deployment',
@@ -321,24 +332,21 @@ export function DeployerWizard({
       if (onDeployError) {
         onDeployError(error);
       }
-    } finally {
-      setIsDeploying(false);
     }
   };
 
   // Handle successful deployment (called by parent)
   const handleDeploySuccess = (result) => {
-    setIsDeploying(false);
-    toast({
-      title: 'Deployment successful!',
-      description: 'Your organization has been created on the blockchain',
-      status: 'success',
-      duration: 10000,
-      isClosable: true,
-    });
+    setDeploymentResult(result);
+    setDeploymentStatus('success');
+    // Toast is now handled by the celebration overlay
+  };
 
-    if (onDeploySuccess) {
-      onDeploySuccess(result);
+  // Handle continuing after celebration (called when user clicks "Go to Your Organization")
+  const handleCelebrationContinue = () => {
+    setDeploymentStatus('idle');
+    if (onDeploySuccess && deploymentResult) {
+      onDeploySuccess(deploymentResult);
     }
   };
 
@@ -402,6 +410,8 @@ export function DeployerWizard({
                 onDeploy={handleDeploy}
                 isDeploying={isDeploying}
                 isWalletConnected={!!deployerAddress}
+                deploymentStatus={deploymentStatus}
+                onDeploySuccess={handleCelebrationContinue}
               />
             ) : (
               <CurrentStepComponent />

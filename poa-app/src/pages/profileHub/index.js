@@ -16,7 +16,9 @@ import {
   Badge,
   Spinner,
   Center,
-  Button
+  Button,
+  Skeleton,
+  Circle,
 } from '@chakra-ui/react';
 import { SettingsIcon } from '@chakra-ui/icons';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
@@ -34,6 +36,73 @@ import ExecutiveMenuModal from '@/components/profileHub/ExecutiveMenuModal';
 import { useOrgStructure } from '@/hooks';
 import WelcomeClaimPage from '@/components/profileHub/WelcomeClaimPage';
 
+/**
+ * Skeleton loader for WelcomeClaimPage - prevents layout shift during initial load
+ * Matches the exact dimensions and structure of the real component
+ */
+function WelcomePageSkeleton() {
+  return (
+    <>
+      <Navbar />
+      <Box
+        minH="calc(100vh - 80px)"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        p={4}
+      >
+        <Box
+          maxW="600px"
+          w="100%"
+          borderRadius="2xl"
+          bg="rgba(0, 0, 0, 0.73)"
+          backdropFilter="blur(20px)"
+          overflow="hidden"
+          boxShadow="2xl"
+        >
+          {/* Step indicator skeleton */}
+          <HStack
+            px={6}
+            py={3}
+            borderBottom="1px solid"
+            borderColor="whiteAlpha.100"
+          >
+            <Skeleton height="24px" width="24px" borderRadius="full" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+            <Skeleton height="16px" width="120px" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+          </HStack>
+
+          {/* Content skeleton */}
+          <VStack spacing={6} p={8} align="center">
+            {/* Logo placeholder */}
+            <Skeleton height="100px" width="100px" borderRadius="2xl" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+
+            {/* Title placeholder */}
+            <Skeleton height="36px" width="280px" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+
+            {/* Description placeholder */}
+            <Skeleton height="20px" width="320px" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+
+            {/* Divider placeholder */}
+            <Skeleton height="2px" width="60px" startColor="purple.400" endColor="purple.600" />
+
+            {/* Instruction placeholder */}
+            <Skeleton height="24px" width="220px" startColor="whiteAlpha.100" endColor="whiteAlpha.300" />
+
+            {/* Role cards placeholders */}
+            <VStack w="100%" spacing={3}>
+              <Skeleton height="80px" width="100%" borderRadius="xl" startColor="whiteAlpha.50" endColor="whiteAlpha.200" />
+              <Skeleton height="80px" width="100%" borderRadius="xl" startColor="whiteAlpha.50" endColor="whiteAlpha.200" />
+            </VStack>
+
+            {/* Footer hint placeholder */}
+            <Skeleton height="16px" width="260px" startColor="whiteAlpha.100" endColor="whiteAlpha.200" />
+          </VStack>
+        </Box>
+      </Box>
+    </>
+  );
+}
+
 const UserprofileHub = () => {
 
   const router = useRouter();
@@ -46,7 +115,9 @@ const UserprofileHub = () => {
 
   // Fetch org structure for claim page
   const { roles, eligibilityModuleAddress, orgName, orgMetadata, loading: orgLoading } = useOrgStructure();
-  const claimableRoles = roles?.filter(r => r.defaultEligible) || [];
+  // Show all roles in the welcome flow - defaultEligible just means self-claimable
+  // Users can still see roles that require vouching/admin approval
+  const claimableRoles = roles || [];
 
   const prefersReducedMotion = usePrefersReducedMotion();
   const [countFinished, setCountFinished] = useState(false);
@@ -164,8 +235,17 @@ const UserprofileHub = () => {
   const userHatIds = userData?.hatIds || [];
   const hasClaimedRole = userHatIds.length > 0;
 
+  // Composite loading state - wait for ALL data before deciding which view to show
+  // This prevents the "flicker" caused by partial data rendering
+  const isFullyLoaded = !orgLoading && !userDataLoading && orgName;
+
+  // Show skeleton while ANY data is still loading
+  if (!isFullyLoaded) {
+    return <WelcomePageSkeleton />;
+  }
+
   // Show welcome/claim page if user hasn't claimed any role yet
-  if (!hasClaimedRole && !orgLoading && claimableRoles.length > 0) {
+  if (!hasClaimedRole && claimableRoles.length > 0) {
     return (
       <WelcomeClaimPage
         orgName={orgName}

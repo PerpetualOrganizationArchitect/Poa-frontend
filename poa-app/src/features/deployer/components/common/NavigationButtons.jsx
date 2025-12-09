@@ -1,5 +1,6 @@
 /**
  * NavigationButtons - Back/Next buttons for wizard navigation
+ * Styled with warm coral color scheme
  */
 
 import React from 'react';
@@ -19,8 +20,8 @@ export function NavigationButtons({
   backDisabled = false,
   showBack = true,
   showNext = true,
-  nextColorScheme = 'blue',
   isLoading = false,
+  isNextDisabled = false, // Alias for nextDisabled
 }) {
   const { state, actions, STEPS } = useDeployer();
   const buttonSize = useBreakpointValue({ base: 'md', lg: 'lg', xl: 'lg' });
@@ -44,16 +45,28 @@ export function NavigationButtons({
     }
   };
 
+  // Support both prop names for backwards compatibility
+  const isDisabled = nextDisabled || isNextDisabled;
+
   return (
     <Flex
       justifyContent="space-between"
-      mt={4}
+      mt={6}
+      pt={4}
+      borderTop="1px solid"
+      borderColor="warmGray.100"
       direction={{ base: 'column', md: 'row' }}
     >
       {showBack && (
         <Button
           size={buttonSize}
-          colorScheme="gray"
+          variant="outline"
+          borderColor="warmGray.300"
+          color="warmGray.600"
+          _hover={{
+            bg: 'warmGray.100',
+            borderColor: 'warmGray.400',
+          }}
           onClick={handleBack}
           isDisabled={backDisabled || isFirstStep}
           mb={{ base: 2, md: 0 }}
@@ -66,9 +79,21 @@ export function NavigationButtons({
       {showNext && (
         <Button
           size={buttonSize}
-          colorScheme={nextColorScheme}
+          bg="coral.500"
+          color="white"
+          _hover={{
+            bg: 'coral.600',
+            transform: 'translateY(-1px)',
+            boxShadow: 'md',
+          }}
+          _active={{ bg: 'coral.700' }}
+          _disabled={{
+            bg: 'warmGray.300',
+            cursor: 'not-allowed',
+            _hover: { bg: 'warmGray.300', transform: 'none', boxShadow: 'none' },
+          }}
           onClick={handleNext}
-          isDisabled={nextDisabled}
+          isDisabled={isDisabled}
           isLoading={isLoading}
         >
           {isLastStep ? 'Deploy' : nextLabel}

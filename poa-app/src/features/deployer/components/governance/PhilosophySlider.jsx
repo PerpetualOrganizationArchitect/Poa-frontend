@@ -20,8 +20,10 @@ import {
   SliderMark,
   Tooltip,
   Badge,
+  Icon,
   useColorModeValue,
 } from '@chakra-ui/react';
+import { PiUserFocus, PiScales, PiCheckSquare } from 'react-icons/pi';
 import { getPhilosophyInfo } from '../../utils/philosophyMapper';
 
 export function PhilosophySlider({ value, onChange, isDisabled = false }) {
@@ -50,16 +52,16 @@ export function PhilosophySlider({ value, onChange, isDisabled = false }) {
 
   return (
     <Box w="100%">
-      {/* Labels */}
+      {/* Labels - More neutral, mechanism-focused */}
       <HStack justify="space-between" mb={2} px={2}>
         <Text fontSize="sm" color={labelColor}>
-          Leader-Led
+          More weight to contributors
         </Text>
         <Text fontSize="sm" color={labelColor}>
-          Balanced
+          Equal balance
         </Text>
         <Text fontSize="sm" color={labelColor}>
-          Community-Led
+          One person, one vote
         </Text>
       </HStack>
 
@@ -75,15 +77,15 @@ export function PhilosophySlider({ value, onChange, isDisabled = false }) {
           onMouseEnter={() => setShowTooltip(true)}
           onMouseLeave={() => setShowTooltip(false)}
         >
-          {/* Marks at key positions */}
-          <SliderMark value={15} mt={4} ml={-2} fontSize="xs" color="gray.400">
-            👔
+          {/* Marks at key positions - using icons instead of emojis */}
+          <SliderMark value={15} mt={4} ml={-2}>
+            <Icon as={PiUserFocus} color="warmGray.400" boxSize={4} />
           </SliderMark>
-          <SliderMark value={50} mt={4} ml={-2} fontSize="xs" color="gray.400">
-            ⚖️
+          <SliderMark value={50} mt={4} ml={-2}>
+            <Icon as={PiScales} color="warmGray.400" boxSize={4} />
           </SliderMark>
-          <SliderMark value={85} mt={4} ml={-2} fontSize="xs" color="gray.400">
-            🗳️
+          <SliderMark value={85} mt={4} ml={-2}>
+            <Icon as={PiCheckSquare} color="warmGray.400" boxSize={4} />
           </SliderMark>
 
           <SliderTrack bg={trackBg} h={3} borderRadius="full">

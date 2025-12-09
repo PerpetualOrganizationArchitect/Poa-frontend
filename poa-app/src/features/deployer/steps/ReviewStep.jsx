@@ -114,8 +114,8 @@ export function ReviewStep({ onDeploy, isDeploying = false, isWalletConnected = 
   return (
     <Box>
       <StepHeader
-        title="Review & Deploy"
-        description="Review your organization configuration before deploying to the blockchain."
+        title="Ready to launch?"
+        description="Here's what you're creating. Take a moment to review, then bring your organization to life."
       />
 
       <VStack spacing={6} align="stretch">
@@ -124,7 +124,7 @@ export function ReviewStep({ onDeploy, isDeploying = false, isWalletConnected = 
           <Alert status="warning" borderRadius="md">
             <AlertIcon />
             <Box>
-              <Text fontWeight="medium">Configuration has issues</Text>
+              <Text fontWeight="medium">A few things need your attention</Text>
               <VStack align="start" mt={2} spacing={1}>
                 {allErrors.map((error, idx) => (
                   <Text key={idx} fontSize="sm">
@@ -137,7 +137,7 @@ export function ReviewStep({ onDeploy, isDeploying = false, isWalletConnected = 
         ) : (
           <Alert status="success" borderRadius="md">
             <AlertIcon />
-            <Text>Configuration is valid and ready to deploy</Text>
+            <Text>Everything looks good. You're ready to go.</Text>
           </Alert>
         )}
 
@@ -354,30 +354,35 @@ export function ReviewStep({ onDeploy, isDeploying = false, isWalletConnected = 
               <Alert status="warning" borderRadius="md" mb={4}>
                 <AlertIcon />
                 <HStack flex={1} justify="space-between" flexWrap="wrap" gap={2}>
-                  <Text>Please connect your wallet to deploy</Text>
+                  <Text>Please connect your wallet to continue</Text>
                   <ConnectButton showBalance={false} chainStatus="icon" accountStatus="address" />
                 </HStack>
               </Alert>
               <Button
-                colorScheme="green"
+                bg="coral.500"
+                color="white"
+                _hover={{ bg: 'coral.600' }}
                 size="lg"
                 w="100%"
                 isDisabled={true}
               >
-                Deploy Organization
+                Create Your Organization
               </Button>
             </Box>
           ) : (
             <Button
-              colorScheme="green"
+              bg="coral.500"
+              color="white"
+              _hover={{ bg: 'coral.600', transform: 'translateY(-1px)' }}
+              _active={{ bg: 'coral.700' }}
               size="lg"
               w="100%"
               onClick={handleDeploy}
               isDisabled={!isValid || isDeploying}
               isLoading={isDeploying}
-              loadingText="Deploying..."
+              loadingText="Creating..."
             >
-              Deploy Organization
+              Create Your Organization
             </Button>
           )}
 

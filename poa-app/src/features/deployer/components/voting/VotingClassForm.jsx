@@ -1,8 +1,13 @@
 /**
  * VotingClassForm - Form for creating/editing a voting class
+ *
+ * Features:
+ * - Quadratic voting toggle ONLY shown for ERC20_BAL (token) strategy
+ * - Auto-disables quadratic when switching to DIRECT strategy
+ * - Educational content about quadratic voting benefits
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   VStack,
@@ -33,8 +38,10 @@ import {
   AlertIcon,
   Tooltip,
   Icon,
+  useColorModeValue,
 } from '@chakra-ui/react';
 import { InfoIcon } from '@chakra-ui/icons';
+import { PiLightning, PiInfo } from 'react-icons/pi';
 import { useDeployer, VOTING_STRATEGY } from '../../context/DeployerContext';
 
 export function VotingClassForm({
@@ -65,6 +72,17 @@ export function VotingClassForm({
       delete newErrors[key];
       return newErrors;
     });
+  };
+
+  // Handle strategy change - auto-disable quadratic when switching to DIRECT
+  const handleStrategyChange = (newStrategy) => {
+    const strategyValue = parseInt(newStrategy, 10);
+    updateField('strategy', strategyValue);
+
+    // Auto-disable quadratic when switching to DIRECT (it only applies to token voting)
+    if (strategyValue === VOTING_STRATEGY.DIRECT && formData.quadratic) {
+      updateField('quadratic', false);
+    }
   };
 
   // Validate form
@@ -105,9 +123,7 @@ export function VotingClassForm({
           <FormLabel>Voting Strategy</FormLabel>
           <Select
             value={formData.strategy}
-            onChange={(e) =>
-              updateField('strategy', parseInt(e.target.value, 10))
-            }
+            onChange={(e) => handleStrategyChange(e.target.value)}
           >
             <option value={VOTING_STRATEGY.DIRECT}>
               Direct (Role-based) - One vote per member with eligible role
@@ -176,23 +192,6 @@ export function VotingClassForm({
           <FormErrorMessage>{errors.slicePct}</FormErrorMessage>
         </FormControl>
 
-        {/* Quadratic Voting */}
-        <FormControl display="flex" alignItems="center">
-          <FormLabel mb={0}>
-            <HStack>
-              <Text>Quadratic Voting</Text>
-              <Tooltip label="Reduces the influence of large holders by taking the square root of voting power">
-                <Icon as={InfoIcon} color="gray.400" />
-              </Tooltip>
-            </HStack>
-          </FormLabel>
-          <Switch
-            isChecked={formData.quadratic}
-            onChange={(e) => updateField('quadratic', e.target.checked)}
-            colorScheme="green"
-          />
-        </FormControl>
-
         <Divider />
 
         {/* Strategy-specific fields */}
@@ -243,6 +242,70 @@ export function VotingClassForm({
                 </Text>
               </Box>
             </Alert>
+
+            {/* Quadratic Voting - Only for ERC20_BAL */}
+            <Box
+              p={4}
+              bg={formData.quadratic ? 'orange.50' : 'gray.50'}
+              borderRadius="lg"
+              borderWidth="1px"
+              borderColor={formData.quadratic ? 'orange.200' : 'gray.200'}
+              transition="all 0.2s"
+            >
+              <FormControl display="flex" alignItems="center" mb={3}>
+                <HStack flex={1}>
+                  <Icon
+                    as={PiLightning}
+                    color={formData.quadratic ? 'orange.500' : 'gray.400'}
+                    boxSize={5}
+                  />
+                  <FormLabel mb={0} fontWeight="semibold">
+                    Quadratic Voting
+                  </FormLabel>
+                </HStack>
+                <Switch
+                  isChecked={formData.quadratic}
+                  onChange={(e) => updateField('quadratic', e.target.checked)}
+                  colorScheme="orange"
+                  size="lg"
+                />
+              </FormControl>
+
+              <Text fontSize="sm" color="gray.600" mb={3}>
+                Reduces the influence of large token holders by using the square root of their balance as voting power.
+              </Text>
+
+              {/* Quadratic voting explanation */}
+              <Box
+                p={3}
+                bg={formData.quadratic ? 'white' : 'gray.100'}
+                borderRadius="md"
+                fontSize="xs"
+              >
+                <Text fontWeight="semibold" color={formData.quadratic ? 'orange.700' : 'gray.600'} mb={2}>
+                  How it works:
+                </Text>
+                <VStack align="stretch" spacing={1} color="gray.600">
+                  <HStack justify="space-between">
+                    <Text>100 tokens</Text>
+                    <Text fontWeight="bold">→ {formData.quadratic ? '10 votes' : '100 votes'}</Text>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text>400 tokens</Text>
+                    <Text fontWeight="bold">→ {formData.quadratic ? '20 votes' : '400 votes'}</Text>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text>10,000 tokens</Text>
+                    <Text fontWeight="bold">→ {formData.quadratic ? '100 votes' : '10,000 votes'}</Text>
+                  </HStack>
+                </VStack>
+                {formData.quadratic && (
+                  <Text mt={2} fontSize="xs" color="orange.600" fontStyle="italic">
+                    With quadratic voting, a 100x token difference only gives 10x more voting power
+                  </Text>
+                )}
+              </Box>
+            </Box>
 
             {/* Minimum balance */}
             <FormControl>

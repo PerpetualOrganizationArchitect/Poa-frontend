@@ -50,6 +50,9 @@ import NavigationButtons from '../components/common/NavigationButtons';
 import ValidationSummary from '../components/common/ValidationSummary';
 import VotingClassCard from '../components/voting/VotingClassCard';
 import VotingClassForm from '../components/voting/VotingClassForm';
+import MultiClassWeightBar from '../components/voting/MultiClassWeightBar';
+import QuadraticVotingExplainer from '../components/voting/QuadraticVotingExplainer';
+import AdvancedVotingExample from '../components/voting/AdvancedVotingExample';
 
 export function VotingStep() {
   const { state, actions } = useDeployer();
@@ -71,6 +74,11 @@ export function VotingStep() {
   // Calculate total slice percentage
   const totalSlice = voting.classes.reduce((sum, c) => sum + c.slicePct, 0);
   const isSliceValid = totalSlice === 100;
+
+  // Check if any ERC20_BAL class has quadratic enabled
+  const hasQuadraticEnabled = voting.classes.some(
+    (c) => c.strategy === VOTING_STRATEGY.ERC20_BAL && c.quadratic
+  );
 
   // Get other classes' total for editing (exclude current class if editing)
   const getOtherClassesTotal = (excludeIndex) => {
@@ -350,6 +358,13 @@ export function VotingStep() {
             </Button>
           </HStack>
 
+          {/* Visual weight distribution bar */}
+          {voting.classes.length > 0 && (
+            <Box mb={4}>
+              <MultiClassWeightBar classes={voting.classes} roles={roles} showLabels={true} />
+            </Box>
+          )}
+
           {/* Total weight indicator */}
           <Box mb={4} p={3} bg={isSliceValid ? 'green.50' : 'orange.50'} borderRadius="md">
             <HStack justify="space-between" mb={2}>
@@ -419,14 +434,24 @@ export function VotingStep() {
             <Text fontSize="sm">
               • Drag sliders to adjust weights - other classes redistribute automatically
               <br />
-              • Direct: Each eligible member gets one vote based on their role
+              • Use multiple Direct classes to give different roles separate voting weights
               <br />
               • Participation Token: Voting power based on participation token balance
               <br />
-              • Quadratic: Reduces influence of large token holders
+              • Enable Quadratic on token classes to reduce whale influence
             </Text>
           </Box>
         </Alert>
+
+        {/* Quadratic Voting Explainer - shown when quadratic is enabled */}
+        {hasQuadraticEnabled && (
+          <QuadraticVotingExplainer isEnabled={true} />
+        )}
+
+        {/* Advanced Voting Example - shows how votes work across classes */}
+        {voting.classes.length > 0 && (
+          <AdvancedVotingExample votingClasses={voting.classes} roles={roles} />
+        )}
 
         {/* Validation errors */}
         {!validationResult.isValid && (

@@ -61,7 +61,6 @@ import {
   getRichTemplateById as getTemplateById,
 } from '../templates';
 import { DiscoveryQuestions, GrowthPathVisualizer } from '../components/governance';
-import NavigationButtons from '../components/common/NavigationButtons';
 
 // View states for the template step
 const VIEWS = {
@@ -74,7 +73,7 @@ const VIEWS = {
 /**
  * Template card in the gallery - cleaner, centered design
  */
-function TemplateCard({ template, isSelected, onSelect, onLearnMore }) {
+function TemplateCard({ template, isSelected, onSelect }) {
   const borderColor = useColorModeValue('warmGray.200', 'warmGray.600');
   const selectedBorderColor = useColorModeValue('coral.500', 'coral.400');
   const hoverBorderColor = useColorModeValue('coral.300', 'coral.500');
@@ -139,20 +138,6 @@ function TemplateCard({ template, isSelected, onSelect, onLearnMore }) {
               {template.tagline}
             </Text>
           </Box>
-
-          {/* Learn More Button */}
-          <Button
-            size="sm"
-            variant="ghost"
-            color="coral.600"
-            _hover={{ bg: 'coral.50' }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onLearnMore(template);
-            }}
-          >
-            Learn more
-          </Button>
 
           {/* Selected check */}
           {isSelected && (
@@ -399,7 +384,7 @@ function PhilosophyPanel({ template, onContinue, onBack }) {
  */
 function GrowthPathModal({ template, isOpen, onClose }) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside">
+    <Modal isOpen={isOpen} onClose={onClose} size="4xl" scrollBehavior="inside">
       <ModalOverlay />
       <ModalContent>
         <ModalHeader>
@@ -588,7 +573,6 @@ export function TemplateStep() {
                   template={template}
                   isSelected={selectedTemplateId === template.id}
                   onSelect={handleSelectTemplate}
-                  onLearnMore={handleLearnMore}
                 />
               ))}
             </SimpleGrid>
@@ -650,15 +634,6 @@ export function TemplateStep() {
                 </Flex>
               </Box>
             )}
-
-            {/* Navigation */}
-            <NavigationButtons
-              showBack={false}
-              showNext={!!selectedTemplate}
-              onNext={handleQuickContinue}
-              nextLabel="Continue"
-              isNextDisabled={!selectedTemplate}
-            />
           </VStack>
         );
     }

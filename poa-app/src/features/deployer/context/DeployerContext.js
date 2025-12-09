@@ -150,6 +150,10 @@ export function DeployerProvider({ children }) {
       dispatch({ type: ACTION_TYPES.UPDATE_VOTING_CLASS, payload: { index, updates } }),
     removeVotingClass: (index) =>
       dispatch({ type: ACTION_TYPES.REMOVE_VOTING_CLASS, payload: index }),
+    toggleClassLock: (index) =>
+      dispatch({ type: ACTION_TYPES.TOGGLE_CLASS_LOCK, payload: index }),
+    applyWeightPreset: (preset) =>
+      dispatch({ type: ACTION_TYPES.APPLY_WEIGHT_PRESET, payload: preset }),
 
     // Features
     toggleFeature: (feature, value) =>

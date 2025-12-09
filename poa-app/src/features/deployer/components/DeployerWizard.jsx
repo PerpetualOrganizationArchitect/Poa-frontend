@@ -1,9 +1,11 @@
 /**
  * DeployerWizard - Main wizard component that orchestrates all deployment steps
  *
- * Supports two modes:
- * - Simple: Template → Identity → Team → Governance → Launch
- * - Advanced: Template → Organization → Roles → Permissions → Voting → Review
+ * Uses a unified flow for both Simple and Advanced modes:
+ * Template → Identity → Team → Governance → Launch
+ *
+ * Advanced mode controls what's shown WITHIN each step (e.g., RoleCardAdvanced
+ * instead of RoleCardSimple, granular permissions in GovernanceStep)
  */
 
 import React, { useState, useMemo } from 'react';
@@ -14,28 +16,15 @@ import {
   HStack,
   Heading,
   Text,
-  Progress,
   Icon,
   useColorModeValue,
-  Stepper,
-  Step,
-  StepIndicator,
-  StepStatus,
-  StepIcon,
-  StepNumber,
-  StepTitle,
-  StepDescription,
-  StepSeparator,
-  useSteps,
   useToast,
   Flex,
+  keyframes,
 } from '@chakra-ui/react';
-import {
-  CheckCircleIcon,
-  WarningIcon,
-} from '@chakra-ui/icons';
+import { PiCheck } from 'react-icons/pi';
 import { useQuery } from '@apollo/client';
-import { useDeployer, STEPS, STEP_NAMES, UI_MODES } from '../context/DeployerContext';
+import { useDeployer, STEPS, STEP_NAMES } from '../context/DeployerContext';
 import { mapStateToDeploymentParams, createDeploymentConfig } from '../utils/deploymentMapper';
 import { FETCH_INFRASTRUCTURE_ADDRESSES } from '../../../util/queries';
 
@@ -45,18 +34,112 @@ import IdentityStep from '../steps/IdentityStep';
 import TeamStep from '../steps/TeamStep';
 import GovernanceStep from '../steps/GovernanceStep';
 
-// Legacy step components (for Advanced mode)
-import OrganizationStep from '../steps/OrganizationStep';
-import RolesStep from '../steps/RolesStep';
-import PermissionsStep from '../steps/PermissionsStep';
-import VotingStep from '../steps/VotingStep';
+// Review step (used by all modes)
 import ReviewStep from '../steps/ReviewStep';
 
 // Layout components
 import { ModeToggle } from './layout';
 
-// Simple mode step configurations
-const SIMPLE_STEP_CONFIG = [
+// Subtle pulse animation for active step
+const pulseAnimation = keyframes`
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.9; }
+`;
+
+// Minimal Progress Indicator Component
+function StepProgressIndicator({ steps, currentStep }) {
+  const activeBg = useColorModeValue('coral.500', 'coral.400');
+  const completedBg = useColorModeValue('coral.500', 'coral.400');
+  const inactiveBg = useColorModeValue('warmGray.200', 'warmGray.600');
+  const lineColor = useColorModeValue('warmGray.200', 'warmGray.600');
+  const activeLineColor = useColorModeValue('coral.300', 'coral.600');
+  const labelColor = useColorModeValue('warmGray.600', 'warmGray.400');
+  const activeLabelColor = useColorModeValue('warmGray.900', 'white');
+
+  return (
+    <Box position="relative" w="100%" py={4}>
+      {/* Connection line (background) */}
+      <Box
+        position="absolute"
+        top="50%"
+        left="24px"
+        right="24px"
+        h="2px"
+        bg={lineColor}
+        transform="translateY(-50%)"
+        zIndex={0}
+      />
+      {/* Active connection line (progress) */}
+      <Box
+        position="absolute"
+        top="50%"
+        left="24px"
+        w={`calc(${(currentStep / (steps.length - 1)) * 100}% - 24px)`}
+        h="2px"
+        bg={activeLineColor}
+        transform="translateY(-50%)"
+        zIndex={1}
+        transition="width 0.3s ease"
+      />
+
+      {/* Step indicators */}
+      <HStack justify="space-between" position="relative" zIndex={2}>
+        {steps.map((step, index) => {
+          const isCompleted = index < currentStep;
+          const isActive = index === currentStep;
+          const isFuture = index > currentStep;
+
+          return (
+            <VStack key={step.key} spacing={2} flex={1} maxW="120px">
+              {/* Step dot */}
+              <Box
+                w={isActive ? "36px" : "28px"}
+                h={isActive ? "36px" : "28px"}
+                borderRadius="full"
+                bg={isCompleted || isActive ? (isActive ? activeBg : completedBg) : 'white'}
+                border="2px solid"
+                borderColor={isCompleted || isActive ? 'transparent' : inactiveBg}
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                transition="all 0.2s ease"
+                animation={isActive ? `${pulseAnimation} 2s ease-in-out infinite` : undefined}
+                boxShadow={isActive ? '0 0 0 4px rgba(240, 101, 67, 0.15)' : undefined}
+              >
+                {isCompleted ? (
+                  <Icon as={PiCheck} color="white" boxSize={4} />
+                ) : (
+                  <Text
+                    fontSize="xs"
+                    fontWeight="600"
+                    color={isActive ? 'white' : 'warmGray.400'}
+                  >
+                    {index + 1}
+                  </Text>
+                )}
+              </Box>
+
+              {/* Step label */}
+              <Text
+                fontSize="xs"
+                fontWeight={isActive ? '600' : '500'}
+                color={isActive ? activeLabelColor : labelColor}
+                textAlign="center"
+                transition="all 0.2s ease"
+              >
+                {step.title}
+              </Text>
+            </VStack>
+          );
+        })}
+      </HStack>
+    </Box>
+  );
+}
+
+// Unified step configuration (used for both Simple and Advanced modes)
+// Advanced mode only changes what's shown WITHIN each step, not the steps themselves
+const STEP_CONFIG = [
   {
     key: STEPS.TEMPLATE,
     title: 'Template',
@@ -89,40 +172,6 @@ const SIMPLE_STEP_CONFIG = [
   },
 ];
 
-// Advanced mode step configurations (legacy)
-const ADVANCED_STEP_CONFIG = [
-  {
-    key: STEPS.TEMPLATE,
-    title: 'Template',
-    description: 'Choose type',
-    component: TemplateStep,
-  },
-  {
-    key: STEPS.ORGANIZATION,
-    title: 'Organization',
-    description: 'Basic info',
-    component: OrganizationStep,
-  },
-  {
-    key: STEPS.ROLES,
-    title: 'Roles',
-    description: 'Define roles',
-    component: RolesStep,
-  },
-  {
-    key: STEPS.PERMISSIONS,
-    title: 'Permissions',
-    description: 'Assign access',
-    component: PermissionsStep,
-  },
-  {
-    key: STEPS.REVIEW,
-    title: 'Review',
-    description: 'Deploy',
-    component: ReviewStep,
-  },
-];
-
 export function DeployerWizard({
   onDeployStart,
   onDeploySuccess,
@@ -133,8 +182,10 @@ export function DeployerWizard({
   const [isDeploying, setIsDeploying] = useState(false);
   const toast = useToast();
 
-  const bgColor = useColorModeValue('gray.50', 'gray.900');
-  const cardBg = useColorModeValue('white', 'gray.800');
+  // Use the new warm color palette
+  const cardBg = useColorModeValue('rgba(255, 255, 255, 0.8)', 'rgba(51, 48, 44, 0.8)');
+  const headingColor = useColorModeValue('warmGray.900', 'white');
+  const subtitleColor = useColorModeValue('warmGray.600', 'warmGray.400');
 
   // Fetch infrastructure addresses from subgraph
   const { data: infraData } = useQuery(FETCH_INFRASTRUCTURE_ADDRESSES, {
@@ -198,14 +249,10 @@ export function DeployerWizard({
     };
   }, [infraData]);
 
-  // Get step config based on mode
-  const isSimpleMode = state.ui.mode === UI_MODES.SIMPLE;
-  const STEP_CONFIG = isSimpleMode ? SIMPLE_STEP_CONFIG : ADVANCED_STEP_CONFIG;
-
-  // Current step component
+  // Current step component (always uses unified STEP_CONFIG)
   const CurrentStepComponent = useMemo(() => {
     return STEP_CONFIG[state.currentStep]?.component || TemplateStep;
-  }, [state.currentStep, STEP_CONFIG]);
+  }, [state.currentStep]);
 
   // Handle deployment
   const handleDeploy = async () => {
@@ -282,82 +329,53 @@ export function DeployerWizard({
   const selectedTemplate = selectors.getSelectedTemplate ? selectors.getSelectedTemplate() : null;
 
   return (
-    <Box minH="100vh" bg={bgColor} py={8}>
-      <Container maxW="container.lg">
-        <VStack spacing={8} align="stretch">
+    <Box minH="100vh" py={{ base: 8, md: 16 }}>
+      <Container maxW="container.lg" px={{ base: 4, md: 8 }}>
+        <VStack spacing={{ base: 8, md: 12 }} align="stretch">
           {/* Header */}
           <Flex justify="space-between" align="center" wrap="wrap" gap={4}>
             <Box>
-              <Heading size="lg" mb={1}>
+              <Heading size="lg" mb={2} color={headingColor}>
                 {state.currentStep === STEPS.TEMPLATE
                   ? 'Create Your Organization'
                   : selectedTemplate
                   ? `Create ${selectedTemplate.name}`
                   : 'Create Your Organization'}
               </Heading>
-              <Text color="gray.600">
+              <Text color={subtitleColor} fontSize="md">
                 {state.currentStep === STEPS.TEMPLATE
                   ? 'Choose a template to get started'
-                  : 'Building your decentralized organization'}
+                  : 'Build something together'}
               </Text>
             </Box>
             {state.currentStep > STEPS.TEMPLATE && <ModeToggle />}
           </Flex>
 
-          {/* Step Progress */}
+          {/* Minimal Step Progress Indicator */}
           <Box
             bg={cardBg}
-            borderRadius="lg"
-            p={4}
-            boxShadow="sm"
-            overflowX="auto"
+            backdropFilter="blur(12px)"
+            borderRadius="xl"
+            p={{ base: 4, md: 6 }}
+            border="1px solid"
+            borderColor="rgba(255, 255, 255, 0.18)"
+            boxShadow="0 4px 30px rgba(0, 0, 0, 0.05)"
           >
-            <Stepper index={state.currentStep} colorScheme="blue" size="sm">
-              {STEP_CONFIG.map((step, index) => (
-                <Step key={step.key}>
-                  <StepIndicator>
-                    <StepStatus
-                      complete={<StepIcon />}
-                      incomplete={<StepNumber />}
-                      active={<StepNumber />}
-                    />
-                  </StepIndicator>
-
-                  <Box flexShrink="0">
-                    <StepTitle>{step.title}</StepTitle>
-                    <StepDescription>{step.description}</StepDescription>
-                  </Box>
-
-                  <StepSeparator />
-                </Step>
-              ))}
-            </Stepper>
-          </Box>
-
-          {/* Progress bar */}
-          <Box>
-            <HStack justify="space-between" mb={2}>
-              <Text fontSize="sm" color="gray.500">
-                Step {state.currentStep + 1} of {STEP_CONFIG.length}
-              </Text>
-              <Text fontSize="sm" color="gray.500">
-                {Math.round(((state.currentStep + 1) / STEP_CONFIG.length) * 100)}% complete
-              </Text>
-            </HStack>
-            <Progress
-              value={((state.currentStep + 1) / STEP_CONFIG.length) * 100}
-              size="sm"
-              colorScheme="blue"
-              borderRadius="full"
+            <StepProgressIndicator
+              steps={STEP_CONFIG}
+              currentStep={state.currentStep}
             />
           </Box>
 
           {/* Current Step Content */}
           <Box
             bg={cardBg}
-            borderRadius="lg"
-            p={6}
-            boxShadow="sm"
+            backdropFilter="blur(12px)"
+            borderRadius="2xl"
+            p={{ base: 6, md: 8 }}
+            border="1px solid"
+            borderColor="rgba(255, 255, 255, 0.18)"
+            boxShadow="0 4px 30px rgba(0, 0, 0, 0.05)"
             minH="400px"
           >
             {state.currentStep === STEPS.LAUNCH || state.currentStep === STEPS.REVIEW ? (
@@ -371,23 +389,24 @@ export function DeployerWizard({
             )}
           </Box>
 
-          {/* Debug info (dev only) */}
+          {/* Debug info (dev only) - hidden by default, toggle with keyboard */}
           {process.env.NODE_ENV === 'development' && (
             <Box
-              bg="gray.100"
+              bg="warmGray.100"
               p={4}
-              borderRadius="md"
+              borderRadius="lg"
               fontSize="xs"
               fontFamily="mono"
+              opacity={0.7}
             >
-              <Text fontWeight="bold" mb={2}>
+              <Text fontWeight="bold" mb={2} color="warmGray.700">
                 Debug: Current State
               </Text>
-              <Text>Step: {STEP_CONFIG[state.currentStep]?.title || 'Unknown'}</Text>
-              <Text>Mode: {state.ui.mode}</Text>
-              <Text>Template: {state.ui.selectedTemplate || 'None'}</Text>
-              <Text>Roles: {state.roles.length}</Text>
-              <Text>Voting Classes: {state.voting.classes.length}</Text>
+              <Text color="warmGray.600">Step: {STEP_CONFIG[state.currentStep]?.title || 'Unknown'}</Text>
+              <Text color="warmGray.600">Mode: {state.ui.mode}</Text>
+              <Text color="warmGray.600">Template: {state.ui.selectedTemplate || 'None'}</Text>
+              <Text color="warmGray.600">Roles: {state.roles.length}</Text>
+              <Text color="warmGray.600">Voting Classes: {state.voting.classes.length}</Text>
             </Box>
           )}
         </VStack>

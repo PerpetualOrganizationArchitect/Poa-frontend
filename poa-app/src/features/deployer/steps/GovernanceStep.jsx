@@ -1,77 +1,58 @@
 /**
- * GovernanceStep - Philosophy and Powers configuration
+ * GovernanceStep - Voting configuration
  *
- * This step replaces the separate Permissions and Voting steps in Simple mode.
- * It uses a philosophy slider to set voting behavior and power bundles to
- * simplify permission assignment.
+ * This step configures how decisions are made:
+ * - Philosophy slider for voting weight distribution
+ * - Voting permissions (who can vote, who can create proposals)
+ *
+ * Note: Role powers are configured on the Team step, not here.
+ * Note: Optional features (Education Hub, Election Hub) are configured on the next step.
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import {
   Box,
   VStack,
   HStack,
   Heading,
   Text,
-  SimpleGrid,
-  Divider,
-  Switch,
-  FormControl,
-  FormLabel,
   Badge,
-  Button,
-  Collapse,
+  Icon,
   useColorModeValue,
-  useDisclosure,
-  Alert,
-  AlertIcon,
 } from '@chakra-ui/react';
-import { ChevronDownIcon, ChevronUpIcon } from '@chakra-ui/icons';
-import { useDeployer, UI_MODES } from '../context/DeployerContext';
-import { StepHeader, NavigationButtons } from '../components/common';
-import { PhilosophySlider, PowerBundleCard } from '../components/governance';
-import { sliderToVotingConfig, describeVotingSetup } from '../utils/philosophyMapper';
-import { powerBundlesToPermissions, POWER_BUNDLE_LIST } from '../utils/powerBundles';
+import { useDeployer } from '../context/DeployerContext';
+import { NavigationButtons } from '../components/common';
+import { PhilosophySlider, getZoneInfo } from '../components/governance';
+import { sliderToVotingConfig } from '../utils/philosophyMapper';
+import { PiChatDots, PiMegaphoneSimple } from 'react-icons/pi';
 
 export function GovernanceStep() {
-  const { state, actions, selectors } = useDeployer();
-  const { isOpen: isAdvancedOpen, onToggle: toggleAdvanced } = useDisclosure();
-
-  const isSimpleMode = selectors.isSimpleMode();
-  const selectedTemplate = selectors.getSelectedTemplate();
+  const { state, actions } = useDeployer();
 
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
   const sectionBg = useColorModeValue('gray.50', 'gray.900');
   const helperColor = useColorModeValue('gray.600', 'gray.400');
 
-  const { philosophy, roles, features, voting } = state;
+  const { philosophy, roles, permissions } = state;
 
   // Handle philosophy slider change
   const handleSliderChange = (value) => {
     actions.setPhilosophySlider(value);
   };
 
-  // Handle power bundle toggle
-  const handleTogglePowerBundle = (bundleKey, roleIndex) => {
-    actions.togglePowerBundle(bundleKey, roleIndex);
+  // Handle voting permission toggle
+  const handleToggleVotingPermission = (permissionKey, roleIndex) => {
+    actions.togglePermission(permissionKey, roleIndex);
   };
 
-  // Handle feature toggles
-  const handleToggleFeature = (feature) => {
-    actions.toggleFeature(feature);
-  };
-
-  // Apply philosophy and bundles when advancing
+  // Apply philosophy when advancing
   const handleNext = () => {
     // Convert philosophy slider to voting config
     const votingConfig = sliderToVotingConfig(philosophy.slider);
 
-    // Convert power bundles to permissions
-    const permissions = powerBundlesToPermissions(philosophy.powerBundles, state.permissions);
-
-    // Apply to state
-    actions.applyPhilosophy(votingConfig, permissions);
+    // Apply voting config
+    actions.applyPhilosophy(votingConfig, state.permissions);
 
     // Move to next step
     actions.nextStep();
@@ -81,206 +62,151 @@ export function GovernanceStep() {
     actions.prevStep();
   };
 
-  // Get guidance text from template
-  const guidanceText = selectedTemplate?.ui?.guidanceText?.governance;
+  // Get zone info for summary
+  const zoneInfo = getZoneInfo(philosophy.slider);
+
+  // Helper to get role names that can vote
+  const getVoterRoleNames = () => {
+    return roles
+      .filter((_, idx) => (permissions.ddVotingRoles || []).includes(idx))
+      .map((r) => r.name);
+  };
 
   return (
     <>
-      <StepHeader
-        title="How Will You Decide Together?"
-        description={guidanceText || 'Configure how decisions are made in your organization.'}
-      />
-
       <VStack spacing={6} align="stretch">
-        {/* Philosophy Section */}
+        {/* Philosophy Slider - renders its own explanation sections */}
+        <PhilosophySlider
+          value={philosophy.slider}
+          onChange={handleSliderChange}
+        />
+
+        {/* Voting Permissions */}
         <Box
           bg={cardBg}
           p={6}
-          borderRadius="lg"
-          borderWidth="1px"
-          borderColor={borderColor}
-        >
-          <VStack spacing={6} align="stretch">
-            <Box>
-              <Heading size="sm" mb={2}>
-                Governance Philosophy
-              </Heading>
-              <Text fontSize="sm" color={helperColor}>
-                Choose how voting power is distributed between direct democracy and contribution-based voting.
-              </Text>
-            </Box>
-
-            <PhilosophySlider
-              value={philosophy.slider}
-              onChange={handleSliderChange}
-            />
-
-            {/* Voting Summary */}
-            <Alert status="info" borderRadius="md" variant="subtle">
-              <AlertIcon />
-              <Text fontSize="sm">
-                {describeVotingSetup(sliderToVotingConfig(philosophy.slider))}
-              </Text>
-            </Alert>
-          </VStack>
-        </Box>
-
-        {/* Power Bundles Section */}
-        <Box
-          bg={cardBg}
-          p={6}
-          borderRadius="lg"
+          borderRadius="xl"
           borderWidth="1px"
           borderColor={borderColor}
         >
           <VStack spacing={4} align="stretch">
-            <Box>
-              <Heading size="sm" mb={2}>
-                Role Powers
-              </Heading>
-              <Text fontSize="sm" color={helperColor}>
-                Assign capabilities to each role. These determine what members can do in your organization.
-              </Text>
-            </Box>
+            <Heading size="sm">Who Participates in Governance?</Heading>
+            <Text fontSize="sm" color={helperColor}>
+              Click a role to toggle its voting permissions.
+            </Text>
 
-            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
-              {POWER_BUNDLE_LIST.map((bundle) => (
-                <PowerBundleCard
-                  key={bundle.id}
-                  bundleKey={bundle.id}
-                  roles={roles}
-                  selectedRoleIndices={philosophy.powerBundles[bundle.id] || []}
-                  onToggleRole={handleTogglePowerBundle}
-                />
-              ))}
-            </SimpleGrid>
-          </VStack>
-        </Box>
-
-        {/* Features Section */}
-        <Box
-          bg={cardBg}
-          p={6}
-          borderRadius="lg"
-          borderWidth="1px"
-          borderColor={borderColor}
-        >
-          <VStack spacing={4} align="stretch">
-            <Heading size="sm">Optional Features</Heading>
-
-            <HStack justify="space-between" py={2}>
-              <Box>
-                <Text fontWeight="medium">Education Hub</Text>
-                <Text fontSize="sm" color={helperColor}>
-                  Create learning modules and certifications for members
-                </Text>
-              </Box>
-              <Switch
-                colorScheme="purple"
-                size="lg"
-                isChecked={features.educationHubEnabled}
-                onChange={() => handleToggleFeature('educationHubEnabled')}
-              />
-            </HStack>
-
-            <Divider />
-
-            <HStack justify="space-between" py={2}>
-              <Box>
-                <Text fontWeight="medium">Election Hub</Text>
-                <Text fontSize="sm" color={helperColor}>
-                  Enable democratic elections for leadership roles
-                </Text>
-              </Box>
-              <Switch
-                colorScheme="blue"
-                size="lg"
-                isChecked={features.electionHubEnabled}
-                onChange={() => handleToggleFeature('electionHubEnabled')}
-              />
-            </HStack>
-          </VStack>
-        </Box>
-
-        {/* Advanced Options (if Simple mode) */}
-        {isSimpleMode && (
-          <Box>
-            <Button
-              variant="ghost"
-              size="sm"
-              rightIcon={isAdvancedOpen ? <ChevronUpIcon /> : <ChevronDownIcon />}
-              onClick={toggleAdvanced}
-              color={helperColor}
+            {/* Who can vote */}
+            <Box
+              p={4}
+              bg="warmGray.50"
+              borderRadius="lg"
+              border="1px solid"
+              borderColor="warmGray.100"
             >
-              {isAdvancedOpen ? 'Hide' : 'Show'} advanced voting options
-            </Button>
+              <HStack spacing={3} mb={3}>
+                <Icon as={PiChatDots} color="coral.500" boxSize={5} />
+                <Text fontWeight="600" fontSize="sm">
+                  Who can vote in polls?
+                </Text>
+              </HStack>
+              <HStack spacing={2} flexWrap="wrap">
+                {roles.map((role, idx) => {
+                  const canVote = (permissions.ddVotingRoles || []).includes(idx);
+                  return (
+                    <Badge
+                      key={idx}
+                      px={3}
+                      py={1}
+                      borderRadius="full"
+                      cursor="pointer"
+                      bg={canVote ? 'coral.100' : 'warmGray.100'}
+                      color={canVote ? 'coral.700' : 'warmGray.500'}
+                      border="1px solid"
+                      borderColor={canVote ? 'coral.300' : 'warmGray.200'}
+                      onClick={() =>
+                        handleToggleVotingPermission('ddVotingRoles', idx)
+                      }
+                      _hover={{
+                        borderColor: canVote ? 'coral.400' : 'coral.300',
+                        bg: canVote ? 'coral.200' : 'coral.50',
+                      }}
+                      transition="all 0.15s ease"
+                    >
+                      {role.name}
+                    </Badge>
+                  );
+                })}
+              </HStack>
+            </Box>
 
-            <Collapse in={isAdvancedOpen} animateOpacity>
-              <Box
-                mt={4}
-                p={5}
-                bg={sectionBg}
-                borderRadius="lg"
-                borderWidth="1px"
-                borderColor={borderColor}
-              >
-                <VStack spacing={4} align="stretch">
-                  <Text fontSize="sm" color={helperColor}>
-                    Advanced voting configuration is available in Advanced Mode.
-                    Switch modes to access voting classes, quorum settings, and more.
-                  </Text>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => actions.setUIMode(UI_MODES.ADVANCED)}
-                  >
-                    Switch to Advanced Mode
-                  </Button>
-                </VStack>
-              </Box>
-            </Collapse>
-          </Box>
-        )}
+            {/* Who can create proposals */}
+            <Box
+              p={4}
+              bg="warmGray.50"
+              borderRadius="lg"
+              border="1px solid"
+              borderColor="warmGray.100"
+            >
+              <HStack spacing={3} mb={3}>
+                <Icon as={PiMegaphoneSimple} color="amethyst.500" boxSize={5} />
+                <Text fontWeight="600" fontSize="sm">
+                  Who can create proposals?
+                </Text>
+              </HStack>
+              <HStack spacing={2} flexWrap="wrap">
+                {roles.map((role, idx) => {
+                  const canCreate = (
+                    permissions.hybridProposalCreatorRoles || []
+                  ).includes(idx);
+                  return (
+                    <Badge
+                      key={idx}
+                      px={3}
+                      py={1}
+                      borderRadius="full"
+                      cursor="pointer"
+                      bg={canCreate ? 'amethyst.100' : 'warmGray.100'}
+                      color={canCreate ? 'amethyst.700' : 'warmGray.500'}
+                      border="1px solid"
+                      borderColor={canCreate ? 'amethyst.300' : 'warmGray.200'}
+                      onClick={() =>
+                        handleToggleVotingPermission(
+                          'hybridProposalCreatorRoles',
+                          idx
+                        )
+                      }
+                      _hover={{
+                        borderColor: canCreate ? 'amethyst.400' : 'amethyst.300',
+                        bg: canCreate ? 'amethyst.200' : 'amethyst.50',
+                      }}
+                      transition="all 0.15s ease"
+                    >
+                      {role.name}
+                    </Badge>
+                  );
+                })}
+              </HStack>
+            </Box>
+          </VStack>
+        </Box>
 
         {/* Current Configuration Summary */}
-        <Box bg={sectionBg} p={4} borderRadius="md">
+        <Box bg={sectionBg} p={4} borderRadius="lg">
           <HStack justify="space-between" flexWrap="wrap" gap={2}>
             <HStack spacing={2}>
               <Text fontSize="sm" color={helperColor}>
-                Philosophy:
+                Voting approach:
               </Text>
-              <Badge
-                colorScheme={
-                  selectors.getPhilosophyType() === 'democratic'
-                    ? 'green'
-                    : selectors.getPhilosophyType() === 'hybrid'
-                    ? 'blue'
-                    : 'orange'
-                }
-              >
-                {selectors.getPhilosophyType() === 'democratic'
-                  ? 'Community-Led'
-                  : selectors.getPhilosophyType() === 'hybrid'
-                  ? 'Balanced'
-                  : 'Leader-Led'}
-              </Badge>
+              <Badge colorScheme={zoneInfo.color}>{zoneInfo.label}</Badge>
             </HStack>
 
             <HStack spacing={2}>
               <Text fontSize="sm" color={helperColor}>
-                Features:
+                Can vote:
               </Text>
-              {features.educationHubEnabled && (
-                <Badge colorScheme="purple">Education</Badge>
-              )}
-              {features.electionHubEnabled && (
-                <Badge colorScheme="blue">Elections</Badge>
-              )}
-              {!features.educationHubEnabled && !features.electionHubEnabled && (
-                <Text fontSize="sm" color={helperColor}>
-                  None selected
-                </Text>
-              )}
+              <Text fontSize="sm" fontWeight="500">
+                {getVoterRoleNames().join(', ') || 'None selected'}
+              </Text>
             </HStack>
           </HStack>
         </Box>

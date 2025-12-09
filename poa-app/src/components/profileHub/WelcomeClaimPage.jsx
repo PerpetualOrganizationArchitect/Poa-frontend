@@ -3,7 +3,7 @@
  * This is the first thing users see after deploying their org
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import {
   Box,
   VStack,
@@ -18,10 +18,8 @@ import {
   Badge,
 } from '@chakra-ui/react';
 import { FiUsers, FiArrowRight, FiCheck, FiStar, FiLock } from 'react-icons/fi';
-import { useRouter } from 'next/router';
 import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
 import { useClaimRole } from '@/hooks';
-import { useRefresh } from '@/context/RefreshContext';
 
 /**
  * GlassLayer - Reusable glassmorphism background component
@@ -49,26 +47,14 @@ export function WelcomeClaimPage({
   claimableRoles,
   eligibilityModuleAddress,
 }) {
-  const router = useRouter();
-  const { subscribe } = useRefresh();
-
   const {
     claimRole,
     isClaimingHat,
     isReady,
   } = useClaimRole(eligibilityModuleAddress);
 
-  // Subscribe to role:claimed event to refresh page after successful claim
-  useEffect(() => {
-    const unsubscribe = subscribe('role:claimed', () => {
-      // Small delay to allow subgraph to index, then refresh
-      setTimeout(() => {
-        router.replace(router.asPath);
-      }, 2000);
-    });
-
-    return unsubscribe;
-  }, [subscribe, router]);
+  // Note: Page refresh after role claim is handled by UserContext
+  // which subscribes to 'role:claimed' event and refetches user data
 
   const handleClaimRole = async (hatId) => {
     await claimRole(hatId);

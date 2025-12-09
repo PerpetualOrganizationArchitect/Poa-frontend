@@ -26,6 +26,7 @@ import { PiCheck } from 'react-icons/pi';
 import { useQuery } from '@apollo/client';
 import { useDeployer, STEPS, STEP_NAMES } from '../context/DeployerContext';
 import { mapStateToDeploymentParams, createDeploymentConfig } from '../utils/deploymentMapper';
+import { getRichTemplateById } from '../templates';
 import { FETCH_INFRASTRUCTURE_ADDRESSES } from '../../../util/queries';
 
 // New step components
@@ -47,7 +48,7 @@ const pulseAnimation = keyframes`
 `;
 
 // Minimal Progress Indicator Component
-function StepProgressIndicator({ steps, currentStep }) {
+function StepProgressIndicator({ steps, currentStep, onStepClick }) {
   const activeBg = useColorModeValue('coral.500', 'coral.400');
   const completedBg = useColorModeValue('coral.500', 'coral.400');
   const inactiveBg = useColorModeValue('warmGray.200', 'warmGray.600');
@@ -57,13 +58,13 @@ function StepProgressIndicator({ steps, currentStep }) {
   const activeLabelColor = useColorModeValue('warmGray.900', 'white');
 
   return (
-    <Box position="relative" w="100%" py={4}>
+    <Box position="relative" w="100%" py={2}>
       {/* Connection line (background) */}
       <Box
         position="absolute"
         top="50%"
-        left="24px"
-        right="24px"
+        left="18px"
+        right="18px"
         h="2px"
         bg={lineColor}
         transform="translateY(-50%)"
@@ -73,8 +74,8 @@ function StepProgressIndicator({ steps, currentStep }) {
       <Box
         position="absolute"
         top="50%"
-        left="24px"
-        w={`calc(${(currentStep / (steps.length - 1)) * 100}% - 24px)`}
+        left="18px"
+        w={`calc(${(currentStep / (steps.length - 1)) * 100}% - 18px)`}
         h="2px"
         bg={activeLineColor}
         transform="translateY(-50%)"
@@ -88,13 +89,20 @@ function StepProgressIndicator({ steps, currentStep }) {
           const isCompleted = index < currentStep;
           const isActive = index === currentStep;
           const isFuture = index > currentStep;
+          const isClickable = isCompleted;
+
+          const handleClick = () => {
+            if (isClickable && onStepClick) {
+              onStepClick(index);
+            }
+          };
 
           return (
-            <VStack key={step.key} spacing={2} flex={1} maxW="120px">
+            <VStack key={step.key} spacing={1} flex={1} maxW="120px">
               {/* Step dot */}
               <Box
-                w={isActive ? "36px" : "28px"}
-                h={isActive ? "36px" : "28px"}
+                w={isActive ? "28px" : "22px"}
+                h={isActive ? "28px" : "22px"}
                 borderRadius="full"
                 bg={isCompleted || isActive ? (isActive ? activeBg : completedBg) : 'white'}
                 border="2px solid"
@@ -104,13 +112,19 @@ function StepProgressIndicator({ steps, currentStep }) {
                 justifyContent="center"
                 transition="all 0.2s ease"
                 animation={isActive ? `${pulseAnimation} 2s ease-in-out infinite` : undefined}
-                boxShadow={isActive ? '0 0 0 4px rgba(240, 101, 67, 0.15)' : undefined}
+                boxShadow={isActive ? '0 0 0 3px rgba(240, 101, 67, 0.15)' : undefined}
+                cursor={isClickable ? 'pointer' : 'default'}
+                onClick={handleClick}
+                _hover={isClickable ? {
+                  transform: 'scale(1.1)',
+                  boxShadow: '0 0 0 3px rgba(240, 101, 67, 0.25)'
+                } : undefined}
               >
                 {isCompleted ? (
-                  <Icon as={PiCheck} color="white" boxSize={4} />
+                  <Icon as={PiCheck} color="white" boxSize={3} />
                 ) : (
                   <Text
-                    fontSize="xs"
+                    fontSize="2xs"
                     fontWeight="600"
                     color={isActive ? 'white' : 'warmGray.400'}
                   >
@@ -126,6 +140,9 @@ function StepProgressIndicator({ steps, currentStep }) {
                 color={isActive ? activeLabelColor : labelColor}
                 textAlign="center"
                 transition="all 0.2s ease"
+                cursor={isClickable ? 'pointer' : 'default'}
+                onClick={handleClick}
+                _hover={isClickable ? { color: activeLabelColor } : undefined}
               >
                 {step.title}
               </Text>
@@ -325,8 +342,9 @@ export function DeployerWizard({
     }
   };
 
-  // Get template for display
-  const selectedTemplate = selectors.getSelectedTemplate ? selectors.getSelectedTemplate() : null;
+  // Get rich template for display (with icon, tagline, etc.)
+  const selectedTemplateId = state.ui.selectedTemplate;
+  const selectedTemplate = selectedTemplateId ? getRichTemplateById(selectedTemplateId) : null;
 
   return (
     <Box minH="100vh" py={{ base: 8, md: 16 }}>
@@ -339,13 +357,13 @@ export function DeployerWizard({
                 {state.currentStep === STEPS.TEMPLATE
                   ? 'Create Your Organization'
                   : selectedTemplate
-                  ? `Create ${selectedTemplate.name}`
+                  ? `${selectedTemplate.icon} ${selectedTemplate.name}`
                   : 'Create Your Organization'}
               </Heading>
               <Text color={subtitleColor} fontSize="md">
                 {state.currentStep === STEPS.TEMPLATE
                   ? 'Choose a template to get started'
-                  : 'Build something together'}
+                  : selectedTemplate?.tagline || 'Build something together'}
               </Text>
             </Box>
             {state.currentStep > STEPS.TEMPLATE && <ModeToggle />}
@@ -356,7 +374,7 @@ export function DeployerWizard({
             bg={cardBg}
             backdropFilter="blur(12px)"
             borderRadius="xl"
-            p={{ base: 4, md: 6 }}
+            p={{ base: 3, md: 4 }}
             border="1px solid"
             borderColor="rgba(255, 255, 255, 0.18)"
             boxShadow="0 4px 30px rgba(0, 0, 0, 0.05)"
@@ -364,6 +382,7 @@ export function DeployerWizard({
             <StepProgressIndicator
               steps={STEP_CONFIG}
               currentStep={state.currentStep}
+              onStepClick={(stepIndex) => actions.goToStep(stepIndex)}
             />
           </Box>
 

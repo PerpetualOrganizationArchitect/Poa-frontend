@@ -99,39 +99,18 @@ jobs:
           });
           EOF
 
-      - name: Update Cloudflare DNSLink
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Deploy Cloudflare Worker with new CID
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-          IPFS_CID: ${{ steps.pinata.outputs.ipfs_hash }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          SITE_CID: ${{ steps.pinata.outputs.ipfs_hash }}
         run: |
-          # Get existing _dnslink record ID
-          RECORD_ID=$(curl -s -X GET \
-            "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records?name=_dnslink.poa.earth&type=TXT" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            -H "Content-Type: application/json" | jq -r '.result[0].id // empty')
-
-          DNSLINK_VALUE="dnslink=/ipfs/${IPFS_CID}"
-
-          if [ -n "$RECORD_ID" ]; then
-            # Update existing record
-            curl -s -X PUT \
-              "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records/${RECORD_ID}" \
-              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              -H "Content-Type: application/json" \
-              --data "{\"type\":\"TXT\",\"name\":\"_dnslink.poa.earth\",\"content\":\"${DNSLINK_VALUE}\",\"ttl\":300}"
-            echo "Updated existing DNSLink record"
-          else
-            # Create new record
-            curl -s -X POST \
-              "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records" \
-              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              -H "Content-Type: application/json" \
-              --data "{\"type\":\"TXT\",\"name\":\"_dnslink.poa.earth\",\"content\":\"${DNSLINK_VALUE}\",\"ttl\":300}"
-            echo "Created new DNSLink record"
-          fi
-
-          echo "DNSLink updated to: ${DNSLINK_VALUE}"
+          wrangler deploy \
+            --var SITE_CID="$SITE_CID"
+          echo "Worker deployed with CID: ${SITE_CID}"
 
       - name: Deployment Summary
         run: |

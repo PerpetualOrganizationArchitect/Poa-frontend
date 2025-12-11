@@ -1,0 +1,13 @@
+name = "poa-earth-proxy"
+main = "cloudflare-worker/worker.mjs"
+compatibility_date = "2024-03-30"
+
+# optional: default, can be overridden at deploy time
+[vars]
+PINATA_GATEWAY = "https://poa.mypinata.cloud"
+
+# Attach to your zone + routes
+routes = [
+  { pattern = "poa.earth/*", zone_name = "poa.earth" },
+  { pattern = "www.poa.earth/*", zone_name = "poa.earth" }
+]

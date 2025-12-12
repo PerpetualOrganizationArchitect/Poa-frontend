@@ -39,7 +39,10 @@ const VotingPage = () => {
   const {
     directDemocracyVotingContractAddress,
     votingContractAddress,
+    taskManagerContractAddress,
+    executorContractAddress,
     poContextLoading,
+    roleNames,
   } = usePOContext();
 
   const {
@@ -104,15 +107,23 @@ const VotingPage = () => {
   const handleProposalSubmit = useCallback(async (proposalData) => {
     if (!voting) return;
 
+    const proposalParams = {
+      name: proposalData.name,
+      description: proposalData.description,
+      durationMinutes: proposalData.time,
+      numOptions: proposalData.numOptions,
+      batches: proposalData.batches || [],
+      hatIds: proposalData.hatIds || [],
+    };
+
+    // Setter proposals use HybridVoting (main governance) which triggers Executor
+    // Executor has onlyExecutor permission on all contracts, so it can call any setter
+    const isSetterProposal = proposalData.type === 'setter';
+
     const result = await executeWithNotification(
-      () => voting.createDDProposal(directDemocracyVotingContractAddress, {
-        name: proposalData.name,
-        description: proposalData.description,
-        durationMinutes: proposalData.time,
-        numOptions: proposalData.numOptions,
-        batches: proposalData.batches || [],
-        hatIds: proposalData.hatIds || [],
-      }),
+      () => isSetterProposal
+        ? voting.createHybridProposal(votingContractAddress, proposalParams)
+        : voting.createDDProposal(directDemocracyVotingContractAddress, proposalParams),
       {
         pendingMessage: 'Creating proposal...',
         successMessage: 'Proposal created successfully!',
@@ -123,7 +134,7 @@ const VotingPage = () => {
     if (result.success) {
       setShowCreatePoll(false);
     }
-  }, [voting, executeWithNotification, directDemocracyVotingContractAddress]);
+  }, [voting, executeWithNotification, directDemocracyVotingContractAddress, votingContractAddress]);
 
   const {
     proposal,
@@ -138,10 +149,25 @@ const VotingPage = () => {
     removeCandidate,
     handleRestrictedToggle,
     toggleRestrictedRole,
+    handleSetterChange,
     handleSubmit,
   } = useProposalForm({
     onSubmit: handleProposalSubmit,
   });
+
+  // Contract addresses object for setter proposals
+  const contractAddresses = {
+    votingContractAddress,
+    directDemocracyVotingContractAddress,
+    taskManagerContractAddress,
+    executorContractAddress,
+  };
+
+  // Wrapper for handleSubmit that passes eligibilityModule and contract addresses
+  const handlePollCreated = useCallback(() => {
+    // Use executor as eligibility module for setter proposals (or pass actual eligibility module)
+    return handleSubmit(executorContractAddress, contractAddresses);
+  }, [handleSubmit, executorContractAddress, contractAddresses]);
 
   // Handle tab changes with pagination reset
   const handleTabsChange = useCallback((index) => {
@@ -262,8 +288,10 @@ const VotingPage = () => {
             removeCandidate={removeCandidate}
             handleRestrictedToggle={handleRestrictedToggle}
             toggleRestrictedRole={toggleRestrictedRole}
-            handlePollCreated={handleSubmit}
+            handleSetterChange={handleSetterChange}
+            handlePollCreated={handlePollCreated}
             loadingSubmit={loadingSubmit}
+            roleNames={roleNames}
           />
 
           <PollModal

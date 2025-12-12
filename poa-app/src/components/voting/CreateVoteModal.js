@@ -30,6 +30,7 @@ import {
 } from "@chakra-ui/react";
 import { AddIcon, DeleteIcon, InfoOutlineIcon } from "@chakra-ui/icons";
 import { useRoleNames } from "@/hooks";
+import SetterActionSelector from "./SetterActionSelector";
 
 const glassLayerStyle = {
   position: "absolute",
@@ -57,8 +58,12 @@ const CreateVoteModal = ({
   removeCandidate,
   handleRestrictedToggle,
   toggleRestrictedRole,
+  handleSetterChange,
   handlePollCreated,
   loadingSubmit,
+  allProjects = [],
+  roleNames = {},
+  projectNames = {},
 }) => {
   const { allRoles } = useRoleNames();
   const [candidateName, setCandidateName] = useState("");
@@ -165,6 +170,7 @@ const CreateVoteModal = ({
                 <option value="normal">Normal Vote</option>
                 <option value="election">Election (assign role to winner)</option>
                 <option value="transferFunds">Transfer Funds</option>
+                <option value="setter">Change Contract Settings</option>
               </Select>
             </FormControl>
 
@@ -377,6 +383,17 @@ const CreateVoteModal = ({
                   </Text>
                 </Alert>
               </>
+            )}
+
+            {proposal.type === "setter" && (
+              <SetterActionSelector
+                proposal={proposal}
+                onChange={handleSetterChange}
+                allRoles={allRoles}
+                allProjects={allProjects}
+                roleNames={roleNames}
+                projectNames={projectNames}
+              />
             )}
 
             {/* Voting Restrictions - Available for all proposal types */}

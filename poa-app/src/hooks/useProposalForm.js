@@ -6,6 +6,12 @@
 import { useState, useCallback } from 'react';
 import { useToast } from '@chakra-ui/react';
 import { utils } from 'ethers';
+import {
+  SETTER_TEMPLATES,
+  RAW_FUNCTIONS,
+  CONTRACT_MAP,
+  getTemplateById,
+} from '@/config/setterDefinitions';
 
 const defaultProposal = {
   name: "",
@@ -22,6 +28,13 @@ const defaultProposal = {
   // Voting restriction fields
   isRestricted: false,    // Whether to restrict who can vote
   restrictedHatIds: [],   // Hat IDs that can vote (if restricted)
+  // Setter fields (for contract settings changes)
+  setterMode: "template", // "template" or "advanced"
+  setterTemplate: "",     // Template ID if using template mode
+  setterContract: "",     // Contract key (e.g., "hybridVoting")
+  setterFunction: "",     // Function name (e.g., "setConfig")
+  setterValues: {},       // Template input values
+  setterParams: [],       // Raw function parameters (for advanced mode)
   id: 0,
 };
 
@@ -97,6 +110,14 @@ export function useProposalForm({ onSubmit }) {
           : [...current, hatId],
       };
     });
+  }, []);
+
+  // Setter-related handlers
+  const handleSetterChange = useCallback((updates) => {
+    setProposal(prev => ({
+      ...prev,
+      ...updates,
+    }));
   }, []);
 
   const resetForm = useCallback(() => {
@@ -180,7 +201,129 @@ export function useProposalForm({ onSubmit }) {
     return true;
   }, [proposal.electionRoleId, proposal.electionCandidates, toast]);
 
-  const buildProposalData = useCallback((eligibilityModuleAddress) => {
+  const validateSetterProposal = useCallback(() => {
+    if (proposal.setterMode === 'template') {
+      if (!proposal.setterTemplate) {
+        toast({
+          title: "No Action Selected",
+          description: "Please select an action from the templates.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+        return false;
+      }
+
+      const template = getTemplateById(proposal.setterTemplate);
+      if (!template) {
+        toast({
+          title: "Invalid Template",
+          description: "The selected template is not valid.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+        return false;
+      }
+
+      // Validate required inputs have values
+      for (const input of template.inputs || []) {
+        const value = proposal.setterValues?.[input.name];
+        if (value === undefined || value === '' || value === null) {
+          toast({
+            title: "Missing Value",
+            description: `Please provide a value for "${input.label || input.name}".`,
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+          });
+          return false;
+        }
+
+        // Validate number ranges
+        if (input.type === 'number') {
+          const numValue = Number(value);
+          if (input.min !== undefined && numValue < input.min) {
+            toast({
+              title: "Invalid Value",
+              description: `${input.label} must be at least ${input.min}.`,
+              status: "error",
+              duration: 5000,
+              isClosable: true,
+            });
+            return false;
+          }
+          if (input.max !== undefined && numValue > input.max) {
+            toast({
+              title: "Invalid Value",
+              description: `${input.label} must be at most ${input.max}.`,
+              status: "error",
+              duration: 5000,
+              isClosable: true,
+            });
+            return false;
+          }
+        }
+      }
+    } else {
+      // Advanced mode validation
+      if (!proposal.setterContract) {
+        toast({
+          title: "No Contract Selected",
+          description: "Please select a target contract.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+        return false;
+      }
+
+      if (!proposal.setterFunction) {
+        toast({
+          title: "No Function Selected",
+          description: "Please select a function to call.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+        return false;
+      }
+
+      const funcDef = RAW_FUNCTIONS[proposal.setterContract]?.find(
+        f => f.name === proposal.setterFunction
+      );
+      if (!funcDef) {
+        toast({
+          title: "Invalid Function",
+          description: "The selected function is not recognized.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+        return false;
+      }
+
+      // Check all parameters have values
+      for (let i = 0; i < funcDef.params.length; i++) {
+        const param = funcDef.params[i];
+        const value = proposal.setterParams?.[i];
+        if (value === undefined || value === '' || value === null) {
+          toast({
+            title: "Missing Parameter",
+            description: `Please provide a value for "${param.label || param.name}".`,
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+          });
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }, [proposal.setterMode, proposal.setterTemplate, proposal.setterContract, proposal.setterFunction, proposal.setterValues, proposal.setterParams, toast]);
+
+  const buildProposalData = useCallback((eligibilityModuleAddress, contractAddresses) => {
     let numOptions;
     let batches = [];
     let optionNames = [];
@@ -221,6 +364,62 @@ export function useProposalForm({ onSubmit }) {
         };
         return [mintCall];
       });
+    } else if (proposal.type === "setter") {
+      // Setter proposal - call a contract setter function
+      let setterCall;
+
+      if (proposal.setterMode === 'template' && proposal.setterTemplate) {
+        // Template mode: use template's encode function
+        const template = getTemplateById(proposal.setterTemplate);
+        if (template) {
+          const contractKey = template.contract;
+          const contextKey = CONTRACT_MAP[contractKey]?.contextKey;
+          const contractAddress = contractAddresses?.[contextKey];
+
+          if (contractAddress) {
+            const funcDef = RAW_FUNCTIONS[contractKey]?.find(f => f.name === template.functionName);
+            if (funcDef) {
+              const iface = new utils.Interface([funcDef.signature]);
+              const encodedArgs = template.encode(proposal.setterValues);
+
+              setterCall = {
+                target: contractAddress,
+                value: "0",
+                data: iface.encodeFunctionData(template.functionName, encodedArgs),
+              };
+            }
+          }
+        }
+      } else {
+        // Advanced mode: raw function call
+        const funcDef = RAW_FUNCTIONS[proposal.setterContract]?.find(
+          f => f.name === proposal.setterFunction
+        );
+        const contextKey = CONTRACT_MAP[proposal.setterContract]?.contextKey;
+        const contractAddress = contractAddresses?.[contextKey];
+
+        if (funcDef && contractAddress) {
+          const iface = new utils.Interface([funcDef.signature]);
+
+          setterCall = {
+            target: contractAddress,
+            value: "0",
+            data: iface.encodeFunctionData(proposal.setterFunction, proposal.setterParams),
+          };
+        }
+      }
+
+      if (setterCall) {
+        batches = [
+          [setterCall], // Yes wins: execute setter
+          [],           // No wins: do nothing
+        ];
+      } else {
+        batches = [[], []];
+      }
+
+      numOptions = 2;
+      optionNames = ["Apply Changes", "Reject"];
     } else {
       numOptions = proposal.options?.length || 2;
       optionNames = proposal.options || [];
@@ -230,10 +429,43 @@ export function useProposalForm({ onSubmit }) {
     return { numOptions, batches, optionNames };
   }, [proposal]);
 
-  const handleSubmit = useCallback(async (eligibilityModuleAddress) => {
+  const validateBasicFields = useCallback(() => {
+    if (!proposal.name || proposal.name.trim() === '') {
+      toast({
+        title: "Missing Title",
+        description: "Please enter a title for your proposal.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+      return false;
+    }
+
+    const duration = Number(proposal.time);
+    if (isNaN(duration) || duration <= 0) {
+      toast({
+        title: "Invalid Duration",
+        description: "Please enter a valid duration in minutes (must be greater than 0).",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+      return false;
+    }
+
+    return true;
+  }, [proposal.name, proposal.time, toast]);
+
+  const handleSubmit = useCallback(async (eligibilityModuleAddress, contractAddresses = {}) => {
     setLoadingSubmit(true);
 
     try {
+      // Basic field validation
+      if (!validateBasicFields()) {
+        setLoadingSubmit(false);
+        return;
+      }
+
       if (proposal.type === "transferFunds" && !validateTransferProposal()) {
         setLoadingSubmit(false);
         return;
@@ -244,12 +476,20 @@ export function useProposalForm({ onSubmit }) {
         return;
       }
 
-      const { numOptions, batches, optionNames } = buildProposalData(eligibilityModuleAddress);
+      if (proposal.type === "setter" && !validateSetterProposal()) {
+        setLoadingSubmit(false);
+        return;
+      }
+
+      const { numOptions, batches, optionNames } = buildProposalData(eligibilityModuleAddress, contractAddresses);
+
+      // Ensure duration is a number for the contract call
+      const durationMinutes = Number(proposal.time);
 
       await onSubmit({
-        name: proposal.name,
-        description: proposal.description,
-        time: proposal.time,
+        name: proposal.name.trim(),
+        description: proposal.description || '',
+        time: durationMinutes,
         numOptions,
         batches,
         optionNames,
@@ -258,6 +498,9 @@ export function useProposalForm({ onSubmit }) {
         transferAmount: proposal.transferAmount,
         electionRoleId: proposal.electionRoleId,
         electionCandidates: proposal.electionCandidates,
+        // Setter proposal fields
+        setterContract: proposal.setterContract,
+        setterTemplate: proposal.setterTemplate,
         // Voting restrictions
         hatIds: proposal.isRestricted ? proposal.restrictedHatIds : [],
       });
@@ -270,6 +513,10 @@ export function useProposalForm({ onSubmit }) {
         successDescription = `Transfer proposal created. If "Yes" wins, ${proposal.transferAmount} ETH will be sent to ${proposal.transferAddress.slice(0, 6)}...${proposal.transferAddress.slice(-4)}`;
       } else if (proposal.type === "election") {
         successDescription = `Election created with ${proposal.electionCandidates.length} candidates. The winner will receive the role automatically.`;
+      } else if (proposal.type === "setter") {
+        const template = getTemplateById(proposal.setterTemplate);
+        const actionName = template?.name || proposal.setterFunction || 'settings change';
+        successDescription = `Settings change proposal created. If approved, "${actionName}" will be executed automatically.`;
       } else {
         successDescription = "Your proposal has been created successfully.";
       }
@@ -295,7 +542,7 @@ export function useProposalForm({ onSubmit }) {
       setLoadingSubmit(false);
       return false;
     }
-  }, [proposal, validateTransferProposal, validateElectionProposal, buildProposalData, onSubmit, resetForm, toast]);
+  }, [proposal, validateBasicFields, validateTransferProposal, validateElectionProposal, validateSetterProposal, buildProposalData, onSubmit, resetForm, toast]);
 
   return {
     proposal,
@@ -312,6 +559,7 @@ export function useProposalForm({ onSubmit }) {
     handleRestrictedToggle,
     handleRestrictedRolesChange,
     toggleRestrictedRole,
+    handleSetterChange,
     handleSubmit,
     resetForm,
   };

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@apollo/client';
 import { useAccount } from 'wagmi';
-import { FETCH_USER_DATA_NEW } from '../util/queries';
+import { FETCH_USER_DATA_NEW, FETCH_TOKEN_APPROVER_HATS } from '../util/queries';
 import { useRouter } from 'next/router';
 import { usePOContext } from './POContext';
 import { formatTokenAmount } from '../util/formatToken';
@@ -14,12 +14,13 @@ export const UserProvider = ({ children }) => {
     const { address } = useAccount();
     const router = useRouter();
     const { userDAO } = router.query;
-    const { orgId, roleHatIds } = usePOContext();
+    const { orgId, roleHatIds, participationTokenAddress } = usePOContext();
 
     const [userData, setUserData] = useState({});
     const [graphUsername, setGraphUsername] = useState('');
     const [hasExecRole, setHasExecRole] = useState(false);
     const [hasMemberRole, setHasMemberRole] = useState(false);
+    const [hasApproverRole, setHasApproverRole] = useState(false);
     const [claimedTasks, setClaimedTasks] = useState([]);
     const [userProposals, setUserProposals] = useState([]);
     const [completedModules, setCompletedModules] = useState([]);
@@ -45,6 +46,13 @@ export const UserProvider = ({ children }) => {
         fetchPolicy: 'cache-first',
     });
 
+    // Query approver hats for the participation token
+    const { data: approverHatsData } = useQuery(FETCH_TOKEN_APPROVER_HATS, {
+        variables: { tokenAddress: participationTokenAddress },
+        skip: !participationTokenAddress,
+        fetchPolicy: 'cache-first',
+    });
+
     useEffect(() => {
         if (data) {
             const { user, account: accountData } = data;
@@ -59,6 +67,11 @@ export const UserProvider = ({ children }) => {
                 const userHatIds = user.currentHatIds || [];
                 const execHatId = roleHatIds?.[1];
                 setHasExecRole(execHatId && userHatIds.includes(execHatId));
+
+                // Approver check: user wears any hat with Approver permission on ParticipationToken
+                const approverHatIds = (approverHatsData?.hatPermissions || []).map(p => p.hatId);
+                const isApprover = approverHatIds.some(hatId => userHatIds.includes(hatId));
+                setHasApproverRole(isApprover);
 
                 setUserData({
                     id: user.id,
@@ -109,6 +122,7 @@ export const UserProvider = ({ children }) => {
                 }));
             } else {
                 setHasExecRole(false);
+                setHasApproverRole(false);
                 setUserData({});
                 setClaimedTasks([]);
                 setCompletedModules([]);
@@ -117,7 +131,7 @@ export const UserProvider = ({ children }) => {
 
             setUserDataLoading(false);
         }
-    }, [data, roleHatIds]);
+    }, [data, roleHatIds, approverHatsData]);
 
     useEffect(() => {
         if (!orgId && userDAO) {
@@ -138,6 +152,7 @@ export const UserProvider = ({ children }) => {
         graphUsername,
         hasExecRole,
         hasMemberRole,
+        hasApproverRole,
         claimedTasks,
         completedModules,
         error,
@@ -148,6 +163,7 @@ export const UserProvider = ({ children }) => {
         graphUsername,
         hasExecRole,
         hasMemberRole,
+        hasApproverRole,
         claimedTasks,
         completedModules,
         error,

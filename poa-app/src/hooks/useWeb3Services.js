@@ -21,6 +21,7 @@ import { VotingService, VotingType, createVotingService } from '../services/web3
 import { TaskService, createTaskService } from '../services/web3/domain/TaskService';
 import { EducationService, createEducationService } from '../services/web3/domain/EducationService';
 import { EligibilityService, createEligibilityService } from '../services/web3/domain/EligibilityService';
+import { TokenRequestService, createTokenRequestService } from '../services/web3/domain/TokenRequestService';
 
 /**
  * Hook to access all Web3 services
@@ -54,6 +55,7 @@ export function useWeb3Services(options = {}) {
         task: null,
         education: null,
         eligibility: null,
+        tokenRequest: null,
       };
     }
 
@@ -64,6 +66,7 @@ export function useWeb3Services(options = {}) {
       task: createTaskService(factory, txManager, ipfsService),
       education: createEducationService(factory, txManager, ipfsService),
       eligibility: createEligibilityService(factory, txManager),
+      tokenRequest: createTokenRequestService(factory, txManager, ipfsService),
     };
   }, [factory, txManager, ipfsService]);
 

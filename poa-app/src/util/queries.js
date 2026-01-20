@@ -569,3 +569,89 @@ export const FETCH_INFRASTRUCTURE_ADDRESSES = gql`
     }
   }
 `;
+
+// ============================================
+// TOKEN REQUEST QUERIES
+// ============================================
+
+// Fetch pending token requests for approvers to review
+export const FETCH_PENDING_TOKEN_REQUESTS = gql`
+  query FetchPendingTokenRequests($tokenAddress: String!) {
+    tokenRequests(
+      where: { participationToken: $tokenAddress, status: Pending }
+      orderBy: createdAt
+      orderDirection: desc
+      first: 100
+    ) {
+      id
+      requestId
+      requester
+      amount
+      ipfsHash
+      status
+      createdAt
+      createdAtBlock
+      transactionHash
+    }
+  }
+`;
+
+// Fetch a user's own token request history
+export const FETCH_USER_TOKEN_REQUESTS = gql`
+  query FetchUserTokenRequests($tokenAddress: String!, $userAddress: Bytes!) {
+    tokenRequests(
+      where: { participationToken: $tokenAddress, requester: $userAddress }
+      orderBy: createdAt
+      orderDirection: desc
+      first: 50
+    ) {
+      id
+      requestId
+      amount
+      ipfsHash
+      status
+      createdAt
+      approvedAt
+      cancelledAt
+      approver
+      transactionHash
+    }
+  }
+`;
+
+// Fetch all token requests for an organization (admin view)
+export const FETCH_ALL_TOKEN_REQUESTS = gql`
+  query FetchAllTokenRequests($tokenAddress: String!) {
+    tokenRequests(
+      where: { participationToken: $tokenAddress }
+      orderBy: createdAt
+      orderDirection: desc
+      first: 100
+    ) {
+      id
+      requestId
+      requester
+      amount
+      ipfsHash
+      status
+      createdAt
+      approvedAt
+      cancelledAt
+      approver
+      transactionHash
+    }
+  }
+`;
+
+// Fetch approver hat permissions for a participation token
+export const FETCH_TOKEN_APPROVER_HATS = gql`
+  query FetchTokenApproverHats($tokenAddress: Bytes!) {
+    hatPermissions(
+      where: { contractAddress: $tokenAddress, permissionRole: Approver, allowed: true }
+    ) {
+      hatId
+      permissionRole
+      allowed
+    }
+  }
+`;

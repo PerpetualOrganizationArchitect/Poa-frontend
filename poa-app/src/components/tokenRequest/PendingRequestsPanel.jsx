@@ -21,7 +21,7 @@ import { useQuery } from '@apollo/client';
 import { FETCH_PENDING_TOKEN_REQUESTS } from '@/util/queries';
 import { useWeb3 } from '@/hooks/useWeb3Services';
 import { usePOContext } from '@/context/POContext';
-import { useIPFScontext } from '@/context/IPFScontext';
+import { useIPFScontext } from '@/context/ipfsContext';
 import { useRefreshSubscription, RefreshEvent } from '@/context/RefreshContext';
 import { formatTokenAmount } from '@/util/formatToken';
 import { useAccount } from 'wagmi';

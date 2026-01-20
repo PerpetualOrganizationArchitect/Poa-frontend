@@ -7,6 +7,38 @@ import { ethers } from 'ethers';
 import { Web3ErrorCategory, TransactionError } from './Web3Error';
 
 /**
+ * Known custom error selectors (4-byte function selectors)
+ * These are keccak256(errorSignature)[0:4]
+ * Add more as needed
+ */
+const CUSTOM_ERROR_SELECTORS = {
+  '0x48cbf26d': 'TargetNotAllowed',  // keccak256("TargetNotAllowed()")
+  '0xb7c6d77a': 'TargetSelf',        // keccak256("TargetSelf()")
+  '0x82b42900': 'Unauthorized',       // keccak256("Unauthorized()")
+  '0x8a0fcb60': 'AlreadyVoted',       // keccak256("AlreadyVoted()")
+  '0x47031d84': 'VotingExpired',      // keccak256("VotingExpired()")
+  '0x59120e37': 'VotingOpen',         // keccak256("VotingOpen()")
+  '0x89a89086': 'InvalidQuorum',      // keccak256("InvalidQuorum()")
+  '0xd4e6f304': 'RoleNotAllowed',     // keccak256("RoleNotAllowed()")
+  '0x9996b315': 'BadStatus',          // keccak256("BadStatus()")
+  '0xb6c3e8f0': 'NotClaimer',         // keccak256("NotClaimer()")
+  '0x82d5d76a': 'InvalidTarget',      // keccak256("InvalidTarget()")
+};
+
+/**
+ * Try to decode a custom error from its 4-byte selector
+ * @param {string} errorData - Error data hex string
+ * @returns {string|null} Error name or null
+ */
+function decodeCustomErrorSelector(errorData) {
+  if (!errorData || typeof errorData !== 'string') return null;
+
+  // Extract first 4 bytes (10 chars including 0x)
+  const selector = errorData.slice(0, 10).toLowerCase();
+  return CUSTOM_ERROR_SELECTORS[selector] || null;
+}
+
+/**
  * Common contract revert patterns and their user-friendly messages
  * Add more patterns as you discover them in your contracts
  */
@@ -29,6 +61,21 @@ const REVERT_PATTERNS = {
   'Voting not started': 'Voting has not started yet.',
   'Voting ended': 'Voting has ended for this proposal.',
   'Invalid vote weight': 'Vote weights must sum to 100.',
+  'AlreadyVoted': 'You have already voted on this proposal.',
+  'VotingExpired': 'Voting has ended for this proposal.',
+  'VotingOpen': 'Voting is still in progress.',
+  'InvalidQuorum': 'Invalid quorum percentage (must be 1-100).',
+  'DurationOutOfRange': 'Vote duration is out of allowed range.',
+  'TooManyOptions': 'Too many voting options.',
+  'TooManyCalls': 'Too many calls in execution batch.',
+  'RoleNotAllowed': 'Your role is not allowed to perform this action.',
+  'TargetNotAllowed': 'The target contract is not in the allowed targets list. The organization admin needs to add this contract to the voting allowlist.',
+  'TargetSelf': 'A voting contract cannot create proposals that target itself. Use the other voting contract.',
+  'InvalidTarget': 'The target contract is not whitelisted for execution. The organization needs to add this contract to the voting allowlist via a governance proposal.',
+  'WeightSumNot100': 'Vote weights must sum to 100.',
+  'LengthMismatch': 'Array lengths do not match.',
+  'DuplicateIndex': 'Duplicate option index in vote.',
+  'InvalidProposal': 'Invalid proposal.',
 
   // Task errors (legacy string patterns)
   'Task already claimed': 'This task has already been claimed.',
@@ -222,13 +269,24 @@ export function parseError(error, abi = null) {
 
   // Gas estimation failed - try to get revert reason
   if (category === Web3ErrorCategory.GAS_ESTIMATION_FAILED) {
-    const reason = extractRevertReason(error);
-    const userMessage = matchRevertPattern(reason) ||
-      'Transaction would fail. Please check your inputs.';
+    let reason = extractRevertReason(error);
+    let userMessage = matchRevertPattern(reason);
+
+    // Try to decode custom error from error data if no reason found
+    if (!userMessage) {
+      const errorData = error.error?.data?.data || error.data;
+      if (errorData) {
+        const customErrorName = decodeCustomErrorSelector(errorData);
+        if (customErrorName) {
+          reason = customErrorName;
+          userMessage = matchRevertPattern(customErrorName);
+        }
+      }
+    }
 
     return new ParsedError(
       category,
-      userMessage,
+      userMessage || 'Transaction would fail. Please check your inputs.',
       reason || 'Gas estimation failed',
       error
     );

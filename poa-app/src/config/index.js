@@ -31,3 +31,15 @@ export {
   createGasOptions,
   clampGasPrice,
 } from './gas';
+
+// Setter function definitions for governance votes
+export {
+  SETTER_CATEGORIES,
+  SETTER_TEMPLATES,
+  CONTRACT_MAP,
+  RAW_FUNCTIONS,
+  getTemplatesByCategory,
+  getTemplateById,
+  getRawFunctions,
+  isContractAvailable,
+} from './setterDefinitions';

@@ -23,7 +23,7 @@ import {
 } from '@chakra-ui/react';
 import { useWeb3 } from '@/hooks/useWeb3Services';
 import { usePOContext } from '@/context/POContext';
-import { useIPFScontext } from '@/context/IPFScontext';
+import { useIPFScontext } from '@/context/ipfsContext';
 import { RefreshEvent } from '@/context/RefreshContext';
 
 const TokenRequestModal = ({ isOpen, onClose }) => {

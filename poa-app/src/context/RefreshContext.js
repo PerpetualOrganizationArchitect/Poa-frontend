@@ -34,6 +34,11 @@ export const RefreshEvent = {
   MODULE_CREATED: 'module:created',
   MODULE_COMPLETED: 'module:completed',
 
+  // Token request events
+  TOKEN_REQUEST_CREATED: 'token:request_created',
+  TOKEN_REQUEST_APPROVED: 'token:request_approved',
+  TOKEN_REQUEST_CANCELLED: 'token:request_cancelled',
+
   // Organization events
   MEMBER_JOINED: 'member:joined',
 

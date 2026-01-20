@@ -17,10 +17,12 @@ import {
   Spinner,
   Center,
   Button,
+  useDisclosure,
+  Collapse,
   Skeleton,
   Circle,
 } from '@chakra-ui/react';
-import { SettingsIcon } from '@chakra-ui/icons';
+import { SettingsIcon, AddIcon, ChevronDownIcon, ChevronUpIcon } from '@chakra-ui/icons';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import AccountSettingsModal from '@/components/userPage/AccountSettingsModal';
 import { useVotingContext } from '@/context/VotingContext';
@@ -35,6 +37,7 @@ import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import ExecutiveMenuModal from '@/components/profileHub/ExecutiveMenuModal';
 import { useOrgStructure } from '@/hooks';
 import WelcomeClaimPage from '@/components/profileHub/WelcomeClaimPage';
+import { TokenRequestModal, PendingRequestsPanel, UserRequestHistory } from '@/components/tokenRequest';
 
 /**
  * Skeleton loader for WelcomeClaimPage - prevents layout shift during initial load
@@ -111,7 +114,7 @@ const UserprofileHub = () => {
   const { ongoingPolls,} = useVotingContext();
   const {recommendedTasks} = useProjectContext();
 
-  const {claimedTasks, userProposals, graphUsername, userDataLoading, error, userData, hasExecRole, hasMemberRole} = useUserContext();
+  const {claimedTasks, userProposals, graphUsername, userDataLoading, error, userData, hasExecRole, hasMemberRole, hasApproverRole} = useUserContext();
 
   // Fetch org structure for claim page
   const { roles, eligibilityModuleAddress, orgName, orgMetadata, loading: orgLoading } = useOrgStructure();
@@ -129,6 +132,11 @@ const UserprofileHub = () => {
   const [isExecutiveMenuOpen, setExecutiveMenuOpen] = useState(false);
   const openExecutiveMenu = () => setExecutiveMenuOpen(true);
   const closeExecutiveMenu = () => setExecutiveMenuOpen(false);
+
+  // Token request modal
+  const { isOpen: isTokenRequestModalOpen, onOpen: openTokenRequestModal, onClose: closeTokenRequestModal } = useDisclosure();
+  const [showPendingRequests, setShowPendingRequests] = useState(false);
+  const [showRequestHistory, setShowRequestHistory] = useState(false);
   
 
   const glassLayerStyle = {
@@ -329,8 +337,84 @@ const UserprofileHub = () => {
                   <Text textAlign={"center"} fontSize="md" p={2} mb="2">
                     {userInfo.progress < 100 ? `Progress to ${userInfo.nextTier} Tier: ${userInfo.ptBalance}/${userInfo.nextTierThreshold}` : `You have reached the highest tier!`}
                   </Text>
+                  {hasMemberRole && (
+                    <Button
+                      leftIcon={<AddIcon />}
+                      colorScheme="purple"
+                      size="sm"
+                      onClick={openTokenRequestModal}
+                      mb={2}
+                    >
+                      Request Tokens
+                    </Button>
+                  )}
                 </VStack>
               </Box>
+
+              {/* Token Request History Section */}
+              {hasMemberRole && (
+                <Box
+                  w="100%"
+                  mt={4}
+                  borderRadius="2xl"
+                  bg="transparent"
+                  boxShadow="lg"
+                  position="relative"
+                  zIndex={2}
+                >
+                  <div style={glassLayerStyle} />
+                  <HStack
+                    p={4}
+                    cursor="pointer"
+                    onClick={() => setShowRequestHistory(!showRequestHistory)}
+                    justify="space-between"
+                  >
+                    <Text fontWeight="bold" fontSize={{ base: "lg", md: "xl" }}>
+                      My Token Requests
+                    </Text>
+                    {showRequestHistory ? <ChevronUpIcon boxSize={6} /> : <ChevronDownIcon boxSize={6} />}
+                  </HStack>
+                  <Collapse in={showRequestHistory}>
+                    <Box p={4} pt={0}>
+                      <UserRequestHistory />
+                    </Box>
+                  </Collapse>
+                </Box>
+              )}
+
+              {/* Pending Requests Panel for Approvers */}
+              {hasApproverRole && (
+                <Box
+                  w="100%"
+                  mt={4}
+                  borderRadius="2xl"
+                  bg="transparent"
+                  boxShadow="lg"
+                  position="relative"
+                  zIndex={2}
+                >
+                  <div style={glassLayerStyle} />
+                  <HStack
+                    p={4}
+                    cursor="pointer"
+                    onClick={() => setShowPendingRequests(!showPendingRequests)}
+                    justify="space-between"
+                  >
+                    <Text fontWeight="bold" fontSize={{ base: "lg", md: "xl" }}>
+                      Pending Token Requests (Approver)
+                    </Text>
+                    {showPendingRequests ? <ChevronUpIcon boxSize={6} /> : <ChevronDownIcon boxSize={6} />}
+                  </HStack>
+                  <Collapse in={showPendingRequests}>
+                    <Box p={4} pt={0}>
+                      <PendingRequestsPanel />
+                    </Box>
+                  </Collapse>
+                </Box>
+              )}
+
+              {/* Token Request Modal */}
+              <TokenRequestModal isOpen={isTokenRequestModalOpen} onClose={closeTokenRequestModal} />
             </GridItem>
             <GridItem area={'tierinfo'} colSpan={2}>
               <Box

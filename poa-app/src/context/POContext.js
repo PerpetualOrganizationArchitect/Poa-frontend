@@ -91,6 +91,7 @@ export const POProvider = ({ children }) => {
     const [votingContractAddress, setVotingContractAddress] = useState('');
     const [educationHubAddress, setEducationHubAddress] = useState('');
     const [executorContractAddress, setExecutorContractAddress] = useState('');
+    const [participationTokenAddress, setParticipationTokenAddress] = useState('');
 
     // Derived data
     const [leaderboardData, setLeaderboardData] = useState([]);
@@ -192,6 +193,7 @@ export const POProvider = ({ children }) => {
             // Education hub is enabled if address exists and is not zero address
             setEducationHubEnabled(eduHubId && eduHubId !== ZERO_ADDRESS);
             setExecutorContractAddress(org.executorContract?.id || '');
+            setParticipationTokenAddress(org.participationToken?.id || '');
 
             // For backward compatibility, map hybrid voting to participation voting
             setParticipationVotingContractAddress(org.hybridVoting?.id || '');
@@ -304,6 +306,7 @@ export const POProvider = ({ children }) => {
         votingContractAddress,
         educationHubAddress,
         executorContractAddress,
+        participationTokenAddress,
 
         // Derived data
         loading,
@@ -338,6 +341,7 @@ export const POProvider = ({ children }) => {
         votingContractAddress,
         educationHubAddress,
         executorContractAddress,
+        participationTokenAddress,
         loading,
         error,
         leaderboardData,

@@ -49,19 +49,18 @@ import {
   Divider,
 } from '@chakra-ui/react';
 import {
-  CheckCircleIcon,
   ArrowForwardIcon,
   InfoIcon,
   ChevronDownIcon,
   ChevronUpIcon,
 } from '@chakra-ui/icons';
+import { PiCheck, PiArrowRight } from 'react-icons/pi';
 import { useDeployer } from '../context/DeployerContext';
 import {
   RICH_TEMPLATE_LIST as TEMPLATE_LIST,
   getRichTemplateById as getTemplateById,
 } from '../templates';
 import { DiscoveryQuestions, GrowthPathVisualizer } from '../components/governance';
-import NavigationButtons from '../components/common/NavigationButtons';
 
 // View states for the template step
 const VIEWS = {
@@ -72,20 +71,18 @@ const VIEWS = {
 };
 
 /**
- * Template card in the gallery
+ * Template card in the gallery - cleaner, centered design
  */
-function TemplateCard({ template, isSelected, onSelect, onLearnMore }) {
-  const borderColor = useColorModeValue('gray.200', 'gray.600');
-  const selectedBorderColor = useColorModeValue('blue.500', 'blue.300');
-  const hoverBg = useColorModeValue('gray.50', 'gray.700');
-  const selectedBg = useColorModeValue('blue.50', 'blue.900');
-  const helperColor = useColorModeValue('gray.500', 'gray.400');
+function TemplateCard({ template, isSelected, onSelect }) {
+  const borderColor = useColorModeValue('warmGray.200', 'warmGray.600');
+  const selectedBorderColor = useColorModeValue('coral.500', 'coral.400');
+  const hoverBorderColor = useColorModeValue('coral.300', 'coral.500');
+  const cardBg = useColorModeValue('rgba(255, 255, 255, 0.7)', 'rgba(51, 48, 44, 0.7)');
+  const selectedBg = useColorModeValue('coral.50', 'rgba(240, 101, 67, 0.1)');
+  const helperColor = useColorModeValue('warmGray.500', 'warmGray.400');
+  const iconBg = useColorModeValue('warmGray.100', 'warmGray.700');
 
-  const colorScheme = template.color || 'gray';
   const icon = template.icon || '📋';
-
-  // Get first 3 capability names for preview
-  const capabilityPreview = template.capabilities?.features?.slice(0, 3) || [];
 
   return (
     <Card
@@ -93,76 +90,72 @@ function TemplateCard({ template, isSelected, onSelect, onLearnMore }) {
       onClick={() => onSelect(template.id)}
       borderWidth="2px"
       borderColor={isSelected ? selectedBorderColor : borderColor}
-      bg={isSelected ? selectedBg : 'transparent'}
-      _hover={{ bg: isSelected ? selectedBg : hoverBg }}
-      transition="all 0.2s"
+      bg={isSelected ? selectedBg : cardBg}
+      backdropFilter="blur(8px)"
+      _hover={{
+        borderColor: isSelected ? selectedBorderColor : hoverBorderColor,
+        transform: 'translateY(-2px)',
+        boxShadow: '0 8px 30px rgba(0, 0, 0, 0.08)',
+      }}
+      transition="all 0.2s ease"
       h="100%"
+      position="relative"
+      overflow="hidden"
     >
-      <CardBody>
-        <VStack align="stretch" spacing={3}>
-          {/* Header */}
-          <HStack justify="space-between">
-            <Text fontSize="2xl">{icon}</Text>
-            {isSelected && (
-              <Badge colorScheme="blue" fontSize="xs">
-                Selected
-              </Badge>
-            )}
-          </HStack>
+      {/* Selected indicator bar */}
+      {isSelected && (
+        <Box
+          position="absolute"
+          top="0"
+          left="0"
+          right="0"
+          h="3px"
+          bg="coral.500"
+        />
+      )}
 
-          {/* Title & Tagline */}
-          <Box>
-            <Heading size="sm" mb={1}>
+      <CardBody py={6}>
+        <VStack spacing={4}>
+          {/* Centered Icon */}
+          <Box
+            bg={iconBg}
+            w="56px"
+            h="56px"
+            borderRadius="xl"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+          >
+            <Text fontSize="2xl">{icon}</Text>
+          </Box>
+
+          {/* Title & Tagline - Centered */}
+          <Box textAlign="center">
+            <Heading size="sm" mb={2} color={isSelected ? 'coral.700' : 'warmGray.800'}>
               {template.name}
             </Heading>
-            <Text fontSize="sm" color={helperColor}>
+            <Text fontSize="sm" color={helperColor} lineHeight="tall">
               {template.tagline}
             </Text>
           </Box>
 
-          {/* Capability Preview */}
-          {capabilityPreview.length > 0 && (
-            <HStack spacing={1} flexWrap="wrap">
-              {capabilityPreview.map((cap, i) => (
-                <Text key={i} fontSize="xs" color={helperColor}>
-                  {cap.icon} {cap.name}{i < capabilityPreview.length - 1 ? ' •' : ''}
-                </Text>
-              ))}
-            </HStack>
+          {/* Selected check */}
+          {isSelected && (
+            <Box
+              position="absolute"
+              top={3}
+              right={3}
+              bg="coral.500"
+              borderRadius="full"
+              w="24px"
+              h="24px"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+            >
+              <Icon as={PiCheck} color="white" boxSize={3} />
+            </Box>
           )}
-
-          {/* Quick Stats */}
-          <HStack spacing={2} mt="auto" flexWrap="wrap">
-            {template.defaults?.voting?.democracyWeight !== undefined && (
-              <Badge colorScheme={colorScheme} fontSize="xs" variant="subtle">
-                {template.defaults.voting.democracyWeight}% Democracy
-              </Badge>
-            )}
-            {template.defaults?.features?.educationHubEnabled && (
-              <Badge colorScheme="purple" fontSize="xs" variant="subtle">
-                Education
-              </Badge>
-            )}
-            {template.defaults?.features?.electionHubEnabled && (
-              <Badge colorScheme="teal" fontSize="xs" variant="subtle">
-                Elections
-              </Badge>
-            )}
-          </HStack>
-
-          {/* Learn More Button */}
-          <Button
-            size="xs"
-            variant="ghost"
-            colorScheme={colorScheme}
-            onClick={(e) => {
-              e.stopPropagation();
-              onLearnMore(template);
-            }}
-            mt={2}
-          >
-            Learn more
-          </Button>
         </VStack>
       </CardBody>
     </Card>
@@ -288,7 +281,7 @@ function PhilosophyPanel({ template, onContinue, onBack }) {
     return (
       <VStack spacing={4}>
         <Text color={helperColor}>No philosophy information for this template.</Text>
-        <Button colorScheme="blue" onClick={onContinue}>
+        <Button bg="coral.500" color="white" _hover={{ bg: 'coral.600' }} onClick={onContinue}>
           Continue to Setup
         </Button>
       </VStack>
@@ -372,9 +365,11 @@ function PhilosophyPanel({ template, onContinue, onBack }) {
             : 'Ready to customize your organization'}
         </Text>
         <Button
-          colorScheme="blue"
+          bg="coral.500"
+          color="white"
+          _hover={{ bg: 'coral.600', transform: 'translateY(-1px)' }}
           size="lg"
-          rightIcon={<ArrowForwardIcon />}
+          rightIcon={<Icon as={PiArrowRight} />}
           onClick={onContinue}
         >
           {template.discoveryQuestions?.length > 0 ? 'Start Discovery' : 'Continue'}
@@ -389,7 +384,7 @@ function PhilosophyPanel({ template, onContinue, onBack }) {
  */
 function GrowthPathModal({ template, isOpen, onClose }) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside">
+    <Modal isOpen={isOpen} onClose={onClose} size="4xl" scrollBehavior="inside">
       <ModalOverlay />
       <ModalContent>
         <ModalHeader>
@@ -469,7 +464,19 @@ export function TemplateStep() {
   // Finish template step and move to next
   const handleFinishTemplateStep = () => {
     if (selectedTemplateId) {
+      // Apply base template first
       actions.applyTemplate(selectedTemplateId);
+
+      // Re-apply variation if one was confirmed (to restore variation settings)
+      // This fixes the bug where applyTemplate() would overwrite variation settings
+      if (state.templateJourney.variationConfirmed && state.templateJourney.matchedVariation) {
+        const template = getTemplateById(selectedTemplateId);
+        const variation = template?.variations?.[state.templateJourney.matchedVariation];
+        if (variation) {
+          actions.applyVariation(variation, template);
+        }
+      }
+
       actions.nextStep();
     }
   };
@@ -546,35 +553,41 @@ export function TemplateStep() {
       case VIEWS.GALLERY:
       default:
         return (
-          <VStack spacing={8} align="stretch">
+          <VStack spacing={10} align="stretch">
             {/* Header */}
-            <Box textAlign="center" mb={4}>
-              <Heading size="lg" color={headingColor} mb={2}>
-                What are you building?
+            <Box textAlign="center" mb={2}>
+              <Heading size="lg" color={headingColor} mb={3}>
+                What kind of organization will you create together?
               </Heading>
-              <Text color={subheadingColor} maxW="600px" mx="auto">
-                Choose a template that matches your organization. Each one includes
-                guidance, sensible defaults, and a path for how your governance can
-                evolve over time.
+              <Text color={subheadingColor} maxW="600px" mx="auto" fontSize="md" lineHeight="tall">
+                Every community is different. These templates give you a starting point
+                that matches how your group already works, then grows with you.
               </Text>
             </Box>
 
             {/* Template Grid */}
-            <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+            <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={5}>
               {TEMPLATE_LIST.map((template) => (
                 <TemplateCard
                   key={template.id}
                   template={template}
                   isSelected={selectedTemplateId === template.id}
                   onSelect={handleSelectTemplate}
-                  onLearnMore={handleLearnMore}
                 />
               ))}
             </SimpleGrid>
 
-            {/* Selected Template Preview */}
+            {/* Selected Template Preview - Cleaner design */}
             {selectedTemplate && (
-              <Box bg={previewBg} p={5} borderRadius="lg" mt={4}>
+              <Box
+                bg="rgba(255, 255, 255, 0.6)"
+                backdropFilter="blur(10px)"
+                p={6}
+                borderRadius="xl"
+                border="1px solid"
+                borderColor="rgba(255, 255, 255, 0.18)"
+                mt={2}
+              >
                 <Flex
                   direction={{ base: 'column', md: 'row' }}
                   justify="space-between"
@@ -582,9 +595,9 @@ export function TemplateStep() {
                   gap={4}
                 >
                   <Box flex={1}>
-                    <HStack spacing={2} mb={1}>
-                      <Text fontSize="xl">{selectedTemplate.icon}</Text>
-                      <Text fontWeight="bold" fontSize="lg">
+                    <HStack spacing={3} mb={2}>
+                      <Text fontSize="2xl">{selectedTemplate.icon}</Text>
+                      <Text fontWeight="600" fontSize="lg" color="warmGray.800">
                         {selectedTemplate.name}
                       </Text>
                     </HStack>
@@ -598,16 +611,22 @@ export function TemplateStep() {
                       <Button
                         variant="outline"
                         size="sm"
+                        borderColor="warmGray.300"
+                        color="warmGray.700"
+                        _hover={{ bg: 'warmGray.100' }}
                         onClick={openGrowthPath}
                       >
                         View Growth Path
                       </Button>
                     )}
                     <Button
-                      colorScheme="blue"
-                      rightIcon={<ArrowForwardIcon />}
+                      bg="coral.500"
+                      color="white"
+                      _hover={{ bg: 'coral.600', transform: 'translateY(-1px)' }}
+                      rightIcon={<Icon as={PiArrowRight} />}
                       onClick={handleQuickContinue}
                       size="lg"
+                      px={6}
                     >
                       Get Started
                     </Button>
@@ -615,15 +634,6 @@ export function TemplateStep() {
                 </Flex>
               </Box>
             )}
-
-            {/* Navigation */}
-            <NavigationButtons
-              showBack={false}
-              showNext={!!selectedTemplate}
-              onNext={handleQuickContinue}
-              nextLabel="Continue"
-              isNextDisabled={!selectedTemplate}
-            />
           </VStack>
         );
     }

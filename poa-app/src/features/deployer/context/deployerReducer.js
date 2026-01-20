@@ -152,6 +152,7 @@ export const createDefaultVotingClass = (slicePct = 100) => ({
   minBalance: 0,
   asset: null, // null = AddressZero
   hatIds: [],
+  locked: false, // Prevents weight redistribution when locked
 });
 
 // Initial state for the deployer
@@ -329,6 +330,8 @@ export const ACTION_TYPES = {
   ADD_VOTING_CLASS: 'ADD_VOTING_CLASS',
   UPDATE_VOTING_CLASS: 'UPDATE_VOTING_CLASS',
   REMOVE_VOTING_CLASS: 'REMOVE_VOTING_CLASS',
+  TOGGLE_CLASS_LOCK: 'TOGGLE_CLASS_LOCK',
+  APPLY_WEIGHT_PRESET: 'APPLY_WEIGHT_PRESET',
 
   // Features
   TOGGLE_FEATURE: 'TOGGLE_FEATURE',
@@ -676,15 +679,32 @@ export function deployerReducer(state, action) {
 
     case ACTION_TYPES.APPLY_VARIATION: {
       // Apply a matched variation's settings to the state
+      // Supports voting settings, features, and permissions overrides
       const { variation, template } = action.payload;
       if (!variation?.settings) {
         return state;
       }
 
-      const { democracyWeight, participationWeight, quorum } = variation.settings;
+      const {
+        democracyWeight,
+        participationWeight,
+        quorum,
+        features: featureOverrides,
+        permissions: permissionOverrides,
+      } = variation.settings;
 
       // Update philosophy slider based on democracy weight
       const sliderValue = democracyWeight !== undefined ? democracyWeight : state.philosophy.slider;
+
+      // Apply feature overrides if present
+      const newFeatures = featureOverrides
+        ? { ...state.features, ...featureOverrides }
+        : state.features;
+
+      // Apply permission overrides if present
+      const newPermissions = permissionOverrides
+        ? { ...state.permissions, ...permissionOverrides }
+        : state.permissions;
 
       return {
         ...state,
@@ -699,6 +719,8 @@ export function deployerReducer(state, action) {
           hybridQuorum: quorum ?? state.voting.hybridQuorum,
           ddQuorum: quorum ?? state.voting.ddQuorum,
         },
+        features: newFeatures,
+        permissions: newPermissions,
         templateJourney: {
           ...state.templateJourney,
           variationConfirmed: true,
@@ -978,12 +1000,20 @@ export function deployerReducer(state, action) {
 
     case ACTION_TYPES.UPDATE_VOTING_CLASS: {
       const { index, updates } = action.payload;
+
+      // Auto-disable quadratic when switching to DIRECT strategy
+      // (quadratic only applies to ERC20_BAL token-based voting)
+      let finalUpdates = { ...updates };
+      if (updates.strategy === VOTING_STRATEGY.DIRECT) {
+        finalUpdates.quadratic = false;
+      }
+
       return {
         ...state,
         voting: {
           ...state.voting,
           classes: state.voting.classes.map((cls, idx) =>
-            idx === index ? { ...cls, ...updates } : cls
+            idx === index ? { ...cls, ...finalUpdates } : cls
           ),
         },
       };
@@ -998,6 +1028,58 @@ export function deployerReducer(state, action) {
         voting: {
           ...state.voting,
           classes: state.voting.classes.filter((_, idx) => idx !== action.payload),
+        },
+      };
+    }
+
+    case ACTION_TYPES.TOGGLE_CLASS_LOCK: {
+      const index = action.payload;
+      return {
+        ...state,
+        voting: {
+          ...state.voting,
+          classes: state.voting.classes.map((cls, idx) =>
+            idx === index ? { ...cls, locked: !cls.locked } : cls
+          ),
+        },
+      };
+    }
+
+    case ACTION_TYPES.APPLY_WEIGHT_PRESET: {
+      const preset = action.payload; // 'equal' or 'dominant'
+      const count = state.voting.classes.length;
+
+      let weights;
+      if (preset === 'equal') {
+        // Divide 100% evenly, distribute remainder to first classes
+        const base = Math.floor(100 / count);
+        const remainder = 100 - (base * count);
+        weights = Array(count).fill(base).map((w, i) => i < remainder ? w + 1 : w);
+      } else if (preset === 'dominant') {
+        // First class gets 60%, rest split the 40% equally
+        if (count === 1) {
+          weights = [100];
+        } else {
+          const first = 60;
+          const rest = Math.floor(40 / (count - 1));
+          weights = [first, ...Array(count - 1).fill(rest)];
+          // Adjust for rounding
+          const sum = weights.reduce((a, b) => a + b, 0);
+          if (sum < 100) weights[weights.length - 1] += (100 - sum);
+        }
+      } else {
+        return state; // Unknown preset
+      }
+
+      return {
+        ...state,
+        voting: {
+          ...state.voting,
+          classes: state.voting.classes.map((cls, idx) => ({
+            ...cls,
+            slicePct: weights[idx],
+            locked: false, // Unlock all classes when applying preset
+          })),
         },
       };
     }

@@ -1,13 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
-  Spinner,
-  Center,
   Box,
   useToast,
   Button,
   Text,
-  Flex,
-  Image,
   IconButton,
   Modal,
   ModalOverlay,
@@ -18,13 +14,10 @@ import {
   ModalFooter,
   useBreakpointValue,
 } from "@chakra-ui/react";
-import { ChevronLeftIcon, CloseIcon } from "@chakra-ui/icons";
-import OpenAI from "openai";
+import { CloseIcon } from "@chakra-ui/icons";
 import { useQuery } from "@apollo/client";
-import ArchitectInput from "@/components/Architect/ArchitectInput";
 import LogoDropzoneModal from "@/components/Architect/LogoDropzoneModal";
 import LinksModal from "@/components/Architect/LinksModal";
-import ConversationLog from "@/components/Architect/ConversationLog";
 import { useAccount } from "wagmi";
 import { useEthersSigner } from "@/components/ProviderConverter";
 import { useIPFScontext } from "@/context/ipfsContext";
@@ -39,7 +32,6 @@ import {
   useDeployer,
   DeployerWizard,
   mapStateToDeploymentParams,
-  createDeploymentConfig,
 } from "@/features/deployer";
 import { resolveRoleUsernames } from "@/features/deployer/utils/usernameResolver";
 
@@ -119,18 +111,6 @@ function DeployerPageContent() {
     };
   }, [infraData]);
 
-  // AI Chatbot state
-  const [userInput, setUserInput] = useState("");
-  const [messages, setMessages] = useState([]);
-  const [assistant, setAssistant] = useState(null);
-  const [thread, setThread] = useState(null);
-  const [isWaiting, setIsWaiting] = useState(false);
-  const [openai, setOpenai] = useState(null);
-  const [isInputVisible, setIsInputVisible] = useState(true);
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const previousMessagesRef = useRef([]);
-  const initChatBotCalled = useRef(false);
-
   // Modal states
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
@@ -141,181 +121,6 @@ function DeployerPageContent() {
   const exitButtonTop = useBreakpointValue({ base: "8px", lg: "8px", xl: "12px" });
   const exitButtonRight = useBreakpointValue({ base: "10px", lg: "16px", xl: "25px" });
   const exitButtonSize = useBreakpointValue({ base: "md", lg: "md", xl: "lg" });
-
-  // Initialize chatbot on mount
-  useEffect(() => {
-    if (!initChatBotCalled.current) {
-      initChatBot();
-      initChatBotCalled.current = true;
-    }
-  }, []);
-
-  const initChatBot = async () => {
-    const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
-
-    if (!apiKey) {
-      const introMessage =
-        'Welcome to the Organization Creator!\n\n' +
-        'The AI assistant is not available (no API key configured).\n\n' +
-        'You can still create your organization using the form on the right side of the screen. ' +
-        'Fill in your organization details and proceed through each step.';
-
-      addMessage(introMessage, "Poa");
-      previousMessagesRef.current = [{
-        speaker: "Poa",
-        text: introMessage,
-        isTyping: false,
-        isPreTyped: false
-      }];
-      return;
-    }
-
-    try {
-      const openai = new OpenAI({
-        apiKey: apiKey,
-        dangerouslyAllowBrowser: true,
-      });
-      setOpenai(openai);
-
-      const assistant = await openai.beta.assistants.retrieve(
-        "asst_HopuEd843XXuOmDlfRCCfT7k"
-      );
-      const thread = await openai.beta.threads.create();
-      setAssistant(assistant);
-      setThread(thread);
-
-      const introMessage =
-        'Hello! I\'m Poa\n\n' +
-        'I\'m your Perpetual Organization architect. I\'m here to help you build unstoppable, fully community-owned organizations.\n\n' +
-        'Feel free to ask me any questions as you go through the setup process on the right side of the screen.';
-
-      addMessage(introMessage, "Poa");
-      previousMessagesRef.current = [{
-        speaker: "Poa",
-        text: introMessage,
-        isTyping: false,
-        isPreTyped: false
-      }];
-    } catch (error) {
-      console.error('Error initializing chatbot:', error);
-      const errorMessage =
-        'Welcome to the Organization Creator!\n\n' +
-        'The AI assistant could not be initialized.\n\n' +
-        'You can still create your organization using the form on the right side of the screen.';
-
-      addMessage(errorMessage, "Poa");
-      previousMessagesRef.current = [{
-        speaker: "Poa",
-        text: errorMessage,
-        isTyping: false,
-        isPreTyped: false
-      }];
-    }
-  };
-
-  const addMessage = (text, speaker = "Poa", isTyping = false) => {
-    const messageId = `message-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-    setMessages((prevMessages) => [
-      ...prevMessages,
-      { speaker, text, isTyping, isPreTyped: false, id: messageId },
-    ]);
-  };
-
-  const handleSendClick = () => {
-    if (!userInput.trim()) return;
-    handleUserInput(userInput.trim());
-    setUserInput("");
-  };
-
-  const handleUserInput = async (input) => {
-    addMessage(input, "User");
-    await askChatBot(input);
-  };
-
-  const askChatBot = async (input) => {
-    if (!openai || !thread || !assistant) {
-      addMessage(
-        "The AI assistant is not available. Please use the form on the right to configure your organization.",
-        "Poa"
-      );
-      return;
-    }
-
-    setIsWaiting(true);
-    const messageId = `message-${Date.now()}`;
-
-    setMessages((prevMessages) => [
-      ...prevMessages,
-      { speaker: "Poa", text: "", isTyping: true, isPreTyped: false, id: messageId },
-    ]);
-
-    try {
-      await openai.beta.threads.messages.create(thread.id, {
-        role: "user",
-        content: input,
-      });
-
-      const run = await openai.beta.threads.runs.create(thread.id, {
-        assistant_id: assistant.id,
-      });
-
-      let response = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-
-      while (response.status === "in_progress" || response.status === "queued") {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        response = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-      }
-
-      setIsWaiting(false);
-      const messageList = await openai.beta.threads.messages.list(thread.id);
-      const lastMessage = messageList.data.find(
-        (message) => message.run_id === run.id && message.role === "assistant"
-      );
-
-      if (lastMessage) {
-        setMessages((prevMessages) => {
-          const updatedMessages = prevMessages.map((msg) =>
-            msg.id === messageId
-              ? {
-                  ...msg,
-                  text: lastMessage.content[0]["text"].value,
-                  isTyping: false,
-                  isPreTyped: false,
-                  id: messageId,
-                }
-              : msg
-          );
-          previousMessagesRef.current = JSON.parse(JSON.stringify(updatedMessages));
-          return updatedMessages;
-        });
-      }
-    } catch (error) {
-      console.error("Error in chat:", error);
-      setIsWaiting(false);
-      setMessages((prevMessages) =>
-        prevMessages.filter((msg) => msg.id !== messageId)
-      );
-      addMessage("Sorry, I encountered an error. Please try again.", "Poa");
-    }
-  };
-
-  const toggleCollapse = () => {
-    const newCollapsedState = !isCollapsed;
-
-    if (newCollapsedState) {
-      previousMessagesRef.current = JSON.parse(JSON.stringify(messages));
-    } else {
-      if (previousMessagesRef.current.length > 0) {
-        setMessages(previousMessagesRef.current.map(msg => ({
-          ...msg,
-          isPreTyped: true,
-          isTyping: false
-        })));
-      }
-    }
-
-    setIsCollapsed(newCollapsedState);
-  };
 
   const handleExitClick = () => {
     setIsExitModalOpen(true);
@@ -477,18 +282,8 @@ function DeployerPageContent() {
         infrastructureAddresses  // Addresses fetched from subgraph
       );
 
-      toast({
-        title: "Deployment successful!",
-        description: "Redirecting to your organization...",
-        status: "success",
-        duration: 5000,
-        isClosable: true,
-      });
-
-      // Delay redirect to allow subgraph indexing
-      setTimeout(() => {
-        router.push(`/profileHub?userDAO=${encodeURIComponent(state.organization.name)}`);
-      }, 3000);
+      // Return success - let DeployerWizard handle the celebration
+      return { success: true, orgName: state.organization.name };
 
     } catch (error) {
       console.error("Error deploying organization:", error);
@@ -499,15 +294,21 @@ function DeployerPageContent() {
         duration: 9000,
         isClosable: true,
       });
+      throw error; // Re-throw so DeployerWizard knows it failed
     } finally {
       setIsDeploying(false);
     }
   };
 
-  // Handlers for modals that OrganizationStep needs
-  const handleOpenLogoModal = () => setIsLogoModalOpen(true);
-  const handleOpenLinksModal = () => setIsLinksModalOpen(true);
+  // Handle navigation after deployment celebration
+  const handleDeploySuccess = () => {
+    // Delay redirect to allow subgraph indexing
+    setTimeout(() => {
+      router.push(`/profileHub?userDAO=${encodeURIComponent(state.organization.name)}`);
+    }, 2000);
+  };
 
+  // Handlers for modals that OrganizationStep needs
   const handleSaveLogo = (ipfsUrl) => {
     actions.setLogoURL(ipfsUrl);
     setIsLogoModalOpen(false);
@@ -519,131 +320,49 @@ function DeployerPageContent() {
   };
 
   return (
-    <Flex height="100vh" overflow="hidden" direction={{ base: "column", md: "row" }}>
+    <Box height="100vh" overflow="hidden" position="relative">
       {/* Beta Badge */}
-      {!isCollapsed && (
-        <Box
-          position="absolute"
-          top="14px"
-          left="14px"
-          display={["none", "none", "block"]}
-          bg="red.500"
-          color="white"
-          fontSize="12px"
-          w="100px"
-          px={3}
-          py={3}
-          borderRadius="md"
-          fontWeight="500"
-          zIndex={2}
-        >
-          Beta on Hoodi Testnet
-        </Box>
-      )}
+      <Box
+        position="absolute"
+        top="14px"
+        left="14px"
+        display={["none", "none", "block"]}
+        bg="coral.500"
+        color="white"
+        fontSize="12px"
+        w="120px"
+        px={3}
+        py={2}
+        borderRadius="md"
+        fontWeight="500"
+        zIndex={2}
+        textAlign="center"
+      >
+        Beta on Hoodi
+      </Box>
 
       {/* Exit Button */}
       <Box position="absolute" top={exitButtonTop} right={exitButtonRight} zIndex={10}>
         <IconButton
           onClick={handleExitClick}
-          colorScheme="blackAlpha"
+          bg="warmGray.100"
+          _hover={{ bg: "warmGray.200" }}
           aria-label="Exit"
-          icon={<CloseIcon />}
+          icon={<CloseIcon color="warmGray.600" />}
           size={exitButtonSize}
           isRound
         />
       </Box>
 
-      {/* Left Sidebar for Chat Bot */}
+      {/* Full Width Deployer Wizard */}
       <Box
-        width={isCollapsed ? "129px" : { base: "100%", md: "100%", lg: "35%" }}
-        overflow="hidden"
-        position="relative"
-        p={0}
-        bg={isCollapsed ? "transparent" : "rgba(0, 0, 0, 0.45)"}
-        borderRight={isCollapsed ? "none" : { base: "none", lg: "none" }}
-      >
-        {!isCollapsed ? (
-          <>
-            <Button
-              position="absolute"
-              top="20px"
-              right="6px"
-              onClick={toggleCollapse}
-              borderRadius="full"
-              colorScheme="teal"
-              zIndex="10"
-            >
-              <ChevronLeftIcon />
-            </Button>
-            <Box
-              position="relative"
-              overflowY="hidden"
-              height="100%"
-              width="full"
-              pt="4"
-              pb="100px"
-              pl="2"
-              pr="0"
-            >
-              <Center mb={4}>
-                <Image
-                  src="/images/high_res_poa.png"
-                  alt="Poa"
-                  width={{ base: "80px", md: "100px" }}
-                  height={{ base: "80px", md: "100px" }}
-                />
-              </Center>
-
-              <ConversationLog messages={messages} selectionHeight={80} />
-            </Box>
-            {isInputVisible && (
-              <Box
-                position="absolute"
-                bottom="0"
-                width="full"
-                p={0}
-                bg="gray.100"
-                borderTop="1px solid #e2e8f0"
-                height="80px"
-              >
-                <ArchitectInput
-                  value={userInput}
-                  onChange={(e) => setUserInput(e.target.value)}
-                  onSubmit={handleSendClick}
-                  isDisabled={isWaiting}
-                />
-              </Box>
-            )}
-          </>
-        ) : (
-          <Box
-            display="flex"
-            justifyContent="center"
-            alignItems="top"
-            height="100%"
-            cursor="pointer"
-            onClick={toggleCollapse}
-            mt="6"
-            ml="4"
-          >
-            <Image
-              src="/images/high_res_poa.png"
-              alt="Poa Logo"
-              width="100px"
-              height="100px"
-            />
-          </Box>
-        )}
-      </Box>
-
-      {/* Right Content Area - New Deployer Wizard */}
-      <Box
-        width={isCollapsed ? "100%" : { base: "100%", md: "100%", lg: "65%" }}
+        width="100%"
+        height="100%"
         overflowY="auto"
-        bg="gray.50"
       >
         <DeployerWizard
           onDeployStart={handleDeployStart}
+          onDeploySuccess={handleDeploySuccess}
           deployerAddress={address}
         />
       </Box>
@@ -680,23 +399,8 @@ function DeployerPageContent() {
         </ModalContent>
       </Modal>
 
-      {isDeploying && (
-        <Center
-          position="fixed"
-          top="0"
-          left="0"
-          right="0"
-          bottom="0"
-          bg="blackAlpha.600"
-          zIndex={1000}
-        >
-          <Box textAlign="center" color="white">
-            <Spinner size="xl" mb={4} />
-            <Text fontSize="lg">Deploying your organization...</Text>
-          </Box>
-        </Center>
-      )}
-    </Flex>
+      {/* Deployment overlay is now handled by ReviewStep for a better UX */}
+    </Box>
   );
 }
 

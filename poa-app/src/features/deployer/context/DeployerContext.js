@@ -150,6 +150,10 @@ export function DeployerProvider({ children }) {
       dispatch({ type: ACTION_TYPES.UPDATE_VOTING_CLASS, payload: { index, updates } }),
     removeVotingClass: (index) =>
       dispatch({ type: ACTION_TYPES.REMOVE_VOTING_CLASS, payload: index }),
+    toggleClassLock: (index) =>
+      dispatch({ type: ACTION_TYPES.TOGGLE_CLASS_LOCK, payload: index }),
+    applyWeightPreset: (preset) =>
+      dispatch({ type: ACTION_TYPES.APPLY_WEIGHT_PRESET, payload: preset }),
 
     // Features
     toggleFeature: (feature, value) =>
@@ -322,6 +326,30 @@ export function DeployerProvider({ children }) {
         state.roles.length > 0 &&
         !selectors.hasCycles() &&
         selectors.isVotingClassesValid();
+    },
+
+    // Get validation status for a specific step (for step indicator)
+    getStepValidationStatus: (stepIndex) => {
+      switch (stepIndex) {
+        case STEPS.TEMPLATE:
+          return { isValid: !!state.ui.selectedTemplate };
+        case STEPS.IDENTITY:
+          return { isValid: !!(state.organization.name && state.organization.description) };
+        case STEPS.TEAM:
+          return {
+            isValid: state.roles.length > 0 &&
+                     state.roles.some(r => r.hierarchy?.adminRoleIndex === null)
+          };
+        case STEPS.GOVERNANCE:
+          return {
+            isValid: state.voting.classes.reduce((sum, cls) => sum + (cls.slicePct || 0), 0) === 100
+          };
+        case STEPS.LAUNCH:
+        case STEPS.REVIEW:
+          return { isValid: true }; // Review step is always "valid" - it just displays status
+        default:
+          return { isValid: true };
+      }
     },
   }), [state]);
 

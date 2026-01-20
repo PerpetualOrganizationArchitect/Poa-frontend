@@ -1,65 +1,56 @@
 /**
  * ModeToggle - Switch between Simple and Advanced modes
+ * Uses gear icon and coral color scheme
  */
 
 import React from 'react';
 import {
   HStack,
-  Button,
-  ButtonGroup,
   Text,
-  Tooltip,
-  useColorModeValue,
+  Switch,
+  Icon,
+  FormControl,
+  FormLabel,
 } from '@chakra-ui/react';
+import { PiGear } from 'react-icons/pi';
 import { useDeployer, UI_MODES } from '../../context/DeployerContext';
 
-export function ModeToggle({ size = 'sm' }) {
+export function ModeToggle() {
   const { state, actions } = useDeployer();
-  const currentMode = state.ui.mode;
+  const isAdvanced = state.ui.mode === UI_MODES.ADVANCED;
 
-  const activeBg = useColorModeValue('blue.500', 'blue.400');
-  const activeColor = 'white';
-  const inactiveBg = useColorModeValue('gray.100', 'gray.700');
-  const inactiveColor = useColorModeValue('gray.600', 'gray.300');
-
-  const handleModeChange = (mode) => {
-    actions.setUIMode(mode);
+  const handleToggle = () => {
+    const newMode = isAdvanced ? UI_MODES.SIMPLE : UI_MODES.ADVANCED;
+    actions.setUIMode(newMode);
   };
 
   return (
-    <HStack spacing={2}>
-      <Text fontSize="xs" color="gray.500">
-        Mode:
-      </Text>
-      <ButtonGroup size={size} isAttached variant="outline">
-        <Tooltip label="Simplified interface with guided setup" placement="top">
-          <Button
-            onClick={() => handleModeChange(UI_MODES.SIMPLE)}
-            bg={currentMode === UI_MODES.SIMPLE ? activeBg : inactiveBg}
-            color={currentMode === UI_MODES.SIMPLE ? activeColor : inactiveColor}
-            borderColor={currentMode === UI_MODES.SIMPLE ? activeBg : 'gray.200'}
-            _hover={{
-              bg: currentMode === UI_MODES.SIMPLE ? activeBg : 'gray.200',
-            }}
-          >
-            Simple
-          </Button>
-        </Tooltip>
-        <Tooltip label="Full control over all settings" placement="top">
-          <Button
-            onClick={() => handleModeChange(UI_MODES.ADVANCED)}
-            bg={currentMode === UI_MODES.ADVANCED ? activeBg : inactiveBg}
-            color={currentMode === UI_MODES.ADVANCED ? activeColor : inactiveColor}
-            borderColor={currentMode === UI_MODES.ADVANCED ? activeBg : 'gray.200'}
-            _hover={{
-              bg: currentMode === UI_MODES.ADVANCED ? activeBg : 'gray.200',
-            }}
-          >
-            Advanced
-          </Button>
-        </Tooltip>
-      </ButtonGroup>
-    </HStack>
+    <FormControl display="flex" alignItems="center" w="auto">
+      <Icon
+        as={PiGear}
+        boxSize={4}
+        color={isAdvanced ? 'coral.500' : 'warmGray.400'}
+        mr={2}
+      />
+      <FormLabel
+        htmlFor="advanced-mode"
+        mb={0}
+        fontSize="sm"
+        color={isAdvanced ? 'coral.600' : 'warmGray.500'}
+        fontWeight="500"
+        cursor="pointer"
+        userSelect="none"
+      >
+        Advanced mode
+      </FormLabel>
+      <Switch
+        id="advanced-mode"
+        size="sm"
+        isChecked={isAdvanced}
+        onChange={handleToggle}
+        colorScheme="coral"
+      />
+    </FormControl>
   );
 }
 

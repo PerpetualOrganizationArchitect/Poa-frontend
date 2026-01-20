@@ -3,7 +3,7 @@
  * This is the first thing users see after deploying their org
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import {
   Box,
   VStack,
@@ -17,21 +17,26 @@ import {
   Circle,
   Badge,
 } from '@chakra-ui/react';
-import { FiUsers, FiArrowRight, FiCheck, FiStar } from 'react-icons/fi';
-import { useRouter } from 'next/router';
+import { FiUsers, FiArrowRight, FiCheck, FiStar, FiLock } from 'react-icons/fi';
 import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
 import { useClaimRole } from '@/hooks';
-import { useRefreshSubscription } from '@/context/RefreshContext';
 
-const glassLayerStyle = {
-  position: 'absolute',
-  height: '100%',
-  width: '100%',
-  zIndex: -1,
-  borderRadius: 'inherit',
-  backdropFilter: 'blur(20px)',
-  backgroundColor: 'rgba(0, 0, 0, .73)',
-};
+/**
+ * GlassLayer - Reusable glassmorphism background component
+ * Uses Chakra Box for better browser compatibility and consistency
+ */
+function GlassLayer() {
+  return (
+    <Box
+      position="absolute"
+      inset={0}
+      zIndex={-1}
+      borderRadius="inherit"
+      backdropFilter="blur(20px)"
+      bg="rgba(0, 0, 0, 0.73)"
+    />
+  );
+}
 
 /**
  * WelcomeClaimPage - Onboarding flow after org deployment
@@ -42,46 +47,67 @@ export function WelcomeClaimPage({
   claimableRoles,
   eligibilityModuleAddress,
 }) {
-  const router = useRouter();
-  const { subscribe } = useRefreshSubscription();
-
   const {
     claimRole,
     isClaimingHat,
     isReady,
   } = useClaimRole(eligibilityModuleAddress);
 
-  // Subscribe to role:claimed event to refresh page after successful claim
-  useEffect(() => {
-    const unsubscribe = subscribe('role:claimed', () => {
-      // Small delay to allow subgraph to index, then refresh
-      setTimeout(() => {
-        router.replace(router.asPath);
-      }, 2000);
-    });
-
-    return unsubscribe;
-  }, [subscribe, router]);
+  // Note: Page refresh after role claim is handled by UserContext
+  // which subscribes to 'role:claimed' event and refetches user data
 
   const handleClaimRole = async (hatId) => {
     await claimRole(hatId);
   };
 
-  // Find the "Member" role or first role as recommended
-  const recommendedRole = claimableRoles.find(r =>
-    r.name.toLowerCase().includes('member')
-  ) || claimableRoles[0];
+  // Find the most powerful role the user is eligible for
+  // Be permissive: treat undefined defaultEligible as claimable (subgraph may not have indexed yet)
+  const selfClaimableRoles = claimableRoles.filter(r => r.defaultEligible !== false);
+
+  // Helper to normalize hat IDs for comparison (handles BigInt, hex strings, etc.)
+  const normalizeId = (id) => {
+    if (!id) return '';
+    return String(id).toLowerCase();
+  };
+
+  // Build a set of all role hatIds for hierarchy checking
+  const allRoleHatIds = new Set(claimableRoles.map(r => normalizeId(r.hatId)));
+
+  // Recommend the most powerful role by checking hierarchy relationships
+  const recommendedRole = [...selfClaimableRoles].sort((a, b) => {
+    const aHatId = normalizeId(a.hatId);
+    const bHatId = normalizeId(b.hatId);
+    const aParent = normalizeId(a.parentHatId);
+    const bParent = normalizeId(b.parentHatId);
+
+    // If A's parent is B's hatId, B is A's admin -> B is more powerful
+    if (aParent === bHatId) return 1;
+    // If B's parent is A's hatId, A is B's admin -> A is more powerful
+    if (bParent === aHatId) return -1;
+
+    // Check if parent is another role in the org (means it's a sub-role)
+    const aHasRoleParent = allRoleHatIds.has(aParent);
+    const bHasRoleParent = allRoleHatIds.has(bParent);
+    // Roles whose parent is NOT another role are top-level (more powerful)
+    if (!aHasRoleParent && bHasRoleParent) return -1;
+    if (aHasRoleParent && !bHasRoleParent) return 1;
+
+    // Fall back to level if available (lower = more powerful)
+    const aLevel = a.level ?? 999;
+    const bLevel = b.level ?? 999;
+    return aLevel - bLevel;
+  })[0];
 
   return (
     <>
       <Navbar />
       <Box
-        mt={{ base: 16, md: 0 }}
         minH="calc(100vh - 80px)"
         display="flex"
         alignItems="center"
         justifyContent="center"
         p={4}
+        pt={{ base: 20, md: 4 }}
       >
         <Box
           maxW="600px"
@@ -93,7 +119,7 @@ export function WelcomeClaimPage({
           zIndex={2}
           overflow="hidden"
         >
-          <div style={glassLayerStyle} />
+          <GlassLayer />
 
           {/* Header with step indicator */}
           <HStack
@@ -103,7 +129,7 @@ export function WelcomeClaimPage({
             borderColor="whiteAlpha.100"
             position="relative"
           >
-            <div style={glassLayerStyle} />
+            <GlassLayer />
             <Circle size="24px" bg="purple.500" color="white" fontSize="xs" fontWeight="bold">
               1
             </Circle>
@@ -172,20 +198,34 @@ export function WelcomeClaimPage({
               fontWeight="medium"
               textAlign="center"
             >
-              Choose a role to get started
+              {selfClaimableRoles.length > 0
+                ? "Choose a role to get started"
+                : "Available roles in this organization"}
             </Text>
 
-            {/* Roles List */}
-            <VStack w="100%" spacing={3}>
-              {!isReady ? (
+            {/* Roles List - minH prevents layout shift when loading */}
+            <VStack w="100%" spacing={3} minH="180px">
+              {claimableRoles.length === 0 ? (
                 <VStack py={6}>
                   <Spinner size="lg" color="purple.400" />
                   <Text color="gray.400" fontSize="sm">Loading roles...</Text>
                 </VStack>
               ) : (
-                claimableRoles.map((role) => {
+                // Sort roles: recommended first, then by eligibility
+                [...claimableRoles].sort((a, b) => {
+                  const aIsRecommended = a.hatId === recommendedRole?.hatId;
+                  const bIsRecommended = b.hatId === recommendedRole?.hatId;
+                  if (aIsRecommended && !bIsRecommended) return -1;
+                  if (!aIsRecommended && bIsRecommended) return 1;
+                  return 0;
+                }).map((role) => {
                   const isRecommended = role.hatId === recommendedRole?.hatId;
                   const isClaiming = isClaimingHat(role.hatId);
+                  // In the welcome flow, be permissive - let users try to claim any role
+                  // The contract will reject if they're not actually eligible
+                  // defaultEligible may be undefined during subgraph indexing, so default to allowing
+                  const canSelfClaim = role.defaultEligible !== false;
+                  const requiresVouching = role.vouchingEnabled;
 
                   return (
                     <Box
@@ -203,7 +243,7 @@ export function WelcomeClaimPage({
                       }}
                       transition="all 0.2s"
                     >
-                      {isRecommended && (
+                      {isRecommended && canSelfClaim && (
                         <Badge
                           position="absolute"
                           top={-2}
@@ -228,36 +268,71 @@ export function WelcomeClaimPage({
                         gap={3}
                       >
                         <VStack align={{ base: "center", sm: "start" }} spacing={1}>
-                          <Text
-                            fontSize="lg"
-                            fontWeight="semibold"
-                            color="white"
-                          >
-                            {role.name}
-                          </Text>
+                          <HStack spacing={2}>
+                            <Text
+                              fontSize="lg"
+                              fontWeight="semibold"
+                              color="white"
+                            >
+                              {role.name}
+                            </Text>
+                            {canSelfClaim && (
+                              <Badge
+                                colorScheme="green"
+                                fontSize="xs"
+                                px={2}
+                                py={0.5}
+                                borderRadius="full"
+                              >
+                                Eligible
+                              </Badge>
+                            )}
+                          </HStack>
                           <HStack spacing={1} color="gray.400" fontSize="sm">
                             <Icon as={FiUsers} />
                             <Text>
                               {role.memberCount} {role.memberCount === 1 ? 'member' : 'members'}
                             </Text>
+                            {requiresVouching && (
+                              <>
+                                <Text>•</Text>
+                                <Text>Requires vouching</Text>
+                              </>
+                            )}
                           </HStack>
                         </VStack>
 
-                        <Button
-                          colorScheme="purple"
-                          size="md"
-                          px={6}
-                          rightIcon={isClaiming ? undefined : <Icon as={FiArrowRight} />}
-                          isLoading={isClaiming}
-                          loadingText="Claiming..."
-                          onClick={() => handleClaimRole(role.hatId)}
-                          _hover={{
-                            transform: "translateX(2px)",
-                          }}
-                          transition="all 0.2s"
-                        >
-                          {isClaiming ? "Claiming..." : "Join"}
-                        </Button>
+                        {canSelfClaim ? (
+                          <Button
+                            colorScheme="purple"
+                            size="md"
+                            px={6}
+                            rightIcon={isClaiming ? undefined : <Icon as={FiArrowRight} />}
+                            isLoading={isClaiming}
+                            loadingText="Claiming..."
+                            isDisabled={!isReady}
+                            onClick={() => handleClaimRole(role.hatId)}
+                            _hover={{
+                              transform: isReady ? "translateX(2px)" : undefined,
+                            }}
+                            transition="all 0.2s"
+                          >
+                            {!isReady ? "Connecting..." : isClaiming ? "Claiming..." : "Join"}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="md"
+                            px={6}
+                            leftIcon={<Icon as={FiLock} />}
+                            isDisabled
+                            color="gray.400"
+                            borderColor="whiteAlpha.300"
+                            _hover={{}}
+                          >
+                            Invite Only
+                          </Button>
+                        )}
                       </Flex>
                     </Box>
                   );
@@ -268,7 +343,11 @@ export function WelcomeClaimPage({
             {/* Footer hint */}
             <HStack spacing={2} color="gray.500" fontSize="sm" pt={2}>
               <Icon as={FiCheck} />
-              <Text>You can change roles later in org settings</Text>
+              <Text>
+                {selfClaimableRoles.length > 0
+                  ? "You can change roles later in org settings"
+                  : "Contact an organization admin to get invited"}
+              </Text>
             </HStack>
 
           </VStack>

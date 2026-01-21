@@ -3,7 +3,7 @@
  * Handles hat claiming and vouching operations via EligibilityModule contract
  */
 
-import EligibilityModuleABI from '../../../../abi/EligibilityModule.json';
+import EligibilityModuleABI from '../../../../abi/EligibilityModuleNew.json';
 import { requireAddress } from '../utils/validation';
 
 /**

@@ -100,6 +100,7 @@ export const POProvider = ({ children }) => {
     const [educationModules, setEducationModules] = useState([]);
     const [roleHatIds, setRoleHatIds] = useState([]);
     const [topHatId, setTopHatId] = useState(null);
+    const [creatorHatIds, setCreatorHatIds] = useState([]);
     const [educationHubEnabled, setEducationHubEnabled] = useState(false);
     const [roleNames, setRoleNames] = useState({});
 
@@ -168,6 +169,7 @@ export const POProvider = ({ children }) => {
             setPtTokenBalance(formatTokenAmount(org.participationToken?.totalSupply || '0'));
             setTopHatId(org.topHatId);
             setRoleHatIds(org.roleHatIds || []);
+            setCreatorHatIds(org.taskManager?.creatorHatIds || []);
 
             // Build role names map from roles data
             if (org.roles && Array.isArray(org.roles)) {
@@ -319,6 +321,7 @@ export const POProvider = ({ children }) => {
         // New POP-specific data
         roleHatIds,
         topHatId,
+        creatorHatIds,
         educationHubEnabled,
         roleNames,
     }), [
@@ -350,6 +353,7 @@ export const POProvider = ({ children }) => {
         educationModules,
         roleHatIds,
         topHatId,
+        creatorHatIds,
         educationHubEnabled,
         roleNames,
     ]);

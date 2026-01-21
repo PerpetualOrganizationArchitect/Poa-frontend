@@ -36,7 +36,7 @@ const MainLayout = () => {
 
   const { address: account } = useAccount();
   const { task: taskService, executeWithNotification } = useWeb3();
-  const { taskManagerContractAddress } = usePOContext();
+  const { taskManagerContractAddress, roleHatIds } = usePOContext();
   const { addToIpfs } = useIPFScontext();
   const router = useRouter();
 
@@ -111,15 +111,28 @@ const MainLayout = () => {
       }
     }
 
+    // Get hat IDs for default permissions from org's roleHatIds
+    // roleHatIds[0] = Member, roleHatIds[1] = Executive, etc.
+    // Members can claim tasks, non-members (executives+) can create/review/assign
+    const nonMemberHatIds = roleHatIds?.slice(1) || [];
+
+    // For simple creates, assign default permissions based on org roles
+    // All roles (member + non-member) can claim tasks
+    // Non-member roles (executive+) can create, review, and assign
+    const defaultClaimHats = roleHatIds || [];
+    const defaultCreateHats = nonMemberHatIds;
+    const defaultReviewHats = nonMemberHatIds;
+    const defaultAssignHats = nonMemberHatIds;
+
     const createProjectData = {
       name: projectName,
       metadataHash,
       cap: isSimpleCreate ? 0 : (projectData.cap || 0),
       managers: isSimpleCreate ? [] : (projectData.managers || []),
-      createHats: isSimpleCreate ? [] : (projectData.createHats || []),
-      claimHats: isSimpleCreate ? [] : (projectData.claimHats || []),
-      reviewHats: isSimpleCreate ? [] : (projectData.reviewHats || []),
-      assignHats: isSimpleCreate ? [] : (projectData.assignHats || []),
+      createHats: isSimpleCreate ? defaultCreateHats : (projectData.createHats || []),
+      claimHats: isSimpleCreate ? defaultClaimHats : (projectData.claimHats || []),
+      reviewHats: isSimpleCreate ? defaultReviewHats : (projectData.reviewHats || []),
+      assignHats: isSimpleCreate ? defaultAssignHats : (projectData.assignHats || []),
     };
 
     console.log('Final createProjectData:', createProjectData);
@@ -134,7 +147,7 @@ const MainLayout = () => {
         refreshEvent: 'project:created',
       }
     );
-  }, [taskService, executeWithNotification, taskManagerContractAddress, addToIpfs]);
+  }, [taskService, executeWithNotification, taskManagerContractAddress, addToIpfs, roleHatIds]);
 
   const handleCreateNewProject = () => {
     if (newProjectName.trim()) {

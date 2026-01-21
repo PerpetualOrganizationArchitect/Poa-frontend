@@ -52,3 +52,84 @@ export const ROLE_INDICES = {
     MEMBER: 0,
     EXECUTIVE: 1,
 };
+
+/**
+ * Normalize a hat ID to a string for comparison.
+ * Handles BigInt strings from subgraph which may have different formats.
+ * @param {string|number|BigInt} hatId - Hat ID in any format
+ * @returns {string} - Normalized string representation
+ */
+function normalizeHatId(hatId) {
+    if (hatId === null || hatId === undefined) return '';
+    // Convert to string and trim whitespace
+    return String(hatId).trim();
+}
+
+/**
+ * Check if a user has a specific permission for a project
+ * @param {string[]} userHatIds - Array of hat IDs the user currently holds
+ * @param {Array} projectRolePermissions - Array of ProjectRolePermission objects from the subgraph
+ * @param {string} permissionType - The permission to check: 'canCreate', 'canClaim', 'canReview', 'canAssign'
+ * @returns {boolean} - True if the user has the permission
+ */
+export function userHasProjectPermission(userHatIds, projectRolePermissions, permissionType) {
+    // No user hats means no permissions
+    if (!userHatIds || !userHatIds.length) {
+        console.debug('[Permissions] No user hat IDs available');
+        return false;
+    }
+
+    // No project permissions configured - this project needs permission setup
+    if (!projectRolePermissions || !projectRolePermissions.length) {
+        console.debug('[Permissions] No role permissions configured for this project');
+        return false;
+    }
+
+    // Normalize user hat IDs for comparison
+    const normalizedUserHats = userHatIds.map(normalizeHatId);
+
+    console.debug('[Permissions] Checking permission:', permissionType);
+    console.debug('[Permissions] User hat IDs:', normalizedUserHats);
+    console.debug('[Permissions] Project permissions:', JSON.stringify(projectRolePermissions));
+
+    const hasPermission = projectRolePermissions.some(perm => {
+        if (!perm[permissionType]) return false;
+
+        const permHatId = normalizeHatId(perm.hatId);
+        const matches = normalizedUserHats.includes(permHatId);
+
+        console.debug(`[Permissions] Hat ${permHatId} has ${permissionType}=${perm[permissionType]}, user match=${matches}`);
+        return matches;
+    });
+
+    console.debug('[Permissions] Final result for', permissionType, ':', hasPermission);
+    return hasPermission;
+}
+
+/**
+ * Check if a user can create tasks in a project
+ */
+export function userCanCreateTask(userHatIds, projectRolePermissions) {
+    return userHasProjectPermission(userHatIds, projectRolePermissions, 'canCreate');
+}
+
+/**
+ * Check if a user can claim tasks in a project
+ */
+export function userCanClaimTask(userHatIds, projectRolePermissions) {
+    return userHasProjectPermission(userHatIds, projectRolePermissions, 'canClaim');
+}
+
+/**
+ * Check if a user can review tasks in a project
+ */
+export function userCanReviewTask(userHatIds, projectRolePermissions) {
+    return userHasProjectPermission(userHatIds, projectRolePermissions, 'canReview');
+}
+
+/**
+ * Check if a user can assign tasks in a project
+ */
+export function userCanAssignTask(userHatIds, projectRolePermissions) {
+    return userHasProjectPermission(userHatIds, projectRolePermissions, 'canAssign');
+}

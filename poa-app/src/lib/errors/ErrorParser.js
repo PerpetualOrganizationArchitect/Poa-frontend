@@ -89,7 +89,7 @@ const REVERT_PATTERNS = {
   'BadStatus': 'Task is not in the correct state for this action.',
   'NotClaimer': 'Only the person who claimed this task can perform this action.',
   'NotFound': 'This task does not exist.',
-  'NotCreator': 'Only the task creator can perform this action.',
+  'NotCreator': 'You don\'t have permission to create projects. Contact your organization admin to get creator permissions.',
   'NotExecutor': 'Unauthorized: caller is not the executor.',
   'AlreadyApplied': 'You have already applied for this task.',
   'NoApplicationRequired': 'This task does not require an application.',
@@ -301,7 +301,8 @@ export function parseError(error, abi = null) {
     if (!userMessage && abi) {
       const decoded = tryDecodeCustomError(error, abi);
       if (decoded) {
-        userMessage = `Contract error: ${decoded.name}`;
+        // Check if we have a user-friendly message for this custom error name
+        userMessage = matchRevertPattern(decoded.name) || `Contract error: ${decoded.name}`;
       }
     }
 

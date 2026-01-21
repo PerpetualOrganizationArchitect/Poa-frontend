@@ -146,13 +146,8 @@ export function mapStateToDeploymentParams(state, deployerAddress, options = {})
     ddInitialTargets: [], // Empty for now
     roles: contractRoles,
     roleAssignments,
-    // Passkey configuration (disabled by default)
-    passkeyConfig: {
-      enabled: false,
-      maxCredentialsPerAccount: 0,
-      defaultGuardian: ethers.constants.AddressZero,
-      recoveryDelay: 0,
-    },
+    // Passkey support (uses universal factory when enabled)
+    passkeyEnabled: false,
     // Education hub configuration
     educationHubConfig: {
       enabled: features.educationHubEnabled || false,

@@ -1,24 +1,22 @@
-// cloudflare-worker/worker.mjs
-
-const PINATA_GATEWAY = 'https://poa.mypinata.cloud';
+const PINATA_GATEWAY = 'https://ipfs.poa.earth';
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // 1) Redirect bare domain -> www
+    // redirect bare poa.earth -> www.poa.earth
     if (url.hostname === 'poa.earth') {
       url.hostname = 'www.poa.earth';
       return Response.redirect(url.toString(), 301);
     }
 
-    // 2) Proxy www.poa.earth to Pinata, keeping path/query
-    const cid = env.SITE_CID; // injected by wrangler / CI
-
+    // Get CID from environment variable (set by CI/CD)
+    const cid = env.SITE_CID;
     if (!cid) {
       return new Response('SITE_CID not configured', { status: 500 });
     }
 
+    // proxy www.poa.earth to Pinata while keeping URL clean
     const upstreamUrl = new URL(PINATA_GATEWAY);
     upstreamUrl.pathname = `/ipfs/${cid}${url.pathname}`;
     upstreamUrl.search = url.search;

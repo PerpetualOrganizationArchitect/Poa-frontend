@@ -1,10 +1,9 @@
-name = "poa-earth-proxy"
+name = "poa-ipfs"
 main = "cloudflare-worker/worker.mjs"
 compatibility_date = "2024-03-30"
 
-# optional: default, can be overridden at deploy time
 [vars]
-PINATA_GATEWAY = "https://poa.mypinata.cloud"
+PINATA_GATEWAY = "https://ipfs.poa.earth"
 
 # Attach to your zone + routes
 routes = [

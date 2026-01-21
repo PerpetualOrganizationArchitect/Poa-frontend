@@ -4,6 +4,7 @@ compatibility_date = "2024-03-30"
 
 [vars]
 PINATA_GATEWAY = "https://ipfs.poa.earth"
+SITE_CID = "placeholder"
 
 # Attach to your zone + routes
 routes = [

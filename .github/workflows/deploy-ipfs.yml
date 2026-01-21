@@ -102,15 +102,21 @@ jobs:
       - name: Install wrangler
         run: npm install -g wrangler
 
-      - name: Deploy Cloudflare Worker with new CID
+      - name: Update wrangler.toml with new CID
+        env:
+          SITE_CID: ${{ steps.pinata.outputs.ipfs_hash }}
+        run: |
+          sed -i "s/SITE_CID = \"placeholder\"/SITE_CID = \"$SITE_CID\"/" wrangler.toml
+          echo "Updated wrangler.toml with CID: ${SITE_CID}"
+          cat wrangler.toml
+
+      - name: Deploy Cloudflare Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          SITE_CID: ${{ steps.pinata.outputs.ipfs_hash }}
         run: |
-          wrangler deploy \
-            --var SITE_CID="$SITE_CID"
-          echo "Worker deployed with CID: ${SITE_CID}"
+          wrangler deploy
+          echo "Worker deployed with CID: ${{ steps.pinata.outputs.ipfs_hash }}"
 
       - name: Deployment Summary
         run: |

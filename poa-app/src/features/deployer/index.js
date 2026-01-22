@@ -96,6 +96,10 @@ export { RoleHierarchyTree } from './components/role/RoleHierarchyTree';
 export { PermissionMatrix } from './components/permissions/PermissionMatrix';
 export { VotingClassCard } from './components/voting/VotingClassCard';
 export { VotingClassForm } from './components/voting/VotingClassForm';
+export { DeployerUsernameSection } from './components/review/DeployerUsernameSection';
+
+// Hooks
+export { useDeployerUsername } from './hooks/useDeployerUsername';
 
 // Steps
 export { OrganizationStep } from './steps/OrganizationStep';

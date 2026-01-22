@@ -139,6 +139,10 @@ function DeployerPageContent() {
   const handleDeployStart = async (config) => {
     setIsDeploying(true);
 
+    // Extract deployer username from config (validated by ReviewStep)
+    const deployerUsername = config?.deployerUsername || state.organization.username || '';
+    console.log('[DEPLOY] Using deployer username:', deployerUsername);
+
     try {
       // Resolve all usernames to addresses before deployment
       const rolesWithResolvedAddresses = await resolveRoleUsernames(state.roles);
@@ -276,7 +280,7 @@ function DeployerPageContent() {
         'DirectDemocracy', // votingControlType
         state.voting.ddQuorum,
         state.voting.hybridQuorum,
-        state.organization.username || '',
+        deployerUsername,
         signer,
         customRoles,  // Only pass custom roles if there are additionalWearers
         infrastructureAddresses  // Addresses fetched from subgraph

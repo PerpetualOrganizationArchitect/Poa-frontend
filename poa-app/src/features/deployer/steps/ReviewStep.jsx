@@ -8,7 +8,7 @@
  * - Smart configuration warnings
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   VStack,
@@ -58,6 +58,7 @@ import { validateDeployerState } from '../validation/schemas';
 import { validateDeploymentConfig } from '../utils/deploymentMapper';
 import NavigationButtons from '../components/common/NavigationButtons';
 import { roleHasBundle } from '../utils/powerBundles';
+import { DeployerUsernameSection } from '../components/review/DeployerUsernameSection';
 
 // Animations
 const pulseGlow = keyframes`
@@ -727,6 +728,16 @@ export function ReviewStep({
   const { state, actions, selectors } = useDeployer();
   const toast = useToast();
 
+  // Username state - managed by DeployerUsernameSection component
+  const [deployerUsername, setDeployerUsername] = useState('');
+  const [isUsernameReady, setIsUsernameReady] = useState(false);
+
+  // Callback for username section
+  const handleUsernameReady = useCallback((username, ready) => {
+    setDeployerUsername(username);
+    setIsUsernameReady(ready);
+  }, []);
+
   // Theme colors
   const validationSuccessBg = useColorModeValue('rgba(72, 187, 120, 0.08)', 'rgba(72, 187, 120, 0.15)');
   const validationWarningBg = useColorModeValue('rgba(255, 165, 0, 0.08)', 'rgba(255, 165, 0, 0.15)');
@@ -734,7 +745,7 @@ export function ReviewStep({
   // Validate entire state
   const zodValidation = validateDeployerState(state);
   const configValidation = validateDeploymentConfig(state);
-  const isValid = zodValidation.isValid && configValidation.isValid;
+  const isValid = zodValidation.isValid && configValidation.isValid && isUsernameReady;
 
   // All validation errors combined
   const zodErrorMessages = zodValidation.isValid
@@ -764,7 +775,7 @@ export function ReviewStep({
       return;
     }
     if (onDeploy) {
-      onDeploy();
+      onDeploy({ deployerUsername });
     }
   };
 
@@ -794,7 +805,13 @@ export function ReviewStep({
       stepIndex: STEPS.GOVERNANCE,
       isComplete: Object.values(state.permissions).some(arr => arr.length > 0),
     },
-  ], [state.organization, state.roles, state.voting, state.permissions]);
+    {
+      key: 'username',
+      label: 'Your Username',
+      stepIndex: STEPS.LAUNCH,
+      isComplete: isUsernameReady,
+    },
+  ], [state.organization, state.roles, state.voting, state.permissions, isUsernameReady]);
 
   // Smart warnings
   const warnings = useMemo(() => {
@@ -1235,28 +1252,34 @@ export function ReviewStep({
                 </Box>
               </VStack>
             ) : (
-              <Button
-                bg="coral.500"
-                color="white"
-                _hover={{
-                  bg: 'coral.600',
-                  transform: 'translateY(-2px)',
-                  boxShadow: '0 8px 25px rgba(240, 101, 67, 0.35)',
-                }}
-                _active={{ bg: 'coral.700', transform: 'translateY(0)' }}
-                size="lg"
-                w="100%"
-                maxW="400px"
-                h="56px"
-                fontSize="lg"
-                fontWeight="600"
-                onClick={handleDeploy}
-                isDisabled={!isValid || isDeploying}
-                leftIcon={<Icon as={PiRocketLaunch} boxSize={5} />}
-                transition="all 0.2s ease"
-              >
-                Launch {state.organization.name || 'Your Organization'}
-              </Button>
+              <VStack spacing={4} w="100%" align="center">
+                {/* Username Section - Required before deployment */}
+                <DeployerUsernameSection onUsernameReady={handleUsernameReady} />
+
+                {/* Deploy Button */}
+                <Button
+                  bg="coral.500"
+                  color="white"
+                  _hover={{
+                    bg: 'coral.600',
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 8px 25px rgba(240, 101, 67, 0.35)',
+                  }}
+                  _active={{ bg: 'coral.700', transform: 'translateY(0)' }}
+                  size="lg"
+                  w="100%"
+                  maxW="400px"
+                  h="56px"
+                  fontSize="lg"
+                  fontWeight="600"
+                  onClick={handleDeploy}
+                  isDisabled={!isValid || isDeploying}
+                  leftIcon={<Icon as={PiRocketLaunch} boxSize={5} />}
+                  transition="all 0.2s ease"
+                >
+                  Launch {state.organization.name || 'Your Organization'}
+                </Button>
+              </VStack>
             )}
 
             <Text fontSize="xs" color="warmGray.400" textAlign="center" maxW="350px">

@@ -308,7 +308,7 @@ export function DeployerWizard({
   }, [state.currentStep]);
 
   // Handle deployment
-  const handleDeploy = async () => {
+  const handleDeploy = async (deployConfig = {}) => {
     if (!deployerAddress) {
       toast({
         title: 'Wallet not connected',
@@ -326,12 +326,18 @@ export function DeployerWizard({
       // Create deployment config with fetched infrastructure addresses
       const config = createDeploymentConfig(state, deployerAddress, infrastructureAddresses);
 
+      // Merge in any config passed from ReviewStep (e.g., deployerUsername)
+      const finalConfig = {
+        ...config,
+        ...deployConfig,
+      };
+
       // Log for debugging
-      console.log('Deployment Config:', config);
+      console.log('Deployment Config:', finalConfig);
 
       // Call parent component's deploy handler and await result
       if (onDeployStart) {
-        const result = await onDeployStart(config);
+        const result = await onDeployStart(finalConfig);
 
         // If deployment succeeded, transition to success state
         if (result && result.success) {

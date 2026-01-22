@@ -30,8 +30,8 @@ function transformLeaderboardData(users, roleHatIds) {
         return {
             id: user.id,
             address: user.address,
-            name: user.username || user.address?.slice(0, 8) + '...',
-            hasUsername: !!user.username,
+            name: user.account?.username || user.address?.slice(0, 8) + '...',
+            hasUsername: !!user.account?.username,
             token: formattedBalance,
             // Derive role from hat IDs - first hat is typically the primary role
             hatIds: user.currentHatIds || [],

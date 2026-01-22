@@ -82,7 +82,9 @@ export const FETCH_ORG_BY_ID = gql`
       users {
         id
         address
-        username
+        account {
+          username
+        }
         participationTokenBalance
         membershipStatus
         currentHatIds
@@ -209,7 +211,9 @@ export const FETCH_ORG_FULL_DATA = gql`
       users(orderBy: participationTokenBalance, orderDirection: desc, first: 100) {
         id
         address
-        username
+        account {
+          username
+        }
         participationTokenBalance
         membershipStatus
         currentHatIds
@@ -358,7 +362,6 @@ export const FETCH_USER_DATA_NEW = gql`
     user(id: $orgUserID) {
       id
       address
-      username
       participationTokenBalance
       membershipStatus
       currentHatIds
@@ -507,7 +510,9 @@ export const FETCH_ORG_STRUCTURE_DATA = gql`
       users(first: 200) {
         id
         address
-        username
+        account {
+          username
+        }
         participationTokenBalance
         membershipStatus
         currentHatIds

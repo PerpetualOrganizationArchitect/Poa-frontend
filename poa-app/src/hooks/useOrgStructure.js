@@ -123,7 +123,7 @@ function transformRolesData(roles, roleHatIds, roleNamesFromIPFS = {}, users = [
         usersWithHatLength: usersWithHat.length,
         finalMemberCount: memberCount,
         roleWearers: roleWearers.map(w => ({ wearer: w.wearer, isActive: w.isActive })),
-        usersWithHat: usersWithHat.map(u => ({ username: u.username, currentHatIds: u.currentHatIds }))
+        usersWithHat: usersWithHat.map(u => ({ username: u.account?.username, currentHatIds: u.currentHatIds }))
       });
     }
 
@@ -246,7 +246,7 @@ function groupMembersByRole(users, roles) {
         groups[originalHatId].push({
           id: user.id,
           address: user.address,
-          username: user.username,
+          username: user.account?.username,
           participationTokenBalance: formatTokenAmount(user.participationTokenBalance || '0'),
           membershipStatus: user.membershipStatus,
           totalTasksCompleted: parseInt(user.totalTasksCompleted, 10) || 0,

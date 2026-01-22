@@ -186,8 +186,13 @@ export async function main(
       ddInitialTargets: [],
       roles: roles,
       roleAssignments: roleAssignments,
-      // Passkey support (uses universal factory when enabled)
-      passkeyEnabled: false,
+      // Passkey configuration (matches deployed contract interface)
+      passkeyConfig: {
+        enabled: false,
+        maxCredentialsPerAccount: 0,
+        defaultGuardian: ethers.constants.AddressZero,
+        recoveryDelay: 0,
+      },
       // Education hub configuration
       educationHubConfig: {
         enabled: educationHubEnabled || false,

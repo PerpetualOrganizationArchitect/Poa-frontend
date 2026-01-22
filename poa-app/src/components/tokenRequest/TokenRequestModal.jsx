@@ -30,7 +30,7 @@ const TokenRequestModal = ({ isOpen, onClose }) => {
   const toast = useToast();
   const { tokenRequest, executeWithNotification } = useWeb3();
   const { participationTokenAddress } = usePOContext();
-  const { ipfs } = useIPFScontext();
+  const { addToIpfs } = useIPFScontext();
 
   const [loading, setLoading] = useState(false);
   const [amount, setAmount] = useState('');
@@ -86,7 +86,7 @@ const TokenRequestModal = ({ isOpen, onClose }) => {
           participationTokenAddress,
           amount,
           metadata,
-          { ipfsService: ipfs }
+          { ipfsService: { addToIpfs } }
         ),
         {
           pendingMessage: 'Submitting token request...',

@@ -23,6 +23,17 @@ const CUSTOM_ERROR_SELECTORS = {
   '0x9996b315': 'BadStatus',          // keccak256("BadStatus()")
   '0xb6c3e8f0': 'NotClaimer',         // keccak256("NotClaimer()")
   '0x82d5d76a': 'InvalidTarget',      // keccak256("InvalidTarget()")
+
+  // ParticipationToken errors
+  '0x291fc442': 'NotMember',          // keccak256("NotMember()")
+  '0x1f2a2005': 'ZeroAmount',         // keccak256("ZeroAmount()")
+  '0x65f84cc0': 'NotApprover',        // keccak256("NotApprover()")
+  '0x101f817a': 'AlreadyApproved',    // keccak256("AlreadyApproved()")
+  '0x36838924': 'RequestUnknown',     // keccak256("RequestUnknown()")
+  '0xe39da59e': 'NotRequester',       // keccak256("NotRequester()")
+  '0xa741a045': 'AlreadySet',         // keccak256("AlreadySet()")
+  '0xe6c4247b': 'InvalidAddress',     // keccak256("InvalidAddress()")
+  '0x8574adcf': 'TransfersDisabled',  // keccak256("TransfersDisabled()")
 };
 
 /**
@@ -112,6 +123,17 @@ const REVERT_PATTERNS = {
   // General errors
   'Paused': 'This contract is currently paused.',
   'Not owner': 'Only the owner can perform this action.',
+
+  // ParticipationToken errors
+  'NotMember': 'You must be a member of this organization to request tokens. Please ensure you have been assigned a member role.',
+  'ZeroAmount': 'Token amount must be greater than zero.',
+  'NotApprover': 'You do not have permission to approve token requests.',
+  'AlreadyApproved': 'This token request has already been approved.',
+  'RequestUnknown': 'This token request does not exist.',
+  'NotRequester': 'Only the original requester can cancel this request.',
+  'AlreadySet': 'This value has already been configured.',
+  'InvalidAddress': 'Invalid address provided.',
+  'TransfersDisabled': 'Token transfers are disabled for participation tokens.',
 };
 
 /**

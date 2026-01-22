@@ -41,9 +41,9 @@ export function useWeb3Services(options = {}) {
   }, [signer]);
 
   const txManager = useMemo(() => {
-    if (!factory) return null;
-    return createTransactionManager(factory);
-  }, [factory]);
+    if (!signer) return null;
+    return createTransactionManager(signer);
+  }, [signer]);
 
   // Create domain services
   const services = useMemo(() => {

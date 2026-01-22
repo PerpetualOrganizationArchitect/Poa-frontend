@@ -186,13 +186,8 @@ export async function main(
       ddInitialTargets: [],
       roles: roles,
       roleAssignments: roleAssignments,
-      // Passkey configuration (matches deployed contract interface)
-      passkeyConfig: {
-        enabled: false,
-        maxCredentialsPerAccount: 0,
-        defaultGuardian: ethers.constants.AddressZero,
-        recoveryDelay: 0,
-      },
+      // Passkey support (boolean - matches deployed contract v1.0.1)
+      passkeyEnabled: false,
       // Education hub configuration
       educationHubConfig: {
         enabled: educationHubEnabled || false,

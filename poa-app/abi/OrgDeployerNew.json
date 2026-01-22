@@ -338,9 +338,31 @@
             ]
           },
           {
-            "name": "passkeyEnabled",
-            "type": "bool",
-            "internalType": "bool"
+            "name": "passkeyConfig",
+            "type": "tuple",
+            "internalType": "struct OrgDeployer.PasskeyConfig",
+            "components": [
+              {
+                "name": "enabled",
+                "type": "bool",
+                "internalType": "bool"
+              },
+              {
+                "name": "maxCredentialsPerAccount",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "defaultGuardian",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "recoveryDelay",
+                "type": "uint48",
+                "internalType": "uint48"
+              }
+            ]
           },
           {
             "name": "educationHubConfig",

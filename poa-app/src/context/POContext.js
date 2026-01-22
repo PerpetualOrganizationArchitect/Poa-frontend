@@ -31,6 +31,7 @@ function transformLeaderboardData(users, roleHatIds) {
             id: user.id,
             address: user.address,
             name: user.username || user.address?.slice(0, 8) + '...',
+            hasUsername: !!user.username,
             token: formattedBalance,
             // Derive role from hat IDs - first hat is typically the primary role
             hatIds: user.currentHatIds || [],
@@ -95,6 +96,12 @@ export const POProvider = ({ children }) => {
 
     // Derived data
     const [leaderboardData, setLeaderboardData] = useState([]);
+
+    // Filtered leaderboard for display (only users with registered usernames)
+    const leaderboardDisplayData = useMemo(() => {
+        return leaderboardData.filter(user => user.hasUsername);
+    }, [leaderboardData]);
+
     const [poContextLoading, setPoContextLoading] = useState(true);
     const [rules, setRules] = useState(null);
     const [educationModules, setEducationModules] = useState([]);
@@ -314,6 +321,7 @@ export const POProvider = ({ children }) => {
         loading,
         error,
         leaderboardData,
+        leaderboardDisplayData,
         poContextLoading,
         rules,
         educationModules,
@@ -348,6 +356,7 @@ export const POProvider = ({ children }) => {
         loading,
         error,
         leaderboardData,
+        leaderboardDisplayData,
         poContextLoading,
         rules,
         educationModules,

@@ -31,24 +31,26 @@ export function requireAddress(address, name = 'Address') {
 
 /**
  * Validate that a value is a positive number
- * @param {number} value - Value to check
+ * @param {number|string} value - Value to check (can be number or numeric string)
  * @param {string} name - Name for error message
  * @throws {Error} If validation fails
  */
 export function requirePositiveNumber(value, name) {
-  if (typeof value !== 'number' || isNaN(value) || value <= 0) {
+  const num = Number(value);
+  if (isNaN(num) || num <= 0) {
     throw new Error(`${name} must be a positive number`);
   }
 }
 
 /**
  * Validate that a value is a non-negative number
- * @param {number} value - Value to check
+ * @param {number|string} value - Value to check (can be number or numeric string)
  * @param {string} name - Name for error message
  * @throws {Error} If validation fails
  */
 export function requireNonNegativeNumber(value, name) {
-  if (typeof value !== 'number' || isNaN(value) || value < 0) {
+  const num = Number(value);
+  if (isNaN(num) || num < 0) {
     throw new Error(`${name} must be a non-negative number`);
   }
 }

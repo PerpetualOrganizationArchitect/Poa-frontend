@@ -24,9 +24,11 @@ export const INFRASTRUCTURE_CONTRACTS = {
  * @returns {string|null} Contract address or null if not found
  */
 export function getInfrastructureAddress(contractName, chainId = NETWORKS.hoodi.chainId) {
-  const networkName = getNetworkNameByChainId(chainId);
+  // Use nullish coalescing to handle explicit null values (e.g., from services that don't specify chainId)
+  const effectiveChainId = chainId ?? NETWORKS.hoodi.chainId;
+  const networkName = getNetworkNameByChainId(effectiveChainId);
   if (!networkName) {
-    console.warn(`No network found for chain ID: ${chainId}`);
+    console.warn(`No network found for chain ID: ${effectiveChainId}`);
     return null;
   }
 

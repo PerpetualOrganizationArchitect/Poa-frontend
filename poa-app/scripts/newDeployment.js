@@ -220,6 +220,22 @@ export async function main(
     console.log("OrgDeployer contract instance created");
 
     try {
+      // Verify the contract is deployed and accessible
+      console.log("=== CONTRACT VERIFICATION ===");
+      try {
+        const version = await orgDeployer.VERSION();
+        console.log("OrgDeployer VERSION:", version);
+      } catch (versionErr) {
+        console.error("Failed to get VERSION - contract may not be deployed correctly:", versionErr.message);
+      }
+
+      try {
+        const hatsAddr = await orgDeployer.hats();
+        console.log("Hats contract address:", hatsAddr);
+      } catch (hatsErr) {
+        console.error("Failed to get hats address:", hatsErr.message);
+      }
+
       // First, try a static call to get the revert reason if it would fail
       console.log("Testing deployment with staticCall...");
       try {
@@ -239,6 +255,8 @@ export async function main(
         if (staticError.errorArgs) {
           console.error("Error args:", staticError.errorArgs);
         }
+        // Log the full error object for debugging
+        console.error("Full error details:", JSON.stringify(staticError, Object.getOwnPropertyNames(staticError), 2));
         throw staticError;
       }
 

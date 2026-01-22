@@ -91,7 +91,6 @@ const TokenRequestModal = ({ isOpen, onClose }) => {
         {
           pendingMessage: 'Submitting token request...',
           successMessage: 'Token request submitted successfully!',
-          errorMessage: 'Failed to submit token request',
           refreshEvent: RefreshEvent.TOKEN_REQUEST_CREATED,
           refreshData: { amount },
         }

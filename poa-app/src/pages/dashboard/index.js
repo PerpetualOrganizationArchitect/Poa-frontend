@@ -111,7 +111,7 @@ const PerpetualOrgDashboard = () => {
     }
   }, [rules, roleHatIds]);
 
-  const { leaderboardData } = usePOContext();
+  const { leaderboardDisplayData } = usePOContext();
   const { recommendedTasks } = useProjectContext();
 
   const getMedalColor = (rank) => {
@@ -417,8 +417,8 @@ const PerpetualOrgDashboard = () => {
                     </Text>
                   </VStack>
                   <Box p={{ base: 2, md: 4 }}>
-                    {Array.isArray(leaderboardData) && leaderboardData.length > 0 ? (
-                      leaderboardData.slice(0, 5).map((entry, index) => {
+                    {Array.isArray(leaderboardDisplayData) && leaderboardDisplayData.length > 0 ? (
+                      leaderboardDisplayData.slice(0, 5).map((entry, index) => {
                         const medalColor = getMedalColor(index);
                         return (
                           <HStack 

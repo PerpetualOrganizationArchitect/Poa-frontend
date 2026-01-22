@@ -73,6 +73,17 @@ export const UserProvider = ({ children }) => {
         return unsubscribe;
     }, [subscribe, refetchUserData]);
 
+    // Subscribe to username_changed event to refetch user data
+    useEffect(() => {
+        const unsubscribe = subscribe('user:username_changed', () => {
+            // Wait for subgraph to index, then refetch user data
+            setTimeout(() => {
+                refetchUserData();
+            }, 1000);
+        });
+        return unsubscribe;
+    }, [subscribe, refetchUserData]);
+
     useEffect(() => {
         if (data) {
             const { user, account: accountData } = data;
@@ -170,6 +181,7 @@ export const UserProvider = ({ children }) => {
         userProposals,
         userData,
         graphUsername,
+        setGraphUsername,
         hasExecRole,
         hasMemberRole,
         hasApproverRole,
@@ -182,6 +194,7 @@ export const UserProvider = ({ children }) => {
         userProposals,
         userData,
         graphUsername,
+        setGraphUsername,
         hasExecRole,
         hasMemberRole,
         hasApproverRole,

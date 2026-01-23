@@ -20,19 +20,28 @@ export const customTemplate = {
   ],
   benefits: [
     {
+      iconName: 'UsersThree',
+      title: 'Decide Together',
+      subtitle: 'Your voting rules',
+      expandedContent: `Set your own democracy/participation balance. Pure democracy? Full meritocracy? Anything in between. Start with 50/50 if unsure—you can always adjust based on experience.`,
+    },
+    {
+      iconName: 'Kanban',
+      title: 'Coordinate Work',
+      subtitle: 'Projects & tasks',
+      expandedContent: `Create projects, assign tasks, track completion. Whatever your organization does, coordinate it transparently. Define what "engagement" means for your context.`,
+    },
+    {
       iconName: 'Sliders',
-      title: 'Total Control',
-      outcome: 'Every setting, your choice',
+      title: 'Total Flexibility',
+      subtitle: 'Every setting configurable',
+      expandedContent: `Roles, permissions, vouching rules, quorum—all configurable. Build exactly the governance structure your organization needs. Add complexity only when you need it.`,
     },
     {
-      iconName: 'PuzzlePiece',
-      title: 'Perfect Fit',
-      outcome: 'Governance shaped to your needs',
-    },
-    {
-      iconName: 'Wrench',
-      title: 'Flexible Foundation',
-      outcome: 'Adapt as you grow',
+      iconName: 'Lightbulb',
+      title: 'Your Rules',
+      subtitle: 'Built from scratch',
+      expandedContent: `Sometimes your organization doesn't fit neatly into existing templates. Custom governance lets you build exactly what you need—but with great power comes great responsibility.`,
     },
   ],
   socialProof: 'For organizations that know exactly what they need',

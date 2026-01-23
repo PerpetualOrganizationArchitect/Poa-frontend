@@ -22,20 +22,11 @@ import {
   SimpleGrid,
   Card,
   CardBody,
-  Badge,
   Button,
   Icon,
   useColorModeValue,
   Flex,
-  List,
-  ListItem,
-  ListIcon,
   Collapse,
-  Tabs,
-  TabList,
-  TabPanels,
-  Tab,
-  TabPanel,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -44,18 +35,30 @@ import {
   ModalFooter,
   ModalCloseButton,
   useDisclosure,
-  Alert,
-  AlertIcon,
-  Divider,
-  Tooltip,
 } from '@chakra-ui/react';
+import { ChevronUpIcon } from '@chakra-ui/icons';
 import {
-  ArrowForwardIcon,
-  InfoIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-} from '@chakra-ui/icons';
-import { PiCheck, PiArrowRight } from 'react-icons/pi';
+  PiCheck,
+  PiArrowRight,
+  PiUsersThree,
+  PiCoins,
+  PiEye,
+  PiGitMerge,
+  PiPath,
+  PiHandshake,
+  PiPalette,
+  PiSparkle,
+  PiMegaphone,
+  PiUsers,
+  PiGlobe,
+  PiChalkboardTeacher,
+  PiTrophy,
+  PiSliders,
+  PiPuzzlePiece,
+  PiWrench,
+  PiGear,
+  PiBookOpen,
+} from 'react-icons/pi';
 import { useDeployer } from '../context/DeployerContext';
 import {
   RICH_TEMPLATE_LIST as TEMPLATE_LIST,
@@ -71,8 +74,102 @@ const VIEWS = {
   PREVIEW: 'preview',
 };
 
+// Icon mapping for benefit cards (Phosphor Icons)
+const ICON_MAP = {
+  UsersThree: PiUsersThree,
+  Coins: PiCoins,
+  Eye: PiEye,
+  GitMerge: PiGitMerge,
+  Path: PiPath,
+  Handshake: PiHandshake,
+  Palette: PiPalette,
+  Sparkle: PiSparkle,
+  Megaphone: PiMegaphone,
+  Users: PiUsers,
+  Globe: PiGlobe,
+  Chalkboard: PiChalkboardTeacher,
+  Trophy: PiTrophy,
+  Sliders: PiSliders,
+  PuzzlePiece: PiPuzzlePiece,
+  Wrench: PiWrench,
+  Gear: PiGear,
+  BookOpen: PiBookOpen,
+};
+
 /**
- * Visual bar showing democracy/participation voting split
+ * Benefit cards showing 3 key benefits with icons
+ */
+function BenefitCards({ benefits }) {
+  const cardBg = useColorModeValue('white', 'gray.800');
+  const borderColor = useColorModeValue('gray.200', 'gray.600');
+  const titleColor = useColorModeValue('gray.800', 'white');
+  const outcomeColor = useColorModeValue('gray.600', 'gray.400');
+  const iconColor = useColorModeValue('coral.500', 'coral.400');
+
+  if (!benefits || benefits.length === 0) return null;
+
+  return (
+    <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+      {benefits.map((benefit, i) => {
+        const IconComponent = ICON_MAP[benefit.iconName] || PiCheck;
+        return (
+          <Box
+            key={i}
+            bg={cardBg}
+            p={5}
+            borderRadius="lg"
+            borderWidth="1px"
+            borderColor={borderColor}
+            textAlign="center"
+          >
+            <Icon
+              as={IconComponent}
+              boxSize={8}
+              color={iconColor}
+              mb={3}
+            />
+            <Text fontWeight="600" fontSize="md" color={titleColor} mb={1}>
+              {benefit.title}
+            </Text>
+            <Text fontSize="sm" color={outcomeColor}>
+              {benefit.outcome}
+            </Text>
+          </Box>
+        );
+      })}
+    </SimpleGrid>
+  );
+}
+
+/**
+ * Social proof banner showing real-world credibility
+ */
+function SocialProof({ text }) {
+  const bg = useColorModeValue('gray.50', 'gray.800');
+  const textColor = useColorModeValue('gray.600', 'gray.400');
+  const borderColor = useColorModeValue('gray.200', 'gray.600');
+
+  if (!text) return null;
+
+  return (
+    <Box
+      bg={bg}
+      py={3}
+      px={4}
+      borderRadius="md"
+      borderWidth="1px"
+      borderColor={borderColor}
+      textAlign="center"
+    >
+      <Text fontSize="sm" color={textColor} fontStyle="italic">
+        {text}
+      </Text>
+    </Box>
+  );
+}
+
+/**
+ * Visual bar showing democracy/participation voting split (for governance details)
  */
 function VotingBalanceBar({ democracy, participation }) {
   const democracyBg = useColorModeValue('blue.400', 'blue.500');
@@ -81,9 +178,8 @@ function VotingBalanceBar({ democracy, participation }) {
 
   return (
     <Box my={4}>
-      {/* Visual bar */}
       <Box
-        h="44px"
+        h="36px"
         borderRadius="full"
         overflow="hidden"
         display="flex"
@@ -110,63 +206,17 @@ function VotingBalanceBar({ democracy, participation }) {
           <Text fontWeight="600" fontSize="sm">{participation}%</Text>
         </Flex>
       </Box>
-
-      {/* Legend */}
       <HStack justify="space-between" mt={2} px={1}>
         <HStack spacing={2}>
-          <Box w="10px" h="10px" borderRadius="full" bg={democracyBg} />
+          <Box w="8px" h="8px" borderRadius="full" bg={democracyBg} />
           <Text fontSize="xs" color={labelColor}>Equal voice</Text>
         </HStack>
         <HStack spacing={2}>
-          <Box w="10px" h="10px" borderRadius="full" bg={participationBg} />
+          <Box w="8px" h="8px" borderRadius="full" bg={participationBg} />
           <Text fontSize="xs" color={labelColor}>Earned influence</Text>
         </HStack>
       </HStack>
     </Box>
-  );
-}
-
-/**
- * Quick feature strip showing 3 key features as icons
- */
-function QuickFeatureStrip({ features }) {
-  const iconBg = useColorModeValue('gray.100', 'gray.700');
-  const labelColor = useColorModeValue('gray.600', 'gray.400');
-  const moreBg = useColorModeValue('gray.50', 'gray.800');
-
-  if (!features || features.length === 0) return null;
-
-  const displayFeatures = features.slice(0, 3);
-  const remainingCount = Math.max(0, features.length - 3);
-
-  return (
-    <HStack spacing={4} justify="center" py={4}>
-      {displayFeatures.map((feature, i) => (
-        <Tooltip key={i} label={feature.name} hasArrow placement="top">
-          <VStack spacing={1} cursor="default">
-            <Box
-              bg={iconBg}
-              p={3}
-              borderRadius="lg"
-              fontSize="xl"
-            >
-              {feature.icon}
-            </Box>
-            <Text fontSize="xs" color={labelColor} noOfLines={1} maxW="60px" textAlign="center">
-              {feature.name.split(' ')[0]}
-            </Text>
-          </VStack>
-        </Tooltip>
-      ))}
-      {remainingCount > 0 && (
-        <VStack spacing={1}>
-          <Box bg={moreBg} p={3} borderRadius="lg">
-            <Text fontSize="sm" color={labelColor} fontWeight="500">+{remainingCount}</Text>
-          </Box>
-          <Text fontSize="xs" color={labelColor}>more</Text>
-        </VStack>
-      )}
-    </HStack>
   );
 }
 
@@ -263,123 +313,21 @@ function TemplateCard({ template, isSelected, onSelect }) {
 }
 
 /**
- * Capabilities showcase component
- */
-function CapabilitiesSection({ template }) {
-  const cardBg = useColorModeValue('white', 'gray.800');
-  const borderColor = useColorModeValue('gray.200', 'gray.600');
-  const helperColor = useColorModeValue('gray.600', 'gray.400');
-  const featureBg = useColorModeValue('gray.50', 'gray.700');
-
-  if (!template?.capabilities?.features) return null;
-
-  return (
-    <Card bg={cardBg} borderWidth="1px" borderColor={borderColor}>
-      <CardBody>
-        <VStack spacing={4} align="stretch">
-          <Box>
-            <Heading size="sm" mb={1}>What You Can Do</Heading>
-            <Text fontSize="sm" color={helperColor}>
-              {template.capabilities.headline}
-            </Text>
-          </Box>
-          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-            {template.capabilities.features.map((feature, i) => (
-              <Box
-                key={i}
-                bg={featureBg}
-                p={3}
-                borderRadius="md"
-              >
-                <HStack spacing={2} mb={1}>
-                  <Text fontSize="lg">{feature.icon}</Text>
-                  <Text fontWeight="medium" fontSize="sm">{feature.name}</Text>
-                </HStack>
-                <Text fontSize="xs" color={helperColor}>
-                  {feature.description}
-                </Text>
-              </Box>
-            ))}
-          </SimpleGrid>
-        </VStack>
-      </CardBody>
-    </Card>
-  );
-}
-
-/**
- * Hybrid voting explainer component
- */
-function HybridVotingExplainer({ template }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const cardBg = useColorModeValue('white', 'gray.800');
-  const borderColor = useColorModeValue('gray.200', 'gray.600');
-  const helperColor = useColorModeValue('gray.600', 'gray.400');
-  const highlightBg = useColorModeValue('green.50', 'green.900');
-
-  const whatItMeans = template?.philosophy?.whatHybridVotingMeans;
-  const democracyWeight = template?.defaults?.voting?.democracyWeight;
-  const participationWeight = template?.defaults?.voting?.participationWeight;
-
-  if (!whatItMeans && democracyWeight === undefined) return null;
-
-  return (
-    <Card bg={cardBg} borderWidth="1px" borderColor={borderColor}>
-      <CardBody>
-        <VStack spacing={4} align="stretch">
-          <HStack justify="space-between">
-            <Box>
-              <HStack spacing={2}>
-                <Text fontSize="lg">⚖️</Text>
-                <Heading size="sm">How Voting Works</Heading>
-              </HStack>
-              {democracyWeight !== undefined && (
-                <HStack spacing={2} mt={1}>
-                  <Badge colorScheme="blue" fontSize="xs">
-                    {democracyWeight}% Democracy
-                  </Badge>
-                  <Badge colorScheme="orange" fontSize="xs">
-                    {participationWeight}% Participation
-                  </Badge>
-                </HStack>
-              )}
-            </Box>
-            <Button
-              size="sm"
-              variant="ghost"
-              rightIcon={isExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
-              onClick={() => setIsExpanded(!isExpanded)}
-            >
-              {isExpanded ? 'Less' : 'Learn more'}
-            </Button>
-          </HStack>
-
-          <Collapse in={isExpanded} animateOpacity>
-            <Box bg={highlightBg} p={4} borderRadius="md">
-              <Text fontSize="sm" whiteSpace="pre-line">
-                {whatItMeans}
-              </Text>
-            </Box>
-          </Collapse>
-        </VStack>
-      </CardBody>
-    </Card>
-  );
-}
-
-/**
- * Template Detail Panel - Summary card + optional tabbed deep-dive
- * Redesigned for scannability with progressive disclosure
+ * Template Detail Panel - "Invitation" design
+ * Leads with aspiration, not mechanism
  */
 function TemplateDetailPanel({ template, onContinue, onBack }) {
-  const [showDetails, setShowDetails] = useState(false);
-  const cardBg = useColorModeValue('white', 'gray.800');
-  const borderColor = useColorModeValue('gray.200', 'gray.600');
-  const helperColor = useColorModeValue('gray.600', 'gray.400');
+  const [showVoting, setShowVoting] = useState(false);
+  const [showPhilosophy, setShowPhilosophy] = useState(false);
+
+  const headingColor = useColorModeValue('gray.800', 'white');
+  const subheadingColor = useColorModeValue('gray.600', 'gray.400');
+  const taglineBg = useColorModeValue('gray.50', 'gray.800');
+  const taglineBorder = useColorModeValue('gray.200', 'gray.600');
+  const linkColor = useColorModeValue('gray.500', 'gray.400');
+  const linkHoverColor = useColorModeValue('coral.500', 'coral.400');
+  const detailsBg = useColorModeValue('gray.50', 'gray.800');
   const quoteBg = useColorModeValue('blue.50', 'blue.900');
-  const featureBg = useColorModeValue('gray.50', 'gray.700');
-  const highlightBg = useColorModeValue('green.50', 'green.900');
-  const summaryBg = useColorModeValue('rgba(255, 255, 255, 0.8)', 'rgba(51, 48, 44, 0.8)');
 
   // Get voting weights from template defaults
   const democracyWeight = template?.defaults?.voting?.democracyWeight ?? 80;
@@ -388,7 +336,7 @@ function TemplateDetailPanel({ template, onContinue, onBack }) {
   if (!template) {
     return (
       <VStack spacing={4}>
-        <Text color={helperColor}>No template selected.</Text>
+        <Text color={subheadingColor}>No template selected.</Text>
         <Button bg="coral.500" color="white" _hover={{ bg: 'coral.600' }} onClick={onBack}>
           Back to Templates
         </Button>
@@ -397,13 +345,12 @@ function TemplateDetailPanel({ template, onContinue, onBack }) {
   }
 
   const { essence, keyPrinciple, historicalContext, whatHybridVotingMeans } = template.philosophy || {};
-  const features = template.capabilities?.features || [];
-
-  // Get first sentence of essence for excerpt
-  const essenceExcerpt = essence ? essence.split('.')[0] + '.' : template.tagline;
+  const heroTagline = template.heroTagline || [];
+  const benefits = template.benefits || [];
+  const socialProof = template.socialProof;
 
   return (
-    <VStack spacing={6} align="stretch" maxW="650px" mx="auto">
+    <VStack spacing={8} align="stretch" maxW="700px" mx="auto">
       {/* Back Button */}
       <Button
         variant="ghost"
@@ -411,162 +358,56 @@ function TemplateDetailPanel({ template, onContinue, onBack }) {
         onClick={onBack}
         alignSelf="flex-start"
         size="sm"
+        color={subheadingColor}
       >
         Back to Templates
       </Button>
 
-      {/* Summary Card */}
-      <Card
-        bg={summaryBg}
-        backdropFilter="blur(10px)"
-        borderWidth="1px"
-        borderColor={borderColor}
-        overflow="hidden"
-        position="relative"
-      >
-        {/* Visual voting bar at top of card */}
-        <Box h="6px" w="100%" overflow="hidden">
-          <Flex>
-            <Box w={`${democracyWeight}%`} bg="blue.400" h="6px" />
-            <Box w={`${participationWeight}%`} bg="orange.400" h="6px" />
-          </Flex>
-        </Box>
-
-        <CardBody pt={5}>
-          <VStack spacing={4} align="stretch">
-            {/* Template Header */}
-            <HStack spacing={4}>
-              <Box
-                fontSize="3xl"
-                bg={useColorModeValue('gray.100', 'gray.700')}
-                p={3}
-                borderRadius="xl"
-              >
-                {template.icon}
-              </Box>
-              <Box flex={1}>
-                <Heading size="lg" color={useColorModeValue('gray.800', 'white')}>
-                  {template.name}
-                </Heading>
-                <Text color={helperColor} fontSize="sm">
-                  {template.tagline}
-                </Text>
-              </Box>
-            </HStack>
-
-            {/* Voting Balance Visual */}
-            <VotingBalanceBar
-              democracy={democracyWeight}
-              participation={participationWeight}
-            />
-
-            {/* Quick Feature Strip */}
-            <QuickFeatureStrip features={features} />
-
-            {/* Essence Excerpt */}
-            <Text fontSize="sm" color={helperColor} lineHeight="tall" px={1}>
-              {essenceExcerpt}
-            </Text>
-          </VStack>
-        </CardBody>
-      </Card>
-
-      {/* Optional Deep-Dive Tabs */}
-      <Box>
-        <Button
-          variant="ghost"
-          size="sm"
-          rightIcon={showDetails ? <ChevronUpIcon /> : <ChevronDownIcon />}
-          onClick={() => setShowDetails(!showDetails)}
-          w="100%"
-          color={helperColor}
-          fontWeight="normal"
-        >
-          {showDetails ? 'Show less' : 'Learn more about this model'}
-        </Button>
-
-        <Collapse in={showDetails} animateOpacity>
-          <Box mt={4}>
-            <Tabs variant="soft-rounded" colorScheme="gray" size="sm">
-              <TabList justifyContent="center" mb={4}>
-                <Tab>Features</Tab>
-                <Tab>Voting</Tab>
-                <Tab>Philosophy</Tab>
-              </TabList>
-
-              <TabPanels>
-                {/* Features Tab */}
-                <TabPanel px={0}>
-                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-                    {features.map((feature, i) => (
-                      <Box
-                        key={i}
-                        bg={featureBg}
-                        p={3}
-                        borderRadius="md"
-                      >
-                        <HStack spacing={2} mb={1}>
-                          <Text fontSize="lg">{feature.icon}</Text>
-                          <Text fontWeight="medium" fontSize="sm">{feature.name}</Text>
-                        </HStack>
-                        <Text fontSize="xs" color={helperColor}>
-                          {feature.description}
-                        </Text>
-                      </Box>
-                    ))}
-                  </SimpleGrid>
-                </TabPanel>
-
-                {/* Voting Tab */}
-                <TabPanel px={0}>
-                  <VStack spacing={4} align="stretch">
-                    <Box bg={highlightBg} p={4} borderRadius="md">
-                      <Text fontSize="sm" whiteSpace="pre-line">
-                        {whatHybridVotingMeans || `This template uses a ${democracyWeight}/${participationWeight} hybrid voting system where ${democracyWeight}% of voting power comes from equal membership and ${participationWeight}% from participation tokens earned through contributions.`}
-                      </Text>
-                    </Box>
-                  </VStack>
-                </TabPanel>
-
-                {/* Philosophy Tab */}
-                <TabPanel px={0}>
-                  <VStack spacing={4} align="stretch">
-                    {essence && (
-                      <Text whiteSpace="pre-line" fontSize="sm">{essence}</Text>
-                    )}
-
-                    {keyPrinciple && (
-                      <Box bg={quoteBg} p={4} borderRadius="md" borderLeftWidth="3px" borderLeftColor="blue.500">
-                        <Text fontWeight="medium" fontSize="sm" mb={1}>Key Insight</Text>
-                        <Text fontStyle="italic" fontSize="sm">{keyPrinciple}</Text>
-                      </Box>
-                    )}
-
-                    {historicalContext && (
-                      <Box>
-                        <Text fontWeight="medium" fontSize="sm" mb={1} color={helperColor}>
-                          Historical Context
-                        </Text>
-                        <Text fontSize="sm" color={helperColor}>
-                          {historicalContext}
-                        </Text>
-                      </Box>
-                    )}
-                  </VStack>
-                </TabPanel>
-              </TabPanels>
-            </Tabs>
-          </Box>
-        </Collapse>
-      </Box>
-
-      {/* Action Footer - Always Visible */}
-      <HStack justify="space-between" pt={2}>
-        <Text fontSize="sm" color={helperColor}>
-          {template.discoveryQuestions?.length > 0
-            ? `${template.discoveryQuestions.length} quick questions to personalize`
-            : 'Ready to customize'}
+      {/* Template Header */}
+      <VStack spacing={2} textAlign="center">
+        <Heading size="xl" color={headingColor}>
+          {template.name}
+        </Heading>
+        <Text color={subheadingColor} fontSize="md">
+          {template.tagline}
         </Text>
+      </VStack>
+
+      {/* Hero Tagline */}
+      {heroTagline.length > 0 && (
+        <Box
+          bg={taglineBg}
+          py={8}
+          px={6}
+          borderRadius="xl"
+          borderWidth="1px"
+          borderColor={taglineBorder}
+          textAlign="center"
+        >
+          <VStack spacing={1}>
+            {heroTagline.map((line, i) => (
+              <Text
+                key={i}
+                fontSize="2xl"
+                fontWeight="500"
+                color={headingColor}
+                lineHeight="tall"
+              >
+                {line}
+              </Text>
+            ))}
+          </VStack>
+        </Box>
+      )}
+
+      {/* Benefit Cards */}
+      <BenefitCards benefits={benefits} />
+
+      {/* Social Proof */}
+      <SocialProof text={socialProof} />
+
+      {/* Primary CTA */}
+      <Box textAlign="center" pt={2}>
         <Button
           bg="coral.500"
           color="white"
@@ -574,11 +415,86 @@ function TemplateDetailPanel({ template, onContinue, onBack }) {
           size="lg"
           rightIcon={<Icon as={PiArrowRight} />}
           onClick={onContinue}
-          px={6}
+          px={8}
+          py={6}
+          fontSize="md"
         >
-          {template.discoveryQuestions?.length > 0 ? 'Get Started' : 'Continue'}
+          Customize This Model
+        </Button>
+      </Box>
+
+      {/* Optional Details Links */}
+      <HStack justify="center" spacing={6} pt={2}>
+        <Button
+          variant="link"
+          size="sm"
+          color={linkColor}
+          _hover={{ color: linkHoverColor }}
+          leftIcon={<Icon as={PiGear} />}
+          onClick={() => setShowVoting(!showVoting)}
+        >
+          How voting works
+        </Button>
+        <Text color={subheadingColor}>·</Text>
+        <Button
+          variant="link"
+          size="sm"
+          color={linkColor}
+          _hover={{ color: linkHoverColor }}
+          leftIcon={<Icon as={PiBookOpen} />}
+          onClick={() => setShowPhilosophy(!showPhilosophy)}
+        >
+          The philosophy
         </Button>
       </HStack>
+
+      {/* Voting Details Collapse */}
+      <Collapse in={showVoting} animateOpacity>
+        <Box bg={detailsBg} p={5} borderRadius="lg" mt={2}>
+          <VStack spacing={4} align="stretch">
+            <Heading size="sm" color={headingColor}>How Voting Works</Heading>
+            <VotingBalanceBar
+              democracy={democracyWeight}
+              participation={participationWeight}
+            />
+            {whatHybridVotingMeans && (
+              <Text fontSize="sm" color={subheadingColor} whiteSpace="pre-line">
+                {whatHybridVotingMeans}
+              </Text>
+            )}
+          </VStack>
+        </Box>
+      </Collapse>
+
+      {/* Philosophy Details Collapse */}
+      <Collapse in={showPhilosophy} animateOpacity>
+        <Box bg={detailsBg} p={5} borderRadius="lg" mt={2}>
+          <VStack spacing={4} align="stretch">
+            <Heading size="sm" color={headingColor}>The Philosophy</Heading>
+            {essence && (
+              <Text fontSize="sm" color={subheadingColor} whiteSpace="pre-line">
+                {essence}
+              </Text>
+            )}
+            {keyPrinciple && (
+              <Box bg={quoteBg} p={4} borderRadius="md" borderLeftWidth="3px" borderLeftColor="blue.500">
+                <Text fontWeight="medium" fontSize="sm" mb={1}>Key Insight</Text>
+                <Text fontStyle="italic" fontSize="sm">{keyPrinciple}</Text>
+              </Box>
+            )}
+            {historicalContext && (
+              <Box>
+                <Text fontWeight="medium" fontSize="sm" mb={1} color={subheadingColor}>
+                  Historical Context
+                </Text>
+                <Text fontSize="sm" color={subheadingColor}>
+                  {historicalContext}
+                </Text>
+              </Box>
+            )}
+          </VStack>
+        </Box>
+      </Collapse>
     </VStack>
   );
 }
@@ -634,7 +550,6 @@ export function TemplateStep() {
 
   const headingColor = useColorModeValue('gray.800', 'white');
   const subheadingColor = useColorModeValue('gray.600', 'gray.400');
-  const previewBg = useColorModeValue('gray.50', 'gray.800');
 
   // Handle template selection
   const handleSelectTemplate = (templateId) => {

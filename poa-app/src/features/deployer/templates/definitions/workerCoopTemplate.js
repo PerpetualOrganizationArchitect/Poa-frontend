@@ -12,6 +12,31 @@ export const workerCoopTemplate = {
   icon: '🏭',
   color: 'orange',
 
+  // Hero content for the invitation-style display
+  heroTagline: [
+    'Own your work.',
+    'Shape your workplace.',
+    'Share in what you build.',
+  ],
+  benefits: [
+    {
+      iconName: 'UsersThree',
+      title: 'Equal Voice',
+      outcome: 'Decisions made together',
+    },
+    {
+      iconName: 'Coins',
+      title: 'Shared Success',
+      outcome: 'When it profits, you do',
+    },
+    {
+      iconName: 'Eye',
+      title: 'Visible Impact',
+      outcome: 'Your work seen and valued',
+    },
+  ],
+  socialProof: '80,000+ worker-owners at Mondragon prove this model works at any scale',
+
   // What You Can Do - Practical capabilities
   capabilities: {
     headline: 'Run your cooperative with transparent, democratic tools',

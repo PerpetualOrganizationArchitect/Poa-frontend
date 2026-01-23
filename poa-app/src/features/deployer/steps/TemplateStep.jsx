@@ -116,36 +116,38 @@ const ICON_MAP = {
 /**
  * Single expandable feature card
  */
-function ExpandableFeatureCard({ benefit, isExpanded, onToggle }) {
+function ExpandableFeatureCard({ benefit, isExpanded, onToggle, votingData }) {
+  const [isHovered, setIsHovered] = useState(false);
   const cardBg = useColorModeValue('white', 'gray.800');
   const titleColor = useColorModeValue('gray.800', 'white');
   const subtitleColor = useColorModeValue('gray.500', 'gray.400');
-  const contentColor = useColorModeValue('gray.600', 'gray.300');
+  const contentColor = useColorModeValue('gray.700', 'gray.200');
   const iconColor = useColorModeValue('coral.500', 'coral.400');
-  const hintColor = useColorModeValue('gray.400', 'gray.500');
+  const hintColor = useColorModeValue('coral.500', 'coral.400');
 
   const IconComponent = ICON_MAP[benefit.iconName] || PiCheck;
+  const isVotingCard = benefit.title === 'Decide Together';
 
   if (isExpanded) {
     // Expanded state - full width card with details
     return (
       <Box
         bg={cardBg}
-        p={5}
-        borderRadius="lg"
-        boxShadow="md"
+        p={8}
+        borderRadius="xl"
+        boxShadow="lg"
         transition="all 0.3s ease"
         gridColumn="1 / -1"
       >
-        <Flex justify="space-between" align="flex-start" mb={3}>
-          <HStack spacing={3}>
-            <Icon as={IconComponent} boxSize={7} color={iconColor} />
+        <Flex justify="space-between" align="flex-start" mb={5}>
+          <HStack spacing={4}>
+            <Icon as={IconComponent} boxSize={12} color={iconColor} />
             <Box>
-              <Text fontWeight="700" fontSize="lg" color={titleColor}>
+              <Text fontWeight="700" fontSize="2xl" color={titleColor}>
                 {benefit.title}
               </Text>
               {benefit.subtitle && (
-                <Text fontSize="sm" color={subtitleColor}>
+                <Text fontSize="lg" color={subtitleColor}>
                   {benefit.subtitle}
                 </Text>
               )}
@@ -153,16 +155,27 @@ function ExpandableFeatureCard({ benefit, isExpanded, onToggle }) {
           </HStack>
           <Button
             variant="ghost"
-            size="sm"
+            size="md"
             onClick={onToggle}
             color={subtitleColor}
-            _hover={{ color: titleColor }}
-            p={1}
+            _hover={{ color: titleColor, bg: 'gray.100' }}
+            p={2}
           >
-            <Icon as={PiX} boxSize={5} />
+            <Icon as={PiX} boxSize={6} />
           </Button>
         </Flex>
-        <Text fontSize="sm" color={contentColor} lineHeight="tall" pl={10}>
+
+        {/* Show voting bar for the Decide Together card */}
+        {isVotingCard && votingData && (
+          <Box mb={5}>
+            <VotingBalanceBar
+              democracy={votingData.democracyWeight}
+              participation={votingData.participationWeight}
+            />
+          </Box>
+        )}
+
+        <Text fontSize="lg" color={contentColor} lineHeight="1.8">
           {benefit.expandedContent || benefit.outcome}
         </Text>
       </Box>
@@ -178,23 +191,34 @@ function ExpandableFeatureCard({ benefit, isExpanded, onToggle }) {
       boxShadow="sm"
       cursor="pointer"
       onClick={onToggle}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       transition="all 0.3s ease"
       _hover={{
         transform: 'scale(1.02)',
         boxShadow: 'md',
       }}
       textAlign="center"
+      position="relative"
     >
-      <Icon as={IconComponent} boxSize={8} color={iconColor} mb={3} />
-      <Text fontWeight="700" fontSize="md" color={titleColor} mb={1}>
+      <Icon as={IconComponent} boxSize={10} color={iconColor} mb={3} />
+      <Text fontWeight="700" fontSize="lg" color={titleColor} mb={1}>
         {benefit.title}
       </Text>
       {benefit.subtitle && (
-        <Text fontSize="xs" color={subtitleColor} mb={2}>
+        <Text fontSize="sm" color={subtitleColor}>
           {benefit.subtitle}
         </Text>
       )}
-      <Text fontSize="xs" color={hintColor} mt={2}>
+      {/* Show hint only on hover */}
+      <Text
+        fontSize="sm"
+        color={hintColor}
+        mt={3}
+        fontWeight="500"
+        opacity={isHovered ? 1 : 0}
+        transition="opacity 0.2s ease"
+      >
         Click to learn more
       </Text>
     </Box>
@@ -204,7 +228,7 @@ function ExpandableFeatureCard({ benefit, isExpanded, onToggle }) {
 /**
  * Grid of 4 expandable feature cards
  */
-function FeatureCardsGrid({ benefits }) {
+function FeatureCardsGrid({ benefits, votingData }) {
   const [expandedIndex, setExpandedIndex] = useState(null);
 
   if (!benefits || benefits.length === 0) return null;
@@ -224,6 +248,7 @@ function FeatureCardsGrid({ benefits }) {
           benefit={expandedBenefit}
           isExpanded={true}
           onToggle={() => handleToggle(expandedIndex)}
+          votingData={votingData}
         />
         <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
           {otherBenefits.map((benefit, i) => {
@@ -234,6 +259,7 @@ function FeatureCardsGrid({ benefits }) {
                 benefit={benefit}
                 isExpanded={false}
                 onToggle={() => handleToggle(originalIndex)}
+                votingData={votingData}
               />
             );
           })}
@@ -251,6 +277,7 @@ function FeatureCardsGrid({ benefits }) {
           benefit={benefit}
           isExpanded={false}
           onToggle={() => handleToggle(i)}
+          votingData={votingData}
         />
       ))}
     </SimpleGrid>
@@ -461,6 +488,7 @@ function TemplateDetailPanel({ template, onContinue, onBack, onOpenGrowthPath })
   const benefits = template.benefits || [];
   const socialProof = template.socialProof;
   const hasGrowthPath = template.growthPath?.stages?.length > 0;
+  const votingData = template.defaults?.voting;
 
   return (
     <VStack spacing={8} align="stretch" maxW="900px" mx="auto">
@@ -513,7 +541,7 @@ function TemplateDetailPanel({ template, onContinue, onBack, onOpenGrowthPath })
       )}
 
       {/* Feature Cards - Expandable */}
-      <FeatureCardsGrid benefits={benefits} />
+      <FeatureCardsGrid benefits={benefits} votingData={votingData} />
 
       {/* Social Proof */}
       <SocialProof text={socialProof} />

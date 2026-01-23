@@ -29,3 +29,6 @@ export { useClaimRole } from './useClaimRole';
 // Voting Education & Power
 export { useRoleNames } from './useRoleNames';
 export { useVotingPower } from './useVotingPower';
+
+// Global Account
+export { useGlobalAccount } from './useGlobalAccount';

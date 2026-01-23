@@ -1,3 +1,4 @@
+import { useState } from "react";
 import Head from "next/head";
 import Link from "next/link";
 import {
@@ -17,6 +18,10 @@ import {
 } from "@chakra-ui/react";
 import { HamburgerIcon } from "@chakra-ui/icons";
 import { useRouter } from "next/router";
+import { useAccount } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { useGlobalAccount } from "@/hooks/useGlobalAccount";
+import SignupModal from "@/components/account/SignupModal";
 
 import dynamic from "next/dynamic";
 
@@ -26,10 +31,30 @@ const AutoPlayVideo1 = dynamic(() => import("../components/AutoPlayVideo1"), {
 
 export default function Home() {
   const router = useRouter();
+  const { isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const { hasAccount, isLoading: isAccountLoading } = useGlobalAccount();
+  const [isSignupOpen, setIsSignupOpen] = useState(false);
 
   const handleClick = () => {
     router.push("/browser");
   };
+
+  // Determine account menu item state
+  const getAccountMenuItem = () => {
+    if (!isConnected) {
+      return { text: "Connect Wallet", icon: "🔗", onClick: openConnectModal };
+    }
+    if (isAccountLoading) {
+      return { text: "Loading...", icon: "⏳", onClick: () => {} };
+    }
+    if (hasAccount) {
+      return { text: "My Account", icon: "👤", onClick: () => router.push("/account") };
+    }
+    return { text: "Sign Up", icon: "📝", onClick: () => setIsSignupOpen(true) };
+  };
+
+  const accountMenuItem = getAccountMenuItem();
 
   const jsonLD = {
     "@context": "http://schema.org",
@@ -237,8 +262,8 @@ export default function Home() {
               >
                 Browse
               </MenuItem>
-              <MenuItem 
-                onClick={() => router.push("/create")} 
+              <MenuItem
+                onClick={() => router.push("/create")}
                 icon={<Text fontSize="lg">✨</Text>}
                 borderRadius="md"
                 _hover={{ bg: "blue.50" }}
@@ -247,6 +272,17 @@ export default function Home() {
                 py={3}
               >
                 Create
+              </MenuItem>
+              <MenuItem
+                onClick={accountMenuItem.onClick}
+                icon={<Text fontSize="lg">{accountMenuItem.icon}</Text>}
+                borderRadius="md"
+                _hover={{ bg: "blue.50" }}
+                fontSize={["sm", "md"]}
+                fontWeight="500"
+                py={3}
+              >
+                {accountMenuItem.text}
               </MenuItem>
             </MenuList>
           </Menu>
@@ -780,6 +816,9 @@ export default function Home() {
           <Text fontSize="lg">⬆️</Text>
         </Box>
       </Flex>
+
+      {/* Signup Modal */}
+      <SignupModal isOpen={isSignupOpen} onClose={() => setIsSignupOpen(false)} />
     </>
   );
 }

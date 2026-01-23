@@ -31,7 +31,7 @@ const PendingRequestsPanel = () => {
   const { address } = useAccount();
   const { tokenRequest, executeWithNotification } = useWeb3();
   const { participationTokenAddress } = usePOContext();
-  const { ipfs } = useIPFScontext();
+  const { fetchFromIpfs } = useIPFScontext();
 
   const [loadingRequestId, setLoadingRequestId] = useState(null);
   const [metadataCache, setMetadataCache] = useState({});
@@ -63,12 +63,12 @@ const PendingRequestsPanel = () => {
   // Fetch IPFS metadata for requests
   useEffect(() => {
     const fetchMetadata = async () => {
-      if (!ipfs || !pendingRequests.length) return;
+      if (!fetchFromIpfs || !pendingRequests.length) return;
 
       for (const request of pendingRequests) {
         if (request.ipfsHash && !metadataCache[request.ipfsHash]) {
           try {
-            const metadata = await ipfs.fetchFromIpfs(request.ipfsHash);
+            const metadata = await fetchFromIpfs(request.ipfsHash);
             setMetadataCache(prev => ({
               ...prev,
               [request.ipfsHash]: metadata,
@@ -81,7 +81,7 @@ const PendingRequestsPanel = () => {
     };
 
     fetchMetadata();
-  }, [pendingRequests, ipfs, metadataCache]);
+  }, [pendingRequests, fetchFromIpfs, metadataCache]);
 
   const handleApprove = async (requestId) => {
     if (!participationTokenAddress) return;

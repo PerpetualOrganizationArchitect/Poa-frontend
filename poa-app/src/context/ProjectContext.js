@@ -133,6 +133,7 @@ export const ProjectProvider = ({ children }) => {
                         difficulty: 'medium', // Default - could be fetched from IPFS
                         estHours: 1, // Default - could be fetched from IPFS
                         metadataHash: task.metadataHash,
+                        submissionHash: task.submissionHash,
                         claimedBy: task.assignee || '',
                         payout: taskPayout,
                         Payout: taskPayout, // Alias with capital P for TaskCard

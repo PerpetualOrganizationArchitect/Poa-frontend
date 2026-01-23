@@ -34,6 +34,7 @@ import TaskApplicationModal from './TaskApplicationModal';
 import { useTaskBoard } from '../../context/TaskBoardContext';
 import { useDataBaseContext } from '@/context/dataBaseContext';
 import { useUserContext } from '@/context/UserContext';
+import { useIPFScontext } from '@/context/ipfsContext';
 import { useRouter } from 'next/router';
 import { ethers } from 'ethers';
 import { resolveUsernames } from '@/features/deployer/utils/usernameResolver';
@@ -57,12 +58,18 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
   const { moveTask, deleteTask, applyForTask, approveApplication, assignTask } = useTaskBoard();
   const { hasExecRole, hasMemberRole, address: account, fetchUserDetails } = useUserContext();
   const { getUsernameByAddress, setSelectedProject, projects } = useDataBaseContext();
+  const { safeFetchFromIpfs, bytes32ToIpfsCid } = useIPFScontext();
   const router = useRouter();
   const { userDAO } = router.query;
   const toast = useToast();
   const { isOpen, onOpen, onClose} = useDisclosure();
   const { isOpen: isApplicationModalOpen, onOpen: onOpenApplicationModal, onClose: onCloseApplicationModal } = useDisclosure();
   const [showAssignSection, setShowAssignSection] = useState(false);
+
+  // IPFS metadata state
+  const [taskMetadata, setTaskMetadata] = useState(null);
+  const [submissionMetadata, setSubmissionMetadata] = useState(null);
+  const [metadataLoading, setMetadataLoading] = useState(false);
 
   // Ref to prevent re-opening modal during intentional close
   const isClosingRef = useRef(false);
@@ -77,6 +84,47 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
       onOpen();
     }
   }, [router.query.task, task.id, onOpen]);
+
+  // Fetch IPFS metadata when modal opens
+  useEffect(() => {
+    const fetchIpfsMetadata = async () => {
+      if (!isOpen || !task) return;
+
+      // Fetch task metadata (description, difficulty, estHours)
+      if (task.metadataHash && !taskMetadata) {
+        setMetadataLoading(true);
+        try {
+          const cid = bytes32ToIpfsCid(task.metadataHash);
+          if (cid) {
+            const metadata = await safeFetchFromIpfs(cid);
+            if (metadata) {
+              setTaskMetadata(metadata);
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching task metadata:', err);
+        }
+        setMetadataLoading(false);
+      }
+
+      // Fetch submission metadata for reviewed/completed tasks
+      if ((columnId === 'inReview' || columnId === 'completed') && task.submissionHash && !submissionMetadata) {
+        try {
+          const cid = bytes32ToIpfsCid(task.submissionHash);
+          if (cid) {
+            const metadata = await safeFetchFromIpfs(cid);
+            if (metadata) {
+              setSubmissionMetadata(metadata);
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching submission metadata:', err);
+        }
+      }
+    };
+
+    fetchIpfsMetadata();
+  }, [isOpen, task, columnId, safeFetchFromIpfs, bytes32ToIpfsCid, taskMetadata, submissionMetadata]);
 
   const handleCloseModal = async () => {
     // Set flag to prevent useEffect from re-opening
@@ -473,13 +521,15 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
               ) : (
                 <>
                   <Box>
-                    <Text mb="4" mt="4" lineHeight="6" fontSize="md" fontWeight="bold" style={{ whiteSpace: 'pre-wrap' }}>{task.description}</Text>
+                    <Text mb="4" mt="4" lineHeight="6" fontSize="md" fontWeight="bold" style={{ whiteSpace: 'pre-wrap' }}>
+                      {metadataLoading ? 'Loading task details...' : (taskMetadata?.description || task.description || 'No description available')}
+                    </Text>
                   </Box>
                   <HStack width="100%">
-                    <Badge colorScheme={difficultyColorScheme[task.difficulty?.toLowerCase()?.replace(" ", "") || 'easy']}>
-                      {task.difficulty || 'Unknown'}
+                    <Badge colorScheme={difficultyColorScheme[(taskMetadata?.difficulty || task.difficulty)?.toLowerCase()?.replace(" ", "") || 'easy']}>
+                      {taskMetadata?.difficulty || task.difficulty || 'Unknown'}
                     </Badge>
-                    <Badge colorScheme="blue">{task.estHours || '0'} hrs</Badge>
+                    <Badge colorScheme="blue">{taskMetadata?.estHours || task.estHours || '0'} hrs</Badge>
                     <Spacer />
                     {task.claimedBy && (
                       <Text fontSize="sm" mr={4}>
@@ -505,7 +555,9 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
                       <Text color="gray" fontWeight="bold" fontSize="lg">
                         Submission:
                       </Text>
-                      <Text>{task.submission}</Text>
+                      <Text style={{ whiteSpace: 'pre-wrap' }}>
+                        {submissionMetadata?.submission || task.submission || (task.submissionHash ? 'Loading submission...' : 'No submission')}
+                      </Text>
                     </Box>
                   )}
 

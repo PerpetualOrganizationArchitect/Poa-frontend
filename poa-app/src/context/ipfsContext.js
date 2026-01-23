@@ -1,6 +1,7 @@
 import { create } from 'ipfs-http-client';
 import { createContext, useContext, useMemo, useCallback } from 'react';
 import { IPFSError, IPFSErrorCode, IPFSOperation } from '@/lib/errors';
+import { bytes32ToIpfsCid, ipfsCidToBytes32 } from '@/services/web3/utils/encoding';
 
 const IPFScontext = createContext();
 
@@ -36,21 +37,31 @@ function isZeroHash(hash) {
 }
 
 /**
- * Convert bytes hash to displayable format (for future IPFS gateway use)
- * @param {string} bytesHash - Hash to convert
- * @returns {string|null} Valid CID or null
+ * Convert any hash format to a valid IPFS CID
+ * Handles: CIDv0 (Qm...), CIDv1 (ba...), bytes32 (0x...)
+ * @param {string} hash - Hash in any supported format
+ * @returns {string|null} Valid CID or null if conversion fails
  */
-function bytesHashToString(bytesHash) {
-    if (!bytesHash) return null;
+function normalizeToIpfsCid(hash) {
+    if (!hash) return null;
+
     // If already a valid CID, return as-is
-    if (isValidIpfsCid(bytesHash)) return bytesHash;
-    // If it's a hex string, it needs to be decoded differently
-    // For now, just return null as we can't directly use it with IPFS
-    if (bytesHash.startsWith('0x')) {
-        console.log('IPFS hash is in bytes format, cannot fetch directly:', bytesHash);
+    if (isValidIpfsCid(hash)) return hash;
+
+    // If it's a bytes32 hex string, convert to CID
+    if (hash.startsWith('0x')) {
+        const cid = bytes32ToIpfsCid(hash);
+        if (cid) {
+            console.log('Converted bytes32 to CID:', hash, '->', cid);
+            return cid;
+        }
+        console.warn('Failed to convert bytes32 to CID:', hash);
         return null;
     }
-    return bytesHash;
+
+    // Unknown format
+    console.warn('Unknown IPFS hash format:', hash);
+    return hash;
 }
 
 /**
@@ -175,12 +186,10 @@ export const IPFSprovider = ({ children }) => {
             return null;
         }
 
-        // Validate and convert hash
-        const validHash = bytesHashToString(ipfsHash);
+        // Normalize hash to CID format (handles bytes32 -> CID conversion)
+        const validHash = normalizeToIpfsCid(ipfsHash);
         if (!validHash) {
-            // For hex strings that aren't zero, log and return null (not an error)
-            // These are bytes32 hashes that need decoding but we can't do it yet
-            console.warn("IPFS hash is in unsupported format, returning null:", ipfsHash);
+            console.warn("Could not normalize IPFS hash to valid CID:", ipfsHash);
             return null;
         }
 
@@ -230,10 +239,10 @@ export const IPFSprovider = ({ children }) => {
             return null;
         }
 
-        // Validate and convert hash
-        const validHash = bytesHashToString(ipfsHash);
+        // Normalize hash to CID format (handles bytes32 -> CID conversion)
+        const validHash = normalizeToIpfsCid(ipfsHash);
         if (!validHash) {
-            console.warn("IPFS image hash is in unsupported format, returning null:", ipfsHash);
+            console.warn("Could not normalize IPFS image hash to valid CID:", ipfsHash);
             return null;
         }
 
@@ -310,8 +319,11 @@ export const IPFSprovider = ({ children }) => {
         // Safe operations (return null on error - backwards compatible)
         safeFetchFromIpfs,
         safeFetchImageFromIpfs,
-        // Utilities
+        // Hash format utilities
         isValidIpfsCid,
+        normalizeToIpfsCid,      // Auto-detect and convert any format to CID
+        bytes32ToIpfsCid,        // Explicit bytes32 -> CID conversion
+        ipfsCidToBytes32,        // Explicit CID -> bytes32 conversion
     }), [fetchFromIpfs, fetchImageFromIpfs, addToIpfs, safeFetchFromIpfs, safeFetchImageFromIpfs]);
 
     return (

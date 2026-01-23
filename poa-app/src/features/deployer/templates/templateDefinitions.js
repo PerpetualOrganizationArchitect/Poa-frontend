@@ -81,7 +81,7 @@ const WORKER_COOP_TEMPLATE = {
         defaults: { eligible: true, standing: true },
         hierarchy: { adminRoleIndex: 1 }, // Managed by Steward
         distribution: {
-          mintToDeployer: false,
+          mintToDeployer: true,
           mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
@@ -195,7 +195,7 @@ const OPEN_SOURCE_TEMPLATE = {
         defaults: { eligible: true, standing: true },
         hierarchy: { adminRoleIndex: 1 }, // Managed by Maintainer
         distribution: {
-          mintToDeployer: false,
+          mintToDeployer: true,
           mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
@@ -432,7 +432,7 @@ const COMMUNITY_DAO_TEMPLATE = {
         defaults: { eligible: true, standing: true },
         hierarchy: { adminRoleIndex: 1 }, // Managed by Delegate
         distribution: {
-          mintToDeployer: false,
+          mintToDeployer: true,
           mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
@@ -555,7 +555,7 @@ const STUDENT_ORG_TEMPLATE = {
         defaults: { eligible: true, standing: true },
         hierarchy: { adminRoleIndex: 1 }, // Managed by Executive
         distribution: {
-          mintToDeployer: false,
+          mintToDeployer: true,
           mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
@@ -677,7 +677,7 @@ const CUSTOM_TEMPLATE = {
         defaults: { eligible: true, standing: true },
         hierarchy: { adminRoleIndex: 1 }, // Managed by Admin
         distribution: {
-          mintToDeployer: false,
+          mintToDeployer: true,
           mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],

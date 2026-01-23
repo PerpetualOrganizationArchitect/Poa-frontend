@@ -47,6 +47,7 @@ import {
   Alert,
   AlertIcon,
   Divider,
+  Tooltip,
 } from '@chakra-ui/react';
 import {
   ArrowForwardIcon,
@@ -69,6 +70,105 @@ const VIEWS = {
   DISCOVERY: 'discovery',
   PREVIEW: 'preview',
 };
+
+/**
+ * Visual bar showing democracy/participation voting split
+ */
+function VotingBalanceBar({ democracy, participation }) {
+  const democracyBg = useColorModeValue('blue.400', 'blue.500');
+  const participationBg = useColorModeValue('orange.400', 'orange.500');
+  const labelColor = useColorModeValue('gray.600', 'gray.400');
+
+  return (
+    <Box my={4}>
+      {/* Visual bar */}
+      <Box
+        h="44px"
+        borderRadius="full"
+        overflow="hidden"
+        display="flex"
+        bg={useColorModeValue('gray.100', 'gray.700')}
+      >
+        <Flex
+          w={`${democracy}%`}
+          bg={democracyBg}
+          align="center"
+          justify="center"
+          color="white"
+          transition="width 0.3s ease"
+        >
+          <Text fontWeight="600" fontSize="sm">{democracy}%</Text>
+        </Flex>
+        <Flex
+          w={`${participation}%`}
+          bg={participationBg}
+          align="center"
+          justify="center"
+          color="white"
+          transition="width 0.3s ease"
+        >
+          <Text fontWeight="600" fontSize="sm">{participation}%</Text>
+        </Flex>
+      </Box>
+
+      {/* Legend */}
+      <HStack justify="space-between" mt={2} px={1}>
+        <HStack spacing={2}>
+          <Box w="10px" h="10px" borderRadius="full" bg={democracyBg} />
+          <Text fontSize="xs" color={labelColor}>Equal voice</Text>
+        </HStack>
+        <HStack spacing={2}>
+          <Box w="10px" h="10px" borderRadius="full" bg={participationBg} />
+          <Text fontSize="xs" color={labelColor}>Earned influence</Text>
+        </HStack>
+      </HStack>
+    </Box>
+  );
+}
+
+/**
+ * Quick feature strip showing 3 key features as icons
+ */
+function QuickFeatureStrip({ features }) {
+  const iconBg = useColorModeValue('gray.100', 'gray.700');
+  const labelColor = useColorModeValue('gray.600', 'gray.400');
+  const moreBg = useColorModeValue('gray.50', 'gray.800');
+
+  if (!features || features.length === 0) return null;
+
+  const displayFeatures = features.slice(0, 3);
+  const remainingCount = Math.max(0, features.length - 3);
+
+  return (
+    <HStack spacing={4} justify="center" py={4}>
+      {displayFeatures.map((feature, i) => (
+        <Tooltip key={i} label={feature.name} hasArrow placement="top">
+          <VStack spacing={1} cursor="default">
+            <Box
+              bg={iconBg}
+              p={3}
+              borderRadius="lg"
+              fontSize="xl"
+            >
+              {feature.icon}
+            </Box>
+            <Text fontSize="xs" color={labelColor} noOfLines={1} maxW="60px" textAlign="center">
+              {feature.name.split(' ')[0]}
+            </Text>
+          </VStack>
+        </Tooltip>
+      ))}
+      {remainingCount > 0 && (
+        <VStack spacing={1}>
+          <Box bg={moreBg} p={3} borderRadius="lg">
+            <Text fontSize="sm" color={labelColor} fontWeight="500">+{remainingCount}</Text>
+          </Box>
+          <Text fontSize="xs" color={labelColor}>more</Text>
+        </VStack>
+      )}
+    </HStack>
+  );
+}
 
 /**
  * Template card in the gallery - cleaner, centered design
@@ -268,101 +368,204 @@ function HybridVotingExplainer({ template }) {
 }
 
 /**
- * Philosophy overview panel
+ * Template Detail Panel - Summary card + optional tabbed deep-dive
+ * Redesigned for scannability with progressive disclosure
  */
-function PhilosophyPanel({ template, onContinue, onBack }) {
-  const [showHistory, setShowHistory] = useState(false);
+function TemplateDetailPanel({ template, onContinue, onBack }) {
+  const [showDetails, setShowDetails] = useState(false);
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
   const helperColor = useColorModeValue('gray.600', 'gray.400');
   const quoteBg = useColorModeValue('blue.50', 'blue.900');
+  const featureBg = useColorModeValue('gray.50', 'gray.700');
+  const highlightBg = useColorModeValue('green.50', 'green.900');
+  const summaryBg = useColorModeValue('rgba(255, 255, 255, 0.8)', 'rgba(51, 48, 44, 0.8)');
 
-  if (!template?.philosophy) {
+  // Get voting weights from template defaults
+  const democracyWeight = template?.defaults?.voting?.democracyWeight ?? 80;
+  const participationWeight = template?.defaults?.voting?.participationWeight ?? 20;
+
+  if (!template) {
     return (
       <VStack spacing={4}>
-        <Text color={helperColor}>No philosophy information for this template.</Text>
-        <Button bg="coral.500" color="white" _hover={{ bg: 'coral.600' }} onClick={onContinue}>
-          Continue to Setup
+        <Text color={helperColor}>No template selected.</Text>
+        <Button bg="coral.500" color="white" _hover={{ bg: 'coral.600' }} onClick={onBack}>
+          Back to Templates
         </Button>
       </VStack>
     );
   }
 
-  const { essence, keyPrinciple, historicalContext } = template.philosophy;
+  const { essence, keyPrinciple, historicalContext, whatHybridVotingMeans } = template.philosophy || {};
+  const features = template.capabilities?.features || [];
+
+  // Get first sentence of essence for excerpt
+  const essenceExcerpt = essence ? essence.split('.')[0] + '.' : template.tagline;
 
   return (
-    <VStack spacing={6} align="stretch">
+    <VStack spacing={6} align="stretch" maxW="650px" mx="auto">
       {/* Back Button */}
       <Button
         variant="ghost"
         leftIcon={<ChevronUpIcon />}
         onClick={onBack}
         alignSelf="flex-start"
+        size="sm"
       >
         Back to Templates
       </Button>
 
-      {/* Template Header */}
-      <HStack spacing={3}>
-        <Text fontSize="3xl">{template.icon}</Text>
-        <Box>
-          <Heading size="lg">{template.name}</Heading>
-          <Text color={helperColor}>{template.tagline}</Text>
+      {/* Summary Card */}
+      <Card
+        bg={summaryBg}
+        backdropFilter="blur(10px)"
+        borderWidth="1px"
+        borderColor={borderColor}
+        overflow="hidden"
+        position="relative"
+      >
+        {/* Visual voting bar at top of card */}
+        <Box h="6px" w="100%" overflow="hidden">
+          <Flex>
+            <Box w={`${democracyWeight}%`} bg="blue.400" h="6px" />
+            <Box w={`${participationWeight}%`} bg="orange.400" h="6px" />
+          </Flex>
         </Box>
-      </HStack>
 
-      {/* Capabilities - What you can DO */}
-      <CapabilitiesSection template={template} />
-
-      {/* Hybrid Voting Explainer */}
-      <HybridVotingExplainer template={template} />
-
-      {/* Philosophy Essence (collapsible now) */}
-      <Card bg={cardBg} borderWidth="1px" borderColor={borderColor}>
-        <CardBody>
-          <Button
-            variant="ghost"
-            width="100%"
-            justifyContent="space-between"
-            rightIcon={showHistory ? <ChevronUpIcon /> : <ChevronDownIcon />}
-            onClick={() => setShowHistory(!showHistory)}
-            mb={showHistory ? 3 : 0}
-          >
-            <HStack spacing={2}>
-              <InfoIcon color="blue.500" />
-              <Text>Why This Governance Model Works</Text>
-            </HStack>
-          </Button>
-          <Collapse in={showHistory} animateOpacity>
-            <VStack spacing={4} align="stretch">
-              <Text whiteSpace="pre-line" fontSize="sm">{essence}</Text>
-
-              {/* Key Principle */}
-              <Box bg={quoteBg} p={4} borderRadius="md" borderLeftWidth="3px" borderLeftColor="blue.500">
-                <Text fontWeight="medium" fontSize="sm" mb={1}>Key Insight</Text>
-                <Text fontStyle="italic" fontSize="sm">{keyPrinciple}</Text>
+        <CardBody pt={5}>
+          <VStack spacing={4} align="stretch">
+            {/* Template Header */}
+            <HStack spacing={4}>
+              <Box
+                fontSize="3xl"
+                bg={useColorModeValue('gray.100', 'gray.700')}
+                p={3}
+                borderRadius="xl"
+              >
+                {template.icon}
               </Box>
+              <Box flex={1}>
+                <Heading size="lg" color={useColorModeValue('gray.800', 'white')}>
+                  {template.name}
+                </Heading>
+                <Text color={helperColor} fontSize="sm">
+                  {template.tagline}
+                </Text>
+              </Box>
+            </HStack>
 
-              {/* Historical Context */}
-              {historicalContext && (
-                <Box>
-                  <Text fontWeight="medium" fontSize="sm" mb={1} color={helperColor}>Historical Context</Text>
-                  <Text fontSize="sm" color={helperColor}>
-                    {historicalContext}
-                  </Text>
-                </Box>
-              )}
-            </VStack>
-          </Collapse>
+            {/* Voting Balance Visual */}
+            <VotingBalanceBar
+              democracy={democracyWeight}
+              participation={participationWeight}
+            />
+
+            {/* Quick Feature Strip */}
+            <QuickFeatureStrip features={features} />
+
+            {/* Essence Excerpt */}
+            <Text fontSize="sm" color={helperColor} lineHeight="tall" px={1}>
+              {essenceExcerpt}
+            </Text>
+          </VStack>
         </CardBody>
       </Card>
 
-      {/* Continue Button */}
-      <HStack justify="space-between" pt={4}>
+      {/* Optional Deep-Dive Tabs */}
+      <Box>
+        <Button
+          variant="ghost"
+          size="sm"
+          rightIcon={showDetails ? <ChevronUpIcon /> : <ChevronDownIcon />}
+          onClick={() => setShowDetails(!showDetails)}
+          w="100%"
+          color={helperColor}
+          fontWeight="normal"
+        >
+          {showDetails ? 'Show less' : 'Learn more about this model'}
+        </Button>
+
+        <Collapse in={showDetails} animateOpacity>
+          <Box mt={4}>
+            <Tabs variant="soft-rounded" colorScheme="gray" size="sm">
+              <TabList justifyContent="center" mb={4}>
+                <Tab>Features</Tab>
+                <Tab>Voting</Tab>
+                <Tab>Philosophy</Tab>
+              </TabList>
+
+              <TabPanels>
+                {/* Features Tab */}
+                <TabPanel px={0}>
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                    {features.map((feature, i) => (
+                      <Box
+                        key={i}
+                        bg={featureBg}
+                        p={3}
+                        borderRadius="md"
+                      >
+                        <HStack spacing={2} mb={1}>
+                          <Text fontSize="lg">{feature.icon}</Text>
+                          <Text fontWeight="medium" fontSize="sm">{feature.name}</Text>
+                        </HStack>
+                        <Text fontSize="xs" color={helperColor}>
+                          {feature.description}
+                        </Text>
+                      </Box>
+                    ))}
+                  </SimpleGrid>
+                </TabPanel>
+
+                {/* Voting Tab */}
+                <TabPanel px={0}>
+                  <VStack spacing={4} align="stretch">
+                    <Box bg={highlightBg} p={4} borderRadius="md">
+                      <Text fontSize="sm" whiteSpace="pre-line">
+                        {whatHybridVotingMeans || `This template uses a ${democracyWeight}/${participationWeight} hybrid voting system where ${democracyWeight}% of voting power comes from equal membership and ${participationWeight}% from participation tokens earned through contributions.`}
+                      </Text>
+                    </Box>
+                  </VStack>
+                </TabPanel>
+
+                {/* Philosophy Tab */}
+                <TabPanel px={0}>
+                  <VStack spacing={4} align="stretch">
+                    {essence && (
+                      <Text whiteSpace="pre-line" fontSize="sm">{essence}</Text>
+                    )}
+
+                    {keyPrinciple && (
+                      <Box bg={quoteBg} p={4} borderRadius="md" borderLeftWidth="3px" borderLeftColor="blue.500">
+                        <Text fontWeight="medium" fontSize="sm" mb={1}>Key Insight</Text>
+                        <Text fontStyle="italic" fontSize="sm">{keyPrinciple}</Text>
+                      </Box>
+                    )}
+
+                    {historicalContext && (
+                      <Box>
+                        <Text fontWeight="medium" fontSize="sm" mb={1} color={helperColor}>
+                          Historical Context
+                        </Text>
+                        <Text fontSize="sm" color={helperColor}>
+                          {historicalContext}
+                        </Text>
+                      </Box>
+                    )}
+                  </VStack>
+                </TabPanel>
+              </TabPanels>
+            </Tabs>
+          </Box>
+        </Collapse>
+      </Box>
+
+      {/* Action Footer - Always Visible */}
+      <HStack justify="space-between" pt={2}>
         <Text fontSize="sm" color={helperColor}>
           {template.discoveryQuestions?.length > 0
-            ? `Answer ${template.discoveryQuestions.length} questions to personalize your setup`
-            : 'Ready to customize your organization'}
+            ? `${template.discoveryQuestions.length} quick questions to personalize`
+            : 'Ready to customize'}
         </Text>
         <Button
           bg="coral.500"
@@ -371,13 +574,17 @@ function PhilosophyPanel({ template, onContinue, onBack }) {
           size="lg"
           rightIcon={<Icon as={PiArrowRight} />}
           onClick={onContinue}
+          px={6}
         >
-          {template.discoveryQuestions?.length > 0 ? 'Start Discovery' : 'Continue'}
+          {template.discoveryQuestions?.length > 0 ? 'Get Started' : 'Continue'}
         </Button>
       </HStack>
     </VStack>
   );
 }
+
+// Keep PhilosophyPanel as alias for backward compatibility
+const PhilosophyPanel = TemplateDetailPanel;
 
 /**
  * Growth path preview in a modal

@@ -133,6 +133,27 @@ export const GET_ACCOUNTS_BY_USERNAMES = gql`
   }
 `;
 
+// Fetch all organizations where user is an active member
+export const FETCH_USER_ORGANIZATIONS = gql`
+  query FetchUserOrganizations($userAddress: Bytes!) {
+    users(where: { address: $userAddress, membershipStatus: Active }) {
+      id
+      membershipStatus
+      participationTokenBalance
+      totalTasksCompleted
+      totalVotes
+      organization {
+        id
+        name
+        metadataHash
+        participationToken {
+          symbol
+        }
+      }
+    }
+  }
+`;
+
 // Lookup organization by name (returns ID for further queries)
 export const GET_ORG_BY_NAME = gql`
   query GetOrgByName($name: String!) {

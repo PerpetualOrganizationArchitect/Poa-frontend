@@ -224,11 +224,13 @@ function DeployerPageContent() {
       console.log('Deployment params:', deployParams);
       console.log('Deploying with params:', deployParams);
 
-      // Check if any role has additionalWearers
-      const hasAdditionalWearers = deployParams.roles.some(
-        role => role.distribution.additionalWearers && role.distribution.additionalWearers.length > 0
+      // Check if any role has custom distribution settings (additionalWearers or mintToDeployer)
+      const hasCustomDistribution = deployParams.roles.some(
+        role =>
+          (role.distribution.additionalWearers && role.distribution.additionalWearers.length > 0) ||
+          role.distribution.mintToDeployer
       );
-      console.log('Has additional wearers:', hasAdditionalWearers);
+      console.log('Has custom distribution:', hasCustomDistribution);
 
       console.log('Roles structure:');
       deployParams.roles.forEach((role, idx) => {
@@ -259,9 +261,9 @@ function DeployerPageContent() {
       const hasQuadratic = state.voting.classes.some(c => c.quadratic);
       const hybridVotingEnabled = state.voting.classes.length > 1;
 
-      // Only pass customRoles if there are additionalWearers to assign
-      // This preserves original behavior when no usernames are added
-      const customRoles = hasAdditionalWearers ? deployParams.roles : null;
+      // Pass customRoles if there are any custom distribution settings
+      // This ensures mintToDeployer and additionalWearers settings are respected
+      const customRoles = hasCustomDistribution ? deployParams.roles : null;
       console.log('Passing customRoles:', customRoles !== null);
 
       await main(

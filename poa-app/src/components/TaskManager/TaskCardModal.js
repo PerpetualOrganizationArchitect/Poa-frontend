@@ -90,9 +90,10 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
     const fetchIpfsMetadata = async () => {
       if (!isOpen || !task) return;
 
+      setMetadataLoading(true);
+
       // Fetch task metadata (description, difficulty, estHours)
       if (task.metadataHash && !taskMetadata) {
-        setMetadataLoading(true);
         try {
           const cid = bytes32ToIpfsCid(task.metadataHash);
           if (cid) {
@@ -104,11 +105,10 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
         } catch (err) {
           console.error('Error fetching task metadata:', err);
         }
-        setMetadataLoading(false);
       }
 
-      // Fetch submission metadata for reviewed/completed tasks
-      if ((columnId === 'inReview' || columnId === 'completed') && task.submissionHash && !submissionMetadata) {
+      // Fetch submission metadata for submitted/completed tasks
+      if (task.submissionHash && !submissionMetadata && (task.status === 'Submitted' || task.status === 'Completed')) {
         try {
           const cid = bytes32ToIpfsCid(task.submissionHash);
           if (cid) {
@@ -121,10 +121,12 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
           console.error('Error fetching submission metadata:', err);
         }
       }
+
+      setMetadataLoading(false);
     };
 
     fetchIpfsMetadata();
-  }, [isOpen, task, columnId, safeFetchFromIpfs, bytes32ToIpfsCid, taskMetadata, submissionMetadata]);
+  }, [isOpen, task, safeFetchFromIpfs, bytes32ToIpfsCid, taskMetadata, submissionMetadata]);
 
   const handleCloseModal = async () => {
     // Set flag to prevent useEffect from re-opening
@@ -556,7 +558,7 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
                         Submission:
                       </Text>
                       <Text style={{ whiteSpace: 'pre-wrap' }}>
-                        {submissionMetadata?.submission || task.submission || (task.submissionHash ? 'Loading submission...' : 'No submission')}
+                        {metadataLoading ? 'Loading submission...' : (submissionMetadata?.submission || 'No submission available')}
                       </Text>
                     </Box>
                   )}

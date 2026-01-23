@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import { useAccount } from 'wagmi';
 import { formatTokenAmount } from '../util/formatToken';
 import { useRefreshSubscription, RefreshEvent } from './RefreshContext';
+import { bytes32ToIpfsCid } from '@/services/web3/utils/encoding';
 
 const POContext = createContext();
 
@@ -46,23 +47,29 @@ function transformEducationModules(modules) {
     if (!modules || !Array.isArray(modules)) {
         return [];
     }
-    return modules.map(module => ({
-        id: module.id,
-        moduleId: module.moduleId,
-        name: module.title || 'Indexing...',
-        ipfsHash: module.contentHash,
-        payout: formatTokenAmount(module.payout || '0'),
-        status: module.status,
-        // Content from IPFS needs to be fetched separately
-        isIndexing: !module.contentHash,
-        description: 'Module content loading from IPFS...',
-        link: '',
-        question: '',
-        answers: [],
-        completions: module.completions || [],
-        // For backward compatibility
-        completetions: module.completions || [],
-    }));
+    return modules.map(module => {
+        // Convert bytes32 contentHash to CID format for IPFS gateway URLs
+        const ipfsCid = module.contentHash ? bytes32ToIpfsCid(module.contentHash) : null;
+        return {
+            id: module.id,
+            moduleId: module.moduleId,
+            name: module.title || 'Indexing...',
+            ipfsHash: ipfsCid,
+            // Keep original bytes32 hash for any components that need it
+            contentHashBytes32: module.contentHash,
+            payout: formatTokenAmount(module.payout || '0'),
+            status: module.status,
+            // Content from IPFS needs to be fetched separately
+            isIndexing: !module.contentHash,
+            description: 'Module content loading from IPFS...',
+            link: '',
+            question: '',
+            answers: [],
+            completions: module.completions || [],
+            // For backward compatibility
+            completetions: module.completions || [],
+        };
+    });
 }
 
 export const POProvider = ({ children }) => {

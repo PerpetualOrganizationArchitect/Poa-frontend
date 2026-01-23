@@ -14,12 +14,12 @@ export class UserService {
   /**
    * @param {ContractFactory} contractFactory - Contract factory instance
    * @param {TransactionManager} transactionManager - Transaction manager instance
-   * @param {number} [chainId] - Chain ID (defaults to current network)
+   * @param {string} [registryAddress] - Registry address from subgraph (preferred)
    */
-  constructor(contractFactory, transactionManager, chainId = null) {
+  constructor(contractFactory, transactionManager, registryAddress = null) {
     this.factory = contractFactory;
     this.txManager = transactionManager;
-    this.chainId = chainId;
+    this.registryAddress = registryAddress;
   }
 
   /**
@@ -27,7 +27,11 @@ export class UserService {
    * @returns {string} Contract address
    */
   _getRegistryAddress() {
-    return getUniversalAccountRegistryAddress(this.chainId);
+    if (this.registryAddress) {
+      return this.registryAddress;
+    }
+    // Fallback to config (for backwards compatibility)
+    return getUniversalAccountRegistryAddress(null);
   }
 
   /**
@@ -65,9 +69,9 @@ export class UserService {
  * Create a UserService instance
  * @param {ContractFactory} factory - Contract factory
  * @param {TransactionManager} txManager - Transaction manager
- * @param {number} [chainId] - Chain ID
+ * @param {string} [registryAddress] - Registry address from subgraph (preferred)
  * @returns {UserService}
  */
-export function createUserService(factory, txManager, chainId = null) {
-  return new UserService(factory, txManager, chainId);
+export function createUserService(factory, txManager, registryAddress = null) {
+  return new UserService(factory, txManager, registryAddress);
 }

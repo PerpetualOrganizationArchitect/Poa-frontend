@@ -20,19 +20,28 @@ export const creativeCollectiveTemplate = {
   ],
   benefits: [
     {
-      iconName: 'Palette',
-      title: 'Creative Freedom',
-      outcome: 'Autonomy within collective support',
-    },
-    {
       iconName: 'UsersThree',
-      title: 'Equal Standing',
-      outcome: 'Every artist has the same voice',
+      title: 'Decide Together',
+      subtitle: 'Democratic governance',
+      expandedContent: `Vote on collective decisions—studio space, equipment, exhibition schedules. With 90% democracy weight, every artist has nearly equal voice. The 10% participation weight recognizes those who engage with collective governance.`,
     },
     {
-      iconName: 'Sparkle',
-      title: 'Collective Amplification',
-      outcome: 'Together you reach further',
+      iconName: 'Kanban',
+      title: 'Coordinate Work',
+      subtitle: 'Shows & projects',
+      expandedContent: `Manage collaborative exhibitions, group commissions, and collective events. Assign tasks, track progress, share credit for collective work.`,
+    },
+    {
+      iconName: 'Palette',
+      title: 'Keep Creative Control',
+      subtitle: 'Individual ownership',
+      expandedContent: `Your art stays yours. The collective governs shared resources and mutual support—not your creative direction. Democracy handles the collective; autonomy handles the art.`,
+    },
+    {
+      iconName: 'Coins',
+      title: 'Pool Resources',
+      subtitle: 'Shared equipment & space',
+      expandedContent: `When collective work generates income, distribute it based on actual contribution. Manage shared expenses transparently—no awkward conversations.`,
     },
   ],
   socialProof: 'From Bauhaus to modern studios, collectives have shaped creative history',

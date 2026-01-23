@@ -58,6 +58,15 @@ import {
   PiWrench,
   PiGear,
   PiBookOpen,
+  PiKanban,
+  PiUserPlus,
+  PiRocket,
+  PiCertificate,
+  PiX,
+  PiLightbulb,
+  PiScales,
+  PiShieldCheck,
+  PiTreeStructure,
 } from 'react-icons/pi';
 import { useDeployer } from '../context/DeployerContext';
 import {
@@ -94,49 +103,156 @@ const ICON_MAP = {
   Wrench: PiWrench,
   Gear: PiGear,
   BookOpen: PiBookOpen,
+  Kanban: PiKanban,
+  UserPlus: PiUserPlus,
+  Rocket: PiRocket,
+  Certificate: PiCertificate,
+  Lightbulb: PiLightbulb,
+  Scales: PiScales,
+  ShieldCheck: PiShieldCheck,
+  TreeStructure: PiTreeStructure,
 };
 
 /**
- * Benefit cards showing 3 key benefits with icons
+ * Single expandable feature card
  */
-function BenefitCards({ benefits }) {
+function ExpandableFeatureCard({ benefit, isExpanded, onToggle }) {
   const cardBg = useColorModeValue('white', 'gray.800');
-  const borderColor = useColorModeValue('gray.200', 'gray.600');
   const titleColor = useColorModeValue('gray.800', 'white');
-  const outcomeColor = useColorModeValue('gray.600', 'gray.400');
+  const subtitleColor = useColorModeValue('gray.500', 'gray.400');
+  const contentColor = useColorModeValue('gray.600', 'gray.300');
   const iconColor = useColorModeValue('coral.500', 'coral.400');
+  const hintColor = useColorModeValue('gray.400', 'gray.500');
+
+  const IconComponent = ICON_MAP[benefit.iconName] || PiCheck;
+
+  if (isExpanded) {
+    // Expanded state - full width card with details
+    return (
+      <Box
+        bg={cardBg}
+        p={5}
+        borderRadius="lg"
+        boxShadow="md"
+        transition="all 0.3s ease"
+        gridColumn="1 / -1"
+      >
+        <Flex justify="space-between" align="flex-start" mb={3}>
+          <HStack spacing={3}>
+            <Icon as={IconComponent} boxSize={7} color={iconColor} />
+            <Box>
+              <Text fontWeight="700" fontSize="lg" color={titleColor}>
+                {benefit.title}
+              </Text>
+              {benefit.subtitle && (
+                <Text fontSize="sm" color={subtitleColor}>
+                  {benefit.subtitle}
+                </Text>
+              )}
+            </Box>
+          </HStack>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onToggle}
+            color={subtitleColor}
+            _hover={{ color: titleColor }}
+            p={1}
+          >
+            <Icon as={PiX} boxSize={5} />
+          </Button>
+        </Flex>
+        <Text fontSize="sm" color={contentColor} lineHeight="tall" pl={10}>
+          {benefit.expandedContent || benefit.outcome}
+        </Text>
+      </Box>
+    );
+  }
+
+  // Collapsed state - compact card
+  return (
+    <Box
+      bg={cardBg}
+      p={5}
+      borderRadius="lg"
+      boxShadow="sm"
+      cursor="pointer"
+      onClick={onToggle}
+      transition="all 0.3s ease"
+      _hover={{
+        transform: 'scale(1.02)',
+        boxShadow: 'md',
+      }}
+      textAlign="center"
+    >
+      <Icon as={IconComponent} boxSize={8} color={iconColor} mb={3} />
+      <Text fontWeight="700" fontSize="md" color={titleColor} mb={1}>
+        {benefit.title}
+      </Text>
+      {benefit.subtitle && (
+        <Text fontSize="xs" color={subtitleColor} mb={2}>
+          {benefit.subtitle}
+        </Text>
+      )}
+      <Text fontSize="xs" color={hintColor} mt={2}>
+        Click to learn more
+      </Text>
+    </Box>
+  );
+}
+
+/**
+ * Grid of 4 expandable feature cards
+ */
+function FeatureCardsGrid({ benefits }) {
+  const [expandedIndex, setExpandedIndex] = useState(null);
 
   if (!benefits || benefits.length === 0) return null;
 
+  const handleToggle = (index) => {
+    setExpandedIndex(expandedIndex === index ? null : index);
+  };
+
+  // If a card is expanded, show it first at full width, then others below
+  if (expandedIndex !== null) {
+    const expandedBenefit = benefits[expandedIndex];
+    const otherBenefits = benefits.filter((_, i) => i !== expandedIndex);
+
+    return (
+      <VStack spacing={4} align="stretch">
+        <ExpandableFeatureCard
+          benefit={expandedBenefit}
+          isExpanded={true}
+          onToggle={() => handleToggle(expandedIndex)}
+        />
+        <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
+          {otherBenefits.map((benefit, i) => {
+            const originalIndex = benefits.indexOf(benefit);
+            return (
+              <ExpandableFeatureCard
+                key={originalIndex}
+                benefit={benefit}
+                isExpanded={false}
+                onToggle={() => handleToggle(originalIndex)}
+              />
+            );
+          })}
+        </SimpleGrid>
+      </VStack>
+    );
+  }
+
+  // Default grid view - all cards collapsed
   return (
-    <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
-      {benefits.map((benefit, i) => {
-        const IconComponent = ICON_MAP[benefit.iconName] || PiCheck;
-        return (
-          <Box
-            key={i}
-            bg={cardBg}
-            p={5}
-            borderRadius="lg"
-            borderWidth="1px"
-            borderColor={borderColor}
-            textAlign="center"
-          >
-            <Icon
-              as={IconComponent}
-              boxSize={8}
-              color={iconColor}
-              mb={3}
-            />
-            <Text fontWeight="600" fontSize="md" color={titleColor} mb={1}>
-              {benefit.title}
-            </Text>
-            <Text fontSize="sm" color={outcomeColor}>
-              {benefit.outcome}
-            </Text>
-          </Box>
-        );
-      })}
+    <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={4}>
+      {benefits.map((benefit, i) => (
+        <ExpandableFeatureCard
+          key={i}
+          benefit={benefit}
+          isExpanded={false}
+          onToggle={() => handleToggle(i)}
+        />
+      ))}
     </SimpleGrid>
   );
 }
@@ -316,8 +432,8 @@ function TemplateCard({ template, isSelected, onSelect }) {
  * Template Detail Panel - "Invitation" design
  * Leads with aspiration, not mechanism
  */
-function TemplateDetailPanel({ template, onContinue, onBack }) {
-  const [showVoting, setShowVoting] = useState(false);
+function TemplateDetailPanel({ template, onContinue, onBack, onOpenGrowthPath }) {
+  const [showGrowthPath, setShowGrowthPath] = useState(false);
   const [showPhilosophy, setShowPhilosophy] = useState(false);
 
   const headingColor = useColorModeValue('gray.800', 'white');
@@ -328,10 +444,6 @@ function TemplateDetailPanel({ template, onContinue, onBack }) {
   const linkHoverColor = useColorModeValue('coral.500', 'coral.400');
   const detailsBg = useColorModeValue('gray.50', 'gray.800');
   const quoteBg = useColorModeValue('blue.50', 'blue.900');
-
-  // Get voting weights from template defaults
-  const democracyWeight = template?.defaults?.voting?.democracyWeight ?? 80;
-  const participationWeight = template?.defaults?.voting?.participationWeight ?? 20;
 
   if (!template) {
     return (
@@ -344,13 +456,14 @@ function TemplateDetailPanel({ template, onContinue, onBack }) {
     );
   }
 
-  const { essence, keyPrinciple, historicalContext, whatHybridVotingMeans } = template.philosophy || {};
+  const { essence, keyPrinciple, historicalContext } = template.philosophy || {};
   const heroTagline = template.heroTagline || [];
   const benefits = template.benefits || [];
   const socialProof = template.socialProof;
+  const hasGrowthPath = template.growthPath?.stages?.length > 0;
 
   return (
-    <VStack spacing={8} align="stretch" maxW="700px" mx="auto">
+    <VStack spacing={8} align="stretch" maxW="900px" mx="auto">
       {/* Back Button */}
       <Button
         variant="ghost"
@@ -380,8 +493,7 @@ function TemplateDetailPanel({ template, onContinue, onBack }) {
           py={8}
           px={6}
           borderRadius="xl"
-          borderWidth="1px"
-          borderColor={taglineBorder}
+          boxShadow="sm"
           textAlign="center"
         >
           <VStack spacing={1}>
@@ -400,8 +512,8 @@ function TemplateDetailPanel({ template, onContinue, onBack }) {
         </Box>
       )}
 
-      {/* Benefit Cards */}
-      <BenefitCards benefits={benefits} />
+      {/* Feature Cards - Expandable */}
+      <FeatureCardsGrid benefits={benefits} />
 
       {/* Social Proof */}
       <SocialProof text={socialProof} />
@@ -418,6 +530,8 @@ function TemplateDetailPanel({ template, onContinue, onBack }) {
           px={8}
           py={6}
           fontSize="md"
+          boxShadow="md"
+          transition="all 0.3s ease"
         >
           Customize This Model
         </Button>
@@ -425,17 +539,21 @@ function TemplateDetailPanel({ template, onContinue, onBack }) {
 
       {/* Optional Details Links */}
       <HStack justify="center" spacing={6} pt={2}>
-        <Button
-          variant="link"
-          size="sm"
-          color={linkColor}
-          _hover={{ color: linkHoverColor }}
-          leftIcon={<Icon as={PiGear} />}
-          onClick={() => setShowVoting(!showVoting)}
-        >
-          How voting works
-        </Button>
-        <Text color={subheadingColor}>·</Text>
+        {hasGrowthPath && (
+          <>
+            <Button
+              variant="link"
+              size="sm"
+              color={linkColor}
+              _hover={{ color: linkHoverColor }}
+              leftIcon={<Icon as={PiTreeStructure} />}
+              onClick={() => setShowGrowthPath(!showGrowthPath)}
+            >
+              View growth path
+            </Button>
+            <Text color={subheadingColor}>·</Text>
+          </>
+        )}
         <Button
           variant="link"
           size="sm"
@@ -448,23 +566,14 @@ function TemplateDetailPanel({ template, onContinue, onBack }) {
         </Button>
       </HStack>
 
-      {/* Voting Details Collapse */}
-      <Collapse in={showVoting} animateOpacity>
-        <Box bg={detailsBg} p={5} borderRadius="lg" mt={2}>
-          <VStack spacing={4} align="stretch">
-            <Heading size="sm" color={headingColor}>How Voting Works</Heading>
-            <VotingBalanceBar
-              democracy={democracyWeight}
-              participation={participationWeight}
-            />
-            {whatHybridVotingMeans && (
-              <Text fontSize="sm" color={subheadingColor} whiteSpace="pre-line">
-                {whatHybridVotingMeans}
-              </Text>
-            )}
-          </VStack>
-        </Box>
-      </Collapse>
+      {/* Growth Path Collapse */}
+      {hasGrowthPath && (
+        <Collapse in={showGrowthPath} animateOpacity>
+          <Box bg={detailsBg} p={5} borderRadius="lg" mt={2}>
+            <GrowthPathVisualizer template={template} />
+          </Box>
+        </Collapse>
+      )}
 
       {/* Philosophy Details Collapse */}
       <Collapse in={showPhilosophy} animateOpacity>
@@ -532,9 +641,8 @@ function GrowthPathModal({ template, isOpen, onClose }) {
  * Main TemplateStep component
  */
 export function TemplateStep() {
-  const { state, actions, selectors } = useDeployer();
+  const { state, actions } = useDeployer();
   const [currentView, setCurrentView] = useState(VIEWS.GALLERY);
-  const [detailTemplate, setDetailTemplate] = useState(null);
 
   const {
     isOpen: isGrowthPathOpen,
@@ -551,16 +659,11 @@ export function TemplateStep() {
   const headingColor = useColorModeValue('gray.800', 'white');
   const subheadingColor = useColorModeValue('gray.600', 'gray.400');
 
-  // Handle template selection
+  // Handle template selection - auto-navigate to detail view
   const handleSelectTemplate = (templateId) => {
     actions.selectTemplate(templateId);
     actions.resetTemplateJourney();
-  };
-
-  // Handle learn more click
-  const handleLearnMore = (template) => {
-    setDetailTemplate(template);
-    actions.selectTemplate(template.id);
+    // Auto-navigate to philosophy/detail view
     setCurrentView(VIEWS.PHILOSOPHY);
   };
 
@@ -606,17 +709,6 @@ export function TemplateStep() {
   // Handle back to gallery
   const handleBackToGallery = () => {
     setCurrentView(VIEWS.GALLERY);
-    setDetailTemplate(null);
-  };
-
-  // Quick continue from gallery
-  const handleQuickContinue = () => {
-    if (selectedTemplate?.discoveryQuestions?.length > 0 ||
-        selectedTemplate?.philosophy) {
-      setCurrentView(VIEWS.PHILOSOPHY);
-    } else {
-      handleFinishTemplateStep();
-    }
   };
 
   // Render based on current view
@@ -687,7 +779,7 @@ export function TemplateStep() {
               </Text>
             </Box>
 
-            {/* Template Grid */}
+            {/* Template Grid - clicking a card auto-navigates to detail view */}
             <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={5}>
               {TEMPLATE_LIST.map((template) => (
                 <TemplateCard
@@ -698,64 +790,6 @@ export function TemplateStep() {
                 />
               ))}
             </SimpleGrid>
-
-            {/* Selected Template Preview - Cleaner design */}
-            {selectedTemplate && (
-              <Box
-                bg="rgba(255, 255, 255, 0.6)"
-                backdropFilter="blur(10px)"
-                p={6}
-                borderRadius="xl"
-                border="1px solid"
-                borderColor="rgba(255, 255, 255, 0.18)"
-                mt={2}
-              >
-                <Flex
-                  direction={{ base: 'column', md: 'row' }}
-                  justify="space-between"
-                  align={{ base: 'stretch', md: 'center' }}
-                  gap={4}
-                >
-                  <Box flex={1}>
-                    <HStack spacing={3} mb={2}>
-                      <Text fontSize="2xl">{selectedTemplate.icon}</Text>
-                      <Text fontWeight="600" fontSize="lg" color="warmGray.800">
-                        {selectedTemplate.name}
-                      </Text>
-                    </HStack>
-                    <Text fontSize="sm" color={subheadingColor} noOfLines={2}>
-                      {selectedTemplate.philosophy?.essence?.split('.')[0]}.
-                    </Text>
-                  </Box>
-
-                  <HStack spacing={3}>
-                    {selectedTemplate.growthPath?.stages?.length > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        borderColor="warmGray.300"
-                        color="warmGray.700"
-                        _hover={{ bg: 'warmGray.100' }}
-                        onClick={openGrowthPath}
-                      >
-                        View Growth Path
-                      </Button>
-                    )}
-                    <Button
-                      bg="coral.500"
-                      color="white"
-                      _hover={{ bg: 'coral.600', transform: 'translateY(-1px)' }}
-                      rightIcon={<Icon as={PiArrowRight} />}
-                      onClick={handleQuickContinue}
-                      size="lg"
-                      px={6}
-                    >
-                      Get Started
-                    </Button>
-                  </HStack>
-                </Flex>
-              </Box>
-            )}
           </VStack>
         );
     }

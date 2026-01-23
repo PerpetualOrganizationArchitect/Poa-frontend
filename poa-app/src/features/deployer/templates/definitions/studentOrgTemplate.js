@@ -12,6 +12,31 @@ export const studentOrgTemplate = {
   icon: '🎓',
   color: 'blue',
 
+  // Hero content for the invitation-style display
+  heroTagline: [
+    'Lead together.',
+    'Learn together.',
+    'Make it count.',
+  ],
+  benefits: [
+    {
+      iconName: 'Chalkboard',
+      title: 'Learn by Doing',
+      outcome: 'Real governance, real skills',
+    },
+    {
+      iconName: 'UsersThree',
+      title: 'Shared Leadership',
+      outcome: 'Everyone gets a turn to lead',
+    },
+    {
+      iconName: 'Trophy',
+      title: 'Build Something Real',
+      outcome: 'Your club, your legacy',
+    },
+  ],
+  socialProof: 'Student organizations are where future leaders learn to govern',
+
   // What you can DO with this - practical capabilities
   capabilities: {
     headline: 'Run your student org like a real organization, with training wheels',

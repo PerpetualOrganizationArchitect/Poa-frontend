@@ -12,6 +12,31 @@ export const creativeCollectiveTemplate = {
   icon: '🎨',
   color: 'pink',
 
+  // Hero content for the invitation-style display
+  heroTagline: [
+    'Create freely.',
+    'Govern as equals.',
+    'Amplify each other.',
+  ],
+  benefits: [
+    {
+      iconName: 'Palette',
+      title: 'Creative Freedom',
+      outcome: 'Autonomy within collective support',
+    },
+    {
+      iconName: 'UsersThree',
+      title: 'Equal Standing',
+      outcome: 'Every artist has the same voice',
+    },
+    {
+      iconName: 'Sparkle',
+      title: 'Collective Amplification',
+      outcome: 'Together you reach further',
+    },
+  ],
+  socialProof: 'From Bauhaus to modern studios, collectives have shaped creative history',
+
   // What you can DO with this - practical capabilities
   capabilities: {
     headline: 'Run your creative collective with tools that serve the art, not bureaucracy',

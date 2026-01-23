@@ -12,6 +12,31 @@ export const openSourceTemplate = {
   icon: '💻',
   color: 'purple',
 
+  // Hero content for the invitation-style display
+  heroTagline: [
+    'Code together.',
+    'Decide together.',
+    'Build what matters.',
+  ],
+  benefits: [
+    {
+      iconName: 'GitMerge',
+      title: 'Contributor Voice',
+      outcome: 'Those who build it guide it',
+    },
+    {
+      iconName: 'Path',
+      title: 'Open Paths',
+      outcome: 'Anyone can rise through contribution',
+    },
+    {
+      iconName: 'Handshake',
+      title: 'Shared Ownership',
+      outcome: 'Software that belongs to everyone',
+    },
+  ],
+  socialProof: 'Linux, Apache, and Python prove open governance creates enduring software',
+
   // What you can DO with this - practical capabilities
   capabilities: {
     headline: 'Coordinate your open source project with transparent, contributor-driven tools',

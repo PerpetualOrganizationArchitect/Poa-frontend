@@ -12,6 +12,31 @@ export const customTemplate = {
   icon: '🔧',
   color: 'gray',
 
+  // Hero content for the invitation-style display
+  heroTagline: [
+    'Your rules.',
+    'Your way.',
+    'Built from scratch.',
+  ],
+  benefits: [
+    {
+      iconName: 'Sliders',
+      title: 'Total Control',
+      outcome: 'Every setting, your choice',
+    },
+    {
+      iconName: 'PuzzlePiece',
+      title: 'Perfect Fit',
+      outcome: 'Governance shaped to your needs',
+    },
+    {
+      iconName: 'Wrench',
+      title: 'Flexible Foundation',
+      outcome: 'Adapt as you grow',
+    },
+  ],
+  socialProof: 'For organizations that know exactly what they need',
+
   // What you can DO with this - practical capabilities
   capabilities: {
     headline: 'Build exactly the governance your organization needs',

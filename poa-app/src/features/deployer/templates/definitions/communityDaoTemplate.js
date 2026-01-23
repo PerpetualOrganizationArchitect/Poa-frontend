@@ -12,6 +12,31 @@ export const communityDaoTemplate = {
   icon: '🏘️',
   color: 'green',
 
+  // Hero content for the invitation-style display
+  heroTagline: [
+    'Your community.',
+    'Your decisions.',
+    'Your future.',
+  ],
+  benefits: [
+    {
+      iconName: 'Megaphone',
+      title: 'Every Voice Heard',
+      outcome: 'Decisions close to those affected',
+    },
+    {
+      iconName: 'Users',
+      title: 'Collective Power',
+      outcome: 'Together you shape what matters',
+    },
+    {
+      iconName: 'Globe',
+      title: 'Scale Gracefully',
+      outcome: 'From local to global, governance grows with you',
+    },
+  ],
+  socialProof: 'From neighborhood councils to global movements, communities thrive when they self-govern',
+
   // What you can DO with this - practical capabilities
   capabilities: {
     headline: 'Govern your community with tools that scale from local to global',

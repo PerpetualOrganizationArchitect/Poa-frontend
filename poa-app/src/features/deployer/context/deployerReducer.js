@@ -132,7 +132,7 @@ export const createDefaultRole = (index = 0, name = 'New Role') => ({
     adminRoleIndex: null, // null = top-level (will be converted to MaxUint256)
   },
   distribution: {
-    mintToDeployer: index === 0, // First role minted to deployer
+    mintToDeployer: true, // All roles minted to deployer by default
     mintToExecutor: false,
     additionalWearers: [],        // Resolved addresses (populated before deployment)
     additionalWearerUsernames: [], // Usernames entered by user

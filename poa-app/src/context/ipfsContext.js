@@ -98,25 +98,9 @@ async function withRetry(fn, maxRetries = 3, baseDelay = 1000) {
 }
 
 export const IPFSprovider = ({ children }) => {
-    // Setup Infura IPFS client for fetch operations
-    const fetchIpfs = useMemo(() => {
-        const auth = 'Basic ' + Buffer.from(
-            process.env.NEXT_PUBLIC_INFURA_PROJECTID + ':' + process.env.NEXT_PUBLIC_INFURA_IPFS
-        ).toString('base64');
-
-        return create({
-            host: 'ipfs.infura.io',
-            port: 5001,
-            protocol: 'https',
-            apiPath: '/api/v0',
-            headers: {
-                authorization: auth,
-            },
-        });
-    }, []);
-
-    // Setup The Graph IPFS client for add operations
-    const addIpfs = useMemo(() => {
+    // Use The Graph's IPFS endpoint for all operations (add and fetch)
+    // This is more reliable than Infura and doesn't require authentication
+    const ipfsClient = useMemo(() => {
         return create({
             host: 'api.thegraph.com',
             port: 443,
@@ -142,7 +126,7 @@ export const IPFSprovider = ({ children }) => {
         try {
             const addedData = await withRetry(async () => {
                 console.log("[IPFS] Attempting add to api.thegraph.com/ipfs...");
-                const result = await addIpfs.add({ content });
+                const result = await ipfsClient.add({ content });
                 console.log("[IPFS] Add successful!");
                 console.log("[IPFS] Result:", JSON.stringify(result, null, 2));
                 return result;
@@ -169,7 +153,7 @@ export const IPFSprovider = ({ children }) => {
             // Wrap in IPFSError for consistent error handling
             throw IPFSError.addFailed(error);
         }
-    }, [addIpfs]);
+    }, [ipfsClient]);
 
     /**
      * Fetch JSON content from IPFS
@@ -196,7 +180,7 @@ export const IPFSprovider = ({ children }) => {
         try {
             const result = await withRetry(async () => {
                 let stringData = '';
-                for await (const chunk of fetchIpfs.cat(validHash)) {
+                for await (const chunk of ipfsClient.cat(validHash)) {
                     console.log("chunk:", chunk);
                     stringData += new TextDecoder().decode(chunk);
                 }
@@ -222,7 +206,7 @@ export const IPFSprovider = ({ children }) => {
             // Wrap in IPFSError for consistent error handling
             throw IPFSError.fetchFailed(validHash, error);
         }
-    }, [fetchIpfs]);
+    }, [ipfsClient]);
 
     /**
      * Fetch image from IPFS and return as blob URL
@@ -249,7 +233,7 @@ export const IPFSprovider = ({ children }) => {
         try {
             const binaryData = await withRetry(async () => {
                 const chunks = [];
-                for await (const chunk of addIpfs.cat(validHash)) {
+                for await (const chunk of ipfsClient.cat(validHash)) {
                     chunks.push(chunk);
                 }
                 return chunks;
@@ -279,7 +263,7 @@ export const IPFSprovider = ({ children }) => {
                 IPFSErrorCode.FETCH_FAILED
             );
         }
-    }, [addIpfs]);
+    }, [ipfsClient]);
 
     /**
      * Safely fetch from IPFS, returning null on error (for backwards compatibility)

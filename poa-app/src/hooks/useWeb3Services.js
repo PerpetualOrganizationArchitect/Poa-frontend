@@ -4,11 +4,13 @@
  */
 
 import { useMemo, useCallback } from 'react';
+import { useQuery } from '@apollo/client';
 import { useEthersSigner } from '@/components/ProviderConverter';
 import { useNotification } from '../context/NotificationContext';
 import { useRefreshEmit } from '../context/RefreshContext';
 import { INFRASTRUCTURE_CONTRACTS, getInfrastructureAddress } from '../config/contracts';
 import { DEFAULT_NETWORK } from '../config/networks';
+import { FETCH_INFRASTRUCTURE_ADDRESSES } from '../util/queries';
 
 // Core services
 import { ContractFactory, createContractFactory } from '../services/web3/core/ContractFactory';
@@ -33,6 +35,10 @@ import { TokenRequestService, createTokenRequestService } from '../services/web3
 export function useWeb3Services(options = {}) {
   const { ipfsService = null, network = DEFAULT_NETWORK } = options;
   const signer = useEthersSigner();
+
+  // Fetch infrastructure addresses from subgraph
+  const { data: infraData } = useQuery(FETCH_INFRASTRUCTURE_ADDRESSES);
+  const registryAddress = infraData?.universalAccountRegistries?.[0]?.id || null;
 
   // Create core services
   const factory = useMemo(() => {
@@ -60,7 +66,7 @@ export function useWeb3Services(options = {}) {
     }
 
     return {
-      user: createUserService(factory, txManager),
+      user: createUserService(factory, txManager, registryAddress),
       organization: createOrganizationService(factory, txManager),
       voting: createVotingService(factory, txManager),
       task: createTaskService(factory, txManager, ipfsService),
@@ -68,7 +74,7 @@ export function useWeb3Services(options = {}) {
       eligibility: createEligibilityService(factory, txManager),
       tokenRequest: createTokenRequestService(factory, txManager, ipfsService),
     };
-  }, [factory, txManager, ipfsService]);
+  }, [factory, txManager, ipfsService, registryAddress]);
 
   // Contract addresses helper
   const getContractAddress = useCallback((contractName) => {

@@ -58,7 +58,7 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
   const { moveTask, deleteTask, applyForTask, approveApplication, assignTask } = useTaskBoard();
   const { hasExecRole, hasMemberRole, address: account, fetchUserDetails } = useUserContext();
   const { getUsernameByAddress, setSelectedProject, projects } = useDataBaseContext();
-  const { safeFetchFromIpfs, bytes32ToIpfsCid } = useIPFScontext();
+  const { safeFetchFromIpfs } = useIPFScontext();
   const router = useRouter();
   const { userDAO } = router.query;
   const toast = useToast();
@@ -93,32 +93,31 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
       setMetadataLoading(true);
 
       // Fetch task metadata (description, difficulty, estHours)
+      // Pass hash directly - safeFetchFromIpfs->fetchFromIpfs->normalizeToIpfsCid handles bytes32->CID conversion
       if (task.metadataHash && !taskMetadata) {
+        console.log('[TaskCardModal] Fetching task metadata for hash:', task.metadataHash);
         try {
-          const cid = bytes32ToIpfsCid(task.metadataHash);
-          if (cid) {
-            const metadata = await safeFetchFromIpfs(cid);
-            if (metadata) {
-              setTaskMetadata(metadata);
-            }
+          const metadata = await safeFetchFromIpfs(task.metadataHash);
+          console.log('[TaskCardModal] Task metadata result:', metadata);
+          if (metadata) {
+            setTaskMetadata(metadata);
           }
         } catch (err) {
-          console.error('Error fetching task metadata:', err);
+          console.error('[TaskCardModal] Error fetching task metadata:', err);
         }
       }
 
       // Fetch submission metadata for submitted/completed tasks
       if (task.submissionHash && !submissionMetadata && (task.status === 'Submitted' || task.status === 'Completed')) {
+        console.log('[TaskCardModal] Fetching submission metadata for hash:', task.submissionHash);
         try {
-          const cid = bytes32ToIpfsCid(task.submissionHash);
-          if (cid) {
-            const metadata = await safeFetchFromIpfs(cid);
-            if (metadata) {
-              setSubmissionMetadata(metadata);
-            }
+          const metadata = await safeFetchFromIpfs(task.submissionHash);
+          console.log('[TaskCardModal] Submission metadata result:', metadata);
+          if (metadata) {
+            setSubmissionMetadata(metadata);
           }
         } catch (err) {
-          console.error('Error fetching submission metadata:', err);
+          console.error('[TaskCardModal] Error fetching submission metadata:', err);
         }
       }
 
@@ -126,7 +125,7 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
     };
 
     fetchIpfsMetadata();
-  }, [isOpen, task, safeFetchFromIpfs, bytes32ToIpfsCid, taskMetadata, submissionMetadata]);
+  }, [isOpen, task, safeFetchFromIpfs, taskMetadata, submissionMetadata]);
 
   const handleCloseModal = async () => {
     // Set flag to prevent useEffect from re-opening

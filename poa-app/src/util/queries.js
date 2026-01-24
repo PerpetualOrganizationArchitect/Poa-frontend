@@ -354,16 +354,13 @@ export const FETCH_PROJECTS_DATA_NEW = gql`
             title
             metadataHash
             submissionHash
+            submission
             metadata {
               id
               name
               description
               difficulty
               estimatedHours
-            }
-            submissionMetadata {
-              id
-              submission
             }
             payout
             bountyToken

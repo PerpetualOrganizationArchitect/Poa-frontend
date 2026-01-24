@@ -51,7 +51,6 @@ const glassLayerStyle = {
 };
 
 const TaskCardModal = ({ task, columnId, onEditTask }) => {
-  console.log("task", task);
   const [submission, setSubmission] = useState('');
   const [assignAddress, setAssignAddress] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
@@ -92,7 +91,7 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
 
       // Only fetch from IPFS if indexed data is missing (fallback for older tasks or indexing delay)
       const needsTaskMetadata = !task.description && task.metadataHash && !taskMetadata;
-      const needsSubmissionMetadata = !task.indexedSubmission && task.submissionHash &&
+      const needsSubmissionMetadata = !task.submission && task.submissionHash &&
         !submissionMetadata && (task.status === 'Submitted' || task.status === 'Completed');
 
       if (!needsTaskMetadata && !needsSubmissionMetadata) return;
@@ -563,7 +562,7 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
                         Submission:
                       </Text>
                       <Text style={{ whiteSpace: 'pre-wrap' }}>
-                        {metadataLoading ? 'Loading submission...' : (task.indexedSubmission || submissionMetadata?.submission || 'No submission available')}
+                        {metadataLoading ? 'Loading submission...' : (task.submission || submissionMetadata?.submission || 'No submission available')}
                       </Text>
                     </Box>
                   )}

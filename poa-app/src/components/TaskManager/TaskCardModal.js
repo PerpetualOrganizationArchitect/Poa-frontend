@@ -85,39 +85,45 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
     }
   }, [router.query.task, task.id, onOpen]);
 
-  // Fetch IPFS metadata when modal opens
+  // Fetch IPFS metadata when modal opens - only as fallback when indexed data is missing
   useEffect(() => {
     const fetchIpfsMetadata = async () => {
       if (!isOpen || !task) return;
 
+      // Only fetch from IPFS if indexed data is missing (fallback for older tasks or indexing delay)
+      const needsTaskMetadata = !task.description && task.metadataHash && !taskMetadata;
+      const needsSubmissionMetadata = !task.indexedSubmission && task.submissionHash &&
+        !submissionMetadata && (task.status === 'Submitted' || task.status === 'Completed');
+
+      if (!needsTaskMetadata && !needsSubmissionMetadata) return;
+
       setMetadataLoading(true);
 
-      // Fetch task metadata (description, difficulty, estHours)
-      // Pass hash directly - safeFetchFromIpfs->fetchFromIpfs->normalizeToIpfsCid handles bytes32->CID conversion
-      if (task.metadataHash && !taskMetadata) {
-        console.log('[TaskCardModal] Fetching task metadata for hash:', task.metadataHash);
+      // Fetch task metadata (description, difficulty, estHours) - IPFS fallback
+      if (needsTaskMetadata) {
+        console.log('[TaskCardModal] Indexed metadata missing, fetching from IPFS:', task.metadataHash);
         try {
           const metadata = await safeFetchFromIpfs(task.metadataHash);
-          console.log('[TaskCardModal] Task metadata result:', metadata);
+          console.log('[TaskCardModal] IPFS task metadata result:', metadata);
           if (metadata) {
             setTaskMetadata(metadata);
           }
         } catch (err) {
-          console.error('[TaskCardModal] Error fetching task metadata:', err);
+          console.error('[TaskCardModal] IPFS fallback failed for task metadata:', err);
         }
       }
 
-      // Fetch submission metadata for submitted/completed tasks
-      if (task.submissionHash && !submissionMetadata && (task.status === 'Submitted' || task.status === 'Completed')) {
-        console.log('[TaskCardModal] Fetching submission metadata for hash:', task.submissionHash);
+      // Fetch submission metadata for submitted/completed tasks - IPFS fallback
+      if (needsSubmissionMetadata) {
+        console.log('[TaskCardModal] Indexed submission missing, fetching from IPFS:', task.submissionHash);
         try {
           const metadata = await safeFetchFromIpfs(task.submissionHash);
-          console.log('[TaskCardModal] Submission metadata result:', metadata);
+          console.log('[TaskCardModal] IPFS submission metadata result:', metadata);
           if (metadata) {
             setSubmissionMetadata(metadata);
           }
         } catch (err) {
-          console.error('[TaskCardModal] Error fetching submission metadata:', err);
+          console.error('[TaskCardModal] IPFS fallback failed for submission metadata:', err);
         }
       }
 
@@ -523,14 +529,14 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
                 <>
                   <Box>
                     <Text mb="4" mt="4" lineHeight="6" fontSize="md" fontWeight="bold" style={{ whiteSpace: 'pre-wrap' }}>
-                      {metadataLoading ? 'Loading task details...' : (taskMetadata?.description || task.description || 'No description available')}
+                      {metadataLoading ? 'Loading task details...' : (task.description || taskMetadata?.description || 'No description available')}
                     </Text>
                   </Box>
                   <HStack width="100%">
-                    <Badge colorScheme={difficultyColorScheme[(taskMetadata?.difficulty || task.difficulty)?.toLowerCase()?.replace(" ", "") || 'easy']}>
-                      {taskMetadata?.difficulty || task.difficulty || 'Unknown'}
+                    <Badge colorScheme={difficultyColorScheme[(task.difficulty || taskMetadata?.difficulty)?.toLowerCase()?.replace(" ", "") || 'easy']}>
+                      {task.difficulty || taskMetadata?.difficulty || 'Unknown'}
                     </Badge>
-                    <Badge colorScheme="blue">{taskMetadata?.estHours || task.estHours || '0'} hrs</Badge>
+                    <Badge colorScheme="blue">{task.estHours || taskMetadata?.estHours || '0'} hrs</Badge>
                     <Spacer />
                     {task.claimedBy && (
                       <Text fontSize="sm" mr={4}>
@@ -557,7 +563,7 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
                         Submission:
                       </Text>
                       <Text style={{ whiteSpace: 'pre-wrap' }}>
-                        {metadataLoading ? 'Loading submission...' : (submissionMetadata?.submission || 'No submission available')}
+                        {metadataLoading ? 'Loading submission...' : (task.indexedSubmission || submissionMetadata?.submission || 'No submission available')}
                       </Text>
                     </Box>
                   )}

@@ -128,12 +128,15 @@ export const ProjectProvider = ({ children }) => {
                         taskId: task.taskId,
                         title: taskTitle,
                         name: taskTitle, // Alias for TaskManager components
-                        // Description, difficulty, estHours are in IPFS - provide placeholders
-                        description: '', // Fetched from IPFS via metadataHash
-                        difficulty: 'medium', // Default - could be fetched from IPFS
-                        estHours: 1, // Default - could be fetched from IPFS
+                        // Use indexed metadata from subgraph as primary source
+                        description: task.metadata?.description || '',
+                        difficulty: task.metadata?.difficulty || 'medium',
+                        estHours: task.metadata?.estimatedHours || 1,
+                        // Raw hashes for IPFS fallback if indexed data is missing
                         metadataHash: task.metadataHash,
                         submissionHash: task.submissionHash,
+                        // Indexed submission text from subgraph
+                        indexedSubmission: task.submissionMetadata?.submission || '',
                         claimedBy: task.assignee || '',
                         payout: taskPayout,
                         Payout: taskPayout, // Alias with capital P for TaskCard

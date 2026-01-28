@@ -135,8 +135,8 @@ export const ProjectProvider = ({ children }) => {
                         // Raw hashes for IPFS fallback if indexed data is missing
                         metadataHash: task.metadataHash,
                         submissionHash: task.submissionHash,
-                        // Submission text from subgraph (stored directly on Task)
-                        submission: task.submission || '',
+                        // Submission text from subgraph (from submissionMetadata entity)
+                        submission: task.submissionMetadata?.submission || '',
                         claimedBy: task.assignee || '',
                         payout: taskPayout,
                         Payout: taskPayout, // Alias with capital P for TaskCard

@@ -6,7 +6,7 @@ const SUBGRAPH_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL ||
   'https://api.studio.thegraph.com/query/73367/poa-2/version/latest';
 
 // Increment this when subgraph schema changes significantly to clear stale cache
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 
 const client = new ApolloClient({
   link: new HttpLink({

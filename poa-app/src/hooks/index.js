@@ -26,6 +26,7 @@ export { useWinnerStatus } from './useWinnerStatus';
 export { useOrgStructure } from './useOrgStructure';
 export { useClaimRole } from './useClaimRole';
 export { useVouches } from './useVouches';
+export { useUserSearch } from './useUserSearch';
 
 // Voting Education & Power
 export { useRoleNames } from './useRoleNames';

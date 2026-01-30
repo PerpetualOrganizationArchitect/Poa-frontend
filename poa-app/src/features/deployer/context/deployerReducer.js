@@ -133,7 +133,6 @@ export const createDefaultRole = (index = 0, name = 'New Role') => ({
   },
   distribution: {
     mintToDeployer: true, // All roles minted to deployer by default
-    mintToExecutor: false,
     additionalWearers: [],        // Resolved addresses (populated before deployment)
     additionalWearerUsernames: [], // Usernames entered by user
   },
@@ -213,7 +212,7 @@ export const initialState = {
       ...createDefaultRole(1, 'Executive'),
       id: uuidv4(),
       name: 'Executive',
-      distribution: { mintToDeployer: true, mintToExecutor: false, additionalWearers: [], additionalWearerUsernames: [] },
+      distribution: { mintToDeployer: true, additionalWearers: [], additionalWearerUsernames: [] },
       hierarchy: { adminRoleIndex: null }, // Top-level
     },
   ],

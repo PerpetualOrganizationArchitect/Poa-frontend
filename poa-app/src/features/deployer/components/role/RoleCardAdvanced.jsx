@@ -568,17 +568,6 @@ function AdvancedSettings({ role, roleIndex, roles, onUpdate }) {
               Initial Distribution
             </Text>
             <VStack spacing={3} align="stretch">
-              <HStack justify="space-between">
-                <Text fontSize="sm" color="warmGray.600">
-                  Mint to executor contract
-                </Text>
-                <Switch
-                  size="sm"
-                  isChecked={role.distribution?.mintToExecutor || false}
-                  onChange={(e) => updateField('distribution.mintToExecutor', e.target.checked)}
-                />
-              </HStack>
-
               {/* Additional Members */}
               <Box>
                 <HStack spacing={1} mb={2}>

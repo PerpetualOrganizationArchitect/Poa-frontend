@@ -55,7 +55,7 @@ export function mapRole(role, index, totalRoles) {
     },
     distribution: {
       mintToDeployer: Boolean(role.distribution.mintToDeployer),
-      mintToExecutor: Boolean(role.distribution.mintToExecutor),
+      // mintToExecutor removed in contract PR #80
       additionalWearers: Array.isArray(role.distribution.additionalWearers)
         ? role.distribution.additionalWearers
         : [],

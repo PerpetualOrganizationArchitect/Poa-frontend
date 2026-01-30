@@ -388,14 +388,6 @@ export function RoleForm({
                   </Tooltip>
                 </FormControl>
 
-                <FormControl display="flex" alignItems="center">
-                  <FormLabel mb={0} fontSize="sm">Mint to Executor</FormLabel>
-                  <Switch
-                    isChecked={formData.distribution.mintToExecutor}
-                    onChange={(e) => updateField('distribution.mintToExecutor', e.target.checked)}
-                    size="sm"
-                  />
-                </FormControl>
               </HStack>
 
               {/* Additional Members by Username */}

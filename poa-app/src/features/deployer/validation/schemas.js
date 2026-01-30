@@ -89,7 +89,6 @@ export const hierarchySchema = z.object({
  */
 export const distributionSchema = z.object({
   mintToDeployer: z.boolean(),
-  mintToExecutor: z.boolean(),
   additionalWearers: z.array(addressSchema),
 });
 

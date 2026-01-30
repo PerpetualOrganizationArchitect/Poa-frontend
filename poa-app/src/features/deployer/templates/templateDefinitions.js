@@ -82,7 +82,6 @@ const WORKER_COOP_TEMPLATE = {
         hierarchy: { adminRoleIndex: 1 }, // Managed by Steward
         distribution: {
           mintToDeployer: true,
-          mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
         },
@@ -103,7 +102,6 @@ const WORKER_COOP_TEMPLATE = {
         hierarchy: { adminRoleIndex: null }, // Top-level
         distribution: {
           mintToDeployer: true,
-          mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
         },
@@ -196,7 +194,6 @@ const OPEN_SOURCE_TEMPLATE = {
         hierarchy: { adminRoleIndex: 1 }, // Managed by Maintainer
         distribution: {
           mintToDeployer: true,
-          mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
         },
@@ -217,7 +214,6 @@ const OPEN_SOURCE_TEMPLATE = {
         hierarchy: { adminRoleIndex: null }, // Top-level
         distribution: {
           mintToDeployer: true,
-          mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
         },
@@ -319,7 +315,6 @@ const CREATIVE_COLLECTIVE_TEMPLATE = {
         hierarchy: { adminRoleIndex: 1 }, // Managed by Curator
         distribution: {
           mintToDeployer: true,
-          mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
         },
@@ -340,7 +335,6 @@ const CREATIVE_COLLECTIVE_TEMPLATE = {
         hierarchy: { adminRoleIndex: null }, // Top-level
         distribution: {
           mintToDeployer: true,
-          mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
         },
@@ -433,7 +427,6 @@ const COMMUNITY_DAO_TEMPLATE = {
         hierarchy: { adminRoleIndex: 1 }, // Managed by Delegate
         distribution: {
           mintToDeployer: true,
-          mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
         },
@@ -454,7 +447,6 @@ const COMMUNITY_DAO_TEMPLATE = {
         hierarchy: { adminRoleIndex: null }, // Top-level
         distribution: {
           mintToDeployer: true,
-          mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
         },
@@ -556,7 +548,6 @@ const STUDENT_ORG_TEMPLATE = {
         hierarchy: { adminRoleIndex: 1 }, // Managed by Executive
         distribution: {
           mintToDeployer: true,
-          mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
         },
@@ -577,7 +568,6 @@ const STUDENT_ORG_TEMPLATE = {
         hierarchy: { adminRoleIndex: null }, // Top-level
         distribution: {
           mintToDeployer: true, // Deployer becomes first executive
-          mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
         },
@@ -678,7 +668,6 @@ const CUSTOM_TEMPLATE = {
         hierarchy: { adminRoleIndex: 1 }, // Managed by Admin
         distribution: {
           mintToDeployer: true,
-          mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
         },
@@ -699,7 +688,6 @@ const CUSTOM_TEMPLATE = {
         hierarchy: { adminRoleIndex: null }, // Top-level
         distribution: {
           mintToDeployer: true,
-          mintToExecutor: false,
           additionalWearers: [],
           additionalWearerUsernames: [],
         },

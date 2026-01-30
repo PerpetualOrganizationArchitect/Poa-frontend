@@ -413,7 +413,6 @@ function buildRoles(memberTypes, executiveRoles) {
       },
       distribution: {
         mintToDeployer: idx === 0, // Mint first role to deployer
-        mintToExecutor: false,
         additionalWearers: [],
       },
       hatConfig: {

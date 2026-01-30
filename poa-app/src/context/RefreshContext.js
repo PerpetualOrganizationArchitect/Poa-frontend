@@ -42,6 +42,11 @@ export const RefreshEvent = {
   // Organization events
   MEMBER_JOINED: 'member:joined',
 
+  // Role/Vouching events
+  ROLE_CLAIMED: 'role:claimed',
+  ROLE_VOUCHED: 'role:vouched',
+  ROLE_VOUCH_REVOKED: 'role:vouch-revoked',
+
   // User events
   USER_CREATED: 'user:created',
   USERNAME_CHANGED: 'user:username_changed',

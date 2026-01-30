@@ -17,9 +17,10 @@ import {
   Circle,
   Badge,
 } from '@chakra-ui/react';
-import { FiUsers, FiArrowRight, FiCheck, FiStar, FiLock } from 'react-icons/fi';
+import { FiUsers, FiArrowRight, FiCheck, FiStar, FiLock, FiUserPlus } from 'react-icons/fi';
 import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
-import { useClaimRole } from '@/hooks';
+import { useClaimRole, useVouches } from '@/hooks';
+import { useAccount } from 'wagmi';
 
 /**
  * GlassLayer - Reusable glassmorphism background component
@@ -47,11 +48,16 @@ export function WelcomeClaimPage({
   claimableRoles,
   eligibilityModuleAddress,
 }) {
+  const { address: userAddress } = useAccount();
   const {
     claimRole,
     isClaimingHat,
     isReady,
   } = useClaimRole(eligibilityModuleAddress);
+
+  // Fetch vouching data to check if user can claim vouched roles
+  const rolesWithVouching = claimableRoles.filter(r => r.vouchingEnabled);
+  const { getVouchProgress } = useVouches(eligibilityModuleAddress, rolesWithVouching);
 
   // Note: Page refresh after role claim is handled by UserContext
   // which subscribes to 'role:claimed' event and refetches user data
@@ -62,7 +68,16 @@ export function WelcomeClaimPage({
 
   // Find the most powerful role the user is eligible for
   // Be permissive: treat undefined defaultEligible as claimable (subgraph may not have indexed yet)
-  const selfClaimableRoles = claimableRoles.filter(r => r.defaultEligible !== false);
+  // Also include roles where user has completed vouching
+  const selfClaimableRoles = claimableRoles.filter(r => {
+    if (r.defaultEligible !== false) return true;
+    // Check if user has completed vouching for this role
+    if (r.vouchingEnabled && userAddress) {
+      const progress = getVouchProgress(userAddress, r.hatId);
+      if (progress?.isComplete) return true;
+    }
+    return false;
+  });
 
   // Helper to normalize hat IDs for comparison (handles BigInt, hex strings, etc.)
   const normalizeId = (id) => {
@@ -227,6 +242,14 @@ export function WelcomeClaimPage({
                   const canSelfClaim = role.defaultEligible !== false;
                   const requiresVouching = role.vouchingEnabled;
 
+                  // Get vouch progress for this role (computed once, used for badges and button)
+                  const vouchProgress = requiresVouching && userAddress
+                    ? getVouchProgress(userAddress, role.hatId)
+                    : null;
+
+                  // Can claim if: defaultEligible OR vouching complete
+                  const canClaim = canSelfClaim || vouchProgress?.isComplete;
+
                   return (
                     <Box
                       key={role.hatId}
@@ -243,7 +266,7 @@ export function WelcomeClaimPage({
                       }}
                       transition="all 0.2s"
                     >
-                      {isRecommended && canSelfClaim && (
+                      {isRecommended && canClaim && (
                         <Badge
                           position="absolute"
                           top={-2}
@@ -276,7 +299,7 @@ export function WelcomeClaimPage({
                             >
                               {role.name}
                             </Text>
-                            {canSelfClaim && (
+                            {canClaim && (
                               <Badge
                                 colorScheme="green"
                                 fontSize="xs"
@@ -302,9 +325,9 @@ export function WelcomeClaimPage({
                           </HStack>
                         </VStack>
 
-                        {canSelfClaim ? (
+                        {canClaim ? (
                           <Button
-                            colorScheme="purple"
+                            colorScheme={vouchProgress?.isComplete ? "green" : "purple"}
                             size="md"
                             px={6}
                             rightIcon={isClaiming ? undefined : <Icon as={FiArrowRight} />}
@@ -319,7 +342,34 @@ export function WelcomeClaimPage({
                           >
                             {!isReady ? "Connecting..." : isClaiming ? "Claiming..." : "Join"}
                           </Button>
+                        ) : vouchProgress?.current > 0 ? (
+                          // Has some vouches but not enough
+                          <Button
+                            variant="outline"
+                            size="md"
+                            px={6}
+                            leftIcon={<Icon as={FiUserPlus} />}
+                            isDisabled
+                            colorScheme="yellow"
+                            _hover={{}}
+                          >
+                            {vouchProgress.current}/{vouchProgress.quorum} Vouches
+                          </Button>
+                        ) : requiresVouching ? (
+                          // Requires vouching but no vouches yet
+                          <Button
+                            variant="outline"
+                            size="md"
+                            px={6}
+                            leftIcon={<Icon as={FiUserPlus} />}
+                            isDisabled
+                            colorScheme="yellow"
+                            _hover={{}}
+                          >
+                            Vouching Required
+                          </Button>
                         ) : (
+                          // Default: Invite only (not claimable, no vouching)
                           <Button
                             variant="outline"
                             size="md"

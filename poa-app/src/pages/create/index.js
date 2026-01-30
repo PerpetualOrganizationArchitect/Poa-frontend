@@ -243,7 +243,6 @@ function DeployerPageContent() {
           },
           distribution: {
             mintToDeployer: role.distribution.mintToDeployer,
-            mintToExecutor: role.distribution.mintToExecutor,
             additionalWearers: role.distribution.additionalWearers,
           },
           hatConfig: role.hatConfig,

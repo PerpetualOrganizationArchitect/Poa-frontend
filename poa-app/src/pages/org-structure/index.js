@@ -21,7 +21,7 @@ import Link from 'next/link';
 import { useAccount } from 'wagmi';
 
 import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
-import { useOrgStructure, useClaimRole } from '@/hooks';
+import { useOrgStructure, useClaimRole, useVouches } from '@/hooks';
 import { useUserContext } from '@/context/UserContext';
 import { useVotingContext } from '@/context/VotingContext';
 import {
@@ -31,12 +31,13 @@ import {
   MembersSection,
   GovernanceConfigSection,
   DeveloperInfoSection,
+  VouchingSection,
 } from '@/components/orgStructure';
 
 const OrgStructurePage = () => {
   const router = useRouter();
   const { userDAO } = router.query;
-  const { isConnected } = useAccount();
+  const { isConnected, address: userAddress } = useAccount();
 
   // Get user's current hat IDs
   const { userData } = useUserContext();
@@ -68,6 +69,10 @@ const OrgStructurePage = () => {
     isClaimingHat,
     isReady: claimReady,
   } = useClaimRole(eligibilityModuleAddress);
+
+  // Vouching data for claim eligibility
+  const rolesWithVouching = roles?.filter(role => role.vouchingEnabled) || [];
+  const { getVouchProgress } = useVouches(eligibilityModuleAddress, rolesWithVouching);
 
   // Loading state
   if (loading) {
@@ -173,6 +178,8 @@ const OrgStructurePage = () => {
               roles={roles}
               loading={loading}
               userHatIds={userHatIds}
+              userAddress={userAddress}
+              getVouchProgress={getVouchProgress}
               onClaimRole={claimRole}
               isClaimingHat={isClaimingHat}
               isConnected={isConnected}
@@ -210,6 +217,25 @@ const OrgStructurePage = () => {
               loading={loading}
             />
           </Box>
+
+          {/* Vouching Section - only shown if org has vouching enabled */}
+          {roles.some(role => role.vouchingEnabled) && (
+            <Box as="section">
+              <Heading size="lg" color="white" mb={4}>
+                Member Vouching
+              </Heading>
+              <Text color="gray.400" mb={4}>
+                Vouch for new members seeking roles in the organization
+              </Text>
+              <VouchingSection
+                roles={roles}
+                eligibilityModuleAddress={eligibilityModuleAddress}
+                userHatIds={userHatIds}
+                userAddress={userAddress}
+                isConnected={isConnected}
+              />
+            </Box>
+          )}
 
           {/* Governance Section */}
           <Box as="section">

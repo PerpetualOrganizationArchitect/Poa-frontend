@@ -21,6 +21,7 @@ import { FiCheckCircle, FiUserPlus, FiLock } from 'react-icons/fi';
  * @param {Function} props.onClaim - Callback when claim button is clicked
  * @param {boolean} props.disabled - Whether the button should be disabled
  * @param {boolean} props.isConnected - Whether wallet is connected
+ * @param {Object} props.vouchProgress - User's vouch progress { current, quorum, isComplete }
  */
 export function ClaimRoleButton({
   role,
@@ -29,6 +30,7 @@ export function ClaimRoleButton({
   onClaim,
   disabled = false,
   isConnected = true,
+  vouchProgress = null,
 }) {
   const { hatId, defaultEligible, vouchingEnabled, vouchingQuorum } = role;
 
@@ -72,6 +74,52 @@ export function ClaimRoleButton({
 
   // Requires vouching (not directly claimable)
   if (vouchingEnabled && !defaultEligible) {
+    // User has enough vouches - can claim!
+    if (vouchProgress?.isComplete) {
+      return (
+        <Tooltip label="You have enough vouches to claim this role!" placement="top">
+          <Button
+            size="sm"
+            variant="solid"
+            colorScheme="green"
+            leftIcon={isClaiming ? <Spinner size="xs" /> : <Icon as={FiCheckCircle} />}
+            isLoading={isClaiming}
+            loadingText="Claiming..."
+            isDisabled={disabled || isClaiming}
+            onClick={() => onClaim?.(hatId)}
+            _hover={{
+              transform: 'scale(1.02)',
+              boxShadow: '0 0 20px rgba(72, 187, 120, 0.4)',
+            }}
+            transition="all 0.2s"
+          >
+            Claim Role
+          </Button>
+        </Tooltip>
+      );
+    }
+
+    // User has some vouches but not enough
+    if (vouchProgress?.current > 0) {
+      return (
+        <Tooltip
+          label={`${vouchProgress.current} of ${vouchProgress.quorum} vouches received`}
+          placement="top"
+        >
+          <Button
+            size="sm"
+            variant="outline"
+            colorScheme="yellow"
+            leftIcon={<Icon as={FiUserPlus} />}
+            isDisabled
+          >
+            {vouchProgress.current}/{vouchProgress.quorum} Vouches
+          </Button>
+        </Tooltip>
+      );
+    }
+
+    // No vouches yet - show "Vouching Required"
     return (
       <Tooltip
         label={`Requires ${vouchingQuorum || 'N'} vouches from existing members`}

@@ -51,6 +51,7 @@ function RoleNode({
   onClaim,
   isConnected = true,
   showClaimButton = true,
+  vouchProgress = null,
 }) {
   const { name, memberCount, level, vouchingEnabled, vouchingQuorum } = role;
 
@@ -160,6 +161,7 @@ function RoleNode({
                 isClaiming={isClaiming}
                 onClaim={onClaim}
                 isConnected={isConnected}
+                vouchProgress={vouchProgress}
               />
             )}
           </HStack>
@@ -173,6 +175,8 @@ export function RoleHierarchyTree({
   roles = [],
   loading = false,
   userHatIds = [],
+  userAddress,
+  getVouchProgress,
   onClaimRole,
   isClaimingHat,
   isConnected = true,
@@ -244,6 +248,7 @@ export function RoleHierarchyTree({
             onClaim={onClaimRole}
             isConnected={isConnected}
             showClaimButton={showClaimButtons}
+            vouchProgress={getVouchProgress?.(userAddress, role.hatId)}
           />
         ))}
       </VStack>

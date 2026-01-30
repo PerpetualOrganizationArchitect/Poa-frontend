@@ -699,3 +699,29 @@ export const FETCH_TOKEN_APPROVER_HATS = gql`
     }
   }
 `;
+
+// ============================================
+// VOUCHING QUERIES
+// ============================================
+
+// Fetch all active vouches for an organization's eligibility module
+export const FETCH_VOUCHES_FOR_ORG = gql`
+  query FetchVouchesForOrg($eligibilityModuleId: Bytes!) {
+    vouches(
+      where: { eligibilityModule: $eligibilityModuleId, isActive: true }
+      orderBy: createdAt
+      orderDirection: desc
+      first: 200
+    ) {
+      id
+      hatId
+      wearer
+      wearerUsername
+      voucher
+      voucherUsername
+      vouchCount
+      isActive
+      createdAt
+    }
+  }
+`;

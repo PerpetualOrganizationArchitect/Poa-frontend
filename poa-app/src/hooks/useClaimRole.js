@@ -19,6 +19,7 @@ export function useClaimRole(eligibilityModuleAddress) {
 
   const [claimingHatId, setClaimingHatId] = useState(null);
   const [vouchingFor, setVouchingFor] = useState(null);
+  const [revokingFor, setRevokingFor] = useState(null);
 
   /**
    * Claim a hat that the user is eligible for
@@ -95,6 +96,8 @@ export function useClaimRole(eligibilityModuleAddress) {
       return { success: false, error: new Error('Service not ready') };
     }
 
+    setRevokingFor({ address: wearerAddress, hatId });
+
     try {
       const result = await executeWithNotification(
         () => eligibility.revokeVouch(eligibilityModuleAddress, wearerAddress, hatId),
@@ -109,7 +112,7 @@ export function useClaimRole(eligibilityModuleAddress) {
 
       return result;
     } finally {
-      // No specific state to clear
+      setRevokingFor(null);
     }
   }, [eligibility, eligibilityModuleAddress, executeWithNotification]);
 
@@ -129,8 +132,25 @@ export function useClaimRole(eligibilityModuleAddress) {
    * @returns {boolean}
    */
   const isVouchingFor = useCallback((wearerAddress, hatId) => {
-    return vouchingFor?.address === wearerAddress && vouchingFor?.hatId === hatId;
+    if (!vouchingFor) return false;
+    // Normalize addresses for comparison (handle checksum differences)
+    const normalizedVouchingAddr = vouchingFor.address?.toLowerCase();
+    const normalizedWearerAddr = wearerAddress?.toLowerCase();
+    return normalizedVouchingAddr === normalizedWearerAddr && vouchingFor.hatId === hatId;
   }, [vouchingFor]);
+
+  /**
+   * Check if currently revoking a vouch for a specific user/hat combo
+   * @param {string} wearerAddress - Address to check
+   * @param {string} hatId - Hat ID to check
+   * @returns {boolean}
+   */
+  const isRevokingFor = useCallback((wearerAddress, hatId) => {
+    if (!revokingFor) return false;
+    const normalizedRevokingAddr = revokingFor.address?.toLowerCase();
+    const normalizedWearerAddr = wearerAddress?.toLowerCase();
+    return normalizedRevokingAddr === normalizedWearerAddr && revokingFor.hatId === hatId;
+  }, [revokingFor]);
 
   return {
     // Actions
@@ -141,8 +161,10 @@ export function useClaimRole(eligibilityModuleAddress) {
     // State checks
     isClaimingHat,
     isVouchingFor,
+    isRevokingFor,
     isClaiming: claimingHatId !== null,
     isVouching: vouchingFor !== null,
+    isRevoking: revokingFor !== null,
 
     // Readiness
     isReady: isReady && Boolean(eligibilityModuleAddress),

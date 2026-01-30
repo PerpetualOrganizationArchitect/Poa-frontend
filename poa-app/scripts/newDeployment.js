@@ -192,6 +192,11 @@ export async function main(
       educationHubConfig: {
         enabled: educationHubEnabled || false,
       },
+      // Bootstrap configuration (initial projects and tasks)
+      bootstrap: {
+        projects: [],
+        tasks: [],
+      },
     };
 
     console.log("Deploying new DAO with the following parameters:", deploymentParams);

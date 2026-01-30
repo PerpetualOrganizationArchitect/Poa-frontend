@@ -152,6 +152,11 @@ export function mapStateToDeploymentParams(state, deployerAddress, options = {})
     educationHubConfig: {
       enabled: features.educationHubEnabled || false,
     },
+    // Bootstrap configuration (initial projects and tasks)
+    bootstrap: {
+      projects: [],
+      tasks: [],
+    },
   };
 }
 

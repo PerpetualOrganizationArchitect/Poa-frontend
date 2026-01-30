@@ -28,6 +28,7 @@ import {
 import { useVouches } from '@/hooks/useVouches';
 import { useClaimRole } from '@/hooks/useClaimRole';
 import { VouchRequestCard } from './VouchRequestCard';
+import { VouchForNewMember } from './VouchForNewMember';
 
 const glassLayerStyle = {
   position: 'absolute',
@@ -310,6 +311,7 @@ export function VouchingSection({
     revokeVouch,
     isVouchingFor,
     isRevokingFor,
+    isVouching,
   } = useClaimRole(eligibilityModuleAddress);
 
   // Handle vouch action
@@ -391,6 +393,16 @@ export function VouchingSection({
             Once a user reaches the required number of vouches, they can claim the role.
           </Text>
         </HStack>
+
+        {/* Vouch for new member form */}
+        <VouchForNewMember
+          rolesWithVouching={rolesWithVouching}
+          userHatIds={userHatIds}
+          onVouch={handleVouch}
+          isVouching={isVouching}
+          isConnected={isConnected}
+          canUserVouchForRole={canUserVouchForRole}
+        />
 
         {/* Your vouches section (if user has given any) */}
         {userGivenVouches.length > 0 && (

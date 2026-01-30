@@ -237,10 +237,11 @@ export function flattenHierarchy(roles) {
 /**
  * Validate hierarchy constraints
  * @param {Array} roles - Array of role objects
- * @returns {Object} { isValid: boolean, errors: string[] }
+ * @returns {Object} { isValid: boolean, errors: string[], warnings: string[] }
  */
 export function validateHierarchy(roles) {
   const errors = [];
+  const warnings = [];
 
   // Check for cycles
   const cycleResult = detectCycles(roles);
@@ -274,8 +275,17 @@ export function validateHierarchy(roles) {
       if (voucherIdx < 0 || voucherIdx >= roles.length) {
         errors.push(`Role "${role.name}" has invalid voucher role reference (index ${voucherIdx})`);
       }
+      // Self-reference check: a role cannot vouch for itself
+      if (voucherIdx === idx) {
+        errors.push(`Role "${role.name}" cannot vouch for itself. Select a different voucher role.`);
+      }
       if (role.vouching.quorum <= 0) {
         errors.push(`Role "${role.name}" has vouching enabled but quorum is not positive`);
+      }
+      // Circular vouching dependency warning
+      const voucherRole = roles[voucherIdx];
+      if (voucherRole?.vouching?.enabled && !voucherRole?.distribution?.mintToDeployer) {
+        warnings.push(`Warning: Role "${role.name}" requires vouching from "${voucherRole.name}", which also requires vouching. Ensure "${voucherRole.name}" has initial members assigned.`);
       }
     }
   });
@@ -283,6 +293,7 @@ export function validateHierarchy(roles) {
   return {
     isValid: errors.length === 0,
     errors,
+    warnings,
   };
 }
 

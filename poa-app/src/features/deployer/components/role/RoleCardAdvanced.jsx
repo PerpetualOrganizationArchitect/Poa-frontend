@@ -26,6 +26,8 @@ import {
   Collapse,
   useDisclosure,
   Divider,
+  Alert,
+  AlertIcon,
 } from '@chakra-ui/react';
 import {
   PiUser,
@@ -260,12 +262,25 @@ function JoinMethodSelector({ value, onChange, roles, role, roleIndex, onVouchin
               onChange={(e) => onVouchingChange('voucherRoleIndex', parseInt(e.target.value))}
             >
               {roles.map((r, i) => (
-                <option key={r.id || i} value={i}>
-                  {r.name}
+                <option key={r.id || i} value={i} disabled={i === roleIndex}>
+                  {r.name}{i === roleIndex ? ' (cannot self-vouch)' : ''}
                 </option>
               ))}
             </Select>
           </HStack>
+
+          {/* Warning for circular vouching dependency */}
+          {role.vouching?.voucherRoleIndex !== roleIndex &&
+           roles[role.vouching?.voucherRoleIndex]?.vouching?.enabled &&
+           !roles[role.vouching?.voucherRoleIndex]?.distribution?.mintToDeployer && (
+            <Alert status="warning" borderRadius="md" py={2} px={3}>
+              <AlertIcon boxSize={4} />
+              <Text fontSize="xs">
+                "{roles[role.vouching?.voucherRoleIndex]?.name}" also requires vouching.
+                Ensure it has initial members assigned at deployment.
+              </Text>
+            </Alert>
+          )}
 
           {/* Combine with Hierarchy toggle */}
           <HStack
@@ -673,12 +688,42 @@ export function RoleCardAdvanced({
   };
 
   const handleJoinMethodChange = (method) => {
+    let voucherRoleIndex = role.vouching?.voucherRoleIndex ?? 0;
+
+    // When enabling vouching, set a smart default for voucherRoleIndex
+    if (method === 'vouching') {
+      // Check if current voucherRoleIndex would be self-referential
+      if (voucherRoleIndex === roleIndex || voucherRoleIndex === undefined) {
+        // Try to find a better default:
+        // 1. Use the parent/admin role if available and not self
+        const parentIdx = role.hierarchy?.adminRoleIndex;
+        if (parentIdx !== null && parentIdx !== undefined && parentIdx !== roleIndex) {
+          voucherRoleIndex = parentIdx;
+        } else {
+          // 2. Find first role with mintToDeployer that isn't this one
+          const eligibleIdx = roles.findIndex((r, i) =>
+            i !== roleIndex && r.distribution?.mintToDeployer
+          );
+          if (eligibleIdx >= 0) {
+            voucherRoleIndex = eligibleIdx;
+          } else {
+            // 3. Find any role that isn't this one
+            const anyOtherIdx = roles.findIndex((_, i) => i !== roleIndex);
+            if (anyOtherIdx >= 0) {
+              voucherRoleIndex = anyOtherIdx;
+            }
+          }
+        }
+      }
+    }
+
     onUpdate(roleIndex, {
       ...role,
       vouching: {
         ...role.vouching,
         enabled: method === 'vouching',
         quorum: method === 'vouching' ? (role.vouching?.quorum || 1) : 0,
+        voucherRoleIndex,
       },
     });
   };

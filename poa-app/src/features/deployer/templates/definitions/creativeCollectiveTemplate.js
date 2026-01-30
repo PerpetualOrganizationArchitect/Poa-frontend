@@ -482,7 +482,7 @@ whether this is sustainable for your collective's size and engagement patterns.`
       {
         name: 'Artist',
         hierarchy: { adminRoleIndex: null },
-        vouching: { enabled: true, quorum: 2, voucherRoleIndex: 0 },
+        vouching: { enabled: false, quorum: 0, voucherRoleIndex: 0 },
         hatConfig: { maxSupply: 50 },
       },
     ],

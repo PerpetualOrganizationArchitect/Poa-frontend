@@ -528,7 +528,7 @@ Cooperatives are built on the principle of democratic member control.`,
       {
         name: 'Worker-Owner',
         hierarchy: { adminRoleIndex: null },
-        vouching: { enabled: true, quorum: 2, voucherRoleIndex: 0 },
+        vouching: { enabled: false, quorum: 0, voucherRoleIndex: 0 },
         hatConfig: { maxSupply: 1000 },
       },
       {

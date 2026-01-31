@@ -74,6 +74,18 @@ export function VouchForNewMember({
 
   const canSubmit = selectedUser && selectedRoleHatId && !isVouching && isConnected;
 
+  // Debug: log vouch permission data
+  console.log('[VouchForNewMember] Debug:', {
+    rolesWithVouching: rolesWithVouching.map(r => ({
+      name: r.name,
+      hatId: r.hatId,
+      membershipHatId: r.vouchingMembershipHatId,
+    })),
+    userHatIds,
+    vouchableRoles: vouchableRoles.map(r => r.name),
+    isConnected,
+  });
+
   // Don't render if user can't vouch for any roles
   if (vouchableRoles.length === 0) {
     return null;

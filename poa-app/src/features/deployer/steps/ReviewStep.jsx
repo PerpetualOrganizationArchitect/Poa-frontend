@@ -56,6 +56,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useDeployer, PERMISSION_KEYS, PERMISSION_DESCRIPTIONS, VOTING_STRATEGY, STEPS } from '../context/DeployerContext';
 import { validateDeployerState } from '../validation/schemas';
 import { validateDeploymentConfig } from '../utils/deploymentMapper';
+import { validateHierarchy } from '../utils/hierarchyUtils';
 import NavigationButtons from '../components/common/NavigationButtons';
 import { roleHasBundle } from '../utils/powerBundles';
 import { DeployerUsernameSection } from '../components/review/DeployerUsernameSection';
@@ -745,13 +746,17 @@ export function ReviewStep({
   // Validate entire state
   const zodValidation = validateDeployerState(state);
   const configValidation = validateDeploymentConfig(state);
-  const isValid = zodValidation.isValid && configValidation.isValid && isUsernameReady;
+  const hierarchyValidation = validateHierarchy(state.roles);
+  const isValid = zodValidation.isValid && configValidation.isValid && hierarchyValidation.isValid && isUsernameReady;
 
   // All validation errors combined
   const zodErrorMessages = zodValidation.isValid
     ? []
     : Object.values(zodValidation.errors).flat();
-  const allErrors = [...zodErrorMessages, ...configValidation.errors];
+  const allErrors = [...zodErrorMessages, ...configValidation.errors, ...hierarchyValidation.errors];
+
+  // Hierarchy warnings (circular vouching dependencies, etc.)
+  const hierarchyWarnings = hierarchyValidation.warnings || [];
 
   // Get template name
   const selectedTemplate = selectors?.getSelectedTemplate ? selectors.getSelectedTemplate() : null;
@@ -843,8 +848,16 @@ export function ReviewStep({
       });
     }
 
+    // Add hierarchy warnings (circular vouching dependencies, etc.)
+    hierarchyWarnings.forEach((warning, idx) => {
+      result.push({
+        key: `hierarchy-warning-${idx}`,
+        message: warning,
+      });
+    });
+
     return result;
-  }, [state.voting, state.roles]);
+  }, [state.voting, state.roles, hierarchyWarnings]);
 
   // Summary stats
   const summaryStats = useMemo(() => ({
@@ -960,6 +973,10 @@ export function ReviewStep({
           {warnings.find(w => w.key === 'no-vouching') && (
             <SmartWarning message={warnings.find(w => w.key === 'no-vouching').message} />
           )}
+          {/* Hierarchy warnings (circular vouching dependencies) */}
+          {warnings.filter(w => w.key.startsWith('hierarchy-warning-')).map(w => (
+            <SmartWarning key={w.key} message={w.message} />
+          ))}
         </ReviewSectionCard>
 
         {/* Voting Section */}

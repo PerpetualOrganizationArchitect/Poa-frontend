@@ -40,6 +40,7 @@ const TreasuryPage = () => {
     orgId,
     poContextLoading,
     poMembers,
+    participationTokenAddress,
   } = usePOContext();
   const { hasExecRole } = useUserContext();
 
@@ -246,6 +247,7 @@ const TreasuryPage = () => {
         onClose={onPTModalClose}
         totalSupply={totalSupply}
         completedTasks={completedTasks}
+        tokenAddress={participationTokenAddress}
       />
     </>
   );

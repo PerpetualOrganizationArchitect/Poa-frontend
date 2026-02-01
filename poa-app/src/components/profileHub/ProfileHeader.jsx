@@ -50,106 +50,111 @@ export function ProfileHeader({
       boxShadow="lg"
       position="relative"
       zIndex={2}
-      p={{ base: 4, md: 5 }}
     >
       <div style={glassLayerStyle} />
 
-      <Flex
-        justify="space-between"
-        align={{ base: 'stretch', md: 'center' }}
-        flexDir={{ base: 'column', md: 'row' }}
-        gap={{ base: 4, md: 0 }}
-      >
-        {/* Left side: Avatar + User Info */}
-        <HStack spacing={4}>
-          <Avatar
-            size={{ base: 'lg', md: 'xl' }}
-            name={username || address}
-            bg="purple.500"
-            color="white"
-          />
-          <VStack align="start" spacing={0}>
-            <HStack spacing={2} flexWrap="wrap">
-              <Text
-                fontSize={{ base: '2xl', md: '3xl' }}
-                fontWeight="extrabold"
-                color="white"
-              >
-                {username || 'Anonymous'}
-              </Text>
-              {memberStatus && (
-                <Badge
-                  colorScheme={memberStatus === 'Active' ? 'green' : 'gray'}
-                  fontSize="sm"
-                  px={2}
-                  py={0.5}
-                  borderRadius="md"
-                >
-                  {memberStatus}
-                </Badge>
-              )}
-            </HStack>
-            <Tooltip label={hasCopied ? 'Copied!' : 'Click to copy address'}>
-              <HStack
-                spacing={1}
-                cursor="pointer"
-                onClick={onCopy}
-                _hover={{ color: 'gray.300' }}
-              >
-                <Text fontSize="sm" color="gray.400">
-                  {truncateAddress(address)}
-                </Text>
-                <IconButton
-                  icon={hasCopied ? <CheckIcon /> : <CopyIcon />}
-                  size="xs"
-                  variant="ghost"
-                  color={hasCopied ? 'green.400' : 'gray.400'}
-                  aria-label="Copy address"
-                  minW="auto"
-                  h="auto"
-                  p={0}
-                />
-              </HStack>
-            </Tooltip>
-          </VStack>
-        </HStack>
+      {/* Darker header section with user info */}
+      <VStack position="relative" borderTopRadius="2xl" align="stretch" pb={2}>
+        <div style={glassLayerStyle} />
 
-        {/* Right side: Actions */}
-        <HStack
-          spacing={3}
-          justify={{ base: 'flex-start', md: 'flex-end' }}
-          flexWrap="wrap"
+        <Flex
+          justify="space-between"
+          align={{ base: 'stretch', md: 'center' }}
+          flexDir={{ base: 'column', md: 'row' }}
+          gap={{ base: 4, md: 0 }}
+          p={{ base: 4, md: 5 }}
         >
-          <Box>
-            <ConnectButton
-              showBalance={false}
-              chainStatus="icon"
-              accountStatus="address"
+          {/* Left side: Avatar + User Info */}
+          <HStack spacing={4}>
+            <Avatar
+              size={{ base: 'lg', md: 'xl' }}
+              name={username || address}
+              bg="purple.500"
+              color="white"
             />
-          </Box>
+            <VStack align="start" spacing={0}>
+              <HStack spacing={2} flexWrap="wrap">
+                <Text
+                  fontSize={{ base: '2xl', md: '3xl' }}
+                  fontWeight="extrabold"
+                  color="white"
+                >
+                  {username || 'Anonymous'}
+                </Text>
+                {memberStatus && (
+                  <Badge
+                    colorScheme={memberStatus === 'Active' ? 'green' : 'gray'}
+                    fontSize="sm"
+                    px={2}
+                    py={0.5}
+                    borderRadius="md"
+                  >
+                    {memberStatus}
+                  </Badge>
+                )}
+              </HStack>
+              <Tooltip label={hasCopied ? 'Copied!' : 'Click to copy address'}>
+                <HStack
+                  spacing={1}
+                  cursor="pointer"
+                  onClick={onCopy}
+                  _hover={{ color: 'gray.300' }}
+                >
+                  <Text fontSize="sm" color="gray.400">
+                    {truncateAddress(address)}
+                  </Text>
+                  <IconButton
+                    icon={hasCopied ? <CheckIcon /> : <CopyIcon />}
+                    size="xs"
+                    variant="ghost"
+                    color={hasCopied ? 'green.400' : 'gray.400'}
+                    aria-label="Copy address"
+                    minW="auto"
+                    h="auto"
+                    p={0}
+                  />
+                </HStack>
+              </Tooltip>
+            </VStack>
+          </HStack>
 
-          <IconButton
-            icon={<SettingsIcon />}
-            isRound
-            size="sm"
-            aria-label="Account Settings"
-            onClick={onSettingsClick}
-            bg="whiteAlpha.200"
-            color="white"
-            _hover={{ bg: 'whiteAlpha.300' }}
-          />
+          {/* Right side: Actions */}
+          <HStack
+            spacing={3}
+            justify={{ base: 'flex-start', md: 'flex-end' }}
+            flexWrap="wrap"
+          >
+            <Box>
+              <ConnectButton
+                showBalance={false}
+                chainStatus="icon"
+                accountStatus="address"
+              />
+            </Box>
 
-          {isExec && (
-            <Button
+            <IconButton
+              icon={<SettingsIcon />}
+              isRound
               size="sm"
-              colorScheme="teal"
-              onClick={onExecutiveMenuClick}
-            >
-              Executive Menu
-            </Button>
-          )}
-        </HStack>
-      </Flex>
+              aria-label="Account Settings"
+              onClick={onSettingsClick}
+              bg="whiteAlpha.200"
+              color="white"
+              _hover={{ bg: 'whiteAlpha.300' }}
+            />
+
+            {isExec && (
+              <Button
+                size="sm"
+                colorScheme="teal"
+                onClick={onExecutiveMenuClick}
+              >
+                Executive Menu
+              </Button>
+            )}
+          </HStack>
+        </Flex>
+      </VStack>
     </Box>
   );
 }

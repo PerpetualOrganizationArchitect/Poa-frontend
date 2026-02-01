@@ -3,7 +3,7 @@
  * Replaces the large mascot image with compact, information-dense display
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Box,
   HStack,
@@ -81,12 +81,12 @@ export function CompactTokenStatus({
       boxShadow="lg"
       position="relative"
       zIndex={2}
-      p={{ base: 4, md: 5 }}
     >
       <div style={glassLayerStyle} />
 
-      <VStack spacing={4} align="stretch">
-        {/* Header: Icon + Token Count */}
+      {/* Content - no separate header for this card since it's compact */}
+      <VStack spacing={4} align="stretch" p={4}>
+        {/* Icon + Token Count */}
         <HStack spacing={4}>
           <Image
             src={tierIcon}

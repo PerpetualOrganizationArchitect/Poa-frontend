@@ -17,16 +17,7 @@ import {
 
     import Link2 from 'next/link';
     import { useRouter } from "next/router";
-
-const glassLayerStyle = {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    zIndex: -1,
-    borderRadius: 'inherit',
-    backdropFilter: 'blur(50px)',
-    backgroundColor: 'rgba(0, 0, 0, .9)',
-};
+    import { glassUserPageStyle } from '@/components/shared/glassStyles';
 
 
 const OngoingPolls = ({OngoingPolls}) => {
@@ -71,7 +62,7 @@ const OngoingPolls = ({OngoingPolls}) => {
                                 mt="-4"
                             >
                                 
-                                <div style={glassLayerStyle}/>
+                                <div style={glassUserPageStyle}/>
                                 
                                 <Link2  href={`/voting/?poll=${poll.id}&userDAO=${userDAO}`}>
                                 <VStack textColor="white"  spacing={2}>

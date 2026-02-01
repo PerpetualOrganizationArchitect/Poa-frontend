@@ -21,18 +21,7 @@ import { CheckCircleIcon, TimeIcon, InfoOutlineIcon, LockIcon } from "@chakra-ui
 import { useRoleNames } from "@/hooks";
 import { ethers } from "ethers";
 import { useRouter } from "next/router";
-
-const glassLayerStyle = {
-  position: "absolute",
-  height: "100%",
-  width: "100%",
-  zIndex: -1,
-  borderRadius: "inherit",
-  backdropFilter: "blur(9px)",
-  backgroundColor: "rgba(33, 33, 33, 0.97)",
-  boxShadow: "inset 0 0 15px rgba(148, 115, 220, 0.15)",
-  border: "1px solid rgba(148, 115, 220, 0.2)",
-};
+import { glassModalWithShadowStyle } from '@/components/shared/glassStyles';
 
 const CompletedPollModal = ({ onOpen, isOpen, onClose, selectedPoll, voteType }) => {
   const router = useRouter();
@@ -149,8 +138,8 @@ const CompletedPollModal = ({ onOpen, isOpen, onClose, selectedPoll, voteType })
         color="ghostwhite"
       >
         <Box
-          className="glass" 
-          style={glassLayerStyle} 
+          className="glass"
+          style={glassModalWithShadowStyle}
           position="absolute"
           top={0}
           left={0}

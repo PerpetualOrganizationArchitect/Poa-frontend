@@ -28,6 +28,7 @@ import { useRouter } from 'next/router';
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import { FaLink } from 'react-icons/fa';
 import { useIPFScontext } from "@/context/ipfsContext";
+import { glassHighBlurStyle } from '@/components/shared/glassStyles';
 
 function generateOrgStructurePreview(poData, roleCount) {
   const {
@@ -127,16 +128,6 @@ const PerpetualOrgDashboard = () => {
     }
   };
 
-  const glassLayerStyle = {
-    position: 'absolute',
-    height: '100%',
-    width: '100%',
-    zIndex: -1,
-    borderRadius: 'inherit',
-    backdropFilter: 'blur(70px)',
-    backgroundColor: 'rgba(0, 0, 0, .79)',
-  };
-
   const difficultyColorScheme = {
     easy: 'green',
     medium: 'yellow',
@@ -195,9 +186,9 @@ const PerpetualOrgDashboard = () => {
                 position="relative"
                 zIndex={2}
               >
-                <div style={glassLayerStyle} />
+                <div style={glassHighBlurStyle} />
                 <VStack pb={1} position="relative" borderTopRadius="2xl" align="flex-start">
-                  <div style={glassLayerStyle} />
+                  <div style={glassHighBlurStyle} />
                   <HStack spacing={4}>
                     <Text pl={{ base: 3, md: 6 }} letterSpacing="-1%" fontSize={headingSize} fontWeight="bold">
                       {userDAO}'s Dashboard
@@ -262,9 +253,9 @@ const PerpetualOrgDashboard = () => {
                 position="relative"
                 zIndex={2}
               >
-                <div style={glassLayerStyle} />
+                <div style={glassHighBlurStyle} />
                 <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassLayerStyle} />
+                  <div style={glassHighBlurStyle} />
                   <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
                     Organization Stats
                   </Text>
@@ -329,9 +320,9 @@ const PerpetualOrgDashboard = () => {
                 position="relative"
                 zIndex={2}
               >
-                <div style={glassLayerStyle} />
+                <div style={glassHighBlurStyle} />
                 <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassLayerStyle} />
+                  <div style={glassHighBlurStyle} />
                   <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
                     Recommended Tasks
                   </Text>
@@ -383,9 +374,9 @@ const PerpetualOrgDashboard = () => {
                 position="relative"
                 zIndex={2}
               >
-                <div style={glassLayerStyle} />
+                <div style={glassHighBlurStyle} />
                 <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassLayerStyle} />
+                  <div style={glassHighBlurStyle} />
                   <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
                     Ongoing Polls
                   </Text>
@@ -409,9 +400,9 @@ const PerpetualOrgDashboard = () => {
                   zIndex={2}
                   _hover={{ boxShadow: "md", transform: "scale(1.02)" }}
                 >
-                  <div style={glassLayerStyle} />
+                  <div style={glassHighBlurStyle} />
                   <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                    <div style={glassLayerStyle} />
+                    <div style={glassHighBlurStyle} />
                     <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
                       Leaderboard
                     </Text>
@@ -452,9 +443,9 @@ const PerpetualOrgDashboard = () => {
                 position="relative"
                 zIndex={2}
               >
-                <div style={glassLayerStyle} />
+                <div style={glassHighBlurStyle} />
                 <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassLayerStyle} />
+                  <div style={glassHighBlurStyle} />
                   <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
                     Org Structure
                   </Text>
@@ -487,9 +478,9 @@ const PerpetualOrgDashboard = () => {
                   position="relative"
                   zIndex={2}
                 >
-                  <div style={glassLayerStyle} />
+                  <div style={glassHighBlurStyle} />
                   <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                    <div style={glassLayerStyle} />
+                    <div style={glassHighBlurStyle} />
                     <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
                       Learn and Earn
                     </Text>

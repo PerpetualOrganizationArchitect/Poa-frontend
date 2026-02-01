@@ -29,18 +29,7 @@ import { useVouches } from '@/hooks/useVouches';
 import { useClaimRole } from '@/hooks/useClaimRole';
 import { VouchRequestCard } from './VouchRequestCard';
 import { VouchForNewMember } from './VouchForNewMember';
-
-const glassLayerStyle = {
-  position: 'absolute',
-  height: '100%',
-  width: '100%',
-  zIndex: -1,
-  borderRadius: 'inherit',
-  backdropFilter: 'blur(20px)',
-  backgroundColor: 'rgba(0, 0, 0, 0.8)',
-  boxShadow: 'inset 0 0 15px rgba(148, 115, 220, 0.15)',
-  border: '1px solid rgba(148, 115, 220, 0.2)',
-};
+import { glassLayerWithShadowStyle } from '@/components/shared/glassStyles';
 
 /**
  * Role accordion item for vouch requests
@@ -338,7 +327,7 @@ export function VouchingSection({
         p={{ base: 4, md: 6 }}
         overflow="hidden"
       >
-        <Box style={glassLayerStyle} />
+        <Box style={glassLayerWithShadowStyle} />
         <VStack spacing={3} align="stretch">
           {[1, 2].map((i) => (
             <Skeleton key={i} height="80px" borderRadius="xl" />
@@ -357,7 +346,7 @@ export function VouchingSection({
         p={{ base: 4, md: 6 }}
         overflow="hidden"
       >
-        <Box style={glassLayerStyle} />
+        <Box style={glassLayerWithShadowStyle} />
         <Alert status="error" borderRadius="md" bg="red.900" color="white">
           <AlertIcon />
           Failed to load vouching data
@@ -376,7 +365,7 @@ export function VouchingSection({
       p={{ base: 4, md: 6 }}
       overflow="hidden"
     >
-      <Box style={glassLayerStyle} />
+      <Box style={glassLayerWithShadowStyle} />
 
       <VStack spacing={4} align="stretch">
         {/* Info banner */}

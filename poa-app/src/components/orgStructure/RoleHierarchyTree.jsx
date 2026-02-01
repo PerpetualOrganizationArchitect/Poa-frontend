@@ -15,18 +15,7 @@ import {
 } from '@chakra-ui/react';
 import { FiUsers, FiShield, FiCheckCircle } from 'react-icons/fi';
 import { ClaimRoleButton } from './ClaimRoleButton';
-
-const glassLayerStyle = {
-  position: 'absolute',
-  height: '100%',
-  width: '100%',
-  zIndex: -1,
-  borderRadius: 'inherit',
-  backdropFilter: 'blur(20px)',
-  backgroundColor: 'rgba(0, 0, 0, 0.8)',
-  boxShadow: 'inset 0 0 15px rgba(148, 115, 220, 0.15)',
-  border: '1px solid rgba(148, 115, 220, 0.2)',
-};
+import { glassLayerWithShadowStyle } from '@/components/shared/glassStyles';
 
 /**
  * Normalize hat ID for comparison
@@ -199,7 +188,7 @@ export function RoleHierarchyTree({
         p={{ base: 4, md: 6 }}
         overflow="hidden"
       >
-        <Box style={glassLayerStyle} />
+        <Box style={glassLayerWithShadowStyle} />
         <VStack spacing={4} align="stretch">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} height="60px" borderRadius="xl" />
@@ -218,7 +207,7 @@ export function RoleHierarchyTree({
         overflow="hidden"
         textAlign="center"
       >
-        <Box style={glassLayerStyle} />
+        <Box style={glassLayerWithShadowStyle} />
         <Text color="gray.400">No roles defined for this organization</Text>
       </Box>
     );
@@ -234,7 +223,7 @@ export function RoleHierarchyTree({
       p={{ base: 4, md: 6 }}
       overflow="hidden"
     >
-      <Box style={glassLayerStyle} />
+      <Box style={glassLayerWithShadowStyle} />
 
       <VStack spacing={2} align="stretch">
         {sortedRoles.map((role, index) => (

@@ -18,19 +18,7 @@ import { useRouter } from 'next/router';
 
 import { usePOContext } from '@/context/POContext';
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
-
-
-
-const glassLayerStyle = {
-  position: 'absolute',
-  height: '100%',
-  width: '100%',
-  zIndex: -1,
-  borderRadius: 'inherit',
-  backdropFilter: 'blur(20px)',
-  backgroundColor: 'rgba(0, 0, 0, .8)',
-};
-
+import { glassLayerWithShadowStyle } from '@/components/shared/glassStyles';
 
 
 const Leaderboard = () => {
@@ -79,7 +67,7 @@ const Leaderboard = () => {
             position="relative"
             zIndex={1}
           >
-            <div style={glassLayerStyle} />
+            <div style={glassLayerWithShadowStyle} />
             <Table variant="simple" className="leaderboard-table">
               <Thead>
                 <Tr>

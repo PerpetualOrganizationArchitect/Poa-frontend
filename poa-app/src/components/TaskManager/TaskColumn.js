@@ -13,19 +13,7 @@ import { useProjectContext } from '@/context/ProjectContext';
 import { useUserContext } from '@/context/UserContext';
 import { calculatePayout } from '../../util/taskUtils';
 import { userCanCreateTask, userCanReviewTask, PERMISSION_MESSAGES, ROLE_INDICES } from '../../util/permissions';
-
-
-const glassLayerStyle = {
-  position: 'absolute',
-  width: '100%',
-  height: '100%',
-  zIndex: -1,
-  borderRadius: 'inherit',
-  backdropFilter: 'blur(60px)',
-  backgroundColor: 'rgba(0, 0, 0, .3)',
-};
-
-
+import { glassTaskColumnStyle } from '@/components/shared/glassStyles';
 
 
 const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile = false, isEmpty = false, hideTitleInMobile = false }, ref) => {
@@ -378,7 +366,7 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
       data-column-id={columnId}
       data-column-title={title}
     >
-      <div className="glass" style={glassLayerStyle} />
+      <div className="glass" style={glassTaskColumnStyle} />
       
       {(!isMobile || (isMobile && !hideTitleInMobile)) && (
         <Heading size="md" mb={3} mt={0} ml={3} alignItems="center" color='white'>

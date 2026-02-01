@@ -16,18 +16,7 @@ import {
   Progress,
 } from '@chakra-ui/react';
 import { FiUsers, FiLayers, FiPercent } from 'react-icons/fi';
-
-const glassLayerStyle = {
-  position: 'absolute',
-  height: '100%',
-  width: '100%',
-  zIndex: -1,
-  borderRadius: 'inherit',
-  backdropFilter: 'blur(20px)',
-  backgroundColor: 'rgba(0, 0, 0, 0.8)',
-  boxShadow: 'inset 0 0 15px rgba(148, 115, 220, 0.15)',
-  border: '1px solid rgba(148, 115, 220, 0.2)',
-};
+import { glassLayerWithShadowStyle } from '@/components/shared/glassStyles';
 
 /**
  * Card for a single voting system
@@ -170,7 +159,7 @@ export function GovernanceConfigSection({
         p={{ base: 4, md: 6 }}
         overflow="hidden"
       >
-        <Box style={glassLayerStyle} />
+        <Box style={glassLayerWithShadowStyle} />
         <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
           <Skeleton height="180px" borderRadius="xl" />
           <Skeleton height="180px" borderRadius="xl" />
@@ -190,7 +179,7 @@ export function GovernanceConfigSection({
         overflow="hidden"
         textAlign="center"
       >
-        <Box style={glassLayerStyle} />
+        <Box style={glassLayerWithShadowStyle} />
         <Text color="gray.400">No voting systems configured</Text>
       </Box>
     );
@@ -203,7 +192,7 @@ export function GovernanceConfigSection({
       p={{ base: 4, md: 6 }}
       overflow="hidden"
     >
-      <Box style={glassLayerStyle} />
+      <Box style={glassLayerWithShadowStyle} />
 
       <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
         {/* Hybrid Voting */}

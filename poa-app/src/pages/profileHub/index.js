@@ -218,6 +218,16 @@ const UserprofileHub = () => {
   const userHatIds = userData?.hatIds || [];
   const hasClaimedRole = userHatIds.length > 0;
 
+  // Get user's actual roles for header display
+  const userRoles = useMemo(() => {
+    if (!userHatIds.length || !roles?.length) return [];
+    const normalizedUserHatIds = userHatIds.map((id) => normalizeHatId(id));
+    return roles.filter((role) => {
+      const normalizedRoleHatId = normalizeHatId(role.hatId);
+      return normalizedUserHatIds.includes(normalizedRoleHatId);
+    });
+  }, [userHatIds, roles]);
+
   // Check if there's role progression content to show
   const showRoleProgression = useMemo(() => {
     return hasRoleProgressionContent(userAddress, userHatIds, roles, getVouchProgress);
@@ -281,7 +291,7 @@ const UserprofileHub = () => {
             <ProfileHeader
               username={userInfo.username}
               address={userInfo.accountAddress}
-              memberStatus={userInfo.memberStatus}
+              userRoles={userRoles}
               isExec={hasExecRole}
               onSettingsClick={() => setSettingsModalOpen(true)}
               onExecutiveMenuClick={() => setExecutiveMenuOpen(true)}

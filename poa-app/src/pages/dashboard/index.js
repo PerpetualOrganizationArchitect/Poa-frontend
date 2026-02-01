@@ -308,37 +308,37 @@ const PerpetualOrgDashboard = () => {
                   <SimpleGrid columns={2} spacing={{ base: 2, md: 3 }}>
                     <Box bg="whiteAlpha.50" p={{ base: 2, md: 3 }} borderRadius="lg">
                       <Stat textAlign="center">
-                        <HStack justify="center" mb={0.5}>
-                          <Icon as={FiUsers} color="purple.300" boxSize={{ base: 3, md: 4 }} />
+                        <HStack justify="center" spacing={2}>
+                          <Icon as={FiUsers} color="purple.300" boxSize={{ base: 4, md: 5 }} />
+                          <StatNumber fontSize={{ base: "lg", md: "xl" }} color="purple.300">{poMembers}</StatNumber>
                         </HStack>
-                        <StatNumber fontSize={{ base: "lg", md: "xl" }} color="purple.300">{poMembers}</StatNumber>
                         <StatLabel fontSize="xs" color="gray.400">Members</StatLabel>
                       </Stat>
                     </Box>
                     <Box bg="whiteAlpha.50" p={{ base: 2, md: 3 }} borderRadius="lg">
                       <Stat textAlign="center">
-                        <HStack justify="center" mb={0.5}>
-                          <Icon as={FiAward} color="yellow.300" boxSize={{ base: 3, md: 4 }} />
+                        <HStack justify="center" spacing={2}>
+                          <Icon as={FiAward} color="yellow.300" boxSize={{ base: 4, md: 5 }} />
+                          <StatNumber fontSize={{ base: "lg", md: "xl" }} color="yellow.300">{ptTokenBalance}</StatNumber>
                         </HStack>
-                        <StatNumber fontSize={{ base: "lg", md: "xl" }} color="yellow.300">{ptTokenBalance}</StatNumber>
                         <StatLabel fontSize="xs" color="gray.400">Total Participation</StatLabel>
                       </Stat>
                     </Box>
                     <Box bg="whiteAlpha.50" p={{ base: 2, md: 3 }} borderRadius="lg">
                       <Stat textAlign="center">
-                        <HStack justify="center" mb={0.5}>
-                          <Icon as={FiActivity} color="blue.300" boxSize={{ base: 3, md: 4 }} />
+                        <HStack justify="center" spacing={2}>
+                          <Icon as={FiActivity} color="blue.300" boxSize={{ base: 4, md: 5 }} />
+                          <StatNumber fontSize={{ base: "lg", md: "xl" }} color="blue.300">{activeTaskAmount}</StatNumber>
                         </HStack>
-                        <StatNumber fontSize={{ base: "lg", md: "xl" }} color="blue.300">{activeTaskAmount}</StatNumber>
                         <StatLabel fontSize="xs" color="gray.400">Active Tasks</StatLabel>
                       </Stat>
                     </Box>
                     <Box bg="whiteAlpha.50" p={{ base: 2, md: 3 }} borderRadius="lg">
                       <Stat textAlign="center">
-                        <HStack justify="center" mb={0.5}>
-                          <Icon as={FiCheckCircle} color="green.300" boxSize={{ base: 3, md: 4 }} />
+                        <HStack justify="center" spacing={2}>
+                          <Icon as={FiCheckCircle} color="green.300" boxSize={{ base: 4, md: 5 }} />
+                          <StatNumber fontSize={{ base: "lg", md: "xl" }} color="green.300">{completedTaskAmount}</StatNumber>
                         </HStack>
-                        <StatNumber fontSize={{ base: "lg", md: "xl" }} color="green.300">{completedTaskAmount}</StatNumber>
                         <StatLabel fontSize="xs" color="gray.400">Completed Tasks</StatLabel>
                       </Stat>
                     </Box>

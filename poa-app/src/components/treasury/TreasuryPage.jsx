@@ -39,7 +39,6 @@ const TreasuryPage = () => {
   const {
     orgId,
     poContextLoading,
-    executorContractAddress,
     participationTokenAddress,
     poMembers,
   } = usePOContext();
@@ -150,8 +149,9 @@ const TreasuryPage = () => {
                 </VStack>
                 <Box p={{ base: 2, md: 4 }}>
                   <TokenBalancesGrid
-                    executorAddress={executorContractAddress}
+                    totalSupply={totalSupply}
                     onPTClick={onPTModalOpen}
+                    isLoading={treasuryLoading}
                   />
                 </Box>
               </Box>

@@ -1,122 +1,120 @@
-import React, { useEffect, useState} from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
-  Button,
-  Flex,
   Heading,
-  HStack,
-  Table,
-  Tbody,
-  Td,
-  Th,
-  Thead,
-  Tr,
   VStack,
+  Text,
+  useDisclosure,
 } from '@chakra-ui/react';
-
 import { useRouter } from 'next/router';
 
 import { usePOContext } from '@/context/POContext';
-import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
-
-
-
-const glassLayerStyle = {
-  position: 'absolute',
-  height: '100%',
-  width: '100%',
-  zIndex: -1,
-  borderRadius: 'inherit',
-  backdropFilter: 'blur(20px)',
-  backgroundColor: 'rgba(0, 0, 0, .8)',
-};
-
-
+import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
+import { glassLayerStyle } from '@/components/shared/glassStyles';
+import LeaderboardCard from '@/components/leaderboard/LeaderboardCard';
+import LeaderboardUserModal from '@/components/leaderboard/LeaderboardUserModal';
+import TopThreePodium from '@/components/leaderboard/TopThreePodium';
 
 const Leaderboard = () => {
+  const router = useRouter();
+  const { userDAO } = router.query;
 
-    const router = useRouter();
-    const { userDAO } = router.query;
-    
+  const { leaderboardDisplayData, roleNames } = usePOContext();
+  const [data, setData] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedRank, setSelectedRank] = useState(null);
 
-    const { leaderboardDisplayData } = usePOContext();
-    const [data, setData] = useState([]);
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
-    useEffect(() => {
-        if (leaderboardDisplayData) {
-            setData(leaderboardDisplayData);
-        }
-    }, [leaderboardDisplayData]);
-
-
-
-  const getMedalColor = (rank) => {
-    switch (rank) {
-      case 0:
-        return 'gold';
-      case 1:
-        return 'silver';
-      case 2:
-        return '#cd7f32';
-      default:
-        return null;
+  useEffect(() => {
+    if (leaderboardDisplayData) {
+      setData(leaderboardDisplayData);
     }
+  }, [leaderboardDisplayData]);
+
+  const handleUserClick = (user, rank) => {
+    setSelectedUser(user);
+    setSelectedRank(rank);
+    onOpen();
   };
+
+  const handleModalClose = () => {
+    onClose();
+    setSelectedUser(null);
+    setSelectedRank(null);
+  };
+
+  const topThree = data.slice(0, 3);
+  const remaining = data.slice(3);
 
   return (
     <>
-    <Navbar />
-    <Box position="relative" w="100%" minH="100vh" p={4} >
-      <VStack spacing={4}>
-        <Heading as="h1">Leaderboard</Heading>
-        <Flex justifyContent="center" alignItems="center">
-          <Box
-            w="100%"
-            mt="2"
-            borderRadius="2xl"
-            bg="transparent"
-            boxShadow="lg"
-            position="relative"
-            zIndex={1}
-          >
-            <div style={glassLayerStyle} />
-            <Table variant="simple" className="leaderboard-table">
-              <Thead>
-                <Tr>
-                  <Th color="ghostwhite">Rank</Th>
-                  <Th color="ghostwhite">Name</Th>
-                  <Th color="ghostwhite">
-                    Tokens
+      <Navbar />
+      <Box
+        position="relative"
+        w="100%"
+        minH="100vh"
+        p={{ base: 4, md: 6 }}
+      >
+        <VStack spacing={6} align="center">
+          <Heading as="h1" size="lg" color="white">
+            Leaderboard
+          </Heading>
 
-                  </Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-              {data?.length > 0 && data.map((entry, index) => {
-                  const medalColor = getMedalColor(index);
-                  return (
-                    <Tr
-                      key={entry.id}
-                      fontWeight={medalColor ? 'extrabold' : null}
-                      _last={{ borderBottom: 'none' }}
-                    >
-                      <Td borderBottom="none" style={{ color: medalColor || 'ghostwhite' }}>{index + 1}</Td>
-                    <Td borderBottom="none" color="ghostwhite">{entry.name}</Td>
-                    <Td borderBottom="none" style={{ color: medalColor || 'ghostwhite' }}>{entry.token}</Td>
+          {data.length === 0 ? (
+            <Box
+              position="relative"
+              borderRadius="2xl"
+              p={8}
+              overflow="hidden"
+              textAlign="center"
+            >
+              <Box style={glassLayerStyle} />
+              <Text color="gray.400">No contributors yet</Text>
+            </Box>
+          ) : (
+            <>
+              {/* Top 3 Podium */}
+              <TopThreePodium users={topThree} onUserClick={handleUserClick} />
 
-                    </Tr>
+              {/* Remaining users */}
+              {remaining.length > 0 && (
+                <Box
+                  w="100%"
+                  maxW="800px"
+                  position="relative"
+                  borderRadius="2xl"
+                  overflow="hidden"
+                >
+                  <Box style={glassLayerStyle} />
+                  <VStack spacing={2} p={{ base: 3, md: 4 }}>
+                    {remaining.map((user, idx) => (
+                      <Box key={user.id} w="100%">
+                        <LeaderboardCard
+                          user={user}
+                          rank={idx + 4}
+                          onClick={handleUserClick}
+                        />
+                      </Box>
+                    ))}
+                  </VStack>
+                </Box>
+              )}
+            </>
+          )}
+        </VStack>
 
-                  );
-                })}
-              </Tbody>
-            </Table>
-          </Box>
-        </Flex>
-      </VStack>
-    </Box>
+        {/* User Detail Modal */}
+        <LeaderboardUserModal
+          isOpen={isOpen}
+          onClose={handleModalClose}
+          user={selectedUser}
+          rank={selectedRank}
+          roleNames={roleNames}
+        />
+      </Box>
     </>
   );
 };
 
 export default Leaderboard;
-

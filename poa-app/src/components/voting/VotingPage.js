@@ -112,6 +112,7 @@ const VotingPage = () => {
       description: proposalData.description,
       durationMinutes: proposalData.time,
       numOptions: proposalData.numOptions,
+      optionNames: proposalData.optionNames || [],
       batches: proposalData.batches || [],
       hatIds: proposalData.hatIds || [],
     };

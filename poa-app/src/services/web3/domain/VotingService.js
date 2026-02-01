@@ -3,9 +3,10 @@
  * Handles Hybrid Voting and Direct Democracy Voting operations
  */
 
+import { ethers } from 'ethers';
 import HybridVotingABI from '../../../../abi/HybridVotingNew.json';
 import DirectDemocracyVotingABI from '../../../../abi/DirectDemocracyVotingNew.json';
-import { stringToBytes, stringToBytes32 } from '../utils/encoding';
+import { stringToBytes, ipfsCidToBytes32 } from '../utils/encoding';
 import {
   requireAddress,
   requireString,
@@ -29,10 +30,12 @@ export class VotingService {
   /**
    * @param {ContractFactory} contractFactory - Contract factory instance
    * @param {TransactionManager} transactionManager - Transaction manager instance
+   * @param {Object} ipfsService - IPFS service for metadata storage
    */
-  constructor(contractFactory, transactionManager) {
+  constructor(contractFactory, transactionManager, ipfsService = null) {
     this.factory = contractFactory;
     this.txManager = transactionManager;
+    this.ipfs = ipfsService;
   }
 
   // ============================================
@@ -47,6 +50,7 @@ export class VotingService {
    * @param {string} proposalData.description - Proposal description
    * @param {number} proposalData.durationMinutes - Duration in minutes
    * @param {number} proposalData.numOptions - Number of voting options
+   * @param {Array} [proposalData.optionNames=[]] - Names for each voting option
    * @param {Array} [proposalData.batches=[]] - Execution batches
    * @param {Array} [proposalData.hatIds=[]] - Hat IDs to restrict voting
    * @param {Object} [options={}] - Transaction options
@@ -63,6 +67,7 @@ export class VotingService {
       description = '',
       durationMinutes,
       numOptions,
+      optionNames = [],
       batches = [],
       hatIds = [],
     } = proposalData;
@@ -70,8 +75,21 @@ export class VotingService {
     const contract = this.factory.createWritable(contractAddress, HybridVotingABI);
 
     const titleBytes = stringToBytes(name);
-    const descriptionHash = stringToBytes32(description);
     const duration = Math.max(1, Math.floor(durationMinutes));
+
+    // Upload metadata to IPFS if service available
+    let descriptionHash = ethers.constants.HashZero;
+    if (this.ipfs && (description || optionNames.length > 0)) {
+      const metadata = {
+        description: description || '',
+        optionNames: optionNames,
+        createdAt: Date.now(),
+      };
+      console.log('[VotingService] Uploading proposal metadata to IPFS:', metadata);
+      const ipfsResult = await this.ipfs.addToIpfs(JSON.stringify(metadata));
+      descriptionHash = ipfsCidToBytes32(ipfsResult.path);
+      console.log('[VotingService] IPFS CID:', ipfsResult.path, '-> bytes32:', descriptionHash);
+    }
 
     return this.txManager.execute(
       contract,
@@ -141,6 +159,7 @@ export class VotingService {
       description = '',
       durationMinutes,
       numOptions,
+      optionNames = [],
       batches = [],
       hatIds = [],
     } = proposalData;
@@ -148,8 +167,21 @@ export class VotingService {
     const contract = this.factory.createWritable(contractAddress, DirectDemocracyVotingABI);
 
     const titleBytes = stringToBytes(name);
-    const descriptionHash = stringToBytes32(description);
     const duration = Math.max(1, Math.floor(durationMinutes));
+
+    // Upload metadata to IPFS if service available
+    let descriptionHash = ethers.constants.HashZero;
+    if (this.ipfs && (description || optionNames.length > 0)) {
+      const metadata = {
+        description: description || '',
+        optionNames: optionNames,
+        createdAt: Date.now(),
+      };
+      console.log('[VotingService] Uploading DD proposal metadata to IPFS:', metadata);
+      const ipfsResult = await this.ipfs.addToIpfs(JSON.stringify(metadata));
+      descriptionHash = ipfsCidToBytes32(ipfsResult.path);
+      console.log('[VotingService] IPFS CID:', ipfsResult.path, '-> bytes32:', descriptionHash);
+    }
 
     return this.txManager.execute(
       contract,
@@ -289,8 +321,9 @@ export class VotingService {
  * Create a VotingService instance
  * @param {ContractFactory} factory - Contract factory
  * @param {TransactionManager} txManager - Transaction manager
+ * @param {Object} [ipfsService] - IPFS service for metadata storage
  * @returns {VotingService}
  */
-export function createVotingService(factory, txManager) {
-  return new VotingService(factory, txManager);
+export function createVotingService(factory, txManager, ipfsService = null) {
+  return new VotingService(factory, txManager, ipfsService);
 }

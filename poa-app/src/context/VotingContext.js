@@ -15,6 +15,11 @@ function transformProposal(proposal, votingTypeId, type, quorum = 0) {
     const endTime = parseInt(proposal.endTimestamp) || 0;
     const isOngoing = proposal.status === 'Active' && endTime > currentTime;
 
+    // Get metadata from IPFS (if subgraph has indexed it)
+    const metadata = proposal.metadata || {};
+    const description = metadata.description || '';
+    const optionNames = metadata.optionNames || [];
+
     // Aggregate votes per option - different logic for Hybrid vs DD
     const optionVotes = {};
     let totalVotes = 0;
@@ -56,14 +61,14 @@ function transformProposal(proposal, votingTypeId, type, quorum = 0) {
         });
     }
 
-    // Create options array
+    // Create options array - use metadata option names if available, fallback to generic
     const options = [];
     const totalOptionVotes = Object.values(optionVotes).reduce((sum, v) => sum + v, 0);
     for (let i = 0; i < (proposal.numOptions || 2); i++) {
         const votes = optionVotes[i] || 0;
         options.push({
             id: `${proposal.id}-option-${i}`,
-            name: `Option ${i + 1}`,
+            name: optionNames[i] || `Option ${i + 1}`,
             votes: votes,
             percentage: totalOptionVotes > 0 ? (votes / totalOptionVotes) * 100 : 0,
             currentPercentage: totalOptionVotes > 0 ? Math.round((votes / totalOptionVotes) * 100) : 0,
@@ -79,6 +84,7 @@ function transformProposal(proposal, votingTypeId, type, quorum = 0) {
         id: proposal.id,
         proposalId: proposal.proposalId,
         title: proposal.title || 'Indexing...',
+        description: description,
         descriptionHash: proposal.descriptionHash,
         startTimestamp: proposal.startTimestamp,
         endTimestamp: proposal.endTimestamp,

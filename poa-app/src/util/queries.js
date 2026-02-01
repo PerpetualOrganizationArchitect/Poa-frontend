@@ -281,6 +281,11 @@ export const FETCH_VOTING_DATA_NEW = gql`
           proposalId
           title
           descriptionHash
+          metadata {
+            id
+            description
+            optionNames
+          }
           numOptions
           startTimestamp
           endTimestamp
@@ -308,6 +313,11 @@ export const FETCH_VOTING_DATA_NEW = gql`
           proposalId
           title
           descriptionHash
+          metadata {
+            id
+            description
+            optionNames
+          }
           numOptions
           startTimestamp
           endTimestamp

@@ -158,8 +158,8 @@ const ExecutiveMenuModal = ({ isOpen, onClose, hasApproverRole = false }) => {
             >
               <VStack spacing={3} align="stretch" mt={2}>
                 <Text fontSize="sm" color="gray.400">
-                  Executive roles are managed via Hats Protocol. To grant or revoke roles,
-                  create a governance proposal.
+                  Roles are managed via Hats Protocol. Some roles can be claimed directly,
+                  while others require vouches from existing members.
                 </Text>
                 <Button
                   size="sm"

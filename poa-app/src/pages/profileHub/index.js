@@ -8,10 +8,8 @@ import {
   HStack,
   Badge,
   Center,
-  Collapse,
   Skeleton,
 } from '@chakra-ui/react';
-import { ChevronDownIcon, ChevronUpIcon } from '@chakra-ui/icons';
 import AccountSettingsModal from '@/components/userPage/AccountSettingsModal';
 import { useVotingContext } from '@/context/VotingContext';
 import { useUserContext } from '@/context/UserContext';
@@ -23,7 +21,6 @@ import ExecutiveMenuModal from '@/components/profileHub/ExecutiveMenuModal';
 import { useOrgStructure } from '@/hooks';
 import { useVouches } from '@/hooks/useVouches';
 import WelcomeClaimPage from '@/components/profileHub/WelcomeClaimPage';
-import { PendingRequestsPanel } from '@/components/tokenRequest';
 import { useAccount } from 'wagmi';
 
 // Profile hub components
@@ -164,7 +161,6 @@ const UserprofileHub = () => {
   // Modal states
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false);
   const [isExecutiveMenuOpen, setExecutiveMenuOpen] = useState(false);
-  const [showPendingRequests, setShowPendingRequests] = useState(false);
 
   // Compute user info from userData
   const userInfo = useMemo(() => {
@@ -240,16 +236,14 @@ const UserprofileHub = () => {
                    'roles'
                    'progressionOrTasks'
                    'tokenRequests'
-                   'tasksProposals'
-                   'pendingRequests'`,
+                   'tasksProposals'`,
             md: `'header header'
                  'tokensActivity roles'
                  'tokensActivity progressionOrTasks'
-                 'tokenRequests tasksProposals'
-                 'pendingRequests pendingRequests'`
+                 'tokenRequests tasksProposals'`
           }}
           templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }}
-          templateRows={{ base: 'auto', md: 'auto auto auto auto auto' }}
+          templateRows={{ base: 'auto', md: 'auto auto auto auto' }}
           gap={4}
         >
           {/* Profile Header */}
@@ -413,44 +407,12 @@ const UserprofileHub = () => {
               </VStack>
             </Box>
           </GridItem>
-
-          {/* Pending Requests Panel for Approvers */}
-          {hasApproverRole && (
-            <GridItem area="pendingRequests">
-              <Box
-                w="100%"
-                borderRadius="2xl"
-                bg="transparent"
-                boxShadow="lg"
-                position="relative"
-                zIndex={2}
-              >
-                <div style={glassLayerStyle} />
-                <HStack
-                  p={4}
-                  cursor="pointer"
-                  onClick={() => setShowPendingRequests(!showPendingRequests)}
-                  justify="space-between"
-                >
-                  <Text fontWeight="bold" fontSize={{ base: 'lg', md: 'xl' }}>
-                    Pending Token Requests (Approver)
-                  </Text>
-                  {showPendingRequests ? <ChevronUpIcon boxSize={6} /> : <ChevronDownIcon boxSize={6} />}
-                </HStack>
-                <Collapse in={showPendingRequests}>
-                  <Box p={4} pt={0}>
-                    <PendingRequestsPanel />
-                  </Box>
-                </Collapse>
-              </Box>
-            </GridItem>
-          )}
         </Grid>
       </Box>
 
       {/* Modals */}
       <AccountSettingsModal isOpen={isSettingsModalOpen} onClose={() => setSettingsModalOpen(false)} />
-      <ExecutiveMenuModal isOpen={isExecutiveMenuOpen} onClose={() => setExecutiveMenuOpen(false)} />
+      <ExecutiveMenuModal isOpen={isExecutiveMenuOpen} onClose={() => setExecutiveMenuOpen(false)} hasApproverRole={hasApproverRole} />
     </>
   );
 };

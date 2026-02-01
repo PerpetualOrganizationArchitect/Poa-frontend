@@ -69,14 +69,14 @@ export class ErrorBoundary extends React.Component {
         });
       }
 
-      // Default fallback UI
+      // Default fallback UI - use plain CSS for gradient to avoid theme dependency issues
       return (
         <Box
           minH="100vh"
           display="flex"
           alignItems="center"
           justifyContent="center"
-          bgGradient="linear(to-r, orange.200, pink.200)"
+          bg="linear-gradient(to right, #FED7AA, #FBCFE8)"
           p={4}
         >
           <Container maxW="xl">

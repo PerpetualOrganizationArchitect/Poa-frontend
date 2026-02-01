@@ -27,7 +27,7 @@ const VoteCard = ({
   const needsWinnerAnnouncement = proposal.isExpired || showDetermineWinner;
   // Use responsive sizing based on breakpoints
   const titleFontSize = useBreakpointValue({ base: "sm", sm: "md" });
-  const cardHeight = useBreakpointValue({ base: "200px", sm: "240px" });
+  const cardHeight = useBreakpointValue({ base: "180px", sm: "200px" });
   const cardPadding = useBreakpointValue({ base: 3, sm: 4 });
 
   // Truncate description to first 100 characters
@@ -82,7 +82,7 @@ const VoteCard = ({
         transition="all 0.3s ease"
       />
 
-      <VStack spacing={2} align="stretch" w="100%" h="100%">
+      <VStack spacing={1} align="stretch" w="100%" h="100%" justify="space-between">
         {/* Title */}
         <Box>
           <Text
@@ -101,26 +101,27 @@ const VoteCard = ({
         {/* Description preview */}
         {truncatedDescription && (
           <Text
-            fontSize="xs"
-            color="gray.300"
+            fontSize="sm"
+            fontWeight="medium"
+            color="gray.200"
             noOfLines={2}
-            lineHeight="1.4"
+            lineHeight="1.3"
             textAlign="center"
-            px={1}
           >
             {truncatedDescription}
           </Text>
         )}
 
         {/* Time or Announce Winner button */}
-        <Flex justify="center" align="center" flex="1">
+        <Flex justify="center" align="center" py={2}>
           {needsWinnerAnnouncement ? (
             <Button
               colorScheme="purple"
               size="md"
               onClick={(e) => {
                 e.stopPropagation();
-                getWinner(contractAddress, proposal.id, proposal.type === 'Hybrid');
+                // Use proposalId (numeric ID for contract) not id (subgraph entity ID)
+                getWinner(contractAddress, proposal.proposalId, proposal.type === 'Hybrid');
               }}
               bg="rgba(148, 115, 220, 0.3)"
               borderColor="rgba(148, 115, 220, 0.8)"
@@ -139,7 +140,7 @@ const VoteCard = ({
         </Flex>
 
         {/* Voting Options - cleaner pill style */}
-        <VStack align="stretch" spacing={2}>
+        <Box>
           <HStack spacing={2} flexWrap="wrap" justify="center">
             {proposal.options.slice(0, 4).map((option, index) => (
               <Box
@@ -161,7 +162,7 @@ const VoteCard = ({
               <Text fontSize="xs" color="gray.500">+{proposal.options.length - 4} more</Text>
             )}
           </HStack>
-        </VStack>
+        </Box>
       </VStack>
     </Box>
   );

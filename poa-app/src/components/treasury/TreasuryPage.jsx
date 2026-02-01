@@ -39,7 +39,6 @@ const TreasuryPage = () => {
   const {
     orgId,
     poContextLoading,
-    participationTokenAddress,
     poMembers,
   } = usePOContext();
   const { hasExecRole } = useUserContext();
@@ -48,8 +47,6 @@ const TreasuryPage = () => {
   const { isOpen: isPTModalOpen, onOpen: onPTModalOpen, onClose: onPTModalClose } = useDisclosure();
 
   // Responsive design
-  const isMobile = useBreakpointValue({ base: true, md: false });
-  const headingSize = useBreakpointValue({ base: '2xl', md: '3xl' });
   const sectionHeadingSize = useBreakpointValue({ base: 'lg', md: 'xl' });
 
   // Fetch treasury data from subgraph
@@ -66,6 +63,12 @@ const TreasuryPage = () => {
   const distributions = paymentManager?.distributions || [];
   const payments = paymentManager?.payments || [];
   const totalSupply = treasuryData?.organization?.participationToken?.totalSupply;
+
+  // Extract completed tasks from all projects (flattened)
+  const completedTasks = useMemo(() => {
+    const projects = treasuryData?.organization?.taskManager?.projects || [];
+    return projects.flatMap(p => p.tasks || []);
+  }, [treasuryData]);
 
   // Memoize filtered distributions to avoid recalculation on every render
   const { activeDistributions, completedDistributions, totalDistributed } = useMemo(() => {
@@ -241,8 +244,8 @@ const TreasuryPage = () => {
       <ParticipationTokenModal
         isOpen={isPTModalOpen}
         onClose={onPTModalClose}
-        tokenAddress={participationTokenAddress}
         totalSupply={totalSupply}
+        completedTasks={completedTasks}
       />
     </>
   );

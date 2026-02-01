@@ -18,10 +18,7 @@ import {
   Th,
   Td,
   Badge,
-  Spinner,
-  Center,
 } from '@chakra-ui/react';
-import { useQuery } from '@apollo/client';
 import {
   AreaChart,
   Area,
@@ -31,7 +28,6 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts';
-import { FETCH_ALL_TOKEN_REQUESTS } from '@/util/queries';
 import { usePOContext } from '@/context/POContext';
 import { formatTokenAmount } from '@/util/formatToken';
 
@@ -89,20 +85,11 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-const ParticipationTokenModal = ({ isOpen, onClose, tokenAddress, totalSupply }) => {
+const ParticipationTokenModal = ({ isOpen, onClose, totalSupply, completedTasks = [] }) => {
   const { leaderboardData } = usePOContext();
 
-  // Fetch all token requests for mint history
-  const { data: requestsData, loading: requestsLoading } = useQuery(FETCH_ALL_TOKEN_REQUESTS, {
-    variables: { tokenAddress: tokenAddress?.toLowerCase() },
-    skip: !tokenAddress,
-  });
-
-  // Compute stats from data
+  // Compute stats from completed tasks (the actual source of PT mints)
   const stats = useMemo(() => {
-    const tokenRequests = requestsData?.tokenRequests || [];
-    const approvedRequests = tokenRequests.filter(r => r.status === 'Approved');
-
     // Calculate holder count from leaderboard
     const holders = leaderboardData.filter(u => {
       const balance = u.token || '0';
@@ -119,14 +106,17 @@ const ParticipationTokenModal = ({ isOpen, onClose, tokenAddress, totalSupply })
     // Calculate average balance
     const avgBalance = holders > 0 ? supply / BigInt(holders) : 0n;
 
+    // Filter tasks with valid payouts and completion dates
+    const validTasks = completedTasks.filter(t => t.payout && t.completedAt);
+
     // Calculate 30-day metrics
     const thirtyDaysAgo = Math.floor(Date.now() / 1000) - (30 * 24 * 60 * 60);
-    const recentMints = approvedRequests.filter(
-      r => r.approvedAt && parseInt(r.approvedAt) > thirtyDaysAgo
+    const recentTasks = validTasks.filter(
+      t => parseInt(t.completedAt) > thirtyDaysAgo
     );
-    const monthlyMinted = recentMints.reduce((sum, r) => {
+    const monthlyMinted = recentTasks.reduce((sum, t) => {
       try {
-        return sum + BigInt(r.amount || 0);
+        return sum + BigInt(t.payout || 0);
       } catch {
         return sum;
       }
@@ -137,52 +127,53 @@ const ParticipationTokenModal = ({ isOpen, onClose, tokenAddress, totalSupply })
       ? (Number(monthlyMinted) / Number(supply)) * 100
       : 0;
 
-    // Average request size
-    const totalApprovedAmount = approvedRequests.reduce((sum, r) => {
+    // Total minted from tasks
+    const totalMintedFromTasks = validTasks.reduce((sum, t) => {
       try {
-        return sum + BigInt(r.amount || 0);
+        return sum + BigInt(t.payout || 0);
       } catch {
         return sum;
       }
     }, 0n);
-    const avgRequestSize = approvedRequests.length > 0
-      ? totalApprovedAmount / BigInt(approvedRequests.length)
+
+    // Average payout per task
+    const avgPayout = validTasks.length > 0
+      ? totalMintedFromTasks / BigInt(validTasks.length)
       : 0n;
 
     return {
-      approvedRequests,
-      recentMints,
+      validTasks,
+      recentTasks,
       holders,
       supply,
       avgBalance,
       monthlyMinted,
       inflationRate,
-      avgRequestSize,
-      totalRequests: tokenRequests.length,
-      pendingRequests: tokenRequests.filter(r => r.status === 'Pending').length,
+      avgPayout,
+      totalTasks: validTasks.length,
+      recentTaskCount: recentTasks.length,
     };
-  }, [requestsData, leaderboardData, totalSupply]);
+  }, [completedTasks, leaderboardData, totalSupply]);
 
-  // Build chart data - cumulative supply over time
+  // Build chart data - cumulative supply over time based on task completions
   const chartData = useMemo(() => {
-    if (!stats.approvedRequests.length) return [];
+    if (!stats.validTasks.length) return [];
 
-    // Sort by approval date
-    const sorted = [...stats.approvedRequests]
-      .filter(r => r.approvedAt)
-      .sort((a, b) => parseInt(a.approvedAt) - parseInt(b.approvedAt));
+    // Sort by completion date
+    const sorted = [...stats.validTasks]
+      .sort((a, b) => parseInt(a.completedAt) - parseInt(b.completedAt));
 
     // Group by month and calculate cumulative
     const monthlyData = {};
     let cumulative = 0n;
 
-    sorted.forEach(request => {
-      const date = new Date(parseInt(request.approvedAt) * 1000);
+    sorted.forEach(task => {
+      const date = new Date(parseInt(task.completedAt) * 1000);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       const monthLabel = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 
       try {
-        cumulative += BigInt(request.amount || 0);
+        cumulative += BigInt(task.payout || 0);
       } catch {
         // Skip invalid amounts
       }
@@ -195,28 +186,27 @@ const ParticipationTokenModal = ({ isOpen, onClose, tokenAddress, totalSupply })
     });
 
     return Object.values(monthlyData);
-  }, [stats.approvedRequests]);
+  }, [stats.validTasks]);
 
-  // Format recent mints for table
-  const recentMints = useMemo(() => {
-    return stats.approvedRequests
-      .filter(r => r.approvedAt)
-      .sort((a, b) => parseInt(b.approvedAt) - parseInt(a.approvedAt))
+  // Format recent task payouts for table
+  const recentPayouts = useMemo(() => {
+    return stats.validTasks
+      .sort((a, b) => parseInt(b.completedAt) - parseInt(a.completedAt))
       .slice(0, 10)
-      .map(r => ({
-        id: r.id,
-        date: new Date(parseInt(r.approvedAt) * 1000).toLocaleDateString('en-US', {
+      .map(t => ({
+        id: t.id,
+        date: new Date(parseInt(t.completedAt) * 1000).toLocaleDateString('en-US', {
           month: 'short',
           day: 'numeric',
           year: 'numeric',
         }),
-        recipient: r.requester
-          ? `${r.requester.slice(0, 6)}...${r.requester.slice(-4)}`
-          : 'Unknown',
-        amount: formatTokenAmount(r.amount || '0', 18, 0),
-        status: r.status,
+        task: t.title || `Task #${t.taskId}`,
+        recipient: t.completerUsername || t.assigneeUsername ||
+          (t.completer ? `${t.completer.slice(0, 6)}...${t.completer.slice(-4)}` :
+           t.assignee ? `${t.assignee.slice(0, 6)}...${t.assignee.slice(-4)}` : 'Unknown'),
+        amount: formatTokenAmount(t.payout || '0', 18, 0),
       }));
-  }, [stats.approvedRequests]);
+  }, [stats.validTasks]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside">
@@ -236,176 +226,168 @@ const ParticipationTokenModal = ({ isOpen, onClose, tokenAddress, totalSupply })
         <ModalCloseButton color="white" />
 
         <ModalBody pb={6}>
-          {requestsLoading ? (
-            <Center py={8}>
-              <Spinner size="lg" color="purple.400" />
-            </Center>
-          ) : (
-            <VStack spacing={6} align="stretch">
-              {/* Summary Stats */}
-              <SimpleGrid columns={{ base: 2, md: 3 }} spacing={3}>
-                <StatCard
-                  label="Total Supply"
-                  value={formatTokenAmount(stats.supply.toString(), 18, 0)}
-                  subtext="tokens minted"
-                />
-                <StatCard
-                  label="Holders"
-                  value={stats.holders.toLocaleString()}
-                  subtext="members with balance"
-                />
-                <StatCard
-                  label="Avg Balance"
-                  value={formatTokenAmount(stats.avgBalance.toString(), 18, 0)}
-                  subtext="per holder"
-                />
-              </SimpleGrid>
+          <VStack spacing={6} align="stretch">
+            {/* Summary Stats */}
+            <SimpleGrid columns={{ base: 2, md: 3 }} spacing={3}>
+              <StatCard
+                label="Total Supply"
+                value={formatTokenAmount(stats.supply.toString(), 18, 0)}
+                subtext="tokens minted"
+              />
+              <StatCard
+                label="Holders"
+                value={stats.holders.toLocaleString()}
+                subtext="members with balance"
+              />
+              <StatCard
+                label="Avg Balance"
+                value={formatTokenAmount(stats.avgBalance.toString(), 18, 0)}
+                subtext="per holder"
+              />
+            </SimpleGrid>
 
-              {/* Mint History Chart */}
-              {chartData.length > 0 && (
-                <Box>
-                  <Text fontSize="md" fontWeight="bold" color="white" mb={3}>
-                    Supply Growth
-                  </Text>
-                  <Box h="200px" bg="rgba(0, 0, 0, 0.2)" borderRadius="lg" p={2}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData}>
-                        <defs>
-                          <linearGradient id="supplyGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="rgba(148, 115, 220, 0.8)" stopOpacity={0.8} />
-                            <stop offset="95%" stopColor="rgba(148, 115, 220, 0.1)" stopOpacity={0.1} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                        <XAxis
-                          dataKey="monthLabel"
-                          tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 11 }}
-                          axisLine={{ stroke: 'rgba(255,255,255,0.2)' }}
-                        />
-                        <YAxis
-                          tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 11 }}
-                          axisLine={{ stroke: 'rgba(255,255,255,0.2)' }}
-                        />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Area
-                          type="monotone"
-                          dataKey="cumulative"
-                          name="Total Supply"
-                          stroke="rgba(148, 115, 220, 1)"
-                          fill="url(#supplyGradient)"
-                          strokeWidth={2}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </Box>
-                </Box>
-              )}
-
-              {/* Inflation Metrics */}
+            {/* Supply Growth Chart */}
+            {chartData.length > 0 && (
               <Box>
                 <Text fontSize="md" fontWeight="bold" color="white" mb={3}>
-                  Inflation Metrics
+                  Supply Growth
                 </Text>
-                <SimpleGrid columns={2} spacing={3}>
-                  <HStack
-                    p={3}
-                    bg="rgba(0, 0, 0, 0.2)"
-                    borderRadius="lg"
-                    justify="space-between"
-                  >
-                    <Text fontSize="sm" color="gray.400">Monthly Rate</Text>
-                    <Text fontWeight="bold" color={stats.inflationRate > 5 ? 'orange.300' : 'green.300'}>
-                      {stats.inflationRate.toFixed(2)}%
-                    </Text>
-                  </HStack>
-                  <HStack
-                    p={3}
-                    bg="rgba(0, 0, 0, 0.2)"
-                    borderRadius="lg"
-                    justify="space-between"
-                  >
-                    <Text fontSize="sm" color="gray.400">30-Day Minted</Text>
-                    <Text fontWeight="bold" color="purple.300">
-                      {formatTokenAmount(stats.monthlyMinted.toString(), 18, 0)}
-                    </Text>
-                  </HStack>
-                  <HStack
-                    p={3}
-                    bg="rgba(0, 0, 0, 0.2)"
-                    borderRadius="lg"
-                    justify="space-between"
-                  >
-                    <Text fontSize="sm" color="gray.400">Avg Request</Text>
-                    <Text fontWeight="bold" color="white">
-                      {formatTokenAmount(stats.avgRequestSize.toString(), 18, 0)}
-                    </Text>
-                  </HStack>
-                  <HStack
-                    p={3}
-                    bg="rgba(0, 0, 0, 0.2)"
-                    borderRadius="lg"
-                    justify="space-between"
-                  >
-                    <Text fontSize="sm" color="gray.400">Pending</Text>
-                    <Text fontWeight="bold" color={stats.pendingRequests > 0 ? 'yellow.300' : 'gray.400'}>
-                      {stats.pendingRequests}
-                    </Text>
-                  </HStack>
-                </SimpleGrid>
+                <Box h="200px" bg="rgba(0, 0, 0, 0.2)" borderRadius="lg" p={2}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData}>
+                      <defs>
+                        <linearGradient id="supplyGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="rgba(148, 115, 220, 0.8)" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="rgba(148, 115, 220, 0.1)" stopOpacity={0.1} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                      <XAxis
+                        dataKey="monthLabel"
+                        tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 11 }}
+                        axisLine={{ stroke: 'rgba(255,255,255,0.2)' }}
+                      />
+                      <YAxis
+                        tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 11 }}
+                        axisLine={{ stroke: 'rgba(255,255,255,0.2)' }}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Area
+                        type="monotone"
+                        dataKey="cumulative"
+                        name="Total Supply"
+                        stroke="rgba(148, 115, 220, 1)"
+                        fill="url(#supplyGradient)"
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </Box>
               </Box>
+            )}
 
-              {/* Recent Mints Table */}
-              {recentMints.length > 0 && (
-                <Box>
-                  <Text fontSize="md" fontWeight="bold" color="white" mb={3}>
-                    Recent Mints
+            {/* Minting Metrics */}
+            <Box>
+              <Text fontSize="md" fontWeight="bold" color="white" mb={3}>
+                Minting Metrics
+              </Text>
+              <SimpleGrid columns={2} spacing={3}>
+                <HStack
+                  p={3}
+                  bg="rgba(0, 0, 0, 0.2)"
+                  borderRadius="lg"
+                  justify="space-between"
+                >
+                  <Text fontSize="sm" color="gray.400">Monthly Rate</Text>
+                  <Text fontWeight="bold" color={stats.inflationRate > 5 ? 'orange.300' : 'green.300'}>
+                    {stats.inflationRate.toFixed(2)}%
                   </Text>
-                  <Box overflowX="auto">
-                    <Table variant="simple" size="sm">
-                      <Thead>
-                        <Tr>
-                          <Th color="gray.400" borderColor="gray.600">Date</Th>
-                          <Th color="gray.400" borderColor="gray.600">Recipient</Th>
-                          <Th color="gray.400" borderColor="gray.600" isNumeric>Amount</Th>
-                          <Th color="gray.400" borderColor="gray.600">Status</Th>
+                </HStack>
+                <HStack
+                  p={3}
+                  bg="rgba(0, 0, 0, 0.2)"
+                  borderRadius="lg"
+                  justify="space-between"
+                >
+                  <Text fontSize="sm" color="gray.400">30-Day Minted</Text>
+                  <Text fontWeight="bold" color="purple.300">
+                    {formatTokenAmount(stats.monthlyMinted.toString(), 18, 0)}
+                  </Text>
+                </HStack>
+                <HStack
+                  p={3}
+                  bg="rgba(0, 0, 0, 0.2)"
+                  borderRadius="lg"
+                  justify="space-between"
+                >
+                  <Text fontSize="sm" color="gray.400">Avg Task Payout</Text>
+                  <Text fontWeight="bold" color="white">
+                    {formatTokenAmount(stats.avgPayout.toString(), 18, 0)}
+                  </Text>
+                </HStack>
+                <HStack
+                  p={3}
+                  bg="rgba(0, 0, 0, 0.2)"
+                  borderRadius="lg"
+                  justify="space-between"
+                >
+                  <Text fontSize="sm" color="gray.400">Total Tasks</Text>
+                  <Text fontWeight="bold" color="white">
+                    {stats.totalTasks}
+                  </Text>
+                </HStack>
+              </SimpleGrid>
+            </Box>
+
+            {/* Recent Task Payouts Table */}
+            {recentPayouts.length > 0 && (
+              <Box>
+                <Text fontSize="md" fontWeight="bold" color="white" mb={3}>
+                  Recent Task Payouts
+                </Text>
+                <Box overflowX="auto">
+                  <Table variant="simple" size="sm">
+                    <Thead>
+                      <Tr>
+                        <Th color="gray.400" borderColor="gray.600">Date</Th>
+                        <Th color="gray.400" borderColor="gray.600">Task</Th>
+                        <Th color="gray.400" borderColor="gray.600">Recipient</Th>
+                        <Th color="gray.400" borderColor="gray.600" isNumeric>Payout</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {recentPayouts.map((payout) => (
+                        <Tr key={payout.id}>
+                          <Td color="gray.300" fontSize="sm" borderColor="gray.700">
+                            {payout.date}
+                          </Td>
+                          <Td color="gray.300" fontSize="sm" borderColor="gray.700" maxW="150px" isTruncated>
+                            {payout.task}
+                          </Td>
+                          <Td color="gray.300" fontSize="sm" borderColor="gray.700" fontFamily="mono">
+                            {payout.recipient}
+                          </Td>
+                          <Td color="white" fontWeight="bold" borderColor="gray.700" isNumeric>
+                            {payout.amount}
+                          </Td>
                         </Tr>
-                      </Thead>
-                      <Tbody>
-                        {recentMints.map((mint) => (
-                          <Tr key={mint.id}>
-                            <Td color="gray.300" fontSize="sm" borderColor="gray.700">
-                              {mint.date}
-                            </Td>
-                            <Td color="gray.300" fontSize="sm" borderColor="gray.700" fontFamily="mono">
-                              {mint.recipient}
-                            </Td>
-                            <Td color="white" fontWeight="bold" borderColor="gray.700" isNumeric>
-                              {mint.amount}
-                            </Td>
-                            <Td borderColor="gray.700">
-                              <Badge colorScheme="green" fontSize="xs">
-                                {mint.status}
-                              </Badge>
-                            </Td>
-                          </Tr>
-                        ))}
-                      </Tbody>
-                    </Table>
-                  </Box>
+                      ))}
+                    </Tbody>
+                  </Table>
                 </Box>
-              )}
+              </Box>
+            )}
 
-              {/* Empty state */}
-              {!requestsLoading && recentMints.length === 0 && (
-                <Box textAlign="center" py={6}>
-                  <Text color="gray.400">No mint history yet</Text>
-                  <Text fontSize="sm" color="gray.500">
-                    Token requests will appear here once approved
-                  </Text>
-                </Box>
-              )}
-            </VStack>
-          )}
+            {/* Empty state */}
+            {recentPayouts.length === 0 && (
+              <Box textAlign="center" py={6}>
+                <Text color="gray.400">No completed tasks yet</Text>
+                <Text fontSize="sm" color="gray.500">
+                  Task payouts will appear here once tasks are completed
+                </Text>
+              </Box>
+            )}
+          </VStack>
         </ModalBody>
       </ModalContent>
     </Modal>

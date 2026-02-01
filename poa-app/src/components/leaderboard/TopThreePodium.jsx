@@ -7,56 +7,46 @@ function TopThreePodium({ users, onUserClick, hasMoreUsers = false }) {
 
   const [first, second, third] = users;
 
-  // For mobile, show in order 1, 2, 3
-  // For desktop, show in podium order: 2, 1, 3
+  // Show top 3 in order: 1st, 2nd, 3rd on same horizontal plane
   return (
     <Box w="100%" maxW="900px">
-      {/* Desktop podium layout */}
+      {/* Desktop horizontal layout */}
       <Grid
         templateColumns="repeat(3, 1fr)"
         gap={4}
         display={{ base: 'none', md: 'grid' }}
-        alignItems="end"
+        alignItems="stretch"
       >
-        {/* 2nd place - left, slightly shorter */}
-        <GridItem>
-          {second && (
-            <Box transform="translateY(20px)">
-              <LeaderboardCard
-                user={second}
-                rank={2}
-                onClick={onUserClick}
-                isTopThree
-              />
-            </Box>
-          )}
-        </GridItem>
-
-        {/* 1st place - center, tallest */}
         <GridItem>
           {first && (
-            <Box transform="scale(1.05)" transformOrigin="bottom center">
-              <LeaderboardCard
-                user={first}
-                rank={1}
-                onClick={onUserClick}
-                isTopThree
-              />
-            </Box>
+            <LeaderboardCard
+              user={first}
+              rank={1}
+              onClick={onUserClick}
+              isTopThree
+            />
           )}
         </GridItem>
 
-        {/* 3rd place - right, shortest */}
+        <GridItem>
+          {second && (
+            <LeaderboardCard
+              user={second}
+              rank={2}
+              onClick={onUserClick}
+              isTopThree
+            />
+          )}
+        </GridItem>
+
         <GridItem>
           {third && (
-            <Box transform="translateY(30px)">
-              <LeaderboardCard
-                user={third}
-                rank={3}
-                onClick={onUserClick}
-                isTopThree
-              />
-            </Box>
+            <LeaderboardCard
+              user={third}
+              rank={3}
+              onClick={onUserClick}
+              isTopThree
+            />
           )}
         </GridItem>
       </Grid>

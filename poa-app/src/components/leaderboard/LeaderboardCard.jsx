@@ -4,16 +4,14 @@ import {
   HStack,
   VStack,
   Text,
-  Grid,
-  GridItem,
   Icon,
   Avatar,
 } from '@chakra-ui/react';
 import {
-  FiActivity,
   FiCheckSquare,
   FiThumbsUp,
 } from 'react-icons/fi';
+import { PiCoinVerticalBold } from 'react-icons/pi';
 
 const getMedalColor = (rank) => {
   switch (rank) {
@@ -109,30 +107,20 @@ function LeaderboardCard({ user, rank, onClick, isTopThree = false }) {
           </Text>
 
           {/* Stats */}
-          <Grid
-            templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }}
-            gap={{ base: 2, md: 4 }}
-            w="100%"
-          >
-            <GridItem>
-              <HStack spacing={1} color="gray.400" fontSize="xs">
-                <Icon as={FiActivity} color={medalColor || 'purple.300'} />
-                <Text>{user.token}</Text>
-              </HStack>
-            </GridItem>
-            <GridItem>
-              <HStack spacing={1} color="gray.400" fontSize="xs">
-                <Icon as={FiCheckSquare} color="green.300" />
-                <Text>{user.totalTasksCompleted} tasks</Text>
-              </HStack>
-            </GridItem>
-            <GridItem display={{ base: 'none', md: 'block' }}>
-              <HStack spacing={1} color="gray.400" fontSize="xs">
-                <Icon as={FiThumbsUp} color="blue.300" />
-                <Text>{user.totalVotes} votes</Text>
-              </HStack>
-            </GridItem>
-          </Grid>
+          <HStack spacing={4} flexWrap="wrap">
+            <HStack spacing={1} color="gray.400" fontSize="xs">
+              <Icon as={PiCoinVerticalBold} color={medalColor || 'yellow.400'} />
+              <Text>{user.token} tokens</Text>
+            </HStack>
+            <HStack spacing={1} color="gray.400" fontSize="xs">
+              <Icon as={FiCheckSquare} color="green.300" />
+              <Text>{user.totalTasksCompleted} tasks</Text>
+            </HStack>
+            <HStack spacing={1} color="gray.400" fontSize="xs" display={{ base: 'none', md: 'flex' }}>
+              <Icon as={FiThumbsUp} color="blue.300" />
+              <Text>{user.totalVotes} votes</Text>
+            </HStack>
+          </HStack>
         </VStack>
       </HStack>
     </Box>

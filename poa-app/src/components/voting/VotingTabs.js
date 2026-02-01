@@ -10,18 +10,7 @@ import {
   VStack,
   Text,
 } from "@chakra-ui/react";
-
-const glassLayerStyle = {
-  position: "absolute",
-  height: "100%",
-  width: "100%",
-  zIndex: -1,
-  borderRadius: "inherit",
-  backdropFilter: "blur(20px)",
-  backgroundColor: "rgba(0, 0, 0, .8)",
-  boxShadow: "inset 0 0 15px rgba(148, 115, 220, 0.15)",
-  border: "1px solid rgba(148, 115, 220, 0.2)",
-};
+import { glassLayerWithShadowStyle } from '@/components/shared/glassStyles';
 
 const VotingTabs = ({ 
   selectedTab, 
@@ -60,7 +49,7 @@ const VotingTabs = ({
       >
         <Box 
           className="glass" 
-          style={glassLayerStyle} 
+          style={glassLayerWithShadowStyle} 
           position="absolute"
           top={0}
           left={0}

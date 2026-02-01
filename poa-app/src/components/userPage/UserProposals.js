@@ -10,16 +10,7 @@ import {
 } from '@chakra-ui/react';
 import Link2 from 'next/link';
 import { useRouter } from "next/router";
-
-const glassLayerStyle = {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    zIndex: -1,
-    borderRadius: 'inherit',
-    backdropFilter: 'blur(50px)',
-    backgroundColor: 'rgba(0, 0, 0, .9)',
-};
+import { glassUserPageStyle } from '@/components/shared/glassStyles';
 
 const UserProposals = ({ userProposals }) => {
     // Check if user proposals exist
@@ -56,7 +47,7 @@ const UserProposals = ({ userProposals }) => {
                     mt="-4"
                     mb="-3"
                 >
-                    <div style={glassLayerStyle} />
+                    <div style={glassUserPageStyle} />
                     <Link2  href={`/voting/?poll=${proposal.id}&userDAO=${userDAO}`}>
                         <VStack textColor="white" spacing={2}>
                             <Heading ml={4} fontWeight="extrabold" mt={2} size="sm">

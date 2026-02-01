@@ -8,6 +8,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { useAccount } from "wagmi";
 import { useEthersProvider, useEthersSigner } from '@/components/ProviderConverter';
+import { DEFAULT_CHAIN_ID } from '@/config/networks';
 
 const Web3Context = createContext();
 
@@ -28,7 +29,7 @@ export const Web3Provider = ({ children }) => {
     }, [address]);
 
     const checkNetwork = () => {
-        if (chainId !== 560048) {
+        if (chainId !== DEFAULT_CHAIN_ID) {
             setNetworkModalOpen(true);
             return false;
         }

@@ -30,18 +30,7 @@ import {
   FiThumbsUp,
   FiPlusSquare,
 } from 'react-icons/fi';
-
-const glassLayerStyle = {
-  position: 'absolute',
-  height: '100%',
-  width: '100%',
-  zIndex: -1,
-  borderRadius: 'inherit',
-  backdropFilter: 'blur(20px)',
-  backgroundColor: 'rgba(0, 0, 0, 0.8)',
-  boxShadow: 'inset 0 0 15px rgba(148, 115, 220, 0.15)',
-  border: '1px solid rgba(148, 115, 220, 0.2)',
-};
+import { glassLayerWithShadowStyle } from '@/components/shared/glassStyles';
 
 /**
  * Icon mapping for permission types
@@ -128,7 +117,7 @@ export function PermissionsMatrix({
         p={{ base: 4, md: 6 }}
         overflow="hidden"
       >
-        <Box style={glassLayerStyle} />
+        <Box style={glassLayerWithShadowStyle} />
         <Skeleton height="200px" borderRadius="xl" />
       </Box>
     );
@@ -143,7 +132,7 @@ export function PermissionsMatrix({
         overflow="hidden"
         textAlign="center"
       >
-        <Box style={glassLayerStyle} />
+        <Box style={glassLayerWithShadowStyle} />
         <Text color="gray.400">No permissions configured</Text>
       </Box>
     );
@@ -155,7 +144,7 @@ export function PermissionsMatrix({
       borderRadius="2xl"
       overflow="hidden"
     >
-      <Box style={glassLayerStyle} />
+      <Box style={glassLayerWithShadowStyle} />
 
       <Box overflowX="auto">
         <Table

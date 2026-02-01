@@ -38,17 +38,7 @@ import { useIPFScontext } from '@/context/ipfsContext';
 import { useRouter } from 'next/router';
 import { ethers } from 'ethers';
 import { resolveUsernames } from '@/features/deployer/utils/usernameResolver';
-
-
-const glassLayerStyle = {
-  position: "absolute",
-  height: "100%",
-  width: "100%",
-  zIndex: -1,
-  borderRadius: "inherit",
-  backdropFilter: "blur(9px)",
-  backgroundColor: "rgba(33, 33, 33, 0.97)",
-};
+import { glassModalStyle } from '@/components/shared/glassStyles';
 
 const TaskCardModal = ({ task, columnId, onEditTask }) => {
   const [submission, setSubmission] = useState('');
@@ -506,10 +496,10 @@ const TaskCardModal = ({ task, columnId, onEditTask }) => {
       <Modal isOpen={isOpen} onClose={handleCloseModal} size="3xl">
         <ModalOverlay />
         <ModalContent bg="transparent" textColor="white">
-          <div className="glass" style={glassLayerStyle} />
+          <div className="glass" style={glassModalStyle} />
           <ModalCloseButton />
           <Box pt={4} borderTopRadius="2xl" bg="transparent" boxShadow="lg" position="relative" zIndex={-1}>
-            <div className="glass" style={glassLayerStyle} />
+            <div className="glass" style={glassModalStyle} />
             <Text ml="6" fontSize="2xl" fontWeight="bold">{task.isIndexing ? 'Indexing Task Data...' : task.name}</Text>
           </Box>
           <ModalBody>

@@ -31,17 +31,7 @@ import CountDown from "./countDown";
 import { useRouter } from "next/router";
 import { useAccount } from "wagmi";
 import { useRoleNames, useVotingPower } from "@/hooks";
-
-
-const glassLayerStyle = {
-  position: "absolute",
-  height: "100%",
-  width: "100%",
-  zIndex: -1,
-  borderRadius: "inherit",
-  backdropFilter: "blur(9px)",
-  backgroundColor: "rgba(33, 33, 33, 0.97)",
-};
+import { glassModalStyle } from '@/components/shared/glassStyles';
 
 const PollModal = ({
   onOpen,
@@ -175,7 +165,7 @@ const PollModal = ({
         mt="10%"
         color="ghostwhite"
       >
-        <div className="glass" style={glassLayerStyle} />
+        <div className="glass" style={glassModalStyle} />
         <ModalHeader
           color="rgba(333, 333, 333, 1)"
           fontWeight={"extrabold"}

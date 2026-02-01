@@ -28,18 +28,7 @@ import { useUserContext } from '@/context/UserContext';
 import { useProjectContext } from '@/context/ProjectContext';
 import { AddIcon, SearchIcon, ChevronLeftIcon } from '@chakra-ui/icons';
 import { PERMISSION_MESSAGES, ROLE_INDICES } from '../../util/permissions';
-
-const glassLayerStyle = {
-  position: 'absolute',
-  width: '100%',
-  height: '100%',
-  zIndex: -1,
-  borderRadius: 'inherit',
-  backdropFilter: 'blur(15px)',
-  backgroundColor: 'rgba(0, 0, 0, .85)',
-  border: '1px solid rgba(255, 255, 255, 0.1)',
-  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
-};
+import { glassSidebarStyle } from '@/components/shared/glassStyles';
 
 const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onOpenCreateModal, onToggleSidebar }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -177,7 +166,7 @@ const ProjectSidebar = ({ projects, selectedProject, onSelectProject, onOpenCrea
       }}
       transition="width 0.3s ease, transform 0.3s ease"
     >
-      <div className="glass" style={glassLayerStyle} />
+      <div className="glass" style={glassSidebarStyle} />
       
       {/* Header with gradient effect */}
       <Flex 

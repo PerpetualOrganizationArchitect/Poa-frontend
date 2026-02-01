@@ -24,16 +24,7 @@ import {
 } from '@chakra-ui/react';
 import { FiShield, FiUsers, FiCheck, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { PendingRequestsPanel } from '@/components/tokenRequest';
-
-const glassLayerStyle = {
-  position: 'absolute',
-  height: '100%',
-  width: '100%',
-  zIndex: -1,
-  borderRadius: 'inherit',
-  backdropFilter: 'blur(20px)',
-  backgroundColor: 'rgba(0, 0, 0, .85)',
-};
+import { glassLayerDarkStyle } from '@/components/shared/glassStyles';
 
 /**
  * Menu section with collapsible content
@@ -112,7 +103,7 @@ const ExecutiveMenuModal = ({ isOpen, onClose, hasApproverRole = false }) => {
         position="relative"
         overflow="hidden"
       >
-        <div style={glassLayerStyle} />
+        <div style={glassLayerDarkStyle} />
 
         {/* Header */}
         <ModalHeader

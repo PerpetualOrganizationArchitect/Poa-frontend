@@ -29,20 +29,9 @@ import {
   WrapItem,
 } from "@chakra-ui/react";
 import { AddIcon, DeleteIcon, InfoOutlineIcon } from "@chakra-ui/icons";
+import { glassLayerWithShadowStyle } from '@/components/shared/glassStyles';
 import { useRoleNames } from "@/hooks";
 import SetterActionSelector from "./SetterActionSelector";
-
-const glassLayerStyle = {
-  position: "absolute",
-  height: "100%",
-  width: "100%",
-  zIndex: -1,
-  borderRadius: "inherit",
-  backdropFilter: "blur(20px)",
-  backgroundColor: "rgba(0, 0, 0, .9)",
-  boxShadow: "inset 0 0 15px rgba(148, 115, 220, 0.15)",
-  border: "1px solid rgba(148, 115, 220, 0.2)",
-};
 
 const CreateVoteModal = ({
   isOpen,
@@ -88,7 +77,7 @@ const CreateVoteModal = ({
       >
         <Box 
           className="glass" 
-          style={glassLayerStyle} 
+          style={glassLayerWithShadowStyle} 
           position="absolute"
           top={0}
           left={0}

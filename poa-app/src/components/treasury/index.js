@@ -6,3 +6,4 @@ export { default as CurrentDistributions } from './CurrentDistributions';
 export { default as DistributionCard } from './DistributionCard';
 export { default as DistributionHistory } from './DistributionHistory';
 export { default as HistoricalOverview } from './HistoricalOverview';
+export { default as ParticipationTokenModal } from './ParticipationTokenModal';

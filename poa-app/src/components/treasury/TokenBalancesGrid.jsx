@@ -20,7 +20,7 @@ const ERC20_ABI = [
   },
 ];
 
-const TokenBalancesGrid = ({ executorAddress }) => {
+const TokenBalancesGrid = ({ executorAddress, onPTClick }) => {
   const [balances, setBalances] = useState({
     eth: null,
     tokens: {},
@@ -103,13 +103,15 @@ const TokenBalancesGrid = ({ executorAddress }) => {
   // Build token list for display
   const tokenList = [
     {
-      symbol: 'PT',
-      name: 'Participation Token',
+      symbol: 'Participation Token',
+      name: 'Governance Token',
       balance: participationTokenAddress
         ? balances.tokens[participationTokenAddress.toLowerCase()] || '0'
         : '0',
       decimals: 18,
       tokenType: 'Governance',
+      isClickable: true,
+      onClick: onPTClick,
     },
     {
       symbol: 'ETH',
@@ -148,6 +150,8 @@ const TokenBalancesGrid = ({ executorAddress }) => {
           decimals={token.decimals}
           tokenType={token.tokenType}
           isLoading={isLoading}
+          isClickable={token.isClickable}
+          onClick={token.onClick}
         />
       ))}
     </SimpleGrid>

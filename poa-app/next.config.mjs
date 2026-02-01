@@ -6,10 +6,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  eslint: {
-    // Lint is run as a separate CI step with continue-on-error
-    ignoreDuringBuilds: true,
-  },
   async redirects() {
     return [
       {

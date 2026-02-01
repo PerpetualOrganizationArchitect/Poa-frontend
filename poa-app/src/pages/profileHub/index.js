@@ -9,7 +9,9 @@ import {
   Badge,
   Center,
   Skeleton,
+  Icon,
 } from '@chakra-ui/react';
+import { FiClock } from 'react-icons/fi';
 import AccountSettingsModal from '@/components/userPage/AccountSettingsModal';
 import { useVotingContext } from '@/context/VotingContext';
 import { useUserContext } from '@/context/UserContext';
@@ -139,17 +141,23 @@ function RecommendedTasksCompact({ tasks, userDAO }) {
                 bg="black"
                 p={3}
                 borderRadius="lg"
-                _hover={{ bg: 'gray.800', transform: 'scale(1.02)' }}
+                _hover={{
+                  bg: 'gray.800',
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
+                }}
                 transition="all 0.2s"
                 cursor="pointer"
               >
-                <Text fontSize="sm" fontWeight="medium" color="white" noOfLines={1}>
-                  {task.isIndexing ? 'Indexing...' : task.title}
-                </Text>
-                <HStack justify="space-between" mt={1}>
-                  <Badge colorScheme="purple" fontSize="xs">{task.status}</Badge>
-                  <Text fontSize="xs" color="gray.400">Payout {task.payout}</Text>
+                <HStack justify="space-between">
+                  <Text fontSize="sm" fontWeight="medium" color="white" noOfLines={1} flex={1}>
+                    {task.isIndexing ? 'Indexing...' : task.title}
+                  </Text>
+                  <Badge colorScheme="yellow" variant="subtle" fontSize="xs" ml={2}>
+                    {task.payout} PT
+                  </Badge>
                 </HStack>
+                <Badge colorScheme="green" fontSize="xs" mt={2}>{task.status}</Badge>
               </Box>
             </Link2>
           ))
@@ -357,17 +365,23 @@ const UserprofileHub = () => {
                         bg="black"
                         p={3}
                         borderRadius="lg"
-                        _hover={{ bg: 'gray.800', transform: 'scale(1.02)' }}
+                        _hover={{
+                          bg: 'gray.800',
+                          transform: 'translateY(-2px)',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
+                        }}
                         transition="all 0.2s"
                         cursor="pointer"
                       >
-                        <Text fontSize="sm" fontWeight="medium" color="white" noOfLines={1}>
-                          {task.isIndexing ? 'Indexing...' : task.title}
-                        </Text>
-                        <HStack justify="space-between" mt={1}>
-                          <Badge colorScheme="purple" fontSize="xs">{task.status}</Badge>
-                          <Text fontSize="xs" color="gray.400">Payout {task.payout}</Text>
+                        <HStack justify="space-between">
+                          <Text fontSize="sm" fontWeight="medium" color="white" noOfLines={1} flex={1}>
+                            {task.isIndexing ? 'Indexing...' : task.title}
+                          </Text>
+                          <Badge colorScheme="yellow" variant="subtle" fontSize="xs" ml={2}>
+                            {task.payout} PT
+                          </Badge>
                         </HStack>
+                        <Badge colorScheme="purple" fontSize="xs" mt={2}>{task.status}</Badge>
                       </Box>
                     </Link2>
                   ))
@@ -382,16 +396,25 @@ const UserprofileHub = () => {
                         bg="black"
                         p={3}
                         borderRadius="lg"
-                        _hover={{ bg: 'gray.800', transform: 'scale(1.02)' }}
+                        _hover={{
+                          bg: 'gray.800',
+                          transform: 'translateY(-2px)',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
+                        }}
                         transition="all 0.2s"
                         cursor="pointer"
                       >
                         <Text fontSize="sm" fontWeight="bold" color="white" noOfLines={1}>
                           {proposal.title}
                         </Text>
-                        <HStack justify="space-between" mt={1}>
-                          <Badge colorScheme="blue" fontSize="xs">{proposal.type}</Badge>
-                          <Text fontSize="xs" color="orange.300">{formatTimeRemaining(proposal.endTimestamp)}</Text>
+                        <HStack justify="space-between" mt={2}>
+                          <Badge colorScheme="blue" fontSize="xs">
+                            {proposal.type?.split('_')[0] || proposal.type}
+                          </Badge>
+                          <HStack spacing={1}>
+                            <Icon as={FiClock} color="orange.300" boxSize={3} />
+                            <Text fontSize="xs" color="orange.300">{formatTimeRemaining(proposal.endTimestamp)}</Text>
+                          </HStack>
                         </HStack>
                       </Box>
                     </Link2>
@@ -407,16 +430,25 @@ const UserprofileHub = () => {
                         bg="black"
                         p={3}
                         borderRadius="lg"
-                        _hover={{ bg: 'gray.800', transform: 'scale(1.02)' }}
+                        _hover={{
+                          bg: 'gray.800',
+                          transform: 'translateY(-2px)',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
+                        }}
                         transition="all 0.2s"
                         cursor="pointer"
                       >
                         <Text fontSize="sm" fontWeight="bold" color="white" noOfLines={1}>
                           {poll.title}
                         </Text>
-                        <HStack justify="space-between" mt={1}>
-                          <Badge colorScheme="blue" fontSize="xs">{poll.type}</Badge>
-                          <Text fontSize="xs" color="orange.300">{formatTimeRemaining(poll.endTimestamp)}</Text>
+                        <HStack justify="space-between" mt={2}>
+                          <Badge colorScheme="blue" fontSize="xs">
+                            {poll.type?.split('_')[0] || poll.type}
+                          </Badge>
+                          <HStack spacing={1}>
+                            <Icon as={FiClock} color="orange.300" boxSize={3} />
+                            <Text fontSize="xs" color="orange.300">{formatTimeRemaining(poll.endTimestamp)}</Text>
+                          </HStack>
                         </HStack>
                       </Box>
                     </Link2>

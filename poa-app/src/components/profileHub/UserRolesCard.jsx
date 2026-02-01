@@ -30,9 +30,11 @@ function RoleCard({ role }) {
       bg="whiteAlpha.50"
       p={3}
       borderRadius="lg"
+      borderLeft="3px solid"
+      borderLeftColor="purple.400"
       spacing={3}
-      _hover={{ bg: 'whiteAlpha.100' }}
-      transition="background 0.2s"
+      _hover={{ bg: 'whiteAlpha.100', transform: 'translateX(2px)' }}
+      transition="all 0.2s"
     >
       <Icon as={FiShield} color="purple.300" boxSize={5} />
       <VStack align="start" spacing={1} flex={1}>

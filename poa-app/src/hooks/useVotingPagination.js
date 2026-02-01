@@ -25,8 +25,9 @@ export function useVotingPagination({
     [safeOngoing, ongoingStartIndex, pageSize]
   );
 
+  // Completed proposals are already sorted by endTimestamp desc in VotingContext
   const displayedCompleted = useMemo(() =>
-    [...safeCompleted].reverse().slice(completedStartIndex, completedStartIndex + pageSize),
+    safeCompleted.slice(completedStartIndex, completedStartIndex + pageSize),
     [safeCompleted, completedStartIndex, pageSize]
   );
 

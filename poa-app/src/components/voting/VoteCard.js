@@ -1,8 +1,7 @@
 import React from "react";
-import { Box, Text, Button, HStack, VStack, Badge, Flex, useBreakpointValue, Icon } from "@chakra-ui/react";
-import { LockIcon } from "@chakra-ui/icons";
+import { Box, Text, Button, HStack, VStack, Flex, useBreakpointValue } from "@chakra-ui/react";
+import { TimeIcon } from "@chakra-ui/icons";
 import CountDown from "@/templateComponents/studentOrgDAO/voting/countDown";
-import { useRoleNames } from "@/hooks";
 
 const glassLayerStyle = {
   position: "absolute",
@@ -24,18 +23,20 @@ const VoteCard = ({
   onPollClick,
   contractAddress
 }) => {
-  const { getRoleNamesString, allRoles } = useRoleNames();
-
+  // Use isExpired from proposal if available, fallback to showDetermineWinner
+  const needsWinnerAnnouncement = proposal.isExpired || showDetermineWinner;
   // Use responsive sizing based on breakpoints
   const titleFontSize = useBreakpointValue({ base: "sm", sm: "md" });
-  const cardHeight = useBreakpointValue({ base: "180px", sm: "220px" });
+  const cardHeight = useBreakpointValue({ base: "200px", sm: "240px" });
   const cardPadding = useBreakpointValue({ base: 3, sm: 4 });
 
-// Get role names for restricted voting - use first role as default
-  const restrictedRolesText = proposal.isHatRestricted && proposal.restrictedHatIds?.length > 0
-    ? getRoleNamesString(proposal.restrictedHatIds)
-    : allRoles?.[0]?.name || "All Members";
-  
+  // Truncate description to first 100 characters
+  const truncatedDescription = proposal.description
+    ? proposal.description.length > 100
+      ? proposal.description.substring(0, 100) + "..."
+      : proposal.description
+    : "";
+
   return (
     <Box
       flexDirection="column"
@@ -54,8 +55,8 @@ const VoteCard = ({
       h={cardHeight}
       transition="all 0.3s ease"
       cursor="pointer"
-      _hover={{ 
-        transform: "translateY(-5px) scale(1.02)", 
+      _hover={{
+        transform: "translateY(-5px) scale(1.02)",
         boxShadow: "0 10px 20px rgba(148, 115, 220, 0.2)",
         "& .glass": {
           border: "1px solid rgba(148, 115, 220, 0.5)",
@@ -63,14 +64,14 @@ const VoteCard = ({
         }
       }}
       onClick={() => {
-        if (!showDetermineWinner) {
+        if (!needsWinnerAnnouncement) {
           onPollClick(proposal);
         }
       }}
     >
-      <Box 
-        className="glass" 
-        style={glassLayerStyle} 
+      <Box
+        className="glass"
+        style={glassLayerStyle}
         position="absolute"
         top={0}
         left={0}
@@ -80,77 +81,84 @@ const VoteCard = ({
         zIndex={-1}
         transition="all 0.3s ease"
       />
-      
-      <VStack spacing={{ base: 1, sm: 2 }} align="stretch" w="100%">
-        <Box h={{ base: "40px", sm: "48px" }} mb={1}>
-          <Text 
+
+      <VStack spacing={2} align="stretch" w="100%" h="100%">
+        {/* Title */}
+        <Box>
+          <Text
             fontSize={titleFontSize}
             fontWeight="extrabold"
-            borderBottom="2px solid rgba(148, 115, 220, 0.5)" 
+            borderBottom="2px solid rgba(148, 115, 220, 0.5)"
             pb={1}
             textAlign="center"
-            noOfLines={2}
+            noOfLines={1}
             title={proposal.title}
           >
             {proposal.title}
           </Text>
         </Box>
-        
+
+        {/* Description preview */}
+        {truncatedDescription && (
+          <Text
+            fontSize="xs"
+            color="gray.300"
+            noOfLines={2}
+            lineHeight="1.4"
+            textAlign="center"
+            px={1}
+          >
+            {truncatedDescription}
+          </Text>
+        )}
+
+        {/* Time or Announce Winner button */}
         <Flex justify="center" align="center" flex="1">
-          {showDetermineWinner ? (
+          {needsWinnerAnnouncement ? (
             <Button
               colorScheme="purple"
-              size="sm"
+              size="md"
               onClick={(e) => {
                 e.stopPropagation();
                 getWinner(contractAddress, proposal.id, proposal.type === 'Hybrid');
               }}
-              variant="outline"
-              borderColor="rgba(148, 115, 220, 0.6)"
-              _hover={{ bg: "rgba(148, 115, 220, 0.2)" }}
+              bg="rgba(148, 115, 220, 0.3)"
+              borderColor="rgba(148, 115, 220, 0.8)"
+              border="1px solid"
+              _hover={{ bg: "rgba(148, 115, 220, 0.5)" }}
+              fontWeight="bold"
             >
-              Determine Winner
+              Announce Winner
             </Button>
           ) : (
-            <VStack spacing={1}>
-              <Badge colorScheme="purple" fontSize="xs" mb={1}>Time Remaining</Badge>
+            <HStack spacing={2} bg="rgba(148, 115, 220, 0.15)" px={4} py={2} borderRadius="lg">
+              <TimeIcon color="purple.300" />
               <CountDown duration={calculateRemainingTime(proposal?.endTimestamp)} />
-            </VStack>
+            </HStack>
           )}
         </Flex>
-        
-        <VStack align="stretch" mt={{ base: 0, sm: 1 }} spacing={1}>
-          <Text fontWeight="bold" fontSize="xs" color="rgba(148, 115, 220, 0.9)">
-            Voting Options:
-          </Text>
-          <HStack mb={1} spacing={2} flexWrap="wrap" justify="center">
-            {proposal.options.map((option, index) => (
-              <Badge
+
+        {/* Voting Options - cleaner pill style */}
+        <VStack align="stretch" spacing={2}>
+          <HStack spacing={2} flexWrap="wrap" justify="center">
+            {proposal.options.slice(0, 4).map((option, index) => (
+              <Box
                 key={index}
-                colorScheme={index % 2 === 0 ? "purple" : "blue"}
-                variant="subtle"
-                px={2}
+                bg={index === 0 ? "rgba(148, 115, 220, 0.3)" : "rgba(100, 100, 100, 0.3)"}
+                border="1px solid"
+                borderColor={index === 0 ? "rgba(148, 115, 220, 0.6)" : "rgba(150, 150, 150, 0.4)"}
+                px={3}
                 py={1}
-                borderRadius="md"
+                borderRadius="full"
                 fontSize="xs"
+                fontWeight="medium"
+                color={index === 0 ? "purple.200" : "gray.300"}
               >
                 {option.name}
-              </Badge>
+              </Box>
             ))}
-          </HStack>
-
-          {/* Who can vote and quorum display */}
-          <HStack spacing={2} justify="center" flexWrap="wrap">
-            <HStack spacing={1}>
-              <Icon as={LockIcon} color="purple.300" boxSize={3} />
-              <Text fontSize="xs" color="gray.400">
-                {restrictedRolesText}
-              </Text>
-            </HStack>
-            {proposal.quorum > 0 && (
-              <Text fontSize="xs" color="gray.400">
-                {proposal.quorum}% participation needed
-              </Text>
+            {proposal.options.length > 4 && (
+              <Text fontSize="xs" color="gray.500">+{proposal.options.length - 4} more</Text>
             )}
           </HStack>
         </VStack>

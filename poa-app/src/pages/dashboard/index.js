@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   VStack,
@@ -17,6 +17,10 @@ import {
   Flex,
   Wrap,
   WrapItem,
+  Stat,
+  StatLabel,
+  StatNumber,
+  SimpleGrid,
 } from '@chakra-ui/react';
 import { useVotingContext } from '@/context/VotingContext';
 import { usePOContext } from '@/context/POContext';
@@ -27,7 +31,10 @@ import OngoingPolls from '@/components/userPage/OngoingPolls';
 import { useRouter } from 'next/router';
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import { FaLink } from 'react-icons/fa';
+import { FiUsers, FiCoins, FiActivity, FiCheckCircle } from 'react-icons/fi';
 import { useIPFScontext } from "@/context/ipfsContext";
+import { useOrgStructure } from '@/hooks/useOrgStructure';
+import { VouchingSection } from '@/components/orgStructure/VouchingSection';
 
 function generateOrgStructurePreview(poData, roleCount) {
   const {
@@ -93,6 +100,10 @@ const PerpetualOrgDashboard = () => {
   const sectionHeadingSize = useBreakpointValue({ base: "xl", md: "2xl" });
   const textSize = useBreakpointValue({ base: "sm", md: "md" });
   const statsTextSize = useBreakpointValue({ base: "md", md: "lg" });
+  const leaderboardTitle = useBreakpointValue({
+    base: "Members & Leaderboard",
+    md: "Browse Members and Leaderboard"
+  });
 
   useEffect(() => {
     const fetchImage = async () => {
@@ -113,6 +124,24 @@ const PerpetualOrgDashboard = () => {
 
   const { leaderboardDisplayData } = usePOContext();
   const { recommendedTasks } = useProjectContext();
+  const { userData } = useUserContext();
+  const { roles, eligibilityModuleAddress } = useOrgStructure();
+
+  // Vouching section logic - only show if user can vouch for any role
+  const userHatIds = userData?.hatIds || [];
+  const rolesWithVouching = useMemo(() => {
+    return roles?.filter(role => role.vouchingEnabled) || [];
+  }, [roles]);
+
+  const showVouchingSection = useMemo(() => {
+    if (!rolesWithVouching.length || !userHatIds.length) return false;
+    return rolesWithVouching.some(role => {
+      const membershipHatId = role.vouchingMembershipHatId;
+      if (!membershipHatId) return false;
+      const normalizedMembership = String(membershipHatId).toLowerCase();
+      return userHatIds.some(id => String(id).toLowerCase() === normalizedMembership);
+    });
+  }, [rolesWithVouching, userHatIds]);
 
   const getMedalColor = (rank) => {
     switch (rank) {
@@ -161,6 +190,7 @@ const PerpetualOrgDashboard = () => {
                   'orgStats'
                   'tasks'
                   'polls'
+                  ${showVouchingSection ? "'vouching'" : ''}
                   'leaderboard'
                   'orgStructure'
                   'learnAndEarn'
@@ -169,17 +199,20 @@ const PerpetualOrgDashboard = () => {
                   'orgStats'
                   'tasks'
                   'polls'
+                  ${showVouchingSection ? "'vouching'" : ''}
                   'leaderboard'
                   'orgStructure'
                 `,
                 md: educationHubEnabled ? `
                   'orgInfo orgStats'
                   'tasks polls'
+                  ${showVouchingSection ? "'vouching vouching'" : ''}
                   'leaderboard orgStructure'
                   'learnAndEarn learnAndEarn'
                 ` : `
                   'orgInfo orgStats'
                   'tasks polls'
+                  ${showVouchingSection ? "'vouching vouching'" : ''}
                   'leaderboard orgStructure'
                 `,
               }}
@@ -269,53 +302,46 @@ const PerpetualOrgDashboard = () => {
                     Organization Stats
                   </Text>
                 </VStack>
-                <VStack mt="2" spacing={1.5} align="flex-start" ml={{ base: 4, md: 8 }}>
-                  <HStack spacing={2}>
-                    <Text mt="-1" fontSize={statsTextSize} fontWeight="bold">
-                      Members:
-                    </Text>
-                    <Text mt="-1" fontSize={statsTextSize}>
-                      {poMembers}
-                    </Text>
-                  </HStack>
-
-                  <HStack spacing={2}>
-                    <Text mt="-1" fontSize={statsTextSize} fontWeight="bold">
-                      Total Participation Tokens:
-                    </Text>
-                    <Text mt="-1" fontSize={statsTextSize}>
-                      {ptTokenBalance}
-                    </Text>
-                  </HStack>
-
-                  <HStack spacing={2}>
-                    <Text mt="-1" fontSize={statsTextSize} fontWeight="bold">
-                      Active Tasks:
-                    </Text>
-                    <Text mt="-1" fontSize={statsTextSize}>
-                      {activeTaskAmount}
-                    </Text>
-                  </HStack>
-
-                  <HStack spacing={2}>
-                    <Text mt="-1" fontSize={statsTextSize} fontWeight="bold">
-                      Completed Tasks:
-                    </Text>
-                    <Text mt="-1" fontSize={statsTextSize}>
-                     {completedTaskAmount}
-                    </Text>
-                  </HStack>
-
-                  <HStack spacing={2}>
-                    {/* <Text mt="-1" fontSize="lg" fontWeight="bold">
-                      Treasury Balance:
-                    </Text>
-                    <Text mt="-1" fontSize="lg">
-                      $12345
-                    </Text> */}
-                  </HStack>
-                </VStack>
-
+                <Box p={{ base: 3, md: 4 }}>
+                  <SimpleGrid columns={2} spacing={{ base: 3, md: 4 }}>
+                    <Box bg="whiteAlpha.50" p={{ base: 3, md: 4 }} borderRadius="xl">
+                      <Stat textAlign="center">
+                        <HStack justify="center" mb={1}>
+                          <Icon as={FiUsers} color="purple.300" boxSize={{ base: 4, md: 5 }} />
+                        </HStack>
+                        <StatNumber fontSize={{ base: "xl", md: "2xl" }} color="purple.300">{poMembers}</StatNumber>
+                        <StatLabel fontSize={{ base: "xs", md: "sm" }} color="gray.400">Members</StatLabel>
+                      </Stat>
+                    </Box>
+                    <Box bg="whiteAlpha.50" p={{ base: 3, md: 4 }} borderRadius="xl">
+                      <Stat textAlign="center">
+                        <HStack justify="center" mb={1}>
+                          <Icon as={FiCoins} color="yellow.300" boxSize={{ base: 4, md: 5 }} />
+                        </HStack>
+                        <StatNumber fontSize={{ base: "xl", md: "2xl" }} color="yellow.300">{ptTokenBalance}</StatNumber>
+                        <StatLabel fontSize={{ base: "xs", md: "sm" }} color="gray.400">Total PT</StatLabel>
+                      </Stat>
+                    </Box>
+                    <Box bg="whiteAlpha.50" p={{ base: 3, md: 4 }} borderRadius="xl">
+                      <Stat textAlign="center">
+                        <HStack justify="center" mb={1}>
+                          <Icon as={FiActivity} color="blue.300" boxSize={{ base: 4, md: 5 }} />
+                        </HStack>
+                        <StatNumber fontSize={{ base: "xl", md: "2xl" }} color="blue.300">{activeTaskAmount}</StatNumber>
+                        <StatLabel fontSize={{ base: "xs", md: "sm" }} color="gray.400">Active Tasks</StatLabel>
+                      </Stat>
+                    </Box>
+                    <Box bg="whiteAlpha.50" p={{ base: 3, md: 4 }} borderRadius="xl">
+                      <Stat textAlign="center">
+                        <HStack justify="center" mb={1}>
+                          <Icon as={FiCheckCircle} color="green.300" boxSize={{ base: 4, md: 5 }} />
+                        </HStack>
+                        <StatNumber fontSize={{ base: "xl", md: "2xl" }} color="green.300">{completedTaskAmount}</StatNumber>
+                        <StatLabel fontSize={{ base: "xs", md: "sm" }} color="gray.400">Completed</StatLabel>
+                      </Stat>
+                    </Box>
+                  </SimpleGrid>
+                </Box>
               </Box>
             </GridItem>
 
@@ -346,14 +372,15 @@ const PerpetualOrgDashboard = () => {
                   pt={2}
                 >
                   {recommendedTasks?.slice(0, 3).map((task) => (
-                    <Box 
-                      key={task.id} 
-                      w={{ base: "100%", md: "31%" }} 
+                    <Box
+                      key={task.id}
+                      w={{ base: "100%", md: "31%" }}
                       mb={{ base: 2, md: 0 }}
-                      _hover={{ boxShadow: "md", transform: "scale(1.02)" }} 
-                      p={4} 
-                      borderRadius="2xl" 
-                      overflow="hidden" 
+                      _hover={{ transform: "translateY(-2px)", boxShadow: "0 8px 25px rgba(0,0,0,0.3)" }}
+                      transition="all 0.2s"
+                      p={4}
+                      borderRadius="2xl"
+                      overflow="hidden"
                       bg="black"
                     >
                       <Link2 href={`/tasks/?task=${task.id}&projectId=${encodeURIComponent(decodeURIComponent(task.projectId))}&userDAO=${userDAO}`}>
@@ -397,6 +424,36 @@ const PerpetualOrgDashboard = () => {
               </Box>
             </GridItem>
 
+            {showVouchingSection && (
+              <GridItem area={'vouching'}>
+                <Box
+                  w="100%"
+                  borderRadius="2xl"
+                  bg="transparent"
+                  boxShadow="lg"
+                  position="relative"
+                  zIndex={2}
+                >
+                  <div style={glassLayerStyle} />
+                  <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
+                    <div style={glassLayerStyle} />
+                    <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
+                      Member Vouching
+                    </Text>
+                  </VStack>
+                  <Box p={{ base: 2, md: 4 }}>
+                    <VouchingSection
+                      roles={rolesWithVouching}
+                      eligibilityModuleAddress={eligibilityModuleAddress}
+                      userHatIds={userHatIds}
+                      userAddress={userData?.id}
+                      isConnected={true}
+                    />
+                  </Box>
+                </Box>
+              </GridItem>
+            )}
+
             <GridItem area={'leaderboard'}>
               <Link2 href={`/leaderboard?userDAO=${userDAO}`}>
                 <Box
@@ -407,13 +464,14 @@ const PerpetualOrgDashboard = () => {
                   boxShadow="lg"
                   position="relative"
                   zIndex={2}
-                  _hover={{ boxShadow: "md", transform: "scale(1.02)" }}
+                  _hover={{ transform: "translateY(-2px)", boxShadow: "0 8px 25px rgba(0,0,0,0.3)" }}
+                  transition="all 0.2s"
                 >
                   <div style={glassLayerStyle} />
                   <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
                     <div style={glassLayerStyle} />
                     <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
-                      Leaderboard
+                      {leaderboardTitle}
                     </Text>
                   </VStack>
                   <Box p={{ base: 2, md: 4 }}>
@@ -511,7 +569,9 @@ const PerpetualOrgDashboard = () => {
                             borderRadius="xl"
                             onClick={() => router.push(`/edu-Hub`)}
                             bg="black"
-                            _hover={{ boxShadow: "md", transform: "scale(1.02)" }}
+                            _hover={{ transform: "translateY(-2px)", boxShadow: "0 8px 25px rgba(0,0,0,0.3)" }}
+                            transition="all 0.2s"
+                            cursor="pointer"
                             mb={{ base: 2, md: 0 }}
                           >
 

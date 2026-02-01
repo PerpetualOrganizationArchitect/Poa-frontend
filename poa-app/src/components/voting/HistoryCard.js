@@ -1,23 +1,6 @@
 import React from "react";
-import { Box, Text, Flex, Badge, VStack, HStack, Icon } from "@chakra-ui/react";
-import { LockIcon } from "@chakra-ui/icons";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { usePOContext } from "@/context/POContext";
-
-// Helper to map hat IDs to role names
-const getRestrictedRoleNames = (restrictedHatIds, roleHatIds, roleNames = {}) => {
-    if (!restrictedHatIds?.length || !roleHatIds?.length) return [];
-    return restrictedHatIds.map(hatId => {
-        // First try to get name from roleNames map
-        const name = roleNames[hatId] || roleNames[String(hatId)];
-        if (name) return name;
-
-        // Fallback to "Role N" based on index
-        const roleIndex = roleHatIds?.findIndex(rh => rh === hatId || String(rh) === String(hatId));
-        if (roleIndex >= 0) return `Role ${roleIndex + 1}`;
-        return null;
-    }).filter(Boolean);
-};
+import { Box, Text, Flex, VStack, HStack, Progress } from "@chakra-ui/react";
+import { CheckCircleIcon, WarningIcon } from "@chakra-ui/icons";
 
 const glassLayerStyle = {
   position: "absolute",
@@ -32,28 +15,22 @@ const glassLayerStyle = {
 };
 
 const HistoryCard = ({ proposal, onPollClick }) => {
-  const { roleHatIds, roleNames } = usePOContext();
-
-  // Get role names for restricted voting
-  const restrictedRoles = getRestrictedRoleNames(proposal.restrictedHatIds, roleHatIds, roleNames);
-
   const predefinedColors = [
     "#9B59B6", // Purple
     "#3498DB", // Blue
+    "#2ECC71", // Green
     "#F1C40F", // Yellow
     "#E74C3C", // Red
-    "#2ECC71", // Green
   ];
-  
-  // Parse and normalize all vote counts first
+
+  // Parse and normalize all vote counts
   const normalizedOptions = [];
   let totalCalculatedVotes = 0;
-  
-  // First pass: extract and normalize all vote counts
+
   if (proposal.options && Array.isArray(proposal.options)) {
     proposal.options.forEach((option, index) => {
       let voteCount = 0;
-      
+
       try {
         if (option.votes !== undefined) {
           if (typeof option.votes === 'number') {
@@ -67,80 +44,61 @@ const HistoryCard = ({ proposal, onPollClick }) => {
               try {
                 voteCount = option.votes.toNumber() || 0;
               } catch (e) {
-                console.error("Error converting BigNumber:", e);
                 voteCount = 0;
               }
             }
           }
         }
       } catch (error) {
-        console.error("Error parsing vote count:", error);
         voteCount = 0;
       }
-      
+
       normalizedOptions.push({
         ...option,
         normalizedVotes: voteCount,
         name: option.name || `Option ${index + 1}`,
       });
-      
+
       totalCalculatedVotes += voteCount;
     });
   }
-  
-  console.log("Total Calculated Votes:", totalCalculatedVotes);
-  
-  // Use calculated total or fall back to proposal.totalVotes if needed
-  const totalVotes = totalCalculatedVotes > 0 
-    ? totalCalculatedVotes 
+
+  const totalVotes = totalCalculatedVotes > 0
+    ? totalCalculatedVotes
     : (proposal.totalVotes ? Number(proposal.totalVotes) : 1);
-  
-  // Make sure we have valid options data
-  const hasValidOptions = normalizedOptions.length > 0;
-  
-  // Create processed options array with correct percentages
-  const processedOptions = hasValidOptions 
-    ? normalizedOptions.map((option, index) => {
-        const color = index < predefinedColors.length 
-          ? predefinedColors[index]
-          : `rgba(${Math.random() * 255}, ${Math.random() * 255}, ${Math.random() * 255}, 1)`;
-        
-        // Calculate percentage from total votes
-        const percentage = totalVotes > 0 
-          ? (option.normalizedVotes / totalVotes) * 100
-          : 0;
-          
-        console.log(`Option ${index} (${option.name}) - Votes: ${option.normalizedVotes} / ${totalVotes} = ${percentage.toFixed(1)}%`);
-        
-        return {
-          name: option.name,
-          optionName: option.name,
-          votes: option.normalizedVotes,
-          percentage: percentage,
-          color: color
-        };
-      }) 
-    : [];
-  
-  // Create data for the chart
-  const data = [{
-    name: "Options",
-    values: processedOptions.map(option => ({
-      value: option.percentage,
-      color: option.color,
+
+  // Create processed options array with percentages
+  const processedOptions = normalizedOptions.map((option, index) => {
+    const percentage = totalVotes > 0
+      ? (option.normalizedVotes / totalVotes) * 100
+      : 0;
+
+    return {
       name: option.name,
-      optionName: option.optionName,
-      votes: option.votes
-    }))
-  }];
-  
-  let WinnerName = "No Winner";
+      votes: option.normalizedVotes,
+      percentage: percentage,
+      color: predefinedColors[index % predefinedColors.length],
+      isWinner: proposal.winningOption === index && proposal.isValid !== false,
+    };
+  });
+
+  // Determine winner name
+  let winnerName = "No Winner";
+  let hasWinner = false;
   if (proposal.isValid !== false &&
       proposal.winningOption !== undefined &&
       proposal.winningOption !== null &&
       normalizedOptions[proposal.winningOption]) {
-    WinnerName = normalizedOptions[proposal.winningOption].name;
+    winnerName = normalizedOptions[proposal.winningOption].name;
+    hasWinner = true;
   }
+
+  // Truncate description to first 100 characters
+  const truncatedDescription = proposal.description
+    ? proposal.description.length > 100
+      ? proposal.description.substring(0, 100) + "..."
+      : proposal.description
+    : "";
 
   return (
     <Box
@@ -157,11 +115,11 @@ const HistoryCard = ({ proposal, onPollClick }) => {
       color="rgba(333, 333, 333, 1)"
       p={4}
       zIndex={1}
-      h="200px"
+      h="240px"
       transition="all 0.3s ease"
       cursor="pointer"
-      _hover={{ 
-        transform: "translateY(-5px) scale(1.02)", 
+      _hover={{
+        transform: "translateY(-5px) scale(1.02)",
         boxShadow: "0 10px 20px rgba(148, 115, 220, 0.2)",
         "& .glass": {
           border: "1px solid rgba(148, 115, 220, 0.5)",
@@ -170,9 +128,9 @@ const HistoryCard = ({ proposal, onPollClick }) => {
       }}
       onClick={() => onPollClick(proposal, true)}
     >
-      <Box 
-        className="glass" 
-        style={glassLayerStyle} 
+      <Box
+        className="glass"
+        style={glassLayerStyle}
         position="absolute"
         top={0}
         left={0}
@@ -182,100 +140,96 @@ const HistoryCard = ({ proposal, onPollClick }) => {
         zIndex={-1}
         transition="all 0.3s ease"
       />
-      
+
       <VStack spacing={2} align="stretch" w="100%" h="100%">
-        <Box h="48px" mb={1}>
-          <Text 
-            fontSize="md" 
+        {/* Title */}
+        <Box>
+          <Text
+            fontSize="md"
             fontWeight="extrabold"
-            borderBottom="2px solid rgba(148, 115, 220, 0.5)" 
+            borderBottom="2px solid rgba(148, 115, 220, 0.5)"
             pb={1}
             textAlign="center"
-            noOfLines={2}
+            noOfLines={1}
             title={proposal.title}
           >
             {proposal.title}
           </Text>
         </Box>
-        
-        <Flex justify="center" flex="1" direction="column" align="center">
-          <Box w="100%" h="45px">
-            {hasValidOptions && processedOptions.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data} layout="vertical">
-                  <XAxis type="number" hide={true} />
-                  <YAxis type="category" dataKey="name" hide={true} />
-                  <Tooltip 
-                    formatter={(value, name, props) => {
-                      try {
-                        // Get option index from dataKey
-                        const regex = /values\[(\d+)\]/;
-                        const match = props.dataKey.match(regex);
-                        
-                        if (match && match[1] && processedOptions[match[1]]) {
-                          const option = processedOptions[match[1]];
-                          const optionName = option.optionName;
-                          const voteCount = option.votes;
-                          
-                          // Format nicely with proper percentage and vote count
-                          return [
-                            `${option.percentage.toFixed(1)}% (${voteCount} vote${voteCount !== 1 ? 's' : ''})`, 
-                            optionName
-                          ];
-                        }
-                      } catch (error) {
-                        console.log('Tooltip formatter error:', error);
-                      }
-                      return [`${value.toFixed(1)}%`, 'Votes'];
-                    }}
-                    contentStyle={{ 
-                      backgroundColor: 'rgba(33, 33, 33, 0.9)', 
-                      borderColor: 'rgba(148, 115, 220, 0.5)',
-                      padding: '8px',
-                      fontSize: '12px'
-                    }}
-                    labelStyle={{ color: 'white' }}
-                  />
-                  {data[0].values.map((option, index) => (
-                    <Bar key={index} dataKey={`values[${index}].value`} stackId="a" fill={option.color} name={option.name} />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <Flex w="100%" h="100%" justify="center" align="center">
-                <Text color="whiteAlpha.700" fontSize="sm">No voting data available</Text>
-              </Flex>
-            )}
-          </Box>
-          
-          <VStack mt={1} spacing={1}>
-            <Badge colorScheme="purple" px={2} py={1} borderRadius="md" fontSize="xs">
-              Results
-            </Badge>
-            <Text fontWeight="extrabold" fontSize="sm">
-              Winner: <Text as="span" color="rgba(148, 115, 220, 1)">{WinnerName}</Text>
-            </Text>
-            {/* Who can vote and quorum display */}
-            <HStack spacing={2} justify="center" flexWrap="wrap">
-              <HStack spacing={1}>
-                <Icon as={LockIcon} color="purple.300" boxSize={3} />
-                <Text fontSize="xs" color="gray.400">
-                  {proposal.isHatRestricted && restrictedRoles.length > 0
-                    ? restrictedRoles.join(", ")
-                    : "Role 1"}
-                </Text>
-              </HStack>
-              {proposal.quorum > 0 && (
-                <Text fontSize="xs" color={proposal.isValid ? "green.400" : "orange.400"}>
-                  Quorum: {proposal.quorum}% {proposal.isValid ? "✓" : ""}
-                </Text>
-              )}
+
+        {/* Description preview */}
+        {truncatedDescription && (
+          <Text
+            fontSize="xs"
+            color="gray.300"
+            noOfLines={2}
+            lineHeight="1.4"
+            textAlign="center"
+            px={1}
+          >
+            {truncatedDescription}
+          </Text>
+        )}
+
+        {/* Results visualization */}
+        <VStack spacing={1} flex="1" justify="center">
+          {processedOptions.slice(0, 3).map((option, index) => (
+            <HStack key={index} w="100%" spacing={2}>
+              <Text
+                fontSize="xs"
+                color={option.isWinner ? "purple.300" : "gray.400"}
+                fontWeight={option.isWinner ? "bold" : "normal"}
+                w="70px"
+                noOfLines={1}
+              >
+                {option.name}
+              </Text>
+              <Box flex="1">
+                <Progress
+                  value={option.percentage}
+                  size="sm"
+                  borderRadius="full"
+                  bg="rgba(100, 100, 100, 0.3)"
+                  sx={{
+                    '& > div': {
+                      background: option.isWinner
+                        ? 'linear-gradient(90deg, rgba(148, 115, 220, 0.8), rgba(148, 115, 220, 1))'
+                        : 'rgba(150, 150, 150, 0.5)',
+                    }
+                  }}
+                />
+              </Box>
+              <Text fontSize="xs" color="gray.400" w="35px" textAlign="right">
+                {option.percentage.toFixed(0)}%
+              </Text>
             </HStack>
-          </VStack>
-        </Flex>
+          ))}
+          {processedOptions.length > 3 && (
+            <Text fontSize="xs" color="gray.500">+{processedOptions.length - 3} more options</Text>
+          )}
+        </VStack>
+
+        {/* Winner display */}
+        <HStack justify="center" spacing={2} pt={1}>
+          {hasWinner ? (
+            <>
+              <CheckCircleIcon color="green.400" boxSize={4} />
+              <Text fontSize="sm" fontWeight="bold">
+                Winner: <Text as="span" color="purple.300">{winnerName}</Text>
+              </Text>
+            </>
+          ) : (
+            <>
+              <WarningIcon color="orange.400" boxSize={4} />
+              <Text fontSize="sm" fontWeight="bold" color="orange.300">
+                No Winner
+              </Text>
+            </>
+          )}
+        </HStack>
       </VStack>
     </Box>
   );
 };
 
-export default HistoryCard; 
+export default HistoryCard;

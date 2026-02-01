@@ -13,7 +13,11 @@ export const useVotingContext = () => useContext(VotingContext);
 function transformProposal(proposal, votingTypeId, type, quorum = 0) {
     const currentTime = Math.floor(Date.now() / 1000);
     const endTime = parseInt(proposal.endTimestamp) || 0;
-    const isOngoing = proposal.status === 'Active' && endTime > currentTime;
+    // A proposal is "ongoing" if it's still Active (needs voting or winner announcement)
+    // It moves to "completed" only after status changes from Active
+    const isOngoing = proposal.status === 'Active';
+    // Track if voting period has ended (but winner may not be announced yet)
+    const isExpired = endTime <= currentTime;
 
     // Get metadata from IPFS (if subgraph has indexed it)
     const metadata = proposal.metadata || {};
@@ -93,6 +97,7 @@ function transformProposal(proposal, votingTypeId, type, quorum = 0) {
         wasExecuted: proposal.wasExecuted,
         status: proposal.status,
         isOngoing,
+        isExpired,
         options,
         totalVotes,
         votes: proposal.votes || [],
@@ -156,7 +161,10 @@ export const VotingProvider = ({ children }) => {
                     transformProposal(p, org.hybridVoting.id, 'Hybrid', hybridQuorum)
                 );
                 setHybridVotingOngoing(hybridProposals.filter(p => p.isOngoing));
-                setHybridVotingCompleted(hybridProposals.filter(p => !p.isOngoing));
+                // Sort completed proposals by endTimestamp descending (most recently finished first)
+                const hybridCompleted = hybridProposals.filter(p => !p.isOngoing);
+                hybridCompleted.sort((a, b) => parseInt(b.endTimestamp) - parseInt(a.endTimestamp));
+                setHybridVotingCompleted(hybridCompleted);
 
                 // Process voting classes - convert to usable format
                 console.log('[VotingContext] Raw voting classes from subgraph:', org.hybridVoting.votingClasses);
@@ -184,7 +192,10 @@ export const VotingProvider = ({ children }) => {
                     transformProposal(p, org.directDemocracyVoting.id, 'Direct Democracy', ddQuorum)
                 );
                 setDemocracyVotingOngoing(ddProposals.filter(p => p.isOngoing));
-                setDemocracyVotingCompleted(ddProposals.filter(p => !p.isOngoing));
+                // Sort completed proposals by endTimestamp descending (most recently finished first)
+                const ddCompleted = ddProposals.filter(p => !p.isOngoing);
+                ddCompleted.sort((a, b) => parseInt(b.endTimestamp) - parseInt(a.endTimestamp));
+                setDemocracyVotingCompleted(ddCompleted);
             } else {
                 setDemocracyVotingOngoing([]);
                 setDemocracyVotingCompleted([]);

@@ -688,6 +688,24 @@ export const FETCH_TREASURY_DATA = gql`
           transactionHash
         }
       }
+      taskManager {
+        id
+        projects(where: { deleted: false }, first: 100) {
+          id
+          title
+          tasks(where: { status: "Completed" }, first: 500, orderBy: completedAt, orderDirection: desc) {
+            id
+            taskId
+            title
+            payout
+            assignee
+            assigneeUsername
+            completer
+            completerUsername
+            completedAt
+          }
+        }
+      }
     }
   }
 `;

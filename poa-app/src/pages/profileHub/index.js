@@ -8,24 +8,19 @@ import {
   HStack,
   Badge,
   Center,
-  Collapse,
   Skeleton,
 } from '@chakra-ui/react';
-import { ChevronDownIcon, ChevronUpIcon } from '@chakra-ui/icons';
 import AccountSettingsModal from '@/components/userPage/AccountSettingsModal';
 import { useVotingContext } from '@/context/VotingContext';
 import { useUserContext } from '@/context/UserContext';
 import { useProjectContext } from '@/context/ProjectContext';
 import Link2 from 'next/link';
-import OngoingPolls from '@/components/userPage/OngoingPolls';
-import UserProposals from '@/components/userPage/UserProposals';
 import { useRouter } from 'next/router';
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import ExecutiveMenuModal from '@/components/profileHub/ExecutiveMenuModal';
 import { useOrgStructure } from '@/hooks';
 import { useVouches } from '@/hooks/useVouches';
 import WelcomeClaimPage from '@/components/profileHub/WelcomeClaimPage';
-import { PendingRequestsPanel } from '@/components/tokenRequest';
 import { useAccount } from 'wagmi';
 
 // Profile hub components
@@ -119,11 +114,11 @@ function RecommendedTasksCompact({ tasks, userDAO }) {
               href={`/tasks/?task=${task.id}&projectId=${encodeURIComponent(decodeURIComponent(task.projectId))}&userDAO=${userDAO}`}
             >
               <Box
-                bg="whiteAlpha.50"
+                bg="black"
                 p={3}
                 borderRadius="lg"
-                _hover={{ bg: 'whiteAlpha.100' }}
-                transition="background 0.2s"
+                _hover={{ bg: 'gray.800', transform: 'scale(1.02)' }}
+                transition="all 0.2s"
                 cursor="pointer"
               >
                 <Text fontSize="sm" fontWeight="medium" color="white" noOfLines={1}>
@@ -166,7 +161,6 @@ const UserprofileHub = () => {
   // Modal states
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false);
   const [isExecutiveMenuOpen, setExecutiveMenuOpen] = useState(false);
-  const [showPendingRequests, setShowPendingRequests] = useState(false);
 
   // Compute user info from userData
   const userInfo = useMemo(() => {
@@ -242,16 +236,14 @@ const UserprofileHub = () => {
                    'roles'
                    'progressionOrTasks'
                    'tokenRequests'
-                   'tasksProposals'
-                   'pendingRequests'`,
+                   'tasksProposals'`,
             md: `'header header'
                  'tokensActivity roles'
                  'tokensActivity progressionOrTasks'
-                 'tokenRequests tasksProposals'
-                 'pendingRequests pendingRequests'`
+                 'tokenRequests tasksProposals'`
           }}
           templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }}
-          templateRows={{ base: 'auto', md: 'auto auto auto auto auto' }}
+          templateRows={{ base: 'auto', md: 'auto auto auto auto' }}
           gap={4}
         >
           {/* Profile Header */}
@@ -331,79 +323,96 @@ const UserprofileHub = () => {
                   {claimedTasks?.length > 0 ? 'Claimed Tasks' : (userProposals?.length > 0 ? 'My Proposals' : 'Ongoing Proposals')}
                 </Text>
               </VStack>
-              <Box p={4} pt={2}>
+              <VStack spacing={2} align="stretch" p={4} pt={2}>
                 {claimedTasks?.length > 0 ? (
-                  <VStack spacing={2} align="stretch">
-                    {claimedTasks.slice(0, 3).map((task) => (
-                      <Link2
-                        key={task.id}
-                        href={`/tasks/?task=${task.id}&projectId=${encodeURIComponent(decodeURIComponent(task.projectId))}&userDAO=${userDAO}`}
+                  // Claimed Tasks
+                  claimedTasks.slice(0, 3).map((task) => (
+                    <Link2
+                      key={task.id}
+                      href={`/tasks/?task=${task.id}&projectId=${encodeURIComponent(decodeURIComponent(task.projectId))}&userDAO=${userDAO}`}
+                    >
+                      <Box
+                        bg="black"
+                        p={3}
+                        borderRadius="lg"
+                        _hover={{ bg: 'gray.800', transform: 'scale(1.02)' }}
+                        transition="all 0.2s"
+                        cursor="pointer"
                       >
-                        <Box
-                          bg="whiteAlpha.50"
-                          p={3}
-                          borderRadius="lg"
-                          _hover={{ bg: 'whiteAlpha.100' }}
-                          transition="background 0.2s"
-                          cursor="pointer"
-                        >
-                          <Text fontSize="sm" fontWeight="medium" color="white" noOfLines={1}>
-                            {task.isIndexing ? 'Indexing...' : task.title}
-                          </Text>
-                          <HStack justify="space-between" mt={1}>
-                            <Badge colorScheme="purple" fontSize="xs">{task.status}</Badge>
-                            <Text fontSize="xs" color="gray.400">Payout {task.payout}</Text>
-                          </HStack>
-                        </Box>
-                      </Link2>
-                    ))}
-                  </VStack>
+                        <Text fontSize="sm" fontWeight="medium" color="white" noOfLines={1}>
+                          {task.isIndexing ? 'Indexing...' : task.title}
+                        </Text>
+                        <HStack justify="space-between" mt={1}>
+                          <Badge colorScheme="purple" fontSize="xs">{task.status}</Badge>
+                          <Text fontSize="xs" color="gray.400">Payout {task.payout}</Text>
+                        </HStack>
+                      </Box>
+                    </Link2>
+                  ))
                 ) : userProposals?.length > 0 ? (
-                  <UserProposals userProposals={userProposals} />
+                  // User Proposals - render inline for consistency
+                  userProposals.slice(0, 3).map((proposal) => (
+                    <Link2
+                      key={proposal.id}
+                      href={`/voting/?poll=${proposal.id}&userDAO=${userDAO}`}
+                    >
+                      <Box
+                        bg="black"
+                        p={3}
+                        borderRadius="lg"
+                        _hover={{ bg: 'gray.800', transform: 'scale(1.02)' }}
+                        transition="all 0.2s"
+                        cursor="pointer"
+                      >
+                        <Text fontSize="sm" fontWeight="bold" color="white" noOfLines={1}>
+                          {proposal.title}
+                        </Text>
+                        <HStack justify="space-between" mt={1}>
+                          <Badge colorScheme="blue" fontSize="xs">{proposal.type}</Badge>
+                          <Text fontSize="xs" color="gray.400">{proposal.status || 'Active'}</Text>
+                        </HStack>
+                      </Box>
+                    </Link2>
+                  ))
+                ) : ongoingPolls?.length > 0 ? (
+                  // Ongoing Polls - render inline for consistency
+                  ongoingPolls.slice(0, 3).map((poll) => (
+                    <Link2
+                      key={poll.id}
+                      href={`/voting/?poll=${poll.id}&userDAO=${userDAO}`}
+                    >
+                      <Box
+                        bg="black"
+                        p={3}
+                        borderRadius="lg"
+                        _hover={{ bg: 'gray.800', transform: 'scale(1.02)' }}
+                        transition="all 0.2s"
+                        cursor="pointer"
+                      >
+                        <Text fontSize="sm" fontWeight="bold" color="white" noOfLines={1}>
+                          {poll.title}
+                        </Text>
+                        <HStack justify="space-between" mt={1}>
+                          <Badge colorScheme="blue" fontSize="xs">{poll.type}</Badge>
+                          <Text fontSize="xs" color="gray.400">Active</Text>
+                        </HStack>
+                      </Box>
+                    </Link2>
+                  ))
                 ) : (
-                  <OngoingPolls OngoingPolls={ongoingPolls} />
+                  <Text color="gray.400" fontSize="sm" textAlign="center" py={4}>
+                    No proposals available
+                  </Text>
                 )}
-              </Box>
+              </VStack>
             </Box>
           </GridItem>
-
-          {/* Pending Requests Panel for Approvers */}
-          {hasApproverRole && (
-            <GridItem area="pendingRequests">
-              <Box
-                w="100%"
-                borderRadius="2xl"
-                bg="transparent"
-                boxShadow="lg"
-                position="relative"
-                zIndex={2}
-              >
-                <div style={glassLayerStyle} />
-                <HStack
-                  p={4}
-                  cursor="pointer"
-                  onClick={() => setShowPendingRequests(!showPendingRequests)}
-                  justify="space-between"
-                >
-                  <Text fontWeight="bold" fontSize={{ base: 'lg', md: 'xl' }}>
-                    Pending Token Requests (Approver)
-                  </Text>
-                  {showPendingRequests ? <ChevronUpIcon boxSize={6} /> : <ChevronDownIcon boxSize={6} />}
-                </HStack>
-                <Collapse in={showPendingRequests}>
-                  <Box p={4} pt={0}>
-                    <PendingRequestsPanel />
-                  </Box>
-                </Collapse>
-              </Box>
-            </GridItem>
-          )}
         </Grid>
       </Box>
 
       {/* Modals */}
       <AccountSettingsModal isOpen={isSettingsModalOpen} onClose={() => setSettingsModalOpen(false)} />
-      <ExecutiveMenuModal isOpen={isExecutiveMenuOpen} onClose={() => setExecutiveMenuOpen(false)} />
+      <ExecutiveMenuModal isOpen={isExecutiveMenuOpen} onClose={() => setExecutiveMenuOpen(false)} hasApproverRole={hasApproverRole} />
     </>
   );
 };

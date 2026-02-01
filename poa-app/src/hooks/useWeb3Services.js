@@ -8,6 +8,7 @@ import { useQuery } from '@apollo/client';
 import { useEthersSigner } from '@/components/ProviderConverter';
 import { useNotification } from '../context/NotificationContext';
 import { useRefreshEmit } from '../context/RefreshContext';
+import { useIPFScontext } from '../context/ipfsContext';
 import { INFRASTRUCTURE_CONTRACTS, getInfrastructureAddress } from '../config/contracts';
 import { DEFAULT_NETWORK } from '../config/networks';
 import { FETCH_INFRASTRUCTURE_ADDRESSES } from '../util/queries';
@@ -28,13 +29,17 @@ import { TokenRequestService, createTokenRequestService } from '../services/web3
 /**
  * Hook to access all Web3 services
  * @param {Object} [options={}] - Configuration options
- * @param {Object} [options.ipfsService] - IPFS service instance for content storage
+ * @param {Object} [options.ipfsService] - IPFS service instance for content storage (falls back to context)
  * @param {string} [options.network] - Network name (defaults to DEFAULT_NETWORK)
  * @returns {Object} Object containing all services and utilities
  */
 export function useWeb3Services(options = {}) {
-  const { ipfsService = null, network = DEFAULT_NETWORK } = options;
+  const { ipfsService: providedIpfs = null, network = DEFAULT_NETWORK } = options;
   const signer = useEthersSigner();
+
+  // Get IPFS service from context if not provided
+  const ipfsContext = useIPFScontext();
+  const ipfsService = providedIpfs || ipfsContext;
 
   // Fetch infrastructure addresses from subgraph
   const { data: infraData } = useQuery(FETCH_INFRASTRUCTURE_ADDRESSES);
@@ -68,7 +73,7 @@ export function useWeb3Services(options = {}) {
     return {
       user: createUserService(factory, txManager, registryAddress),
       organization: createOrganizationService(factory, txManager),
-      voting: createVotingService(factory, txManager),
+      voting: createVotingService(factory, txManager, ipfsService),
       task: createTaskService(factory, txManager, ipfsService),
       education: createEducationService(factory, txManager, ipfsService),
       eligibility: createEligibilityService(factory, txManager),

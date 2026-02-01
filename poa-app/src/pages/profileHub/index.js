@@ -265,12 +265,12 @@ const UserprofileHub = () => {
                    'tokensActivity'
                    'roles'
                    'progressionOrTasks'
-                   'tokenRequests'
-                   'tasksProposals'`,
+                   'tasksProposals'
+                   'tokenRequests'`,
             md: `'header header'
-                 'tokensActivity roles'
                  'tokensActivity progressionOrTasks'
-                 'tokenRequests tasksProposals'`
+                 'roles tasksProposals'
+                 'tokenRequests .'`
           }}
           templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }}
           templateRows={{ base: 'auto', md: 'auto auto auto auto' }}
@@ -288,7 +288,7 @@ const UserprofileHub = () => {
             />
           </GridItem>
 
-          {/* Tokens & Activity (Left Column) */}
+          {/* Tokens & Activity (Left Top) */}
           <GridItem area="tokensActivity">
             <TokenActivityCard
               ptBalance={userInfo.ptBalance}
@@ -302,17 +302,7 @@ const UserprofileHub = () => {
             />
           </GridItem>
 
-          {/* User Roles (Right Column - Top) */}
-          <GridItem area="roles">
-            <UserRolesCard
-              userHatIds={userHatIds}
-              roles={roles}
-              permissionsMatrix={permissionsMatrix}
-              userDAO={userDAO}
-            />
-          </GridItem>
-
-          {/* Role Progression OR Recommended Tasks (Right Column - Bottom) */}
+          {/* Recommended Tasks OR Role Progression (Right Top) */}
           <GridItem area="progressionOrTasks">
             {showRoleProgression ? (
               <RoleProgressionCard
@@ -331,12 +321,17 @@ const UserprofileHub = () => {
             )}
           </GridItem>
 
-          {/* Token Requests (Left Column - Bottom) */}
-          <GridItem area="tokenRequests">
-            <TokenRequestCard hasMemberRole={hasMemberRole} />
+          {/* User Roles (Left Bottom) */}
+          <GridItem area="roles">
+            <UserRolesCard
+              userHatIds={userHatIds}
+              roles={roles}
+              permissionsMatrix={permissionsMatrix}
+              userDAO={userDAO}
+            />
           </GridItem>
 
-          {/* Tasks & Proposals Section (Right Column - Bottom) */}
+          {/* Tasks & Proposals (Right Bottom) */}
           <GridItem area="tasksProposals">
             <Box
               w="100%"
@@ -460,6 +455,11 @@ const UserprofileHub = () => {
                 )}
               </VStack>
             </Box>
+          </GridItem>
+
+          {/* Token Requests (Bottom Left - Half Width) */}
+          <GridItem area="tokenRequests">
+            <TokenRequestCard hasMemberRole={hasMemberRole} />
           </GridItem>
         </Grid>
       </Box>

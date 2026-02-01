@@ -8,6 +8,7 @@ import {
   Spinner,
   Center,
   useBreakpointValue,
+  useDisclosure,
 } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
 import { useQuery } from '@apollo/client';
@@ -20,6 +21,7 @@ import TokenBalancesGrid from './TokenBalancesGrid';
 import CurrentDistributions from './CurrentDistributions';
 import DistributionHistory from './DistributionHistory';
 import HistoricalOverview from './HistoricalOverview';
+import ParticipationTokenModal from './ParticipationTokenModal';
 
 const glassLayerStyle = {
   position: 'absolute',
@@ -43,6 +45,9 @@ const TreasuryPage = () => {
   } = usePOContext();
   const { hasExecRole } = useUserContext();
 
+  // Modal state for PT stats
+  const { isOpen: isPTModalOpen, onOpen: onPTModalOpen, onClose: onPTModalClose } = useDisclosure();
+
   // Responsive design
   const isMobile = useBreakpointValue({ base: true, md: false });
   const headingSize = useBreakpointValue({ base: '2xl', md: '3xl' });
@@ -61,6 +66,7 @@ const TreasuryPage = () => {
   const paymentManager = treasuryData?.organization?.paymentManager;
   const distributions = paymentManager?.distributions || [];
   const payments = paymentManager?.payments || [];
+  const totalSupply = treasuryData?.organization?.participationToken?.totalSupply;
 
   // Memoize filtered distributions to avoid recalculation on every render
   const { activeDistributions, completedDistributions, totalDistributed } = useMemo(() => {
@@ -143,7 +149,10 @@ const TreasuryPage = () => {
                   </Text>
                 </VStack>
                 <Box p={{ base: 2, md: 4 }}>
-                  <TokenBalancesGrid executorAddress={executorContractAddress} />
+                  <TokenBalancesGrid
+                    executorAddress={executorContractAddress}
+                    onPTClick={onPTModalOpen}
+                  />
                 </Box>
               </Box>
             </GridItem>
@@ -227,6 +236,14 @@ const TreasuryPage = () => {
           </Grid>
         </Box>
       )}
+
+      {/* PT Stats Modal */}
+      <ParticipationTokenModal
+        isOpen={isPTModalOpen}
+        onClose={onPTModalClose}
+        tokenAddress={participationTokenAddress}
+        totalSupply={totalSupply}
+      />
     </>
   );
 };

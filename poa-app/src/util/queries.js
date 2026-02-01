@@ -349,6 +349,10 @@ export const FETCH_PROJECTS_DATA_NEW = gql`
           id
           title
           metadataHash
+          metadata {
+            id
+            description
+          }
           cap
           createdAt
           rolePermissions {

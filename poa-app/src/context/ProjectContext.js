@@ -108,6 +108,8 @@ export const ProjectProvider = ({ children }) => {
                     title: projectTitle,
                     name: projectTitle, // Alias for TaskManager components
                     metadataHash: project.metadataHash,
+                    // Use indexed metadata from subgraph as primary source
+                    description: project.metadata?.description || '',
                     cap: project.cap,
                     rolePermissions: project.rolePermissions || [],
                     columns: [

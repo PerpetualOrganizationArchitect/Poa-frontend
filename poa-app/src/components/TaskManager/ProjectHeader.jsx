@@ -3,7 +3,6 @@
  * Header bar showing project name with sidebar toggle and project info
  */
 
-import { useState, useEffect } from 'react';
 import {
   Box,
   Flex,
@@ -17,13 +16,11 @@ import {
   ModalBody,
   ModalCloseButton,
   useDisclosure,
-  Spinner,
   VStack,
 } from '@chakra-ui/react';
 import { InfoIcon } from '@chakra-ui/icons';
 import { FaProjectDiagram } from 'react-icons/fa';
 import { useDataBaseContext } from '@/context/dataBaseContext';
-import { useIPFScontext } from '@/context/ipfsContext';
 
 const glassLayerStyle = {
   position: "absolute",
@@ -38,37 +35,9 @@ const glassLayerStyle = {
 const ProjectHeader = ({ projectName, sidebarVisible, toggleSidebar }) => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { selectedProject } = useDataBaseContext();
-  const { safeFetchFromIpfs } = useIPFScontext();
 
-  const [projectDescription, setProjectDescription] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Fetch project description from IPFS when modal opens
-  useEffect(() => {
-    const fetchDescription = async () => {
-      if (!isOpen || !selectedProject?.metadataHash) {
-        setProjectDescription(null);
-        return;
-      }
-
-      setIsLoading(true);
-      try {
-        const metadata = await safeFetchFromIpfs(selectedProject.metadataHash);
-        if (metadata?.description) {
-          setProjectDescription(metadata.description);
-        } else {
-          setProjectDescription(null);
-        }
-      } catch (error) {
-        console.error('[ProjectHeader] Failed to fetch project metadata:', error);
-        setProjectDescription(null);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchDescription();
-  }, [isOpen, selectedProject?.metadataHash, safeFetchFromIpfs]);
+  // Use indexed description from subgraph (no IPFS fetching needed)
+  const projectDescription = selectedProject?.description || '';
 
   return (
     <>
@@ -139,12 +108,7 @@ const ProjectHeader = ({ projectName, sidebarVisible, toggleSidebar }) => {
                 <Text fontWeight="bold" mb={2} color="gray.300">
                   Description
                 </Text>
-                {isLoading ? (
-                  <Flex align="center" gap={2}>
-                    <Spinner size="sm" />
-                    <Text color="gray.400">Loading description...</Text>
-                  </Flex>
-                ) : projectDescription ? (
+                {projectDescription ? (
                   <Text style={{ whiteSpace: 'pre-wrap' }} lineHeight="1.6">
                     {projectDescription}
                   </Text>

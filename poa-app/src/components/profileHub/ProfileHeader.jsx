@@ -50,11 +50,15 @@ export function ProfileHeader({
       boxShadow="lg"
       position="relative"
       zIndex={2}
-      p={{ base: 4, md: 5 }}
     >
       <div style={glassLayerStyle} />
 
-      <Flex
+      {/* Darker header section with user info */}
+      <VStack position="relative" borderTopRadius="2xl" align="stretch" pb={2}>
+        <div style={glassLayerStyle} />
+
+        <Flex
+          p={{ base: 4, md: 5 }}
         justify="space-between"
         align={{ base: 'stretch', md: 'center' }}
         flexDir={{ base: 'column', md: 'row' }}
@@ -149,7 +153,8 @@ export function ProfileHeader({
             </Button>
           )}
         </HStack>
-      </Flex>
+        </Flex>
+      </VStack>
     </Box>
   );
 }

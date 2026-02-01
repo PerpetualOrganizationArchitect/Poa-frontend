@@ -81,11 +81,11 @@ export function CompactTokenStatus({
       boxShadow="lg"
       position="relative"
       zIndex={2}
-      p={{ base: 4, md: 5 }}
     >
       <div style={glassLayerStyle} />
 
-      <VStack spacing={4} align="stretch">
+      {/* Content - no separate header for this card since it's compact */}
+      <VStack spacing={4} align="stretch" p={4}>
         {/* Header: Icon + Token Count */}
         <HStack spacing={4}>
           <Image

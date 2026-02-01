@@ -284,6 +284,7 @@ function YourVouchesSection({ userGivenVouches = [], onRevokeVouch, isRevokingFo
  * @param {Array} props.userHatIds - Current user's hat IDs
  * @param {string} props.userAddress - Current user's address
  * @param {boolean} props.isConnected - Whether wallet is connected
+ * @param {boolean} props.embedded - Whether component is embedded (no glass layer)
  */
 export function VouchingSection({
   roles = [],
@@ -291,6 +292,7 @@ export function VouchingSection({
   userHatIds = [],
   userAddress,
   isConnected = true,
+  embedded = false,
 }) {
   // Filter to roles with vouching enabled
   const rolesWithVouching = roles.filter(role => role.vouchingEnabled);
@@ -334,14 +336,14 @@ export function VouchingSection({
     return (
       <Box
         position="relative"
-        borderRadius="2xl"
-        p={{ base: 4, md: 6 }}
+        borderRadius={embedded ? "lg" : "2xl"}
+        p={embedded ? { base: 2, md: 3 } : { base: 4, md: 6 }}
         overflow="hidden"
       >
-        <Box style={glassLayerStyle} />
-        <VStack spacing={3} align="stretch">
+        {!embedded && <Box style={glassLayerWithShadowStyle} />}
+        <VStack spacing={2} align="stretch">
           {[1, 2].map((i) => (
-            <Skeleton key={i} height="80px" borderRadius="xl" />
+            <Skeleton key={i} height={embedded ? "60px" : "80px"} borderRadius="xl" />
           ))}
         </VStack>
       </Box>
@@ -353,11 +355,11 @@ export function VouchingSection({
     return (
       <Box
         position="relative"
-        borderRadius="2xl"
-        p={{ base: 4, md: 6 }}
+        borderRadius={embedded ? "lg" : "2xl"}
+        p={embedded ? { base: 2, md: 3 } : { base: 4, md: 6 }}
         overflow="hidden"
       >
-        <Box style={glassLayerStyle} />
+        {!embedded && <Box style={glassLayerWithShadowStyle} />}
         <Alert status="error" borderRadius="md" bg="red.900" color="white">
           <AlertIcon />
           Failed to load vouching data
@@ -372,23 +374,23 @@ export function VouchingSection({
   return (
     <Box
       position="relative"
-      borderRadius="2xl"
-      p={{ base: 4, md: 6 }}
+      borderRadius={embedded ? "lg" : "2xl"}
+      p={embedded ? { base: 2, md: 3 } : { base: 4, md: 6 }}
       overflow="hidden"
     >
-      <Box style={glassLayerStyle} />
+      {!embedded && <Box style={glassLayerWithShadowStyle} />}
 
-      <VStack spacing={4} align="stretch">
+      <VStack spacing={embedded ? 3 : 4} align="stretch">
         {/* Info banner */}
         <HStack
           spacing={2}
           bg="whiteAlpha.50"
-          p={3}
+          p={embedded ? 2 : 3}
           borderRadius="md"
           color="gray.400"
         >
-          <Icon as={FiInfo} />
-          <Text fontSize="sm">
+          <Icon as={FiInfo} boxSize={embedded ? 3 : 4} />
+          <Text fontSize={embedded ? "xs" : "sm"}>
             Members with the required role can vouch for users seeking to join.
             Once a user reaches the required number of vouches, they can claim the role.
           </Text>

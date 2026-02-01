@@ -22,11 +22,15 @@ import {
 import {
   AreaChart,
   Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  ComposedChart,
+  Line,
 } from 'recharts';
 import { usePOContext } from '@/context/POContext';
 import { formatTokenAmount } from '@/util/formatToken';
@@ -68,6 +72,8 @@ const StatCard = ({ label, value, subtext }) => (
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload || !payload.length) return null;
 
+  const data = payload[0]?.payload;
+
   return (
     <Box
       bg="rgba(33, 33, 33, 0.95)"
@@ -75,12 +81,22 @@ const CustomTooltip = ({ active, payload, label }) => {
       borderRadius="lg"
       p={3}
     >
-      <Text fontWeight="bold" color="white" mb={1}>{label}</Text>
-      {payload.map((entry, index) => (
-        <Text key={index} color={entry.color} fontSize="sm">
-          {entry.name}: {Number(entry.value).toLocaleString()}
+      <Text fontWeight="bold" color="white" mb={1}>{data?.fullDate || label}</Text>
+      {data?.dailyMinted !== undefined && (
+        <Text color="green.300" fontSize="sm">
+          Day&apos;s Minted: {data.dailyMinted.toLocaleString()}
         </Text>
-      ))}
+      )}
+      {data?.cumulative !== undefined && (
+        <Text color="purple.300" fontSize="sm">
+          Total Supply: {data.cumulative.toLocaleString()}
+        </Text>
+      )}
+      {data?.taskCount !== undefined && data.taskCount > 0 && (
+        <Text color="gray.400" fontSize="xs" mt={1}>
+          {data.taskCount} task{data.taskCount > 1 ? 's' : ''} completed
+        </Text>
+      )}
     </Box>
   );
 };
@@ -155,7 +171,7 @@ const ParticipationTokenModal = ({ isOpen, onClose, totalSupply, completedTasks 
     };
   }, [completedTasks, leaderboardData, totalSupply]);
 
-  // Build chart data - cumulative supply over time based on task completions
+  // Build chart data - daily data points based on task completions
   const chartData = useMemo(() => {
     if (!stats.validTasks.length) return [];
 
@@ -163,29 +179,67 @@ const ParticipationTokenModal = ({ isOpen, onClose, totalSupply, completedTasks 
     const sorted = [...stats.validTasks]
       .sort((a, b) => parseInt(a.completedAt) - parseInt(b.completedAt));
 
-    // Group by month and calculate cumulative
-    const monthlyData = {};
+    // Group by day and calculate cumulative
+    const dailyData = {};
     let cumulative = 0n;
 
     sorted.forEach(task => {
-      const date = new Date(parseInt(task.completedAt) * 1000);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const monthLabel = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      const timestamp = parseInt(task.completedAt);
+      const date = new Date(timestamp * 1000);
+      // Use date string as key for daily grouping
+      const dayKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
 
-      try {
-        cumulative += BigInt(task.payout || 0);
-      } catch {
-        // Skip invalid amounts
+      const payout = BigInt(task.payout || 0);
+      cumulative += payout;
+
+      if (!dailyData[dayKey]) {
+        dailyData[dayKey] = {
+          dayKey,
+          timestamp,
+          dailyMinted: 0n,
+          cumulative: 0n,
+          taskCount: 0,
+        };
       }
 
-      monthlyData[monthKey] = {
-        monthKey,
-        monthLabel,
-        cumulative: Number(cumulative / BigInt(10 ** 18)), // Convert to whole tokens
-      };
+      dailyData[dayKey].dailyMinted += payout;
+      dailyData[dayKey].cumulative = cumulative;
+      dailyData[dayKey].taskCount += 1;
     });
 
-    return Object.values(monthlyData);
+    // Convert to array and format for chart
+    const dataArray = Object.values(dailyData).sort((a, b) => a.timestamp - b.timestamp);
+
+    // Determine date format based on data range
+    const dataSpanDays = dataArray.length > 1
+      ? (dataArray[dataArray.length - 1].timestamp - dataArray[0].timestamp) / (24 * 60 * 60)
+      : 0;
+
+    return dataArray.map(d => {
+      const date = new Date(d.timestamp * 1000);
+
+      // Format label based on data range
+      let dateLabel;
+      if (dataSpanDays <= 14) {
+        // Show "Jan 15" for short ranges
+        dateLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      } else if (dataSpanDays <= 90) {
+        // Show "Jan 15" for medium ranges
+        dateLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      } else {
+        // Show "Jan '26" for longer ranges
+        dateLabel = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      }
+
+      return {
+        dayKey: d.dayKey,
+        dateLabel,
+        fullDate: date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        dailyMinted: Number(d.dailyMinted / BigInt(10 ** 18)),
+        cumulative: Number(d.cumulative / BigInt(10 ** 18)),
+        taskCount: d.taskCount,
+      };
+    });
   }, [stats.validTasks]);
 
   // Format recent task payouts for table
@@ -246,13 +300,47 @@ const ParticipationTokenModal = ({ isOpen, onClose, totalSupply, completedTasks 
               />
             </SimpleGrid>
 
-            {/* Supply Growth Chart */}
+            {/* Daily Activity Chart */}
             {chartData.length > 0 && (
               <Box>
                 <Text fontSize="md" fontWeight="bold" color="white" mb={3}>
-                  Supply Growth
+                  Daily Minting Activity
                 </Text>
-                <Box h="200px" bg="rgba(0, 0, 0, 0.2)" borderRadius="lg" p={2}>
+                <Box h="160px" bg="rgba(0, 0, 0, 0.2)" borderRadius="lg" p={2}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                      <XAxis
+                        dataKey="dateLabel"
+                        tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 10 }}
+                        axisLine={{ stroke: 'rgba(255,255,255,0.2)' }}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 10 }}
+                        axisLine={{ stroke: 'rgba(255,255,255,0.2)' }}
+                        width={40}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Bar
+                        dataKey="dailyMinted"
+                        name="Daily Minted"
+                        fill="rgba(72, 187, 120, 0.8)"
+                        radius={[2, 2, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Box>
+              </Box>
+            )}
+
+            {/* Cumulative Supply Chart */}
+            {chartData.length > 0 && (
+              <Box>
+                <Text fontSize="md" fontWeight="bold" color="white" mb={3}>
+                  Cumulative Supply
+                </Text>
+                <Box h="160px" bg="rgba(0, 0, 0, 0.2)" borderRadius="lg" p={2}>
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={chartData}>
                       <defs>
@@ -263,13 +351,15 @@ const ParticipationTokenModal = ({ isOpen, onClose, totalSupply, completedTasks 
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                       <XAxis
-                        dataKey="monthLabel"
-                        tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 11 }}
+                        dataKey="dateLabel"
+                        tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 10 }}
                         axisLine={{ stroke: 'rgba(255,255,255,0.2)' }}
+                        interval="preserveStartEnd"
                       />
                       <YAxis
-                        tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 11 }}
+                        tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 10 }}
                         axisLine={{ stroke: 'rgba(255,255,255,0.2)' }}
+                        width={40}
                       />
                       <Tooltip content={<CustomTooltip />} />
                       <Area

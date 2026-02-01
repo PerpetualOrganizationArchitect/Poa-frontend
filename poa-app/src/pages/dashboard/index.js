@@ -21,6 +21,7 @@ import {
   StatLabel,
   StatNumber,
   SimpleGrid,
+  Collapse,
 } from '@chakra-ui/react';
 import { useVotingContext } from '@/context/VotingContext';
 import { usePOContext } from '@/context/POContext';
@@ -31,7 +32,7 @@ import OngoingPolls from '@/components/userPage/OngoingPolls';
 import { useRouter } from 'next/router';
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import { FaLink } from 'react-icons/fa';
-import { FiUsers, FiCoins, FiActivity, FiCheckCircle } from 'react-icons/fi';
+import { FiUsers, FiAward, FiActivity, FiCheckCircle, FiChevronDown, FiChevronRight, FiUserPlus } from 'react-icons/fi';
 import { useIPFScontext } from "@/context/ipfsContext";
 import { useOrgStructure } from '@/hooks/useOrgStructure';
 import { VouchingSection } from '@/components/orgStructure/VouchingSection';
@@ -91,6 +92,7 @@ const PerpetualOrgDashboard = () => {
   const [imageURL, setImageURL] = useState({});
   const [imageFetched, setImageFetched] = useState(false);
   const [orgStructurePreview, setOrgStructurePreview] = useState([]);
+  const [isVouchingExpanded, setIsVouchingExpanded] = useState(false);
   const { fetchImageFromIpfs } = useIPFScontext();
 
   // Responsive design breakpoints
@@ -190,30 +192,30 @@ const PerpetualOrgDashboard = () => {
                   'orgStats'
                   'tasks'
                   'polls'
-                  ${showVouchingSection ? "'vouching'" : ''}
                   'leaderboard'
                   'orgStructure'
+                  ${showVouchingSection ? "'vouching'" : ''}
                   'learnAndEarn'
                 ` : `
                   'orgInfo'
                   'orgStats'
                   'tasks'
                   'polls'
-                  ${showVouchingSection ? "'vouching'" : ''}
                   'leaderboard'
                   'orgStructure'
+                  ${showVouchingSection ? "'vouching'" : ''}
                 `,
                 md: educationHubEnabled ? `
                   'orgInfo orgStats'
                   'tasks polls'
-                  ${showVouchingSection ? "'vouching vouching'" : ''}
                   'leaderboard orgStructure'
+                  ${showVouchingSection ? "'vouching vouching'" : ''}
                   'learnAndEarn learnAndEarn'
                 ` : `
                   'orgInfo orgStats'
                   'tasks polls'
-                  ${showVouchingSection ? "'vouching vouching'" : ''}
                   'leaderboard orgStructure'
+                  ${showVouchingSection ? "'vouching vouching'" : ''}
                 `,
               }}
               templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }}
@@ -302,42 +304,42 @@ const PerpetualOrgDashboard = () => {
                     Organization Stats
                   </Text>
                 </VStack>
-                <Box p={{ base: 3, md: 4 }}>
-                  <SimpleGrid columns={2} spacing={{ base: 3, md: 4 }}>
-                    <Box bg="whiteAlpha.50" p={{ base: 3, md: 4 }} borderRadius="xl">
+                <Box p={{ base: 2, md: 3 }}>
+                  <SimpleGrid columns={2} spacing={{ base: 2, md: 3 }}>
+                    <Box bg="whiteAlpha.50" p={{ base: 2, md: 3 }} borderRadius="lg">
                       <Stat textAlign="center">
-                        <HStack justify="center" mb={1}>
-                          <Icon as={FiUsers} color="purple.300" boxSize={{ base: 4, md: 5 }} />
+                        <HStack justify="center" mb={0.5}>
+                          <Icon as={FiUsers} color="purple.300" boxSize={{ base: 3, md: 4 }} />
                         </HStack>
-                        <StatNumber fontSize={{ base: "xl", md: "2xl" }} color="purple.300">{poMembers}</StatNumber>
-                        <StatLabel fontSize={{ base: "xs", md: "sm" }} color="gray.400">Members</StatLabel>
+                        <StatNumber fontSize={{ base: "lg", md: "xl" }} color="purple.300">{poMembers}</StatNumber>
+                        <StatLabel fontSize="xs" color="gray.400">Members</StatLabel>
                       </Stat>
                     </Box>
-                    <Box bg="whiteAlpha.50" p={{ base: 3, md: 4 }} borderRadius="xl">
+                    <Box bg="whiteAlpha.50" p={{ base: 2, md: 3 }} borderRadius="lg">
                       <Stat textAlign="center">
-                        <HStack justify="center" mb={1}>
-                          <Icon as={FiCoins} color="yellow.300" boxSize={{ base: 4, md: 5 }} />
+                        <HStack justify="center" mb={0.5}>
+                          <Icon as={FiAward} color="yellow.300" boxSize={{ base: 3, md: 4 }} />
                         </HStack>
-                        <StatNumber fontSize={{ base: "xl", md: "2xl" }} color="yellow.300">{ptTokenBalance}</StatNumber>
-                        <StatLabel fontSize={{ base: "xs", md: "sm" }} color="gray.400">Total PT</StatLabel>
+                        <StatNumber fontSize={{ base: "lg", md: "xl" }} color="yellow.300">{ptTokenBalance}</StatNumber>
+                        <StatLabel fontSize="xs" color="gray.400">Total Participation</StatLabel>
                       </Stat>
                     </Box>
-                    <Box bg="whiteAlpha.50" p={{ base: 3, md: 4 }} borderRadius="xl">
+                    <Box bg="whiteAlpha.50" p={{ base: 2, md: 3 }} borderRadius="lg">
                       <Stat textAlign="center">
-                        <HStack justify="center" mb={1}>
-                          <Icon as={FiActivity} color="blue.300" boxSize={{ base: 4, md: 5 }} />
+                        <HStack justify="center" mb={0.5}>
+                          <Icon as={FiActivity} color="blue.300" boxSize={{ base: 3, md: 4 }} />
                         </HStack>
-                        <StatNumber fontSize={{ base: "xl", md: "2xl" }} color="blue.300">{activeTaskAmount}</StatNumber>
-                        <StatLabel fontSize={{ base: "xs", md: "sm" }} color="gray.400">Active Tasks</StatLabel>
+                        <StatNumber fontSize={{ base: "lg", md: "xl" }} color="blue.300">{activeTaskAmount}</StatNumber>
+                        <StatLabel fontSize="xs" color="gray.400">Active Tasks</StatLabel>
                       </Stat>
                     </Box>
-                    <Box bg="whiteAlpha.50" p={{ base: 3, md: 4 }} borderRadius="xl">
+                    <Box bg="whiteAlpha.50" p={{ base: 2, md: 3 }} borderRadius="lg">
                       <Stat textAlign="center">
-                        <HStack justify="center" mb={1}>
-                          <Icon as={FiCheckCircle} color="green.300" boxSize={{ base: 4, md: 5 }} />
+                        <HStack justify="center" mb={0.5}>
+                          <Icon as={FiCheckCircle} color="green.300" boxSize={{ base: 3, md: 4 }} />
                         </HStack>
-                        <StatNumber fontSize={{ base: "xl", md: "2xl" }} color="green.300">{completedTaskAmount}</StatNumber>
-                        <StatLabel fontSize={{ base: "xs", md: "sm" }} color="gray.400">Completed</StatLabel>
+                        <StatNumber fontSize={{ base: "lg", md: "xl" }} color="green.300">{completedTaskAmount}</StatNumber>
+                        <StatLabel fontSize="xs" color="gray.400">Completed Tasks</StatLabel>
                       </Stat>
                     </Box>
                   </SimpleGrid>
@@ -424,36 +426,6 @@ const PerpetualOrgDashboard = () => {
               </Box>
             </GridItem>
 
-            {showVouchingSection && (
-              <GridItem area={'vouching'}>
-                <Box
-                  w="100%"
-                  borderRadius="2xl"
-                  bg="transparent"
-                  boxShadow="lg"
-                  position="relative"
-                  zIndex={2}
-                >
-                  <div style={glassLayerStyle} />
-                  <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                    <div style={glassLayerStyle} />
-                    <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
-                      Member Vouching
-                    </Text>
-                  </VStack>
-                  <Box p={{ base: 2, md: 4 }}>
-                    <VouchingSection
-                      roles={rolesWithVouching}
-                      eligibilityModuleAddress={eligibilityModuleAddress}
-                      userHatIds={userHatIds}
-                      userAddress={userData?.id}
-                      isConnected={true}
-                    />
-                  </Box>
-                </Box>
-              </GridItem>
-            )}
-
             <GridItem area={'leaderboard'}>
               <Link2 href={`/leaderboard?userDAO=${userDAO}`}>
                 <Box
@@ -534,6 +506,56 @@ const PerpetualOrgDashboard = () => {
                 </Box>
               </Box>
             </GridItem>
+            {showVouchingSection && (
+              <GridItem area={'vouching'}>
+                <Box
+                  w="100%"
+                  borderRadius="2xl"
+                  bg="transparent"
+                  boxShadow="lg"
+                  position="relative"
+                  zIndex={2}
+                >
+                  <div style={glassLayerStyle} />
+                  <Box
+                    as="button"
+                    width="100%"
+                    onClick={() => setIsVouchingExpanded(!isVouchingExpanded)}
+                    position="relative"
+                    borderTopRadius="2xl"
+                    _hover={{ bg: 'rgba(148, 115, 220, 0.05)' }}
+                    transition="background-color 0.2s"
+                  >
+                    <div style={glassLayerStyle} />
+                    <HStack justify="space-between" px={{ base: 3, md: 6 }} py={2}>
+                      <HStack spacing={2}>
+                        <Icon as={FiUserPlus} color="purple.300" />
+                        <Text fontWeight="bold" fontSize={sectionHeadingSize}>
+                          Member Vouching
+                        </Text>
+                      </HStack>
+                      <Icon
+                        as={isVouchingExpanded ? FiChevronDown : FiChevronRight}
+                        color="purple.300"
+                        boxSize={5}
+                        transition="transform 0.2s"
+                      />
+                    </HStack>
+                  </Box>
+                  <Collapse in={isVouchingExpanded} animateOpacity>
+                    <Box p={{ base: 2, md: 4 }}>
+                      <VouchingSection
+                        roles={rolesWithVouching}
+                        eligibilityModuleAddress={eligibilityModuleAddress}
+                        userHatIds={userHatIds}
+                        userAddress={userData?.id}
+                        isConnected={true}
+                      />
+                    </Box>
+                  </Collapse>
+                </Box>
+              </GridItem>
+            )}
             {educationHubEnabled && (
               <GridItem area={'learnAndEarn'}>
                 <Box

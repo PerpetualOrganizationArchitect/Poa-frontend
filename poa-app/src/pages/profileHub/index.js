@@ -35,6 +35,28 @@ import { glassLayerStyle } from '@/components/shared/glassStyles';
 import { determineTier, calculateProgress, formatDateToAmerican, normalizeHatId } from '@/utils/profileUtils';
 
 /**
+ * Format remaining time from timestamp
+ * @param {number} endTimestamp - Unix timestamp in seconds
+ * @returns {string} - Formatted time string (e.g., "2d 5h", "45m", "Ended")
+ */
+function formatTimeRemaining(endTimestamp) {
+  if (!endTimestamp) return 'Active';
+
+  const now = Math.floor(Date.now() / 1000);
+  const remaining = endTimestamp - now;
+
+  if (remaining <= 0) return 'Ended';
+
+  const days = Math.floor(remaining / 86400);
+  const hours = Math.floor((remaining % 86400) / 3600);
+  const minutes = Math.floor((remaining % 3600) / 60);
+
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+/**
  * Skeleton loader for WelcomeClaimPage
  */
 function WelcomePageSkeleton() {
@@ -369,7 +391,7 @@ const UserprofileHub = () => {
                         </Text>
                         <HStack justify="space-between" mt={1}>
                           <Badge colorScheme="blue" fontSize="xs">{proposal.type}</Badge>
-                          <Text fontSize="xs" color="gray.400">{proposal.status || 'Active'}</Text>
+                          <Text fontSize="xs" color="orange.300">{formatTimeRemaining(proposal.endTimestamp)}</Text>
                         </HStack>
                       </Box>
                     </Link2>
@@ -394,7 +416,7 @@ const UserprofileHub = () => {
                         </Text>
                         <HStack justify="space-between" mt={1}>
                           <Badge colorScheme="blue" fontSize="xs">{poll.type}</Badge>
-                          <Text fontSize="xs" color="gray.400">Active</Text>
+                          <Text fontSize="xs" color="orange.300">{formatTimeRemaining(poll.endTimestamp)}</Text>
                         </HStack>
                       </Box>
                     </Link2>

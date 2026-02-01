@@ -1,6 +1,6 @@
 /**
- * ProfileHeader - Consolidated user identity header for the profile hub
- * Shows avatar, username, member status, wallet connection, and action buttons
+ * ProfileHeader - User identity header for the profile hub
+ * Redesigned with cleaner visual hierarchy
  */
 
 import React from 'react';
@@ -13,9 +13,9 @@ import {
   Badge,
   IconButton,
   Button,
-  Flex,
   Tooltip,
   useClipboard,
+  Divider,
 } from '@chakra-ui/react';
 import { SettingsIcon, CopyIcon, CheckIcon } from '@chakra-ui/icons';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
@@ -53,54 +53,60 @@ export function ProfileHeader({
     >
       <div style={glassLayerStyle} />
 
-      {/* Darker header section with user info */}
-      <VStack position="relative" borderTopRadius="2xl" align="stretch" pb={2}>
-        <div style={glassLayerStyle} />
-
-        <Flex
-          p={{ base: 4, md: 5 }}
-        justify="space-between"
-        align={{ base: 'stretch', md: 'center' }}
-        flexDir={{ base: 'column', md: 'row' }}
-        gap={{ base: 4, md: 0 }}
+      {/* Content */}
+      <VStack
+        spacing={4}
+        align="stretch"
+        p={{ base: 5, md: 6 }}
+        position="relative"
       >
-        {/* Left side: Avatar + User Info */}
-        <HStack spacing={4}>
+        {/* Top section: Avatar + User Info */}
+        <HStack spacing={{ base: 4, md: 6 }} align="flex-start">
           <Avatar
-            size={{ base: 'lg', md: 'xl' }}
+            size={{ base: 'xl', md: '2xl' }}
             name={username || address}
             bg="purple.500"
             color="white"
+            boxShadow="lg"
           />
-          <VStack align="start" spacing={0}>
-            <HStack spacing={2} flexWrap="wrap">
-              <Text
-                fontSize={{ base: '2xl', md: '3xl' }}
-                fontWeight="extrabold"
-                color="white"
+          <VStack align="start" spacing={2} flex={1}>
+            {/* Username */}
+            <Text
+              fontSize={{ base: '2xl', md: '4xl' }}
+              fontWeight="bold"
+              color="white"
+              lineHeight="1.1"
+            >
+              {username || 'Anonymous'}
+            </Text>
+
+            {/* Status Badge */}
+            {memberStatus && (
+              <Badge
+                colorScheme={memberStatus === 'Active' ? 'green' : 'gray'}
+                fontSize={{ base: 'sm', md: 'md' }}
+                px={3}
+                py={1}
+                borderRadius="full"
               >
-                {username || 'Anonymous'}
-              </Text>
-              {memberStatus && (
-                <Badge
-                  colorScheme={memberStatus === 'Active' ? 'green' : 'gray'}
-                  fontSize="sm"
-                  px={2}
-                  py={0.5}
-                  borderRadius="md"
-                >
-                  {memberStatus}
-                </Badge>
-              )}
-            </HStack>
+                {memberStatus}
+              </Badge>
+            )}
+
+            {/* Address with copy */}
             <Tooltip label={hasCopied ? 'Copied!' : 'Click to copy address'}>
               <HStack
-                spacing={1}
+                spacing={2}
                 cursor="pointer"
                 onClick={onCopy}
-                _hover={{ color: 'gray.300' }}
+                _hover={{ bg: 'whiteAlpha.100' }}
+                borderRadius="md"
+                px={2}
+                py={1}
+                ml={-2}
+                transition="background 0.2s"
               >
-                <Text fontSize="sm" color="gray.400">
+                <Text fontSize="sm" color="gray.400" fontFamily="mono">
                   {truncateAddress(address)}
                 </Text>
                 <IconButton
@@ -118,11 +124,14 @@ export function ProfileHeader({
           </VStack>
         </HStack>
 
-        {/* Right side: Actions */}
+        {/* Divider */}
+        <Divider borderColor="whiteAlpha.200" />
+
+        {/* Bottom section: Action buttons */}
         <HStack
           spacing={3}
-          justify={{ base: 'flex-start', md: 'flex-end' }}
           flexWrap="wrap"
+          justify={{ base: 'center', md: 'flex-start' }}
         >
           <Box>
             <ConnectButton
@@ -135,7 +144,7 @@ export function ProfileHeader({
           <IconButton
             icon={<SettingsIcon />}
             isRound
-            size="sm"
+            size="md"
             aria-label="Account Settings"
             onClick={onSettingsClick}
             bg="whiteAlpha.200"
@@ -145,7 +154,7 @@ export function ProfileHeader({
 
           {isExec && (
             <Button
-              size="sm"
+              size="md"
               colorScheme="teal"
               onClick={onExecutiveMenuClick}
             >
@@ -153,7 +162,6 @@ export function ProfileHeader({
             </Button>
           )}
         </HStack>
-        </Flex>
       </VStack>
     </Box>
   );

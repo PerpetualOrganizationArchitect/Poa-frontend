@@ -20,6 +20,42 @@ import { glassLayerStyle } from '@/components/shared/glassStyles';
 import { normalizeHatId } from '@/utils/profileUtils';
 
 /**
+ * Helper function to check if there's any role progression content to display
+ * Used by parent to conditionally render this card vs recommended tasks
+ * @param {string} userAddress - User's address
+ * @param {string[]} userHatIds - User's current hat IDs
+ * @param {Object[]} roles - All roles from org structure
+ * @param {Function} getVouchProgress - Function to get vouch progress
+ * @returns {boolean} - Whether there's content to display
+ */
+export function hasRoleProgressionContent(userAddress, userHatIds = [], roles = [], getVouchProgress) {
+  if (!userAddress || !roles?.length) return false;
+
+  const normalizedUserHatIds = userHatIds.map((id) => normalizeHatId(id));
+
+  // Check for vouch progress
+  const hasVouchProgress = roles.some((role) => {
+    if (!role.vouchingEnabled) return false;
+    if (normalizedUserHatIds.includes(normalizeHatId(role.hatId))) return false;
+    if (!getVouchProgress) return false;
+    const progress = getVouchProgress(userAddress, role.hatId);
+    return progress?.current > 0;
+  });
+
+  if (hasVouchProgress) return true;
+
+  // Check for claimable roles
+  const hasClaimable = roles.some(
+    (role) =>
+      role.defaultEligible &&
+      !role.vouchingEnabled &&
+      !normalizedUserHatIds.includes(normalizeHatId(role.hatId))
+  );
+
+  return hasClaimable;
+}
+
+/**
  * Single role progression item
  */
 function ProgressionItem({ roleName, current, quorum, isComplete }) {

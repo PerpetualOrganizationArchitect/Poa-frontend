@@ -1,9 +1,9 @@
 /**
- * CompactTokenStatus - Condensed token balance and tier display
- * Replaces the large mascot image with compact, information-dense display
+ * TokenActivityCard - Combined token balance and activity stats display
+ * Merges token status (tier, progress) with activity metrics (tasks, votes, member since)
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Box,
   HStack,
@@ -11,13 +11,14 @@ import {
   Text,
   Image,
   Progress,
-  Button,
   Badge,
+  Icon,
+  Divider,
   keyframes,
   usePrefersReducedMotion,
   chakra,
 } from '@chakra-ui/react';
-import { AddIcon } from '@chakra-ui/icons';
+import { FiCheckCircle, FiThumbsUp, FiCalendar } from 'react-icons/fi';
 import { useSpring, animated } from 'react-spring';
 import { glassLayerStyle } from '@/components/shared/glassStyles';
 import { getTierColorScheme, getTierIcon } from '@/utils/profileUtils';
@@ -28,24 +29,43 @@ const glowAnimation = keyframes`
 `;
 
 /**
- * CompactTokenStatus component
+ * Single stat item for activity section
+ */
+function StatItem({ icon, label, value, color = 'purple.300' }) {
+  return (
+    <HStack spacing={3}>
+      <Icon as={icon} color={color} boxSize={4} />
+      <Text fontSize="sm" color="gray.400">
+        {label}:
+      </Text>
+      <Text fontWeight="bold" color="white" fontSize="sm">
+        {value}
+      </Text>
+    </HStack>
+  );
+}
+
+/**
+ * TokenActivityCard component
  * @param {Object} props
  * @param {number} props.ptBalance - Participation token balance
  * @param {string} props.tier - Current tier (Basic, Bronze, Silver, Gold)
  * @param {number} props.progress - Progress percentage to next tier (0-100)
  * @param {string} props.nextTier - Name of the next tier
  * @param {number} props.nextTierThreshold - Token threshold for next tier
- * @param {boolean} props.hasMemberRole - Whether user can request tokens
- * @param {() => void} props.onRequestTokens - Request tokens handler
+ * @param {number} props.tasksCompleted - Number of completed tasks
+ * @param {number} props.totalVotes - Number of votes cast
+ * @param {string} props.dateJoined - Formatted join date string
  */
-export function CompactTokenStatus({
+export function TokenActivityCard({
   ptBalance = 0,
   tier = 'Basic',
   progress = 0,
   nextTier,
   nextTierThreshold,
-  hasMemberRole,
-  onRequestTokens,
+  tasksCompleted = 0,
+  totalVotes = 0,
+  dateJoined = 'Unknown',
 }) {
   const prefersReducedMotion = usePrefersReducedMotion();
   const [countFinished, setCountFinished] = useState(false);
@@ -76,6 +96,7 @@ export function CompactTokenStatus({
   return (
     <Box
       w="100%"
+      h="100%"
       borderRadius="2xl"
       bg="transparent"
       boxShadow="lg"
@@ -84,9 +105,17 @@ export function CompactTokenStatus({
     >
       <div style={glassLayerStyle} />
 
-      {/* Content - no separate header for this card since it's compact */}
-      <VStack spacing={4} align="stretch" p={4}>
-        {/* Header: Icon + Token Count */}
+      {/* Darker header section */}
+      <VStack pb={2} align="flex-start" position="relative" borderTopRadius="2xl">
+        <div style={glassLayerStyle} />
+        <Text pl={6} pt={2} fontWeight="bold" fontSize={{ base: 'xl', md: '2xl' }} color="white">
+          Tokens & Activity
+        </Text>
+      </VStack>
+
+      {/* Content */}
+      <VStack spacing={4} align="stretch" p={4} pt={2}>
+        {/* Token Section */}
         <HStack spacing={4}>
           <Image
             src={tierIcon}
@@ -135,21 +164,33 @@ export function CompactTokenStatus({
           </Text>
         </Box>
 
-        {/* Request Tokens Button */}
-        {hasMemberRole && (
-          <Button
-            size="sm"
-            leftIcon={<AddIcon />}
-            colorScheme="purple"
-            onClick={onRequestTokens}
-            alignSelf="flex-start"
-          >
-            Request Tokens
-          </Button>
-        )}
+        {/* Divider */}
+        <Divider borderColor="whiteAlpha.200" />
+
+        {/* Activity Section */}
+        <VStack spacing={2} align="stretch">
+          <StatItem
+            icon={FiCheckCircle}
+            label="Tasks Completed"
+            value={tasksCompleted}
+            color="green.300"
+          />
+          <StatItem
+            icon={FiThumbsUp}
+            label="Votes Cast"
+            value={totalVotes}
+            color="blue.300"
+          />
+          <StatItem
+            icon={FiCalendar}
+            label="Member Since"
+            value={dateJoined}
+            color="purple.300"
+          />
+        </VStack>
       </VStack>
     </Box>
   );
 }
 
-export default CompactTokenStatus;
+export default TokenActivityCard;

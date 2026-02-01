@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   VStack,
@@ -8,7 +8,6 @@ import {
   HStack,
   Badge,
   Center,
-  useDisclosure,
   Collapse,
   Skeleton,
 } from '@chakra-ui/react';
@@ -26,19 +25,19 @@ import ExecutiveMenuModal from '@/components/profileHub/ExecutiveMenuModal';
 import { useOrgStructure } from '@/hooks';
 import { useVouches } from '@/hooks/useVouches';
 import WelcomeClaimPage from '@/components/profileHub/WelcomeClaimPage';
-import { TokenRequestModal, PendingRequestsPanel, UserRequestHistory } from '@/components/tokenRequest';
+import { PendingRequestsPanel } from '@/components/tokenRequest';
 import { useAccount } from 'wagmi';
 
-// New profile hub components
+// Profile hub components
 import ProfileHeader from '@/components/profileHub/ProfileHeader';
-import CompactTokenStatus from '@/components/profileHub/CompactTokenStatus';
 import UserRolesCard from '@/components/profileHub/UserRolesCard';
-import RoleProgressionCard from '@/components/profileHub/RoleProgressionCard';
-import ActivitySummaryCard from '@/components/profileHub/ActivitySummaryCard';
+import TokenActivityCard from '@/components/profileHub/TokenActivityCard';
+import TokenRequestCard from '@/components/profileHub/TokenRequestCard';
+import RoleProgressionCard, { hasRoleProgressionContent } from '@/components/profileHub/RoleProgressionCard';
 
 // Shared utilities
 import { glassLayerStyle } from '@/components/shared/glassStyles';
-import { determineTier, calculateProgress, formatDateToAmerican } from '@/utils/profileUtils';
+import { determineTier, calculateProgress, formatDateToAmerican, normalizeHatId } from '@/utils/profileUtils';
 
 /**
  * Skeleton loader for WelcomeClaimPage
@@ -85,6 +84,68 @@ function WelcomePageSkeleton() {
   );
 }
 
+/**
+ * Compact recommended tasks card for the right column
+ */
+function RecommendedTasksCompact({ tasks, userDAO }) {
+  const displayTasks = tasks?.slice(0, 3) || [];
+
+  return (
+    <Box
+      w="100%"
+      h="100%"
+      borderRadius="2xl"
+      bg="transparent"
+      boxShadow="lg"
+      position="relative"
+      zIndex={2}
+    >
+      <div style={glassLayerStyle} />
+
+      {/* Darker header section */}
+      <VStack pb={2} align="flex-start" position="relative" borderTopRadius="2xl">
+        <div style={glassLayerStyle} />
+        <Text pl={6} pt={2} fontWeight="bold" fontSize={{ base: 'xl', md: '2xl' }} color="white">
+          Recommended Tasks
+        </Text>
+      </VStack>
+
+      {/* Content */}
+      <VStack spacing={2} align="stretch" p={4} pt={2}>
+        {displayTasks.length > 0 ? (
+          displayTasks.map((task) => (
+            <Link2
+              key={task.id}
+              href={`/tasks/?task=${task.id}&projectId=${encodeURIComponent(decodeURIComponent(task.projectId))}&userDAO=${userDAO}`}
+            >
+              <Box
+                bg="whiteAlpha.50"
+                p={3}
+                borderRadius="lg"
+                _hover={{ bg: 'whiteAlpha.100' }}
+                transition="background 0.2s"
+                cursor="pointer"
+              >
+                <Text fontSize="sm" fontWeight="medium" color="white" noOfLines={1}>
+                  {task.isIndexing ? 'Indexing...' : task.title}
+                </Text>
+                <HStack justify="space-between" mt={1}>
+                  <Badge colorScheme="purple" fontSize="xs">{task.status}</Badge>
+                  <Text fontSize="xs" color="gray.400">Payout {task.payout}</Text>
+                </HStack>
+              </Box>
+            </Link2>
+          ))
+        ) : (
+          <Text color="gray.400" fontSize="sm" textAlign="center" py={4}>
+            No tasks available
+          </Text>
+        )}
+      </VStack>
+    </Box>
+  );
+}
+
 const UserprofileHub = () => {
   const router = useRouter();
   const { userDAO } = router.query;
@@ -105,12 +166,9 @@ const UserprofileHub = () => {
   // Modal states
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false);
   const [isExecutiveMenuOpen, setExecutiveMenuOpen] = useState(false);
-  const { isOpen: isTokenRequestModalOpen, onOpen: openTokenRequestModal, onClose: closeTokenRequestModal } = useDisclosure();
   const [showPendingRequests, setShowPendingRequests] = useState(false);
-  const [showRequestHistory, setShowRequestHistory] = useState(false);
 
-  // Compute user info from userData - using useMemo instead of useEffect+useState
-  // to avoid unnecessary re-renders and stale closure issues
+  // Compute user info from userData
   const userInfo = useMemo(() => {
     if (!userData) return {};
 
@@ -135,6 +193,11 @@ const UserprofileHub = () => {
   // Check if user has claimed any roles
   const userHatIds = userData?.hatIds || [];
   const hasClaimedRole = userHatIds.length > 0;
+
+  // Check if there's role progression content to show
+  const showRoleProgression = useMemo(() => {
+    return hasRoleProgressionContent(userAddress, userHatIds, roles, getVouchProgress);
+  }, [userAddress, userHatIds, roles, getVouchProgress]);
 
   // Composite loading state
   const isFullyLoaded = !orgLoading && !userDataLoading && orgName;
@@ -172,63 +235,64 @@ const UserprofileHub = () => {
       <Navbar />
       <Box mt={-2} p={4}>
         <Grid
-            color="white"
-            templateAreas={{
-              base: `'header'
-                     'roles'
-                     'tokens'
-                     'progression'
-                     'activity'
-                     'tasks'
-                     'proposals'
-                     'tokenRequests'`,
-              md: `'header header'
-                   'roles tokens'
-                   'progression activity'
-                   'tasks tasks'
-                   'proposals proposals'
-                   'tokenRequests tokenRequests'`
-            }}
-            templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }}
-            gap={4}
-          >
-            {/* Profile Header */}
-            <GridItem area="header">
-              <ProfileHeader
-                username={userInfo.username}
-                address={userInfo.accountAddress}
-                memberStatus={userInfo.memberStatus}
-                isExec={hasExecRole}
-                onSettingsClick={() => setSettingsModalOpen(true)}
-                onExecutiveMenuClick={() => setExecutiveMenuOpen(true)}
-              />
-            </GridItem>
+          color="white"
+          templateAreas={{
+            base: `'header'
+                   'tokensActivity'
+                   'roles'
+                   'progressionOrTasks'
+                   'tokenRequests'
+                   'tasksProposals'
+                   'pendingRequests'`,
+            md: `'header header'
+                 'tokensActivity roles'
+                 'tokensActivity progressionOrTasks'
+                 'tokenRequests tasksProposals'
+                 'pendingRequests pendingRequests'`
+          }}
+          templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }}
+          templateRows={{ base: 'auto', md: 'auto auto auto auto auto' }}
+          gap={4}
+        >
+          {/* Profile Header */}
+          <GridItem area="header">
+            <ProfileHeader
+              username={userInfo.username}
+              address={userInfo.accountAddress}
+              memberStatus={userInfo.memberStatus}
+              isExec={hasExecRole}
+              onSettingsClick={() => setSettingsModalOpen(true)}
+              onExecutiveMenuClick={() => setExecutiveMenuOpen(true)}
+            />
+          </GridItem>
 
-            {/* User Roles */}
-            <GridItem area="roles">
-              <UserRolesCard
-                userHatIds={userHatIds}
-                roles={roles}
-                permissionsMatrix={permissionsMatrix}
-                userDAO={userDAO}
-              />
-            </GridItem>
+          {/* Tokens & Activity (Left Column) */}
+          <GridItem area="tokensActivity">
+            <TokenActivityCard
+              ptBalance={userInfo.ptBalance}
+              tier={userInfo.tier}
+              progress={userInfo.progress}
+              nextTier={userInfo.nextTier}
+              nextTierThreshold={userInfo.nextTierThreshold}
+              tasksCompleted={userInfo.tasksCompleted}
+              totalVotes={userInfo.totalVotes}
+              dateJoined={userInfo.dateJoined}
+            />
+          </GridItem>
 
-            {/* Compact Token Status */}
-            <GridItem area="tokens">
-              <CompactTokenStatus
-                ptBalance={userInfo.ptBalance}
-                tier={userInfo.tier}
-                progress={userInfo.progress}
-                nextTier={userInfo.nextTier}
-                nextTierThreshold={userInfo.nextTierThreshold}
-                hasMemberRole={hasMemberRole}
-                onRequestTokens={openTokenRequestModal}
-              />
-            </GridItem>
+          {/* User Roles (Right Column - Top) */}
+          <GridItem area="roles">
+            <UserRolesCard
+              userHatIds={userHatIds}
+              roles={roles}
+              permissionsMatrix={permissionsMatrix}
+              userDAO={userDAO}
+            />
+          </GridItem>
 
-            {/* Role Progression */}
-            <GridItem area="progression">
+          {/* Role Progression OR Recommended Tasks (Right Column - Bottom) */}
+          <GridItem area="progressionOrTasks">
+            {showRoleProgression ? (
               <RoleProgressionCard
                 userAddress={userAddress}
                 userHatIds={userHatIds}
@@ -237,171 +301,109 @@ const UserprofileHub = () => {
                 pendingVouchRequests={pendingVouchRequests}
                 userDAO={userDAO}
               />
-            </GridItem>
-
-            {/* Activity Summary */}
-            <GridItem area="activity">
-              <ActivitySummaryCard
-                tasksCompleted={userInfo.tasksCompleted}
-                totalVotes={userInfo.totalVotes}
-                dateJoined={userInfo.dateJoined}
+            ) : (
+              <RecommendedTasksCompact
+                tasks={recommendedTasks}
+                userDAO={userDAO}
               />
-            </GridItem>
+            )}
+          </GridItem>
 
-            {/* Tasks Section */}
-            <GridItem area="tasks">
-              <Box
-                w="100%"
-                borderRadius="2xl"
-                bg="transparent"
-                position="relative"
-                zIndex={2}
-              >
+          {/* Token Requests (Left Column - Bottom) */}
+          <GridItem area="tokenRequests">
+            <TokenRequestCard hasMemberRole={hasMemberRole} />
+          </GridItem>
+
+          {/* Tasks & Proposals Section (Right Column - Bottom) */}
+          <GridItem area="tasksProposals">
+            <Box
+              w="100%"
+              h="100%"
+              borderRadius="2xl"
+              bg="transparent"
+              position="relative"
+              zIndex={2}
+            >
+              <div style={glassLayerStyle} />
+              <VStack pb={2} align="flex-start" position="relative" borderTopRadius="2xl">
                 <div style={glassLayerStyle} />
-                <VStack pb={2} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassLayerStyle} />
-                  <Text pl={6} pt={2} fontWeight="bold" fontSize={{ base: 'xl', md: '2xl' }}>
-                    {claimedTasks && claimedTasks.length > 0 ? 'Claimed Tasks' : 'Recommended Tasks'}
-                  </Text>
-                </VStack>
-                <HStack
-                  spacing="3.5%"
-                  pb={4}
-                  ml={4}
-                  mr={4}
-                  pt={4}
-                  flexDir={{ base: 'column', md: 'row' }}
-                  align={{ base: 'stretch', md: 'flex-start' }}
-                >
-                  {((claimedTasks && claimedTasks.length > 0) ? claimedTasks : recommendedTasks)?.slice(0, 3).map((task) => (
-                    <Box
-                      key={task.id}
-                      w={{ base: '100%', md: '31%' }}
-                      mb={{ base: 4, md: 0 }}
-                      _hover={{ boxShadow: 'md', transform: 'scale(1.03)' }}
-                      p={4}
-                      borderRadius="2xl"
-                      overflow="hidden"
-                      bg="black"
-                      transition="all 0.2s"
-                    >
-                      <Link2 href={`/tasks/?task=${task.id}&projectId=${encodeURIComponent(decodeURIComponent(task.projectId))}&userDAO=${userDAO}`}>
-                        <VStack textColor="white" align="stretch" spacing={3}>
-                          <Text fontSize="md" lineHeight="99%" fontWeight="extrabold">
+                <Text pl={6} pt={2} fontWeight="bold" fontSize={{ base: 'xl', md: '2xl' }}>
+                  {claimedTasks?.length > 0 ? 'Claimed Tasks' : (userProposals?.length > 0 ? 'My Proposals' : 'Ongoing Proposals')}
+                </Text>
+              </VStack>
+              <Box p={4} pt={2}>
+                {claimedTasks?.length > 0 ? (
+                  <VStack spacing={2} align="stretch">
+                    {claimedTasks.slice(0, 3).map((task) => (
+                      <Link2
+                        key={task.id}
+                        href={`/tasks/?task=${task.id}&projectId=${encodeURIComponent(decodeURIComponent(task.projectId))}&userDAO=${userDAO}`}
+                      >
+                        <Box
+                          bg="whiteAlpha.50"
+                          p={3}
+                          borderRadius="lg"
+                          _hover={{ bg: 'whiteAlpha.100' }}
+                          transition="background 0.2s"
+                          cursor="pointer"
+                        >
+                          <Text fontSize="sm" fontWeight="medium" color="white" noOfLines={1}>
                             {task.isIndexing ? 'Indexing...' : task.title}
                           </Text>
-                          <HStack justify="space-between">
-                            <Badge colorScheme="purple">{task.status}</Badge>
-                            <Text fontWeight="bold">Payout {task.payout}</Text>
+                          <HStack justify="space-between" mt={1}>
+                            <Badge colorScheme="purple" fontSize="xs">{task.status}</Badge>
+                            <Text fontSize="xs" color="gray.400">Payout {task.payout}</Text>
                           </HStack>
-                        </VStack>
+                        </Box>
                       </Link2>
-                    </Box>
-                  ))}
-                  {(!claimedTasks || claimedTasks.length === 0) && (!recommendedTasks || recommendedTasks.length === 0) && (
-                    <Text pl={2} color="gray.400">No tasks available</Text>
-                  )}
-                </HStack>
+                    ))}
+                  </VStack>
+                ) : userProposals?.length > 0 ? (
+                  <UserProposals userProposals={userProposals} />
+                ) : (
+                  <OngoingPolls OngoingPolls={ongoingPolls} />
+                )}
               </Box>
-            </GridItem>
+            </Box>
+          </GridItem>
 
-            {/* Proposals Section */}
-            <GridItem area="proposals">
+          {/* Pending Requests Panel for Approvers */}
+          {hasApproverRole && (
+            <GridItem area="pendingRequests">
               <Box
                 w="100%"
                 borderRadius="2xl"
                 bg="transparent"
+                boxShadow="lg"
                 position="relative"
                 zIndex={2}
               >
                 <div style={glassLayerStyle} />
-                <VStack pb={2} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassLayerStyle} />
-                  <Text pl={6} pt={2} fontWeight="bold" fontSize={{ base: 'xl', md: '2xl' }}>
-                    {userProposals && userProposals.length > 0 ? 'My Proposals' : 'Ongoing Proposals'}
+                <HStack
+                  p={4}
+                  cursor="pointer"
+                  onClick={() => setShowPendingRequests(!showPendingRequests)}
+                  justify="space-between"
+                >
+                  <Text fontWeight="bold" fontSize={{ base: 'lg', md: 'xl' }}>
+                    Pending Token Requests (Approver)
                   </Text>
-                </VStack>
-                <Box mt="4" pb={4}>
-                  {userProposals && userProposals.length > 0 ? (
-                    <UserProposals userProposals={userProposals} />
-                  ) : (
-                    <OngoingPolls OngoingPolls={ongoingPolls} />
-                  )}
-                </Box>
+                  {showPendingRequests ? <ChevronUpIcon boxSize={6} /> : <ChevronDownIcon boxSize={6} />}
+                </HStack>
+                <Collapse in={showPendingRequests}>
+                  <Box p={4} pt={0}>
+                    <PendingRequestsPanel />
+                  </Box>
+                </Collapse>
               </Box>
             </GridItem>
-
-            {/* Token Requests Section (Collapsible) */}
-            <GridItem area="tokenRequests">
-              <VStack spacing={4} align="stretch">
-                {/* User's Token Request History */}
-                {hasMemberRole && (
-                  <Box
-                    w="100%"
-                    borderRadius="2xl"
-                    bg="transparent"
-                    boxShadow="lg"
-                    position="relative"
-                    zIndex={2}
-                  >
-                    <div style={glassLayerStyle} />
-                    <HStack
-                      p={4}
-                      cursor="pointer"
-                      onClick={() => setShowRequestHistory(!showRequestHistory)}
-                      justify="space-between"
-                    >
-                      <Text fontWeight="bold" fontSize={{ base: 'lg', md: 'xl' }}>
-                        My Token Requests
-                      </Text>
-                      {showRequestHistory ? <ChevronUpIcon boxSize={6} /> : <ChevronDownIcon boxSize={6} />}
-                    </HStack>
-                    <Collapse in={showRequestHistory}>
-                      <Box p={4} pt={0}>
-                        <UserRequestHistory />
-                      </Box>
-                    </Collapse>
-                  </Box>
-                )}
-
-                {/* Pending Requests Panel for Approvers */}
-                {hasApproverRole && (
-                  <Box
-                    w="100%"
-                    borderRadius="2xl"
-                    bg="transparent"
-                    boxShadow="lg"
-                    position="relative"
-                    zIndex={2}
-                  >
-                    <div style={glassLayerStyle} />
-                    <HStack
-                      p={4}
-                      cursor="pointer"
-                      onClick={() => setShowPendingRequests(!showPendingRequests)}
-                      justify="space-between"
-                    >
-                      <Text fontWeight="bold" fontSize={{ base: 'lg', md: 'xl' }}>
-                        Pending Token Requests (Approver)
-                      </Text>
-                      {showPendingRequests ? <ChevronUpIcon boxSize={6} /> : <ChevronDownIcon boxSize={6} />}
-                    </HStack>
-                    <Collapse in={showPendingRequests}>
-                      <Box p={4} pt={0}>
-                        <PendingRequestsPanel />
-                      </Box>
-                    </Collapse>
-                  </Box>
-                )}
-              </VStack>
-            </GridItem>
-          </Grid>
+          )}
+        </Grid>
       </Box>
 
       {/* Modals */}
       <AccountSettingsModal isOpen={isSettingsModalOpen} onClose={() => setSettingsModalOpen(false)} />
       <ExecutiveMenuModal isOpen={isExecutiveMenuOpen} onClose={() => setExecutiveMenuOpen(false)} />
-      <TokenRequestModal isOpen={isTokenRequestModalOpen} onClose={closeTokenRequestModal} />
     </>
   );
 };

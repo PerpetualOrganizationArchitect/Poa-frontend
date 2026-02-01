@@ -9,7 +9,7 @@ const theme = extendTheme({
     styles: {
         global: {
             body: {
-                bg: "linear-gradient(to right, #FED7AA, #FBCFE8)",
+                bgGradient: "linear(to-r, orange.200, pink.200)",
                 color: "#001443",
               },
             'h1, h2, h3, h4, h5, h6': {

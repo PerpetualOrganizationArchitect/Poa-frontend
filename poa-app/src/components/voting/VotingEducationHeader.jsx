@@ -32,10 +32,21 @@ import {
   Skeleton,
 } from "@chakra-ui/react";
 import { ChevronDownIcon, ChevronUpIcon, InfoOutlineIcon } from "@chakra-ui/icons";
-import { glassLayerWithShadowStyle } from '@/components/shared/glassStyles';
 import { useVotingPower, useRoleNames } from "@/hooks";
 import { useUserContext } from "@/context/UserContext";
 import { usePOContext } from "@/context/POContext";
+
+const glassLayerStyle = {
+  position: "absolute",
+  height: "100%",
+  width: "100%",
+  zIndex: -1,
+  borderRadius: "inherit",
+  backdropFilter: "blur(20px)",
+  backgroundColor: "rgba(0, 0, 0, .8)",
+  boxShadow: "inset 0 0 15px rgba(148, 115, 220, 0.15)",
+  border: "1px solid rgba(148, 115, 220, 0.2)",
+};
 
 /**
  * Formats a large number with appropriate suffix (K, M, etc.)
@@ -635,7 +646,7 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
     >
       <Box
         className="glass"
-        style={glassLayerWithShadowStyle}
+        style={glassLayerStyle}
         position="absolute"
         top={0}
         left={0}

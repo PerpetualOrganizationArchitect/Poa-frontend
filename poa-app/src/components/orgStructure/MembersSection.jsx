@@ -26,7 +26,18 @@ import {
   FiCheckSquare,
   FiThumbsUp,
 } from 'react-icons/fi';
-import { glassLayerWithShadowStyle } from '@/components/shared/glassStyles';
+
+const glassLayerStyle = {
+  position: 'absolute',
+  height: '100%',
+  width: '100%',
+  zIndex: -1,
+  borderRadius: 'inherit',
+  backdropFilter: 'blur(20px)',
+  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  boxShadow: 'inset 0 0 15px rgba(148, 115, 220, 0.15)',
+  border: '1px solid rgba(148, 115, 220, 0.2)',
+};
 
 /**
  * Format timestamp to readable date
@@ -255,7 +266,7 @@ export function MembersSection({
         p={{ base: 4, md: 6 }}
         overflow="hidden"
       >
-        <Box style={glassLayerWithShadowStyle} />
+        <Box style={glassLayerStyle} />
         <VStack spacing={3} align="stretch">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} height="60px" borderRadius="xl" />
@@ -274,7 +285,7 @@ export function MembersSection({
         overflow="hidden"
         textAlign="center"
       >
-        <Box style={glassLayerWithShadowStyle} />
+        <Box style={glassLayerStyle} />
         <Text color="gray.400">No roles defined</Text>
       </Box>
     );
@@ -287,7 +298,7 @@ export function MembersSection({
       p={{ base: 4, md: 6 }}
       overflow="hidden"
     >
-      <Box style={glassLayerWithShadowStyle} />
+      <Box style={glassLayerStyle} />
 
       <VStack spacing={0} align="stretch">
         {roles.map((role, index) => (

@@ -3,7 +3,7 @@
  * Merges token status (tier, progress) with activity metrics (tasks, votes, member since)
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Box,
   HStack,
@@ -19,7 +19,7 @@ import {
   chakra,
 } from '@chakra-ui/react';
 import { FiCheckCircle, FiThumbsUp, FiCalendar } from 'react-icons/fi';
-import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
+import { useSpring, animated } from 'react-spring';
 import { glassLayerStyle } from '@/components/shared/glassStyles';
 import { getTierColorScheme, getTierIcon } from '@/utils/profileUtils';
 
@@ -71,23 +71,16 @@ export function TokenActivityCard({
   const [countFinished, setCountFinished] = useState(false);
   const hasAnimatedRef = useRef(false);
 
-  // Framer motion value for animated count
-  const count = useMotionValue(hasAnimatedRef.current ? ptBalance : 0);
-  const roundedCount = useTransform(count, (value) => Math.round(value));
-
-  // Animate to new value when ptBalance changes
-  useEffect(() => {
-    const duration = hasAnimatedRef.current ? 0.5 : 1.7;
-    const controls = animate(count, ptBalance, {
-      duration,
-      ease: 'easeOut',
-      onComplete: () => {
-        setCountFinished(true);
-        hasAnimatedRef.current = true;
-      },
-    });
-    return controls.stop;
-  }, [ptBalance, count]);
+  // Only animate from 0 on initial mount, then animate from previous value
+  const animatedPT = useSpring({
+    pt: ptBalance,
+    from: { pt: hasAnimatedRef.current ? ptBalance : 0 },
+    config: { duration: hasAnimatedRef.current ? 500 : 1700 },
+    onRest: () => {
+      setCountFinished(true);
+      hasAnimatedRef.current = true;
+    },
+  });
 
   const animationProps = prefersReducedMotion
     ? {}
@@ -140,7 +133,9 @@ export function TokenActivityCard({
                 {countFinished ? (
                   <chakra.span {...animationProps}>{ptBalance}</chakra.span>
                 ) : (
-                  <motion.span>{roundedCount}</motion.span>
+                  <animated.span>
+                    {animatedPT.pt.to((pt) => pt.toFixed(0))}
+                  </animated.span>
                 )}
               </Text>
               <Text fontSize="md" color="gray.400">

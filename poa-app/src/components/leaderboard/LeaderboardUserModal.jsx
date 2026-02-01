@@ -19,13 +19,13 @@ import {
   Tooltip,
 } from '@chakra-ui/react';
 import {
-  FiActivity,
   FiCheckSquare,
   FiThumbsUp,
   FiAward,
   FiCopy,
   FiCheck,
 } from 'react-icons/fi';
+import { PiCoinVerticalBold } from 'react-icons/pi';
 import { glassLayerStyle } from '@/components/shared/glassStyles';
 
 const getMedalColor = (rank) => {
@@ -166,10 +166,10 @@ function LeaderboardUserModal({ isOpen, onClose, user, rank, roleNames = {} }) {
             <Grid templateColumns="repeat(2, 1fr)" gap={4} w="100%">
               <GridItem>
                 <StatBox
-                  icon={FiActivity}
+                  icon={PiCoinVerticalBold}
                   label="Tokens"
                   value={user.token}
-                  color={medalColor || 'purple.300'}
+                  color="yellow.400"
                 />
               </GridItem>
               <GridItem>

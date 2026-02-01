@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Grid, GridItem, Text, VStack } from '@chakra-ui/react';
 import LeaderboardCard from './LeaderboardCard';
 
-function TopThreePodium({ users, onUserClick }) {
+function TopThreePodium({ users, onUserClick, hasMoreUsers = false }) {
   if (!users || users.length === 0) return null;
 
   const [first, second, third] = users;
@@ -93,18 +93,20 @@ function TopThreePodium({ users, onUserClick }) {
         )}
       </VStack>
 
-      {/* Section divider */}
-      <Box mt={6} mb={2}>
-        <Text
-          fontSize="xs"
-          color="gray.500"
-          textTransform="uppercase"
-          letterSpacing="wide"
-          textAlign="center"
-        >
-          Other Contributors
-        </Text>
-      </Box>
+      {/* Section divider - only show if there are more users */}
+      {hasMoreUsers && (
+        <Box mt={6} mb={2}>
+          <Text
+            fontSize="xs"
+            color="gray.500"
+            textTransform="uppercase"
+            letterSpacing="wide"
+            textAlign="center"
+          >
+            Other Contributors
+          </Text>
+        </Box>
+      )}
     </Box>
   );
 }

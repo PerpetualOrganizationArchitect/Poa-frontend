@@ -75,7 +75,11 @@ const Leaderboard = () => {
           ) : (
             <>
               {/* Top 3 Podium */}
-              <TopThreePodium users={topThree} onUserClick={handleUserClick} />
+              <TopThreePodium
+                users={topThree}
+                onUserClick={handleUserClick}
+                hasMoreUsers={remaining.length > 0}
+              />
 
               {/* Remaining users */}
               {remaining.length > 0 && (

@@ -57,9 +57,31 @@ const Leaderboard = () => {
         p={{ base: 4, md: 6 }}
       >
         <VStack spacing={6} align="center">
-          <Heading as="h1" size="lg" color="white">
-            Leaderboard
-          </Heading>
+          <Box
+            position="relative"
+            borderRadius="xl"
+            px={8}
+            py={3}
+            overflow="hidden"
+          >
+            <Box
+              position="absolute"
+              inset={0}
+              borderRadius="inherit"
+              bg="rgba(0, 0, 0, 0.7)"
+              border="1px solid rgba(148, 115, 220, 0.3)"
+              zIndex={-1}
+            />
+            <Heading
+              as="h1"
+              size="lg"
+              color="white"
+              fontWeight="bold"
+              letterSpacing="wide"
+            >
+              Leaderboard
+            </Heading>
+          </Box>
 
           {data.length === 0 ? (
             <Box

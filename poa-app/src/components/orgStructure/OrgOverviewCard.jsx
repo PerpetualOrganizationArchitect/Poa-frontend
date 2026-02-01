@@ -18,7 +18,18 @@ import {
   SkeletonCircle,
 } from '@chakra-ui/react';
 import { FiExternalLink, FiCalendar, FiUsers } from 'react-icons/fi';
-import { glassLayerWithShadowStyle } from '@/components/shared/glassStyles';
+
+const glassLayerStyle = {
+  position: 'absolute',
+  height: '100%',
+  width: '100%',
+  zIndex: -1,
+  borderRadius: 'inherit',
+  backdropFilter: 'blur(20px)',
+  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  boxShadow: 'inset 0 0 15px rgba(148, 115, 220, 0.15)',
+  border: '1px solid rgba(148, 115, 220, 0.2)',
+};
 
 export function OrgOverviewCard({
   name,
@@ -45,7 +56,7 @@ export function OrgOverviewCard({
         p={{ base: 4, md: 6 }}
         overflow="hidden"
       >
-        <Box style={glassLayerWithShadowStyle} />
+        <Box style={glassLayerStyle} />
         <Flex direction={{ base: 'column', md: 'row' }} gap={6}>
           <SkeletonCircle size="100px" />
           <VStack align="flex-start" flex={1} spacing={3}>
@@ -65,7 +76,7 @@ export function OrgOverviewCard({
       p={{ base: 4, md: 6 }}
       overflow="hidden"
     >
-      <Box style={glassLayerWithShadowStyle} />
+      <Box style={glassLayerStyle} />
 
       <Flex direction={{ base: 'column', md: 'row' }} gap={6} align="flex-start">
         {/* Logo */}

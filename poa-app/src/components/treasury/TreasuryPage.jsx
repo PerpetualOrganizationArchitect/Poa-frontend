@@ -22,7 +22,16 @@ import CurrentDistributions from './CurrentDistributions';
 import DistributionHistory from './DistributionHistory';
 import HistoricalOverview from './HistoricalOverview';
 import ParticipationTokenModal from './ParticipationTokenModal';
-import { glassHighBlurStyle } from '@/components/shared/glassStyles';
+
+const glassLayerStyle = {
+  position: 'absolute',
+  height: '100%',
+  width: '100%',
+  zIndex: -1,
+  borderRadius: 'inherit',
+  backdropFilter: 'blur(70px)',
+  backgroundColor: 'rgba(0, 0, 0, .79)',
+};
 
 const TreasuryPage = () => {
   const router = useRouter();
@@ -113,7 +122,7 @@ const TreasuryPage = () => {
                 position="relative"
                 zIndex={2}
               >
-                <div style={glassHighBlurStyle} />
+                <div style={glassLayerStyle} />
                 <TreasuryHeader
                   memberCount={poMembers}
                   totalDistributed={totalDistributed.toString()}
@@ -135,9 +144,9 @@ const TreasuryPage = () => {
                 position="relative"
                 zIndex={2}
               >
-                <div style={glassHighBlurStyle} />
+                <div style={glassLayerStyle} />
                 <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassHighBlurStyle} />
+                  <div style={glassLayerStyle} />
                   <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
                     Treasury Balances
                   </Text>
@@ -162,9 +171,9 @@ const TreasuryPage = () => {
                 position="relative"
                 zIndex={2}
               >
-                <div style={glassHighBlurStyle} />
+                <div style={glassLayerStyle} />
                 <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassHighBlurStyle} />
+                  <div style={glassLayerStyle} />
                   <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
                     Active Profit Shares
                   </Text>
@@ -188,9 +197,9 @@ const TreasuryPage = () => {
                 position="relative"
                 zIndex={2}
               >
-                <div style={glassHighBlurStyle} />
+                <div style={glassLayerStyle} />
                 <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassHighBlurStyle} />
+                  <div style={glassLayerStyle} />
                   <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
                     Distribution History
                   </Text>
@@ -213,9 +222,9 @@ const TreasuryPage = () => {
                 position="relative"
                 zIndex={2}
               >
-                <div style={glassHighBlurStyle} />
+                <div style={glassLayerStyle} />
                 <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassHighBlurStyle} />
+                  <div style={glassLayerStyle} />
                   <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
                     Financial Overview
                   </Text>

@@ -53,16 +53,19 @@ export function ActivitySummaryCard({
       boxShadow="lg"
       position="relative"
       zIndex={2}
-      p={{ base: 4, md: 5 }}
     >
       <div style={glassLayerStyle} />
 
-      <VStack spacing={4} align="stretch">
-        <Text fontSize="xl" fontWeight="bold" color="white">
+      {/* Darker header section */}
+      <VStack pb={2} align="flex-start" position="relative" borderTopRadius="2xl">
+        <div style={glassLayerStyle} />
+        <Text pl={6} pt={2} fontWeight="bold" fontSize={{ base: 'xl', md: '2xl' }} color="white">
           Activity
         </Text>
+      </VStack>
 
-        <VStack spacing={2} align="stretch">
+      {/* Content */}
+      <VStack spacing={2} align="stretch" p={4} pt={2}>
           <StatItem
             icon={FiCheckCircle}
             label="Tasks Completed"
@@ -81,7 +84,6 @@ export function ActivitySummaryCard({
             value={dateJoined}
             color="purple.300"
           />
-        </VStack>
       </VStack>
     </Box>
   );

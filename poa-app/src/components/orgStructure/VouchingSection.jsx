@@ -284,6 +284,7 @@ function YourVouchesSection({ userGivenVouches = [], onRevokeVouch, isRevokingFo
  * @param {Array} props.userHatIds - Current user's hat IDs
  * @param {string} props.userAddress - Current user's address
  * @param {boolean} props.isConnected - Whether wallet is connected
+ * @param {boolean} props.embedded - When true, disables glass layer and reduces padding for nesting
  */
 export function VouchingSection({
   roles = [],
@@ -291,6 +292,7 @@ export function VouchingSection({
   userHatIds = [],
   userAddress,
   isConnected = true,
+  embedded = false,
 }) {
   // Filter to roles with vouching enabled
   const rolesWithVouching = roles.filter(role => role.vouchingEnabled);
@@ -334,11 +336,11 @@ export function VouchingSection({
     return (
       <Box
         position="relative"
-        borderRadius="2xl"
-        p={{ base: 4, md: 6 }}
+        borderRadius={embedded ? 'xl' : '2xl'}
+        p={embedded ? { base: 2, md: 3 } : { base: 4, md: 6 }}
         overflow="hidden"
       >
-        <Box style={glassLayerStyle} />
+        {!embedded && <Box style={glassLayerStyle} />}
         <VStack spacing={3} align="stretch">
           {[1, 2].map((i) => (
             <Skeleton key={i} height="80px" borderRadius="xl" />
@@ -353,11 +355,11 @@ export function VouchingSection({
     return (
       <Box
         position="relative"
-        borderRadius="2xl"
-        p={{ base: 4, md: 6 }}
+        borderRadius={embedded ? 'xl' : '2xl'}
+        p={embedded ? { base: 2, md: 3 } : { base: 4, md: 6 }}
         overflow="hidden"
       >
-        <Box style={glassLayerStyle} />
+        {!embedded && <Box style={glassLayerStyle} />}
         <Alert status="error" borderRadius="md" bg="red.900" color="white">
           <AlertIcon />
           Failed to load vouching data
@@ -372,13 +374,13 @@ export function VouchingSection({
   return (
     <Box
       position="relative"
-      borderRadius="2xl"
-      p={{ base: 4, md: 6 }}
+      borderRadius={embedded ? 'xl' : '2xl'}
+      p={embedded ? { base: 2, md: 3 } : { base: 4, md: 6 }}
       overflow="hidden"
     >
-      <Box style={glassLayerStyle} />
+      {!embedded && <Box style={glassLayerStyle} />}
 
-      <VStack spacing={4} align="stretch">
+      <VStack spacing={embedded ? 3 : 4} align="stretch">
         {/* Info banner */}
         <HStack
           spacing={2}

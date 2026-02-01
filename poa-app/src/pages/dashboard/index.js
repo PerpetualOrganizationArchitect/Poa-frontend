@@ -209,13 +209,13 @@ const PerpetualOrgDashboard = () => {
                   'orgInfo orgStats'
                   'tasks polls'
                   'leaderboard orgStructure'
-                  ${showVouchingSection ? "'vouching vouching'" : ''}
+                  ${showVouchingSection ? "'vouching .'" : ''}
                   'learnAndEarn learnAndEarn'
                 ` : `
                   'orgInfo orgStats'
                   'tasks polls'
                   'leaderboard orgStructure'
-                  ${showVouchingSection ? "'vouching vouching'" : ''}
+                  ${showVouchingSection ? "'vouching .'" : ''}
                 `,
               }}
               templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }}
@@ -550,6 +550,7 @@ const PerpetualOrgDashboard = () => {
                         userHatIds={userHatIds}
                         userAddress={userData?.id}
                         isConnected={true}
+                        embedded={true}
                       />
                     </Box>
                   </Collapse>

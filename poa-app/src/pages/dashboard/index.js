@@ -200,13 +200,13 @@ const PerpetualOrgDashboard = () => {
                   'orgInfo orgStats'
                   'tasks polls'
                   'leaderboard orgStructure'
-                  ${showVouchingSection ? "'vouching vouching'" : ''}
+                  ${showVouchingSection ? "'vouching .'" : ''}
                   'learnAndEarn learnAndEarn'
                 ` : `
                   'orgInfo orgStats'
                   'tasks polls'
                   'leaderboard orgStructure'
-                  ${showVouchingSection ? "'vouching vouching'" : ''}
+                  ${showVouchingSection ? "'vouching .'" : ''}
                 `,
               }}
               templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }}
@@ -507,40 +507,39 @@ const PerpetualOrgDashboard = () => {
                   position="relative"
                   zIndex={2}
                 >
-                  <div style={glassLayerStyle} />
+                  <div style={glassHighBlurStyle} />
                   <Box
                     as="button"
                     width="100%"
                     onClick={() => setIsVouchingExpanded(!isVouchingExpanded)}
-                    position="relative"
                     borderTopRadius="2xl"
                     _hover={{ bg: 'rgba(148, 115, 220, 0.05)' }}
                     transition="background-color 0.2s"
+                    textAlign="left"
                   >
-                    <div style={glassLayerStyle} />
-                    <HStack justify="space-between" px={{ base: 3, md: 6 }} py={2}>
+                    <HStack justify="space-between" px={{ base: 3, md: 4 }} py={2}>
                       <HStack spacing={2}>
-                        <Icon as={FiUserPlus} color="purple.300" />
-                        <Text fontWeight="bold" fontSize={sectionHeadingSize}>
+                        <Icon as={FiUserPlus} color="purple.300" boxSize={4} />
+                        <Text fontWeight="bold" fontSize={{ base: "md", md: "lg" }}>
                           Member Vouching
                         </Text>
                       </HStack>
                       <Icon
                         as={isVouchingExpanded ? FiChevronDown : FiChevronRight}
                         color="purple.300"
-                        boxSize={5}
-                        transition="transform 0.2s"
+                        boxSize={4}
                       />
                     </HStack>
                   </Box>
                   <Collapse in={isVouchingExpanded} animateOpacity>
-                    <Box p={{ base: 2, md: 4 }}>
+                    <Box px={{ base: 2, md: 3 }} pb={3}>
                       <VouchingSection
                         roles={rolesWithVouching}
                         eligibilityModuleAddress={eligibilityModuleAddress}
                         userHatIds={userHatIds}
                         userAddress={userData?.id}
                         isConnected={true}
+                        embedded={true}
                       />
                     </Box>
                   </Collapse>

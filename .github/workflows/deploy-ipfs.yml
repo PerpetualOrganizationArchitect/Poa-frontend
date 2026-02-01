@@ -5,8 +5,12 @@ on:
     branches:
       - main
 
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '20.11.0'
   WORKING_DIRECTORY: poa-app
 
 jobs:
@@ -24,9 +28,23 @@ jobs:
           cache: 'yarn'
           cache-dependency-path: ${{ env.WORKING_DIRECTORY }}/yarn.lock
 
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.WORKING_DIRECTORY }}/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('poa-app/yarn.lock', 'poa-app/next.config.mjs', 'poa-app/package.json') }}-${{ hashFiles('poa-app/src/**', 'poa-app/public/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('poa-app/yarn.lock', 'poa-app/next.config.mjs', 'poa-app/package.json') }}-
+            nextjs-${{ runner.os }}-
+
       - name: Install dependencies
         working-directory: ${{ env.WORKING_DIRECTORY }}
         run: yarn install --frozen-lockfile
+
+      - name: Lint
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        continue-on-error: true
+        run: yarn lint
 
       - name: Build static site
         working-directory: ${{ env.WORKING_DIRECTORY }}
@@ -38,85 +56,30 @@ jobs:
         env:
           PINATA_JWT: ${{ secrets.PINATA_JWT }}
           PINATA_GATEWAY: ${{ secrets.PINATA_GATEWAY }}
-        run: |
-          yarn add pinata
-
-          node << 'EOF'
-          const { PinataSDK } = require("pinata");
-          const fs = require("fs");
-          const path = require("path");
-
-          async function uploadDirectory() {
-            const pinata = new PinataSDK({
-              pinataJwt: process.env.PINATA_JWT,
-              pinataGateway: process.env.PINATA_GATEWAY,
-            });
-
-            const outDir = "./out";
-
-            // Collect all files from the out directory
-            function getAllFiles(dir, baseDir = dir) {
-              const files = [];
-              const items = fs.readdirSync(dir);
-
-              for (const item of items) {
-                const fullPath = path.join(dir, item);
-                const stat = fs.statSync(fullPath);
-
-                if (stat.isDirectory()) {
-                  files.push(...getAllFiles(fullPath, baseDir));
-                } else {
-                  const relativePath = path.relative(baseDir, fullPath);
-                  files.push({ path: relativePath, fullPath });
-                }
-              }
-              return files;
-            }
-
-            const files = getAllFiles(outDir);
-            console.log(`Found ${files.length} files to upload`);
-
-            // Create File objects for upload
-            const fileObjects = files.map(({ path: relativePath, fullPath }) => {
-              const content = fs.readFileSync(fullPath);
-              return new File([content], relativePath);
-            });
-
-            // Upload as a folder
-            const upload = await pinata.upload.public.fileArray(fileObjects);
-
-            console.log("Upload successful!");
-            console.log(`CID: ${upload.cid}`);
-
-            // Write outputs for GitHub Actions
-            const outputFile = process.env.GITHUB_OUTPUT;
-            fs.appendFileSync(outputFile, `ipfs_hash=${upload.cid}\n`);
-          }
-
-          uploadDirectory().catch(err => {
-            console.error("Upload failed:", err);
-            process.exit(1);
-          });
-          EOF
-
-      - name: Install wrangler
-        run: npm install -g wrangler
+        run: yarn upload:pinata
 
       - name: Update wrangler.toml with new CID
         env:
           SITE_CID: ${{ steps.pinata.outputs.ipfs_hash }}
         run: |
+          if [ -z "$SITE_CID" ]; then
+            echo "ERROR: IPFS CID is empty. Upload may have failed."
+            exit 1
+          fi
           sed -i "s/SITE_CID = \"placeholder\"/SITE_CID = \"$SITE_CID\"/" wrangler.toml
+          # Verify the substitution worked
+          if grep -q "placeholder" wrangler.toml; then
+            echo "ERROR: CID substitution failed. Check wrangler.toml format."
+            exit 1
+          fi
           echo "Updated wrangler.toml with CID: ${SITE_CID}"
-          cat wrangler.toml
 
       - name: Deploy Cloudflare Worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: |
-          wrangler deploy
-          echo "Worker deployed with CID: ${{ steps.pinata.outputs.ipfs_hash }}"
+        uses: cloudflare/wrangler-action@v3.14.0
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: deploy
 
       - name: Deployment Summary
         run: |

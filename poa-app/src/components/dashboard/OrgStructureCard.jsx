@@ -75,14 +75,26 @@ export function OrgStructureCard({
       >
         <Box className="glass-layer" sx={glassLayerStyle} borderRadius="2xl" />
 
-        {/* Header */}
+        {/* Header - darker black bar like other dashboard cards */}
         <HStack
           justify="space-between"
           align="center"
           px={{ base: 3, md: 6 }}
-          pt={3}
-          pb={2}
+          py={2}
+          position="relative"
+          borderTopRadius="2xl"
         >
+          <Box
+            position="absolute"
+            top={0}
+            left={0}
+            right={0}
+            bottom={0}
+            borderTopRadius="inherit"
+            backdropFilter="blur(20px)"
+            backgroundColor="rgba(0, 0, 0, 0.73)"
+            zIndex={-1}
+          />
           <Text fontWeight="bold" fontSize={sectionHeadingSize}>
             Org Structure
           </Text>

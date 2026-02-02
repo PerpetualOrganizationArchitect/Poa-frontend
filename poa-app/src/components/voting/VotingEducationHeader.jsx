@@ -84,7 +84,7 @@ const LearnMoreDropdown = ({ classWeights, classConfig }) => {
   const isQuadratic = classConfig?.some(c => c.strategy === 'ERC20_BAL' && c.quadratic) ?? false;
 
   return (
-    <Box w="100%">
+    <Box w="100%" display="flex" flexDirection="column" alignItems="center">
       <Button
         variant="ghost"
         size="sm"
@@ -950,14 +950,6 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
                 {message}
               </Badge>
             )}
-
-            {/* Comprehensive education section */}
-            <EducationSection
-              isExpanded={isEducationExpanded}
-              onToggle={handleToggleEducation}
-              classWeights={classWeights}
-              classConfig={classConfig}
-            />
           </>
         )}
 

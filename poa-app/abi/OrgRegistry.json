@@ -132,6 +132,19 @@
   },
   {
     "type": "function",
+    "name": "getHats",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getOrgContract",
     "inputs": [
       {
@@ -163,6 +176,25 @@
         "name": "",
         "type": "bytes32[]",
         "internalType": "bytes32[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getOrgMetadataAdminHat",
+    "inputs": [
+      {
+        "name": "orgId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -216,6 +248,11 @@
     "inputs": [
       {
         "name": "initialOwner",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_hats",
         "type": "address",
         "internalType": "address"
       }
@@ -489,6 +526,24 @@
   },
   {
     "type": "function",
+    "name": "setOrgMetadataAdminHat",
+    "inputs": [
+      {
+        "name": "orgId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "totalContracts",
     "inputs": [],
     "outputs": [
@@ -516,6 +571,29 @@
   {
     "type": "function",
     "name": "updateOrgMeta",
+    "inputs": [
+      {
+        "name": "orgId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "newName",
+        "type": "bytes",
+        "internalType": "bytes"
+      },
+      {
+        "name": "newMetadataHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "updateOrgMetaAsAdmin",
     "inputs": [
       {
         "name": "orgId",
@@ -669,6 +747,25 @@
   },
   {
     "type": "event",
+    "name": "OrgMetadataAdminHatSet",
+    "inputs": [
+      {
+        "name": "orgId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "OrgRegistered",
     "inputs": [
       {
@@ -750,6 +847,11 @@
   {
     "type": "error",
     "name": "NotOrgExecutor",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotOrgMetadataAdmin",
     "inputs": []
   },
   {

@@ -12,9 +12,10 @@ import { NETWORKS, getNetworkNameByChainId } from './networks';
 export const INFRASTRUCTURE_CONTRACTS = {
   hoodi: {
     universalAccountRegistry: '0xDdB1DA30020861d92c27aE981ac0f4Fe8BA536F2',
+    hatsProtocol: '0x3bc1A0Ad72417f2d411118085256fC53CBdDd137',
   },
   // Future networks
-  // mainnet: { universalAccountRegistry: '0x...' },
+  // mainnet: { universalAccountRegistry: '0x...', hatsProtocol: '0x3bc1A0Ad72417f2d411118085256fC53CBdDd137' },
 };
 
 /**
@@ -52,6 +53,7 @@ export function getInfrastructureAddress(contractName, chainId = NETWORKS.hoodi.
  */
 export const CONTRACT_NAMES = {
   UNIVERSAL_ACCOUNT_REGISTRY: 'universalAccountRegistry',
+  HATS_PROTOCOL: 'hatsProtocol',
 };
 
 /**

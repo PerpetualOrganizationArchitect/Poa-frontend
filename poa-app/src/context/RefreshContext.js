@@ -41,6 +41,7 @@ export const RefreshEvent = {
 
   // Organization events
   MEMBER_JOINED: 'member:joined',
+  METADATA_UPDATED: 'org:metadataUpdated',
 
   // Role/Vouching events
   ROLE_CLAIMED: 'role:claimed',

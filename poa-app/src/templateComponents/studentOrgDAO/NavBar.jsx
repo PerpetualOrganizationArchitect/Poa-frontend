@@ -1,19 +1,24 @@
 import React from "react";
 import { Box, Flex, Image, Link, IconButton, useDisclosure, Drawer, DrawerOverlay, DrawerContent, DrawerCloseButton, DrawerHeader, DrawerBody, VStack, Text, Button, useBreakpointValue } from "@chakra-ui/react";
-import { HamburgerIcon } from '@chakra-ui/icons';
+import { HamburgerIcon, SettingsIcon } from '@chakra-ui/icons';
 import { FaHome } from 'react-icons/fa';
 import NextLink from "next/link";
 import { useRouter } from "next/router";
+import { useAccount } from 'wagmi';
 import LoginButton from "@/components/LoginButton";
-import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { usePOContext } from "@/context/POContext";
+import { useIsOrgAdmin } from "@/hooks/useIsOrgAdmin";
 
 const Navbar = () => {
   const router = useRouter();
   const { userDAO } = router.query;
   const { isOpen, onOpen, onClose } = useDisclosure();
   const isMobile = useBreakpointValue({ base: true, md: false });
-  const { educationHubEnabled } = usePOContext();
+  const { address } = useAccount();
+  const { educationHubEnabled, orgId } = usePOContext();
+
+  // Check if user is an org admin (for showing Settings link)
+  const { isAdmin } = useIsOrgAdmin(orgId, address);
 
   // Navigation items - conditionally include Learn & Earn based on educationHubEnabled
   const navItems = [
@@ -21,6 +26,7 @@ const Navbar = () => {
     { name: 'Tasks', path: `/tasks/?userDAO=${userDAO}` },
     { name: 'Voting', path: `/voting/?userDAO=${userDAO}` },
     ...(educationHubEnabled ? [{ name: 'Learn & Earn', path: `/edu-Hub/?userDAO=${userDAO}` }] : []),
+    ...(isAdmin ? [{ name: 'Settings', path: `/settings/?userDAO=${userDAO}` }] : []),
   ];
 
   // Function to check active route
@@ -151,6 +157,21 @@ const Navbar = () => {
               mx={"2%"}
             >
               Learn & Earn
+            </Link>
+          )}
+          {isAdmin && (
+            <Link
+              as={NextLink}
+              href={`/settings/?userDAO=${userDAO}`}
+              color="white"
+              fontWeight="extrabold"
+              fontSize="xl"
+              mx={"2%"}
+            >
+              <Flex align="center" gap={1}>
+                <SettingsIcon boxSize={4} />
+                Settings
+              </Flex>
             </Link>
           )}
           <LoginButton />

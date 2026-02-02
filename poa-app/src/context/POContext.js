@@ -167,6 +167,7 @@ export const POProvider = ({ children }) => {
             RefreshEvent.MODULE_CREATED,
             RefreshEvent.MODULE_COMPLETED,
             RefreshEvent.TASK_COMPLETED, // Updates user stats
+            RefreshEvent.METADATA_UPDATED, // Updates org metadata (name, description, etc.)
         ],
         handleRefresh,
         [handleRefresh]

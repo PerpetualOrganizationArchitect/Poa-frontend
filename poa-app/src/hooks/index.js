@@ -27,6 +27,7 @@ export { useOrgStructure } from './useOrgStructure';
 export { useClaimRole } from './useClaimRole';
 export { useVouches } from './useVouches';
 export { useUserSearch } from './useUserSearch';
+export { useIsOrgAdmin } from './useIsOrgAdmin';
 
 // Voting Education & Power
 export { useRoleNames } from './useRoleNames';

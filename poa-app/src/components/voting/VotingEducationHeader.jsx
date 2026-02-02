@@ -846,8 +846,8 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
             color="ghostwhite"
             size={headingSize}
             bgGradient={selectedTab === 0
-              ? "linear(to-r, blue.300, blue.400)"
-              : "linear(to-r, orange.300, purple.400)"
+              ? "linear(to-r, orange.300, purple.400)"
+              : "linear(to-r, blue.300, blue.400)"
             }
             bgClip="text"
             textAlign="center"

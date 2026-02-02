@@ -51,10 +51,11 @@ const VotingHistoryPage = () => {
   const { userDAO } = router.query;
 
   // Context data
-  const { poContextLoading, votingType: PTVoteType } = usePOContext();
+  const { poContextLoading } = usePOContext();
   const {
     democracyVotingCompleted,
     hybridVotingCompleted,
+    votingType: PTVoteType,
   } = useVotingContext();
 
   // Local state
@@ -311,9 +312,10 @@ const VotingHistoryPage = () => {
             {/* Filters */}
             <Box
               position="relative"
-              borderRadius="2xl"
+              borderRadius="3xl"
               p={{ base: 4, md: 6 }}
               zIndex={0}
+              boxShadow="lg"
             >
               <Box
                 style={glassLayerStyle}

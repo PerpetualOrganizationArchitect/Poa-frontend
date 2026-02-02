@@ -1,7 +1,7 @@
 import React from "react";
 import { Flex, VStack, Box } from "@chakra-ui/react";
 import OngoingVotes from "./OngoingVotes";
-import VotingHistory from "./VotingHistory";
+import VotingHistoryPreview from "./VotingHistoryPreview";
 
 const glassLayerStyle = {
   position: "absolute",
@@ -17,7 +17,7 @@ const glassLayerStyle = {
 
 const VotingPanel = ({
   displayedOngoingProposals,
-  displayedCompletedProposals,
+  completedProposals,
   showDetermineWinner,
   getWinner,
   calculateRemainingTime,
@@ -25,8 +25,6 @@ const VotingPanel = ({
   onPollClick,
   onPreviousOngoingClick,
   onNextOngoingClick,
-  onPreviousCompletedClick,
-  onNextCompletedClick,
   onCreateClick,
   showCreatePoll
 }) => {
@@ -79,11 +77,9 @@ const VotingPanel = ({
             onCreateClick={onCreateClick}
             showCreatePoll={showCreatePoll}
           />
-          <VotingHistory
-            displayedProposals={displayedCompletedProposals}
+          <VotingHistoryPreview
+            completedProposals={completedProposals}
             onPollClick={onPollClick}
-            onPreviousClick={onPreviousCompletedClick}
-            onNextClick={onNextCompletedClick}
           />
         </VStack>
       </Flex>

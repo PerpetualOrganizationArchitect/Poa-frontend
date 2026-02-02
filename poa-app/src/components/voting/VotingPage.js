@@ -80,14 +80,11 @@ const VotingPage = () => {
   const currentOngoing = selectedTab === 0 ? democracyVotingOngoing : hybridVotingOngoing;
   const currentCompleted = selectedTab === 0 ? democracyVotingCompleted : hybridVotingCompleted;
 
-  // Pagination
+  // Pagination for ongoing proposals only
   const {
     displayedOngoing,
-    displayedCompleted,
     handlePreviousOngoing,
     handleNextOngoing,
-    handlePreviousCompleted,
-    handleNextCompleted,
     resetPagination,
   } = useVotingPagination({
     ongoingProposals: currentOngoing,
@@ -242,7 +239,7 @@ const VotingPage = () => {
             <TabPanel>
               <VotingPanel
                 displayedOngoingProposals={displayedOngoing}
-                displayedCompletedProposals={displayedCompleted}
+                completedProposals={currentCompleted}
                 showDetermineWinner={showDetermineWinner}
                 getWinner={handleGetWinner}
                 calculateRemainingTime={calculateRemainingTime}
@@ -250,8 +247,6 @@ const VotingPage = () => {
                 onPollClick={handlePollClick}
                 onPreviousOngoingClick={handlePreviousOngoing}
                 onNextOngoingClick={handleNextOngoing}
-                onPreviousCompletedClick={handlePreviousCompleted}
-                onNextCompletedClick={handleNextCompleted}
                 onCreateClick={handleCreatePollClick}
                 showCreatePoll={showCreatePoll}
               />
@@ -259,7 +254,7 @@ const VotingPage = () => {
             <TabPanel>
               <VotingPanel
                 displayedOngoingProposals={displayedOngoing}
-                displayedCompletedProposals={displayedCompleted}
+                completedProposals={currentCompleted}
                 showDetermineWinner={showDetermineWinner}
                 getWinner={handleGetWinner}
                 calculateRemainingTime={calculateRemainingTime}
@@ -267,8 +262,6 @@ const VotingPage = () => {
                 onPollClick={handlePollClick}
                 onPreviousOngoingClick={handlePreviousOngoing}
                 onNextOngoingClick={handleNextOngoing}
-                onPreviousCompletedClick={handlePreviousCompleted}
-                onNextCompletedClick={handleNextCompleted}
                 onCreateClick={handleCreatePollClick}
                 showCreatePoll={showCreatePoll}
               />

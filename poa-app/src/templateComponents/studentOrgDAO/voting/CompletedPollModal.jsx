@@ -34,7 +34,7 @@ const glassLayerStyle = {
   border: "1px solid rgba(148, 115, 220, 0.2)",
 };
 
-const CompletedPollModal = ({ onOpen, isOpen, onClose, selectedPoll, voteType }) => {
+const CompletedPollModal = ({ onOpen, isOpen, onClose, selectedPoll, voteType, skipRedirect = false }) => {
   const router = useRouter();
   const { userDAO } = router.query;
   const [processedOptions, setProcessedOptions] = useState([]);
@@ -52,7 +52,9 @@ const CompletedPollModal = ({ onOpen, isOpen, onClose, selectedPoll, voteType })
 
   const handleModalClose = () => {
     onClose();
-    router.push(`/voting/?userDAO=${userDAO}`);
+    if (!skipRedirect) {
+      router.push(`/voting/?userDAO=${userDAO}`);
+    }
   };
 
   // Process vote data when the poll changes

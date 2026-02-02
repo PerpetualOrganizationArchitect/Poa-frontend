@@ -83,59 +83,6 @@ const VotingTabs = ({
           zIndex={-1}
         />
         <Tooltip
-          label="Informal polling — one person, one vote. Results are non-binding."
-          placement="bottom"
-          hasArrow
-          bg="gray.700"
-          openDelay={500}
-        >
-          <Tab
-            fontSize={tabFontSize}
-            fontWeight="extrabold"
-            color="rgba(333, 333, 333, 1)"
-            _selected={{
-              backgroundColor: "rgba(66, 153, 225, 0.5)",
-              color: "white",
-              transform: "translateY(-2px)",
-              boxShadow: "0 4px 12px rgba(66, 153, 225, 0.3)"
-            }}
-            _hover={{
-              backgroundColor: "rgba(66, 153, 225, 0.25)"
-            }}
-            borderRadius="xl"
-            py={tabPadding}
-            px={{ base: 2, md: 4 }}
-            transition="all 0.3s ease"
-            flex="1"
-            minW={0}
-          >
-            <VStack spacing={1}>
-              <HStack spacing={2}>
-                <Box
-                  w="8px"
-                  h="8px"
-                  borderRadius="full"
-                  bg="blue.400"
-                  boxShadow="0 0 6px rgba(66, 153, 225, 0.5)"
-                />
-                <Text>Democracy</Text>
-              </HStack>
-              <Badge
-                fontSize="2xs"
-                fontWeight="medium"
-                bg="whiteAlpha.100"
-                color="gray.400"
-                px={2}
-                py={0.5}
-                borderRadius="full"
-                display={{ base: "none", md: "flex" }}
-              >
-                Informal Poll
-              </Badge>
-            </VStack>
-          </Tab>
-        </Tooltip>
-        <Tooltip
           label={PTVoteType === "Hybrid"
             ? "Official governance — binding decisions weighted by membership + contributions"
             : "Official governance — voting power based on your contributions"
@@ -189,6 +136,59 @@ const VotingTabs = ({
                 display={{ base: "none", md: "flex" }}
               >
                 Official Governance
+              </Badge>
+            </VStack>
+          </Tab>
+        </Tooltip>
+        <Tooltip
+          label="Informal polling — one person, one vote. Results are non-binding."
+          placement="bottom"
+          hasArrow
+          bg="gray.700"
+          openDelay={500}
+        >
+          <Tab
+            fontSize={tabFontSize}
+            fontWeight="extrabold"
+            color="rgba(333, 333, 333, 1)"
+            _selected={{
+              backgroundColor: "rgba(66, 153, 225, 0.5)",
+              color: "white",
+              transform: "translateY(-2px)",
+              boxShadow: "0 4px 12px rgba(66, 153, 225, 0.3)"
+            }}
+            _hover={{
+              backgroundColor: "rgba(66, 153, 225, 0.25)"
+            }}
+            borderRadius="xl"
+            py={tabPadding}
+            px={{ base: 2, md: 4 }}
+            transition="all 0.3s ease"
+            flex="1"
+            minW={0}
+          >
+            <VStack spacing={1}>
+              <HStack spacing={2}>
+                <Box
+                  w="8px"
+                  h="8px"
+                  borderRadius="full"
+                  bg="blue.400"
+                  boxShadow="0 0 6px rgba(66, 153, 225, 0.5)"
+                />
+                <Text>Democracy</Text>
+              </HStack>
+              <Badge
+                fontSize="2xs"
+                fontWeight="medium"
+                bg="whiteAlpha.100"
+                color="gray.400"
+                px={2}
+                py={0.5}
+                borderRadius="full"
+                display={{ base: "none", md: "flex" }}
+              >
+                Informal Poll
               </Badge>
             </VStack>
           </Tab>

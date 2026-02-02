@@ -77,8 +77,10 @@ const VotingPage = () => {
   });
 
   // Get proposals for current tab
-  const currentOngoing = selectedTab === 0 ? democracyVotingOngoing : hybridVotingOngoing;
-  const currentCompleted = selectedTab === 0 ? democracyVotingCompleted : hybridVotingCompleted;
+  // Tab 0 = Hybrid/Participation Voting (Official governance)
+  // Tab 1 = Direct Democracy (Informal polls)
+  const currentOngoing = selectedTab === 0 ? hybridVotingOngoing : democracyVotingOngoing;
+  const currentCompleted = selectedTab === 0 ? hybridVotingCompleted : democracyVotingCompleted;
 
   // Pagination for ongoing proposals only
   const {
@@ -243,7 +245,7 @@ const VotingPage = () => {
                 showDetermineWinner={showDetermineWinner}
                 getWinner={handleGetWinner}
                 calculateRemainingTime={calculateRemainingTime}
-                contractAddress={directDemocracyVotingContractAddress}
+                contractAddress={votingContractAddress}
                 onPollClick={handlePollClick}
                 onPreviousOngoingClick={handlePreviousOngoing}
                 onNextOngoingClick={handleNextOngoing}
@@ -258,7 +260,7 @@ const VotingPage = () => {
                 showDetermineWinner={showDetermineWinner}
                 getWinner={handleGetWinner}
                 calculateRemainingTime={calculateRemainingTime}
-                contractAddress={votingContractAddress}
+                contractAddress={directDemocracyVotingContractAddress}
                 onPollClick={handlePollClick}
                 onPreviousOngoingClick={handlePreviousOngoing}
                 onNextOngoingClick={handleNextOngoing}

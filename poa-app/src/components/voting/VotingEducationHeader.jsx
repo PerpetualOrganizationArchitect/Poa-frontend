@@ -30,7 +30,20 @@ import {
   StatNumber,
   StatHelpText,
   Skeleton,
+  keyframes,
 } from "@chakra-ui/react";
+
+// Breathing animation for official governance indicator
+const breathe = keyframes`
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(237, 137, 54, 0.3);
+    border-color: rgba(237, 137, 54, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(237, 137, 54, 0.5);
+    border-color: rgba(237, 137, 54, 0.5);
+  }
+`;
 import { ChevronDownIcon, ChevronUpIcon, InfoOutlineIcon } from "@chakra-ui/icons";
 import { useVotingPower, useRoleNames } from "@/hooks";
 import { useUserContext } from "@/context/UserContext";
@@ -604,7 +617,7 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
   // Get the appropriate title and tagline
   const getTitle = () => {
     if (selectedTab === 0) {
-      return "Democracy Voting";
+      return "Quick Temperature Check";
     } else if (PTVoteType === "Hybrid") {
       return "Hybrid Voting";
     } else {
@@ -614,11 +627,11 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
 
   const getTagline = () => {
     if (selectedTab === 0) {
-      return "One person, one vote — equal voice for all members";
+      return "One person, one vote — gauge sentiment without commitment";
     } else if (PTVoteType === "Hybrid") {
-      return "Your membership + your contributions = your voice";
+      return "Binding decisions weighted by membership + contributions";
     } else {
-      return "Voting power based on your contributions";
+      return "Official governance based on your contributions";
     }
   };
 
@@ -657,12 +670,71 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
       />
 
       <VStack spacing={5} w="100%">
-        {/* Title and tagline */}
-        <VStack spacing={1}>
+        {/* Type indicator badge + Title */}
+        <VStack spacing={3}>
+          {/* Official/Informal badge */}
+          {selectedTab === 0 ? (
+            <HStack
+              spacing={2}
+              bg="whiteAlpha.100"
+              borderRadius="full"
+              px={3}
+              py={1.5}
+            >
+              <Box
+                w="8px"
+                h="8px"
+                borderRadius="full"
+                bg="blue.400"
+                boxShadow="0 0 8px rgba(66, 153, 225, 0.5)"
+              />
+              <Text
+                fontSize="xs"
+                color="gray.400"
+                fontWeight="semibold"
+                textTransform="uppercase"
+                letterSpacing="wide"
+              >
+                Informal Poll
+              </Text>
+            </HStack>
+          ) : (
+            <HStack
+              spacing={2}
+              bg="rgba(237, 137, 54, 0.1)"
+              border="1px solid rgba(237, 137, 54, 0.3)"
+              borderRadius="full"
+              px={3}
+              py={1.5}
+              animation={`${breathe} 3s ease-in-out infinite`}
+            >
+              <Box
+                w="8px"
+                h="8px"
+                borderRadius="full"
+                bg="linear-gradient(135deg, #F6AD55 0%, #ED8936 100%)"
+                boxShadow="0 0 8px rgba(237, 137, 54, 0.6)"
+              />
+              <Text
+                fontSize="xs"
+                color="orange.300"
+                fontWeight="semibold"
+                textTransform="uppercase"
+                letterSpacing="wide"
+              >
+                Official Governance
+              </Text>
+            </HStack>
+          )}
+
+          {/* Title */}
           <Heading
             color="ghostwhite"
             size={headingSize}
-            bgGradient="linear(to-r, purple.400, blue.300)"
+            bgGradient={selectedTab === 0
+              ? "linear(to-r, blue.300, blue.400)"
+              : "linear(to-r, orange.300, purple.400)"
+            }
             bgClip="text"
             textAlign="center"
           >
@@ -687,27 +759,34 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
                 bg="whiteAlpha.50"
                 borderRadius="xl"
                 border="1px solid"
-                borderColor="whiteAlpha.200"
+                borderColor="rgba(237, 137, 54, 0.15)"
                 w="100%"
                 maxW="500px"
               >
                 <VStack spacing={3}>
-                  <Text fontSize="sm" color="gray.400" fontWeight="medium">
-                    Organization Voting Configuration
-                  </Text>
+                  <HStack spacing={2} justify="center" flexWrap="wrap">
+                    <Text fontSize="sm" color="gray.400" fontWeight="medium">
+                      Voting Weight Configuration
+                    </Text>
+                    {classConfig?.some(c => c.strategy === 'ERC20_BAL' && c.quadratic) && (
+                      <Badge colorScheme="blue" variant="subtle" fontSize="2xs">
+                        Quadratic
+                      </Badge>
+                    )}
+                  </HStack>
                   <HStack spacing={4} justify="center" flexWrap="wrap">
                     <HStack spacing={2}>
-                      <Box w="16px" h="16px" borderRadius="full" bg="purple.400" />
+                      <Box w="14px" h="14px" borderRadius="full" bg="purple.400" />
                       <VStack spacing={0} align="start">
                         <Text fontSize="lg" fontWeight="bold" color="purple.300">
                           {classWeights.democracy}%
                         </Text>
-                        <Text fontSize="xs" color="gray.400">Democracy</Text>
+                        <Text fontSize="xs" color="gray.400">Membership</Text>
                       </VStack>
                     </HStack>
-                    <Text color="gray.500" fontSize="xl">/</Text>
+                    <Text color="gray.600" fontSize="lg">+</Text>
                     <HStack spacing={2}>
-                      <Box w="16px" h="16px" borderRadius="full" bg="blue.400" />
+                      <Box w="14px" h="14px" borderRadius="full" bg="blue.400" />
                       <VStack spacing={0} align="start">
                         <Text fontSize="lg" fontWeight="bold" color="blue.300">
                           {classWeights.contribution}%
@@ -715,16 +794,6 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
                         <Text fontSize="xs" color="gray.400">Work</Text>
                       </VStack>
                     </HStack>
-                  </HStack>
-                  <HStack spacing={2} justify="center">
-                    <Text fontSize="xs" color="gray.500">
-                      Every vote is weighted by these percentages
-                    </Text>
-                    {classConfig?.some(c => c.strategy === 'ERC20_BAL' && c.quadratic) && (
-                      <Badge colorScheme="blue" variant="subtle" fontSize="2xs">
-                        Quadratic
-                      </Badge>
-                    )}
                   </HStack>
                 </VStack>
               </Box>
@@ -786,18 +855,18 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
               bg="whiteAlpha.50"
               borderRadius="lg"
               border="1px solid"
-              borderColor="whiteAlpha.100"
+              borderColor="rgba(237, 137, 54, 0.15)"
               maxW="500px"
             >
               <VStack spacing={2}>
                 <Text fontSize="sm" color="gray.300" textAlign="center">
-                  Your voting power is determined entirely by your participation tokens.
+                  Binding governance weighted by your participation tokens.
                   Complete tasks and contribute to earn more influence.
                 </Text>
                 {userData?.participationTokenBalance && (
                   <HStack spacing={2}>
                     <Text fontSize="xs" color="gray.400">Your tokens:</Text>
-                    <Badge colorScheme="blue" variant="subtle">
+                    <Badge colorScheme="orange" variant="subtle">
                       {ptBalance}
                     </Badge>
                   </HStack>
@@ -807,28 +876,16 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
           </VStack>
         )}
 
-        {/* Simple message for Democracy voting */}
+        {/* Simple message for Democracy voting - no Total members, just clean explanation */}
         {selectedTab === 0 && (
-          <Box
-            p={3}
-            bg="whiteAlpha.50"
-            borderRadius="lg"
+          <Text
+            fontSize="sm"
+            color="gray.400"
+            textAlign="center"
             maxW="400px"
           >
-            <VStack spacing={2}>
-              <Text fontSize="sm" color="gray.300" textAlign="center">
-                Every member has exactly one vote. Decisions are made by simple majority.
-              </Text>
-              {poMembers > 0 && (
-                <HStack spacing={2}>
-                  <Text fontSize="xs" color="gray.400">Total members:</Text>
-                  <Badge colorScheme="purple" variant="subtle">
-                    {poMembers}
-                  </Badge>
-                </HStack>
-              )}
-            </VStack>
-          </Box>
+            One person, one vote. Results are non-binding.
+          </Text>
         )}
       </VStack>
     </Flex>

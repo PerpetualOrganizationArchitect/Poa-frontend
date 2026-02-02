@@ -76,8 +76,9 @@ const VotingHistoryPage = () => {
   const filterDirection = useBreakpointValue({ base: "column", md: "row" });
 
   // Get current proposals based on tab
+  // Tab 0 = Hybrid/Participation Voting, Tab 1 = Direct Democracy
   const currentProposals = useMemo(() => {
-    return selectedTab === 0 ? democracyVotingCompleted : hybridVotingCompleted;
+    return selectedTab === 0 ? hybridVotingCompleted : democracyVotingCompleted;
   }, [selectedTab, democracyVotingCompleted, hybridVotingCompleted]);
 
   // Filter and sort proposals
@@ -183,8 +184,9 @@ const VotingHistoryPage = () => {
     searchQuery.trim() || statusFilter !== "all" || sortOrder !== "newest";
 
   // Tab labels match main voting page (VotingTabs component)
+  // Tab 0 = Hybrid/Participation Voting, Tab 1 = Direct Democracy
   const getVotingTypeLabel = (index) => {
-    return index === 0 ? "Democracy" : PTVoteType;
+    return index === 0 ? PTVoteType : "Democracy";
   };
 
   if (poContextLoading) {
@@ -538,7 +540,7 @@ const VotingHistoryPage = () => {
         isOpen={isOpen}
         onClose={handleModalClose}
         selectedPoll={selectedPoll}
-        voteType={selectedTab === 0 ? "Direct Democracy" : PTVoteType}
+        voteType={selectedTab === 0 ? PTVoteType : "Direct Democracy"}
         skipRedirect
       />
     </>

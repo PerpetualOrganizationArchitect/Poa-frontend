@@ -10,7 +10,7 @@
  * - Visual representation of voting power breakdown
  */
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState } from "react";
 import {
   Box,
   Flex,
@@ -44,7 +44,7 @@ const breathe = keyframes`
     border-color: rgba(237, 137, 54, 0.5);
   }
 `;
-import { ChevronDownIcon, ChevronUpIcon, InfoOutlineIcon } from "@chakra-ui/icons";
+import { ChevronDownIcon, ChevronUpIcon } from "@chakra-ui/icons";
 import { useVotingPower, useRoleNames } from "@/hooks";
 import { useUserContext } from "@/context/UserContext";
 import { usePOContext } from "@/context/POContext";
@@ -432,261 +432,7 @@ const VotingPowerStats = ({ membershipPower, contributionPower, classWeights, pt
   );
 };
 
-/**
- * Comprehensive education section explaining hybrid voting in detail
- */
-const EducationSection = ({ isExpanded, onToggle, classWeights, classConfig }) => {
-  const { allRoles } = useRoleNames();
-  const memberRole = allRoles?.[0]?.name || "Member";
-
-  const democracyWeight = classWeights?.democracy ?? 50;
-  const contributionWeight = classWeights?.contribution ?? 50;
-  const isQuadratic = classConfig?.some(c => c.strategy === 'ERC20_BAL' && c.quadratic) ?? false;
-
-  return (
-    <Box w="100%">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onToggle}
-        color="gray.400"
-        _hover={{ color: "white", bg: "whiteAlpha.100" }}
-        rightIcon={isExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
-        fontWeight="normal"
-      >
-        {isExpanded ? "Hide details" : "How does hybrid voting work?"}
-      </Button>
-
-      <Collapse in={isExpanded} animateOpacity>
-        <Box
-          mt={4}
-          p={{ base: 4, md: 6 }}
-          bg="whiteAlpha.50"
-          borderRadius="xl"
-          border="1px solid"
-          borderColor="whiteAlpha.100"
-        >
-          <VStack spacing={6} align="stretch">
-            {/* Introduction */}
-            <VStack align="start" spacing={2}>
-              <Heading size="sm" color="white">
-                Two Voices, One Decision
-              </Heading>
-              <Text fontSize="sm" color="gray.300">
-                Hybrid voting combines the fairness of democracy with recognition for those who
-                contribute the most. Every vote has two components that blend together.
-              </Text>
-            </VStack>
-
-            <Divider borderColor="whiteAlpha.200" />
-
-            {/* The Two Voices Explained */}
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
-              {/* Membership Voice */}
-              <Box
-                p={4}
-                bg="rgba(128, 90, 213, 0.1)"
-                borderRadius="lg"
-                border="1px solid"
-                borderColor="rgba(128, 90, 213, 0.3)"
-              >
-                <VStack align="start" spacing={3}>
-                  <HStack>
-                    <Box w="14px" h="14px" borderRadius="full" bg="purple.400" />
-                    <Text fontWeight="bold" color="purple.300">
-                      Membership Voice
-                    </Text>
-                    <Badge colorScheme="purple" variant="subtle" fontSize="2xs">
-                      {democracyWeight}% weight
-                    </Badge>
-                  </HStack>
-                  <Text fontSize="sm" color="gray.300">
-                    As a {memberRole}, you receive <strong>100 base points</strong> — the same
-                    as every other member. This ensures democratic equality: one person, one
-                    foundational vote.
-                  </Text>
-                  <Box
-                    p={2}
-                    bg="whiteAlpha.100"
-                    borderRadius="md"
-                    w="100%"
-                  >
-                    <Text fontSize="xs" color="gray.400">
-                      <strong>Why it matters:</strong> Prevents wealth or contribution inequality
-                      from completely dominating decisions. Everyone has a meaningful voice.
-                    </Text>
-                  </Box>
-                </VStack>
-              </Box>
-
-              {/* Work Voice */}
-              <Box
-                p={4}
-                bg="rgba(49, 130, 206, 0.1)"
-                borderRadius="lg"
-                border="1px solid"
-                borderColor="rgba(49, 130, 206, 0.3)"
-              >
-                <VStack align="start" spacing={3}>
-                  <HStack>
-                    <Box w="14px" h="14px" borderRadius="full" bg="blue.400" />
-                    <Text fontWeight="bold" color="blue.300">
-                      Work Voice
-                    </Text>
-                    <Badge colorScheme="blue" variant="subtle" fontSize="2xs">
-                      {contributionWeight}% weight
-                    </Badge>
-                  </HStack>
-                  <Text fontSize="sm" color="gray.300">
-                    Your participation tokens represent completed work. The more you contribute,
-                    the more voting power you earn in this class.
-                    {isQuadratic && " Uses quadratic scaling for fairness."}
-                  </Text>
-                  <Box
-                    p={2}
-                    bg="whiteAlpha.100"
-                    borderRadius="md"
-                    w="100%"
-                  >
-                    <Text fontSize="xs" color="gray.400">
-                      <strong>Why it matters:</strong> Rewards active contributors with greater
-                      influence on decisions that affect them most.
-                    </Text>
-                  </Box>
-                </VStack>
-              </Box>
-            </SimpleGrid>
-
-            <Divider borderColor="whiteAlpha.200" />
-
-            {/* How Votes Are Counted */}
-            <VStack align="start" spacing={3}>
-              <Heading size="sm" color="white">
-                How Your Vote Is Counted
-              </Heading>
-              <Box
-                p={4}
-                bg="whiteAlpha.50"
-                borderRadius="lg"
-                border="1px solid"
-                borderColor="whiteAlpha.100"
-                w="100%"
-              >
-                <VStack align="start" spacing={3}>
-                  <Text fontSize="sm" color="gray.300">
-                    When you cast a vote, your power is calculated in two parts:
-                  </Text>
-                  <Box pl={4} borderLeft="2px solid" borderColor="purple.400">
-                    <Text fontSize="sm" color="gray.300">
-                      <strong>1. Membership contribution:</strong> Your 100 base points ×
-                      {democracyWeight}% = <strong>{100 * democracyWeight / 100} weighted points</strong>
-                    </Text>
-                  </Box>
-                  <Box pl={4} borderLeft="2px solid" borderColor="blue.400">
-                    <Text fontSize="sm" color="gray.300">
-                      <strong>2. Work contribution:</strong> Your token-based power ×
-                      {contributionWeight}%
-                      {isQuadratic && (
-                        <Text as="span" fontSize="xs" color="blue.300">
-                          {" "}(√tokens × 100 = work points)
-                        </Text>
-                      )}
-                    </Text>
-                  </Box>
-                  <Text fontSize="sm" color="gray.400" fontStyle="italic">
-                    Both contributions are added together for your final vote weight.
-                  </Text>
-                </VStack>
-              </Box>
-            </VStack>
-
-            {/* Quadratic Voting Explanation (if enabled) */}
-            {isQuadratic && (
-              <>
-                <Divider borderColor="whiteAlpha.200" />
-                <VStack align="start" spacing={3}>
-                  <HStack>
-                    <Heading size="sm" color="white">
-                      Quadratic Voting
-                    </Heading>
-                    <Badge colorScheme="blue" variant="outline" fontSize="2xs">
-                      Enabled
-                    </Badge>
-                  </HStack>
-                  <Text fontSize="sm" color="gray.300">
-                    The work voice uses <strong>quadratic scaling</strong>: your voting power
-                    is the square root of your token balance. This creates diminishing returns
-                    that prevent token-wealthy members from having outsized influence.
-                  </Text>
-                  <SimpleGrid columns={3} spacing={2} w="100%" maxW="300px">
-                    <Box p={2} bg="whiteAlpha.100" borderRadius="md" textAlign="center">
-                      <Text fontSize="xs" color="gray.400">4 tokens</Text>
-                      <Text fontSize="sm" color="blue.300" fontWeight="bold">200 pts</Text>
-                    </Box>
-                    <Box p={2} bg="whiteAlpha.100" borderRadius="md" textAlign="center">
-                      <Text fontSize="xs" color="gray.400">100 tokens</Text>
-                      <Text fontSize="sm" color="blue.300" fontWeight="bold">1,000 pts</Text>
-                    </Box>
-                    <Box p={2} bg="whiteAlpha.100" borderRadius="md" textAlign="center">
-                      <Text fontSize="xs" color="gray.400">10,000 tokens</Text>
-                      <Text fontSize="sm" color="blue.300" fontWeight="bold">10,000 pts</Text>
-                    </Box>
-                  </SimpleGrid>
-                  <Text fontSize="xs" color="gray.500">
-                    Formula: √(tokens) × 100 = work voting points
-                  </Text>
-                </VStack>
-              </>
-            )}
-
-            <Divider borderColor="whiteAlpha.200" />
-
-            {/* Why Hybrid Voting */}
-            <Box
-              p={4}
-              bg="linear-gradient(135deg, rgba(128, 90, 213, 0.1) 0%, rgba(49, 130, 206, 0.1) 100%)"
-              borderRadius="lg"
-              borderLeft="3px solid"
-              borderColor="purple.400"
-            >
-              <VStack align="start" spacing={2}>
-                <Text fontWeight="bold" color="white" fontSize="sm">
-                  Why Use Hybrid Voting?
-                </Text>
-                <Text fontSize="sm" color="gray.300">
-                  Traditional organizations face a dilemma: pure democracy can let uninvolved
-                  members make decisions, while pure meritocracy can exclude newer voices.
-                  Hybrid voting solves both:
-                </Text>
-                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={2} pt={2}>
-                  <HStack align="start">
-                    <Text color="green.300">✓</Text>
-                    <Text fontSize="xs" color="gray.400">Every member has meaningful voice</Text>
-                  </HStack>
-                  <HStack align="start">
-                    <Text color="green.300">✓</Text>
-                    <Text fontSize="xs" color="gray.400">Contributors earn greater influence</Text>
-                  </HStack>
-                  <HStack align="start">
-                    <Text color="green.300">✓</Text>
-                    <Text fontSize="xs" color="gray.400">No single person can dominate</Text>
-                  </HStack>
-                  <HStack align="start">
-                    <Text color="green.300">✓</Text>
-                    <Text fontSize="xs" color="gray.400">Incentivizes active participation</Text>
-                  </HStack>
-                </SimpleGrid>
-              </VStack>
-            </Box>
-          </VStack>
-        </Box>
-      </Collapse>
-    </Box>
-  );
-};
-
 const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
-  const [isEducationExpanded, setIsEducationExpanded] = useState(false);
 
   const { userData, hasMemberRole } = useUserContext();
   const { poMembers } = usePOContext();
@@ -721,10 +467,6 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
     membershipPower,
     contributionPower,
   });
-
-  const handleToggleEducation = useCallback(() => {
-    setIsEducationExpanded(prev => !prev);
-  }, []);
 
   // Get the appropriate title and tagline
   // Tab 0 = Hybrid/Participation Voting, Tab 1 = Direct Democracy

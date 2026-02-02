@@ -36,51 +36,7 @@ import { FiUsers, FiAward, FiActivity, FiCheckCircle, FiChevronDown, FiChevronRi
 import { useIPFScontext } from "@/context/ipfsContext";
 import { useOrgStructure } from '@/hooks/useOrgStructure';
 import { VouchingSection } from '@/components/orgStructure/VouchingSection';
-
-function generateOrgStructurePreview(poData, roleCount) {
-  const {
-    HybridVoting = null,
-    DirectDemocracyVoting = null,
-  } = poData;
-
-  let descriptions = [];
-
-  // Roles summary
-  descriptions.push(
-    <Text fontWeight="bold" fontSize="lg" key="roles-header" ml="2" mt="2">
-      Roles
-    </Text>
-  );
-  descriptions.push(
-    <Text key="role-count" ml="2" mt="1">
-      {roleCount > 0 ? `${roleCount} roles defined` : 'Roles loading...'}
-    </Text>
-  );
-
-  // Voting summary
-  descriptions.push(
-    <Text fontWeight="bold" fontSize="lg" key="governance-header" ml="2" mt="3">
-      Governance
-    </Text>
-  );
-
-  if (HybridVoting) {
-    descriptions.push(
-      <Text key="hybrid" ml="2" mt="1">
-        Hybrid Voting: {HybridVoting.quorum}% quorum
-      </Text>
-    );
-  }
-  if (DirectDemocracyVoting) {
-    descriptions.push(
-      <Text key="dd" ml="2" mt="1">
-        Direct Democracy: {DirectDemocracyVoting.quorum}% quorum
-      </Text>
-    );
-  }
-
-  return descriptions;
-}
+import { OrgStructureCard } from '@/components/dashboard/OrgStructureCard';
 
 const PerpetualOrgDashboard = () => {
   const { ongoingPolls } = useVotingContext();
@@ -91,7 +47,6 @@ const PerpetualOrgDashboard = () => {
   const { userDAO } = router.query;
   const [imageURL, setImageURL] = useState({});
   const [imageFetched, setImageFetched] = useState(false);
-  const [orgStructurePreview, setOrgStructurePreview] = useState([]);
   const [isVouchingExpanded, setIsVouchingExpanded] = useState(false);
   const { fetchImageFromIpfs } = useIPFScontext();
 
@@ -118,16 +73,10 @@ const PerpetualOrgDashboard = () => {
     fetchImage();
   }, [logoHash]);
 
-  useEffect(() => {
-    if (rules) {
-      setOrgStructurePreview(generateOrgStructurePreview(rules, roleHatIds?.length || 0));
-    }
-  }, [rules, roleHatIds]);
-
   const { leaderboardDisplayData } = usePOContext();
   const { recommendedTasks } = useProjectContext();
   const { userData } = useUserContext();
-  const { roles, eligibilityModuleAddress } = useOrgStructure();
+  const { roles, totalMembers, governance, eligibilityModuleAddress } = useOrgStructure();
 
   // Vouching section logic - only show if user can vouch for any role
   const userHatIds = userData?.hatIds || [];
@@ -474,37 +423,13 @@ const PerpetualOrgDashboard = () => {
             </GridItem>
 
             <GridItem area={'orgStructure'}>
-              <Box
-                w="100%"
-                borderRadius="2xl"
-                bg="transparent"
-                boxShadow="lg"
-                position="relative"
-                zIndex={2}
-              >
-                <div style={glassLayerStyle} />
-                <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassLayerStyle} />
-                  <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
-                    Org Structure
-                  </Text>
-                </VStack>
-                <Box pl={{ base: 3, md: 6 }} pr={{ base: 3, md: 6 }} pb={4}>
-                  {orgStructurePreview}
-                  <HStack mt="2" spacing={4} align="center">
-                    <Link2 href={`/org-structure?userDAO=${userDAO}`}>
-                      <Button
-                        mt={2}
-                        colorScheme="purple"
-                        size={{ base: "xs", md: "sm" }}
-                        ml="2"
-                      >
-                        View Full Structure
-                      </Button>
-                    </Link2>
-                  </HStack>
-                </Box>
-              </Box>
+              <OrgStructureCard
+                roles={roles}
+                totalMembers={totalMembers}
+                governance={governance}
+                userDAO={userDAO}
+                sectionHeadingSize={sectionHeadingSize}
+              />
             </GridItem>
             {showVouchingSection && (
               <GridItem area={'vouching'}>

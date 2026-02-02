@@ -28,7 +28,7 @@ const OngoingVotes = ({
   };
 
   return (
-    <Box w="100%" mb={8}>
+    <Box w="100%">
       <HStack w="100%" justifyContent="space-between" mb={4}>
         <Heading pl={2} color="rgba(333, 333, 333, 1)" fontSize={headingSize}>
           Ongoing Votes

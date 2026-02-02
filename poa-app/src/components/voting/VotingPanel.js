@@ -64,7 +64,7 @@ const VotingPanel = ({
       />
       
       <Flex w="100%" flexDirection="column">
-        <VStack alignItems={"flex-start"} spacing={8} w="100%">
+        <VStack alignItems={"flex-start"} spacing={4} w="100%">
           <OngoingVotes
             displayedProposals={displayedOngoingProposals}
             showDetermineWinner={showDetermineWinner}

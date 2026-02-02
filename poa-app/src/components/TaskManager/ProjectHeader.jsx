@@ -21,6 +21,7 @@ import {
 import { InfoIcon } from '@chakra-ui/icons';
 import { FaProjectDiagram } from 'react-icons/fa';
 import { useDataBaseContext } from '@/context/dataBaseContext';
+import { formatTokenAmount } from '@/util/formatToken';
 
 const glassLayerStyle = {
   position: "absolute",
@@ -38,8 +39,8 @@ const ProjectHeader = ({ projectName, sidebarVisible, toggleSidebar }) => {
 
   // Use indexed description from subgraph (no IPFS fetching needed)
   const projectDescription = selectedProject?.description || '';
-  // Cap of 0 means unlimited/no budget
-  const projectBudget = selectedProject?.cap ? Number(selectedProject.cap) : 0;
+  // Format budget from wei (18 decimals) to human-readable, 0 means no budget
+  const projectBudget = formatTokenAmount(selectedProject?.cap || '0');
 
   return (
     <>
@@ -124,9 +125,9 @@ const ProjectHeader = ({ projectName, sidebarVisible, toggleSidebar }) => {
                 <Text fontWeight="bold" mb={2} color="gray.300">
                   Budget
                 </Text>
-                {projectBudget > 0 ? (
+                {projectBudget !== '0' ? (
                   <Text>
-                    {projectBudget.toLocaleString()} PT
+                    {projectBudget} PT
                   </Text>
                 ) : (
                   <Text color="gray.400" fontStyle="italic">

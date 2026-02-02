@@ -20,8 +20,10 @@ export function usePollNavigation({
   const [selectedPoll, setSelectedPoll] = useState(null);
   const [selectedOption, setSelectedOption] = useState("");
   const [isPollCompleted, setIsPollCompleted] = useState(false);
+  // Tab 0 = Hybrid/Participation Voting (Official governance)
+  // Tab 1 = Direct Democracy (Informal polls)
   const [selectedTab, setSelectedTab] = useState(0);
-  const [votingTypeSelected, setVotingTypeSelected] = useState("Direct Democracy");
+  const [votingTypeSelected, setVotingTypeSelected] = useState(PTVoteType);
 
   const {
     isOpen: isPollModalOpen,
@@ -36,9 +38,10 @@ export function usePollNavigation({
   } = useDisclosure();
 
   // Handle tab changes
+  // Tab 0 = Hybrid/Participation Voting, Tab 1 = Direct Democracy
   const handleTabChange = useCallback((index) => {
     setSelectedTab(index);
-    const voteType = index === 0 ? "Direct Democracy" : PTVoteType;
+    const voteType = index === 0 ? PTVoteType : "Direct Democracy";
     setVotingTypeSelected(voteType);
   }, [PTVoteType]);
 
@@ -99,7 +102,8 @@ export function usePollNavigation({
     if (pollFound) {
       setSelectedPoll(pollFound);
       setVotingTypeSelected(pollType);
-      setSelectedTab(pollType === "Direct Democracy" ? 0 : 1);
+      // Tab 0 = Hybrid/Participation, Tab 1 = Direct Democracy
+      setSelectedTab(pollType === "Direct Democracy" ? 1 : 0);
       setIsPollCompleted(isCompleted);
 
       if (isCompleted) {

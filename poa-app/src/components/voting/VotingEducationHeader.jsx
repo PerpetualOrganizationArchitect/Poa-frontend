@@ -72,6 +72,134 @@ const formatPowerNumber = (num) => {
 };
 
 /**
+ * Compact education dropdown for users without voting power
+ */
+const LearnMoreDropdown = ({ classWeights, classConfig }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const { allRoles } = useRoleNames();
+  const memberRole = allRoles?.[0]?.name || "Member";
+
+  const democracyWeight = classWeights?.democracy ?? 50;
+  const contributionWeight = classWeights?.contribution ?? 50;
+  const isQuadratic = classConfig?.some(c => c.strategy === 'ERC20_BAL' && c.quadratic) ?? false;
+
+  return (
+    <Box w="100%">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setIsExpanded(prev => !prev)}
+        color="gray.400"
+        _hover={{ color: "white", bg: "whiteAlpha.100" }}
+        rightIcon={isExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+        fontWeight="normal"
+      >
+        Learn more about hybrid voting
+      </Button>
+
+      <Collapse in={isExpanded} animateOpacity>
+        <Box
+          mt={4}
+          p={{ base: 4, md: 5 }}
+          bg="whiteAlpha.50"
+          borderRadius="xl"
+          border="1px solid"
+          borderColor="whiteAlpha.100"
+        >
+          <VStack spacing={4} align="stretch">
+            {/* Introduction */}
+            <VStack align="start" spacing={2}>
+              <Heading size="sm" color="white">
+                Two Voices, One Decision
+              </Heading>
+              <Text fontSize="sm" color="gray.300">
+                Hybrid voting combines the fairness of democracy with recognition for those who
+                contribute the most. Every vote has two components that blend together.
+              </Text>
+            </VStack>
+
+            <Divider borderColor="whiteAlpha.200" />
+
+            {/* The Two Voices Explained */}
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+              {/* Membership Voice */}
+              <Box
+                p={3}
+                bg="rgba(128, 90, 213, 0.1)"
+                borderRadius="lg"
+                border="1px solid"
+                borderColor="rgba(128, 90, 213, 0.3)"
+              >
+                <VStack align="start" spacing={2}>
+                  <HStack>
+                    <Box w="12px" h="12px" borderRadius="full" bg="purple.400" />
+                    <Text fontWeight="bold" color="purple.300" fontSize="sm">
+                      Membership Voice
+                    </Text>
+                    <Badge colorScheme="purple" variant="subtle" fontSize="2xs">
+                      {democracyWeight}%
+                    </Badge>
+                  </HStack>
+                  <Text fontSize="xs" color="gray.300">
+                    As a {memberRole}, you receive <strong>100 base points</strong> — the same
+                    as every other member. This ensures democratic equality.
+                  </Text>
+                </VStack>
+              </Box>
+
+              {/* Work Voice */}
+              <Box
+                p={3}
+                bg="rgba(49, 130, 206, 0.1)"
+                borderRadius="lg"
+                border="1px solid"
+                borderColor="rgba(49, 130, 206, 0.3)"
+              >
+                <VStack align="start" spacing={2}>
+                  <HStack>
+                    <Box w="12px" h="12px" borderRadius="full" bg="blue.400" />
+                    <Text fontWeight="bold" color="blue.300" fontSize="sm">
+                      Work Voice
+                    </Text>
+                    <Badge colorScheme="blue" variant="subtle" fontSize="2xs">
+                      {contributionWeight}%
+                    </Badge>
+                  </HStack>
+                  <Text fontSize="xs" color="gray.300">
+                    Your participation tokens represent completed work. The more you contribute,
+                    the more voting power you earn.
+                    {isQuadratic && " Uses quadratic scaling for fairness."}
+                  </Text>
+                </VStack>
+              </Box>
+            </SimpleGrid>
+
+            {/* Why Hybrid Voting - compact version */}
+            <Box
+              p={3}
+              bg="linear-gradient(135deg, rgba(128, 90, 213, 0.1) 0%, rgba(49, 130, 206, 0.1) 100%)"
+              borderRadius="lg"
+              borderLeft="3px solid"
+              borderColor="purple.400"
+            >
+              <VStack align="start" spacing={1}>
+                <Text fontWeight="bold" color="white" fontSize="sm">
+                  Why Hybrid Voting?
+                </Text>
+                <Text fontSize="xs" color="gray.300">
+                  Every member has a meaningful voice while contributors earn greater influence.
+                  No single person can dominate, and active participation is rewarded.
+                </Text>
+              </VStack>
+            </Box>
+          </VStack>
+        </Box>
+      </Collapse>
+    </Box>
+  );
+};
+
+/**
  * Visual component showing the "Two Voices" voting power breakdown
  * with actual numerical values and class weights
  */
@@ -97,27 +225,10 @@ const TwoVoicesBar = ({ membershipPower, contributionPower, classWeights, classC
     );
   }
 
-  // Show appropriate message based on status
+  // Show "Learn more about hybrid voting" dropdown when user doesn't have voting power
   if (totalPower === 0 || !hasMemberRole) {
-    let displayMessage = message || "Connect your wallet to see your voting power";
-
-    // More specific messages based on status
-    if (status === 'not_member') {
-      displayMessage = "Join the organization to participate in voting";
-    } else if (status === 'loading') {
-      displayMessage = "Loading voting configuration...";
-    } else if (status === 'not_configured') {
-      displayMessage = "No voting classes configured for this organization";
-    } else if (!hasMemberRole) {
-      displayMessage = "Connect your wallet and join to see your voting power";
-    }
-
     return (
-      <Box w="100%" textAlign="center" py={3}>
-        <Text fontSize="sm" color="gray.400">
-          {displayMessage}
-        </Text>
-      </Box>
+      <LearnMoreDropdown classWeights={classWeights} classConfig={classConfig} />
     );
   }
 
@@ -594,8 +705,9 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
   } = useVotingPower();
 
   const headingSize = useBreakpointValue({ base: "lg", md: "xl" });
-  const showHybridEducation = selectedTab === 1 && PTVoteType === "Hybrid";
-  const showParticipationEducation = selectedTab === 1 && PTVoteType === "Participation";
+  // Tab 0 = Hybrid/Participation Voting, Tab 1 = Direct Democracy
+  const showHybridEducation = selectedTab === 0 && PTVoteType === "Hybrid";
+  const showParticipationEducation = selectedTab === 0 && PTVoteType === "Participation";
 
   // Debug logging
   console.log('[VotingEducationHeader] Render state:', {
@@ -615,8 +727,9 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
   }, []);
 
   // Get the appropriate title and tagline
+  // Tab 0 = Hybrid/Participation Voting, Tab 1 = Direct Democracy
   const getTitle = () => {
-    if (selectedTab === 0) {
+    if (selectedTab === 1) {
       return "Quick Temperature Check";
     } else if (PTVoteType === "Hybrid") {
       return "Hybrid Voting";
@@ -626,7 +739,7 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
   };
 
   const getTagline = () => {
-    if (selectedTab === 0) {
+    if (selectedTab === 1) {
       return "One person, one vote — gauge sentiment without commitment";
     } else if (PTVoteType === "Hybrid") {
       return "Binding decisions weighted by membership + contributions";
@@ -673,32 +786,8 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
         {/* Type indicator badge + Title */}
         <VStack spacing={3}>
           {/* Official/Informal badge */}
+          {/* Tab 0 = Hybrid/Participation (Official), Tab 1 = Democracy (Informal) */}
           {selectedTab === 0 ? (
-            <HStack
-              spacing={2}
-              bg="whiteAlpha.100"
-              borderRadius="full"
-              px={3}
-              py={1.5}
-            >
-              <Box
-                w="8px"
-                h="8px"
-                borderRadius="full"
-                bg="blue.400"
-                boxShadow="0 0 8px rgba(66, 153, 225, 0.5)"
-              />
-              <Text
-                fontSize="xs"
-                color="gray.400"
-                fontWeight="semibold"
-                textTransform="uppercase"
-                letterSpacing="wide"
-              >
-                Informal Poll
-              </Text>
-            </HStack>
-          ) : (
             <HStack
               spacing={2}
               bg="rgba(237, 137, 54, 0.1)"
@@ -723,6 +812,31 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
                 letterSpacing="wide"
               >
                 Official Governance
+              </Text>
+            </HStack>
+          ) : (
+            <HStack
+              spacing={2}
+              bg="whiteAlpha.100"
+              borderRadius="full"
+              px={3}
+              py={1.5}
+            >
+              <Box
+                w="8px"
+                h="8px"
+                borderRadius="full"
+                bg="blue.400"
+                boxShadow="0 0 8px rgba(66, 153, 225, 0.5)"
+              />
+              <Text
+                fontSize="xs"
+                color="gray.400"
+                fontWeight="semibold"
+                textTransform="uppercase"
+                letterSpacing="wide"
+              >
+                Informal Poll
               </Text>
             </HStack>
           )}
@@ -877,7 +991,7 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
         )}
 
         {/* Simple message for Democracy voting - no Total members, just clean explanation */}
-        {selectedTab === 0 && (
+        {selectedTab === 1 && (
           <Text
             fontSize="sm"
             color="gray.400"

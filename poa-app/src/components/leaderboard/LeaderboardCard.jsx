@@ -107,18 +107,24 @@ function LeaderboardCard({ user, rank, onClick, isTopThree = false }) {
           </Text>
 
           {/* Stats */}
-          <HStack spacing={4} flexWrap="wrap">
-            <HStack spacing={1} color="gray.400" fontSize="xs">
-              <Icon as={PiCoinVerticalBold} color={medalColor || 'yellow.400'} />
-              <Text>{user.token} tokens</Text>
+          <HStack spacing={5}>
+            <HStack spacing={1.5}>
+              <Icon as={PiCoinVerticalBold} color={medalColor || 'yellow.400'} boxSize={4} />
+              <Text fontSize="sm" color="gray.300" fontWeight="medium">
+                {user.token} <Text as="span" textTransform="uppercase">Tokens</Text>
+              </Text>
             </HStack>
-            <HStack spacing={1} color="gray.400" fontSize="xs">
-              <Icon as={FiCheckSquare} color="green.300" />
-              <Text>{user.totalTasksCompleted} tasks</Text>
+            <HStack spacing={1.5}>
+              <Icon as={FiCheckSquare} color="green.300" boxSize={4} />
+              <Text fontSize="sm" color="gray.300" fontWeight="medium">
+                {user.totalTasksCompleted} <Text as="span" textTransform="uppercase">Tasks</Text>
+              </Text>
             </HStack>
-            <HStack spacing={1} color="gray.400" fontSize="xs" display={{ base: 'none', md: 'flex' }}>
-              <Icon as={FiThumbsUp} color="blue.300" />
-              <Text>{user.totalVotes} votes</Text>
+            <HStack spacing={1.5}>
+              <Icon as={FiThumbsUp} color="blue.300" boxSize={4} />
+              <Text fontSize="sm" color="gray.300" fontWeight="medium">
+                {user.totalVotes} <Text as="span" textTransform="uppercase">Votes</Text>
+              </Text>
             </HStack>
           </HStack>
         </VStack>

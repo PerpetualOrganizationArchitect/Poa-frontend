@@ -225,11 +225,10 @@ const TwoVoicesBar = ({ membershipPower, contributionPower, classWeights, classC
     );
   }
 
-  // Show "Learn more about hybrid voting" dropdown when user doesn't have voting power
+  // Don't show the voting power bar if user has no voting power
+  // (LearnMoreDropdown is now shown separately for all users)
   if (totalPower === 0 || !hasMemberRole) {
-    return (
-      <LearnMoreDropdown classWeights={classWeights} classConfig={classConfig} />
-    );
+    return null;
   }
 
   return (
@@ -692,6 +691,9 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
                 {message}
               </Badge>
             )}
+
+            {/* Learn more dropdown - always show for hybrid voting */}
+            <LearnMoreDropdown classWeights={classWeights} classConfig={classConfig} />
           </>
         )}
 

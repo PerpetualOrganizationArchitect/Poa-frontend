@@ -71,7 +71,9 @@ export class TaskService {
     const contract = this.factory.createWritable(contractAddress, TaskManagerABI);
 
     const titleBytes = stringToBytes(name);
-    const metaHash = metadataHash ? stringToBytes32(metadataHash) : ethers.constants.HashZero;
+    // Use ipfsCidToBytes32 to extract the SHA256 digest from the CID
+    // This allows the subgraph to reconstruct the CID and fetch metadata from IPFS
+    const metaHash = metadataHash ? ipfsCidToBytes32(metadataHash) : ethers.constants.HashZero;
 
     // Debug logging
     console.log('=== createProject DEBUG ===');

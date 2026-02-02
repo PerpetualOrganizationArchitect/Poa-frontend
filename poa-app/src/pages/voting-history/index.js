@@ -181,12 +181,9 @@ const VotingHistoryPage = () => {
   const hasActiveFilters =
     searchQuery.trim() || statusFilter !== "all" || sortOrder !== "newest";
 
-  // Determine voting type label
+  // Tab labels match main voting page (VotingTabs component)
   const getVotingTypeLabel = (index) => {
-    if (PTVoteType === "Hybrid") {
-      return index === 0 ? "Direct Democracy" : "Hybrid";
-    }
-    return index === 0 ? "Direct Democracy" : "Participation";
+    return index === 0 ? "Democracy" : PTVoteType;
   };
 
   if (poContextLoading) {
@@ -246,43 +243,64 @@ const VotingHistoryPage = () => {
             {/* Tabs */}
             <Box
               position="relative"
-              borderRadius="2xl"
-              overflow="hidden"
-              p={4}
+              borderRadius="3xl"
+              p={{ base: 3, md: 6 }}
+              zIndex={0}
             >
-              <Box style={glassLayerStyle} />
+              <Box
+                style={glassLayerStyle}
+                position="absolute"
+                top={0}
+                left={0}
+                right={0}
+                bottom={0}
+                borderRadius="inherit"
+                zIndex={-1}
+              />
               <Tabs
                 index={selectedTab}
                 onChange={handleTabChange}
                 variant="soft-rounded"
-                colorScheme="purple"
+                isFitted
               >
-                <TabList justifyContent="center" gap={2}>
+                <TabList gap={{ base: 2, md: 4 }}>
                   <Tab
-                    color="gray.400"
+                    fontSize={{ base: "md", sm: "xl", md: "2xl" }}
+                    fontWeight="extrabold"
+                    color="rgba(333, 333, 333, 1)"
                     _selected={{
+                      backgroundColor: "rgba(148, 115, 220, 0.6)",
                       color: "white",
-                      bg: "rgba(148, 115, 220, 0.6)",
+                      transform: "translateY(-2px)",
+                      boxShadow: "0 4px 12px rgba(148, 115, 220, 0.4)",
                     }}
                     _hover={{
-                      bg: "rgba(148, 115, 220, 0.3)",
+                      backgroundColor: "rgba(148, 115, 220, 0.3)",
                     }}
-                    fontWeight="semibold"
-                    px={6}
+                    borderRadius="xl"
+                    py={{ base: 2, md: 4 }}
+                    px={{ base: 2, md: 4 }}
+                    transition="all 0.3s ease"
                   >
                     {getVotingTypeLabel(0)}
                   </Tab>
                   <Tab
-                    color="gray.400"
+                    fontSize={{ base: "md", sm: "xl", md: "2xl" }}
+                    fontWeight="extrabold"
+                    color="rgba(333, 333, 333, 1)"
                     _selected={{
+                      backgroundColor: "rgba(148, 115, 220, 0.6)",
                       color: "white",
-                      bg: "rgba(148, 115, 220, 0.6)",
+                      transform: "translateY(-2px)",
+                      boxShadow: "0 4px 12px rgba(148, 115, 220, 0.4)",
                     }}
                     _hover={{
-                      bg: "rgba(148, 115, 220, 0.3)",
+                      backgroundColor: "rgba(148, 115, 220, 0.3)",
                     }}
-                    fontWeight="semibold"
-                    px={6}
+                    borderRadius="xl"
+                    py={{ base: 2, md: 4 }}
+                    px={{ base: 2, md: 4 }}
+                    transition="all 0.3s ease"
                   >
                     {getVotingTypeLabel(1)}
                   </Tab>
@@ -294,110 +312,122 @@ const VotingHistoryPage = () => {
             <Box
               position="relative"
               borderRadius="2xl"
-              overflow="hidden"
               p={{ base: 4, md: 6 }}
+              zIndex={0}
             >
-              <Box style={glassLayerStyle} />
-              <Flex
-                direction={filterDirection}
-                gap={4}
-                align={{ base: "stretch", md: "center" }}
-                justify="space-between"
-              >
-                <InputGroup maxW={{ base: "100%", md: "400px" }}>
-                  <InputLeftElement pointerEvents="none">
-                    <SearchIcon color="purple.300" />
-                  </InputLeftElement>
-                  <Input
-                    placeholder="Search proposals..."
-                    value={searchQuery}
-                    onChange={handleSearchChange}
-                    bg="rgba(0, 0, 0, 0.4)"
-                    border="1px solid rgba(148, 115, 220, 0.3)"
-                    borderRadius="xl"
-                    color="white"
-                    _placeholder={{ color: "gray.500" }}
-                    _focus={{
-                      borderColor: "rgba(148, 115, 220, 0.6)",
-                      boxShadow: "0 0 0 1px rgba(148, 115, 220, 0.4)",
-                    }}
-                    _hover={{
-                      borderColor: "rgba(148, 115, 220, 0.4)",
-                    }}
-                  />
-                </InputGroup>
-
-                <HStack spacing={3} flexWrap="wrap">
-                  <Select
-                    value={statusFilter}
-                    onChange={handleStatusChange}
-                    bg="rgba(0, 0, 0, 0.4)"
-                    border="1px solid rgba(148, 115, 220, 0.3)"
-                    borderRadius="xl"
-                    color="white"
-                    _focus={{
-                      borderColor: "rgba(148, 115, 220, 0.6)",
-                    }}
-                    iconColor="purple.400"
-                    w={{ base: "100%", md: "auto" }}
-                    minW="150px"
-                  >
-                    <option style={{ background: "#1a1a2e" }} value="all">
-                      All Status
-                    </option>
-                    <option style={{ background: "#1a1a2e" }} value="valid">
-                      Valid (Had Winner)
-                    </option>
-                    <option style={{ background: "#1a1a2e" }} value="invalid">
-                      Invalid (No Quorum)
-                    </option>
-                  </Select>
-
-                  <Select
-                    value={sortOrder}
-                    onChange={handleSortChange}
-                    bg="rgba(0, 0, 0, 0.4)"
-                    border="1px solid rgba(148, 115, 220, 0.3)"
-                    borderRadius="xl"
-                    color="white"
-                    _focus={{
-                      borderColor: "rgba(148, 115, 220, 0.6)",
-                    }}
-                    iconColor="purple.400"
-                    w={{ base: "100%", md: "auto" }}
-                    minW="150px"
-                  >
-                    <option style={{ background: "#1a1a2e" }} value="newest">
-                      Newest First
-                    </option>
-                    <option style={{ background: "#1a1a2e" }} value="oldest">
-                      Oldest First
-                    </option>
-                    <option style={{ background: "#1a1a2e" }} value="votes">
-                      Most Votes
-                    </option>
-                  </Select>
-
-                  {hasActiveFilters && (
-                    <Button
-                      variant="ghost"
-                      colorScheme="purple"
-                      size="sm"
-                      onClick={handleClearFilters}
-                      _hover={{
-                        bg: "rgba(148, 115, 220, 0.2)",
+              <Box
+                style={glassLayerStyle}
+                position="absolute"
+                top={0}
+                left={0}
+                right={0}
+                bottom={0}
+                borderRadius="inherit"
+                zIndex={-1}
+              />
+              <VStack spacing={4} align="stretch">
+                <Flex
+                  direction={filterDirection}
+                  gap={4}
+                  align={{ base: "stretch", md: "center" }}
+                  justify="space-between"
+                  flexWrap="wrap"
+                >
+                  <InputGroup flex={{ base: "1", md: "0 1 350px" }} minW="200px">
+                    <InputLeftElement pointerEvents="none">
+                      <SearchIcon color="purple.300" />
+                    </InputLeftElement>
+                    <Input
+                      placeholder="Search proposals..."
+                      value={searchQuery}
+                      onChange={handleSearchChange}
+                      bg="rgba(0, 0, 0, 0.4)"
+                      border="1px solid rgba(148, 115, 220, 0.3)"
+                      borderRadius="xl"
+                      color="white"
+                      _placeholder={{ color: "gray.500" }}
+                      _focus={{
+                        borderColor: "rgba(148, 115, 220, 0.6)",
+                        boxShadow: "0 0 0 1px rgba(148, 115, 220, 0.4)",
                       }}
-                    >
-                      Clear Filters
-                    </Button>
-                  )}
-                </HStack>
-              </Flex>
+                      _hover={{
+                        borderColor: "rgba(148, 115, 220, 0.4)",
+                      }}
+                    />
+                  </InputGroup>
 
-              {/* Results count */}
-              <Text color="gray.400" fontSize="sm" mt={4}>
-                Showing {displayedProposals.length} of {totalCount} proposals
-              </Text>
+                  <HStack spacing={3} flexWrap="wrap" flex={{ base: "1", md: "0 1 auto" }}>
+                    <Select
+                      value={statusFilter}
+                      onChange={handleStatusChange}
+                      bg="rgba(0, 0, 0, 0.4)"
+                      border="1px solid rgba(148, 115, 220, 0.3)"
+                      borderRadius="xl"
+                      color="white"
+                      _focus={{
+                        borderColor: "rgba(148, 115, 220, 0.6)",
+                      }}
+                      iconColor="purple.400"
+                      minW="150px"
+                      flex={{ base: "1", md: "0 0 auto" }}
+                    >
+                      <option style={{ background: "#1a1a2e" }} value="all">
+                        All Status
+                      </option>
+                      <option style={{ background: "#1a1a2e" }} value="valid">
+                        Valid (Had Winner)
+                      </option>
+                      <option style={{ background: "#1a1a2e" }} value="invalid">
+                        Invalid (No Quorum)
+                      </option>
+                    </Select>
+
+                    <Select
+                      value={sortOrder}
+                      onChange={handleSortChange}
+                      bg="rgba(0, 0, 0, 0.4)"
+                      border="1px solid rgba(148, 115, 220, 0.3)"
+                      borderRadius="xl"
+                      color="white"
+                      _focus={{
+                        borderColor: "rgba(148, 115, 220, 0.6)",
+                      }}
+                      iconColor="purple.400"
+                      minW="150px"
+                      flex={{ base: "1", md: "0 0 auto" }}
+                    >
+                      <option style={{ background: "#1a1a2e" }} value="newest">
+                        Newest First
+                      </option>
+                      <option style={{ background: "#1a1a2e" }} value="oldest">
+                        Oldest First
+                      </option>
+                      <option style={{ background: "#1a1a2e" }} value="votes">
+                        Most Votes
+                      </option>
+                    </Select>
+
+                    {hasActiveFilters && (
+                      <Button
+                        variant="ghost"
+                        colorScheme="purple"
+                        size="sm"
+                        onClick={handleClearFilters}
+                        _hover={{
+                          bg: "rgba(148, 115, 220, 0.2)",
+                        }}
+                      >
+                        Clear Filters
+                      </Button>
+                    )}
+                  </HStack>
+                </Flex>
+
+                {/* Results count */}
+                <Text color="gray.400" fontSize="sm">
+                  Showing {displayedProposals.length} of {totalCount} proposals
+                </Text>
+              </VStack>
             </Box>
 
             {/* Grid of cards */}
@@ -497,7 +527,7 @@ const VotingHistoryPage = () => {
         isOpen={isOpen}
         onClose={handleModalClose}
         selectedPoll={selectedPoll}
-        voteType={selectedTab === 0 ? "Direct Democracy" : "Hybrid"}
+        voteType={selectedTab === 0 ? "Direct Democracy" : PTVoteType}
         skipRedirect
       />
     </>

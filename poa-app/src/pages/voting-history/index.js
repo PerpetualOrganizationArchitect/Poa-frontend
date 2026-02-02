@@ -435,20 +435,29 @@ const VotingHistoryPage = () => {
             {/* Grid of cards */}
             <Box
               position="relative"
-              borderRadius="2xl"
-              overflow="hidden"
+              borderRadius="3xl"
               p={{ base: 4, md: 6 }}
               minH="400px"
+              zIndex={0}
+              boxShadow="lg"
             >
-              <Box style={glassLayerStyle} />
+              <Box
+                style={glassLayerStyle}
+                position="absolute"
+                top={0}
+                left={0}
+                right={0}
+                bottom={0}
+                borderRadius="inherit"
+                zIndex={-1}
+              />
 
               {displayedProposals.length > 0 ? (
                 <VStack spacing={6}>
                   <SimpleGrid
-                    columns={{ base: 1, sm: 1, md: 2, lg: 3, xl: 4 }}
+                    columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }}
                     spacing={4}
                     w="100%"
-                    justifyItems="center"
                   >
                     {displayedProposals.map((proposal, index) => (
                       <Box

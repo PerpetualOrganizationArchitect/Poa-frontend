@@ -235,8 +235,15 @@ export function PollDetail({
     // classRawPowers — makes Blended optimistic bars weight-accurate. Derived
     // from the truthful classBreakdown (userRawPower per class, ordered by
     // classIndex) when available; omitted otherwise (voter counts still move).
+    // MUST be plain decimal strings: large share balances stringify through
+    // Number as "1e+21", and computeHybridOptionScores feeds these to BigInt(),
+    // which throws on exponent notation — crashing right after casting.
+    const toDecimalString = (n) => {
+      if (!Number.isFinite(n) || n <= 0) return '0';
+      return Math.round(n).toLocaleString('fullwide', { useGrouping: false });
+    };
     const classRawPowers = Array.isArray(classBreakdown)
-      ? classBreakdown.map((c) => (c.eligible ? String(Math.round(c.userRawPower || 0)) : '0'))
+      ? classBreakdown.map((c) => (c.eligible ? toDecimalString(c.userRawPower || 0) : '0'))
       : undefined;
 
     // Fire optimistic vote immediately so bars + userHasVoted reflect it.

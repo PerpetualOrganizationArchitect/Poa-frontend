@@ -293,9 +293,12 @@ export const VotingProvider = ({ children }) => {
     const [proposerSupported, setProposerSupported] = useState(false);
     useEffect(() => {
         let cancelled = false;
+        // Reset on every endpoint switch: a cross-chain org may serve an older
+        // schema, and carrying `true` over would error its entire org query.
+        setProposerSupported(false);
         if (!subgraphUrl) return undefined;
         hasProposerField(subgraphUrl).then((has) => {
-            if (!cancelled && has) setProposerSupported(true);
+            if (!cancelled) setProposerSupported(!!has);
         });
         return () => { cancelled = true; };
     }, [subgraphUrl]);

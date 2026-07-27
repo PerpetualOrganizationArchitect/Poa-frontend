@@ -81,18 +81,37 @@ export function turnoutCopy({ voted = 0, eligible = 0, quorum = 0, approximate =
   const denom = eligible > 0 ? `${voted} of ${eligible} ${noun}` : `${voted} voted`;
   const base = eligible > 0 ? `${denom} voted` : denom;
 
+  // A quorum that's trivially small relative to the group gets NO triumphant
+  // green check — the UI must not endorse rubber-stamp rules (panel: Marcus).
+  const lowQuorum = quorum > 0 && eligible > 1 && quorum < Math.max(2, Math.ceil(eligible * 0.2));
+
   if (!quorum || quorum <= 0) {
-    return { line: base, quorumMet: true, needsMore: 0 };
+    return { line: base, quorumMet: true, needsMore: 0, lowQuorum: false };
   }
   if (voted >= quorum) {
-    return { line: `${base} · quorum\u00a0met\u00a0✓`, quorumMet: true, needsMore: 0 };
+    return {
+      // Always show the quorum's actual size — bare "quorum met" hid how weak it was.
+      line: `${base} \u00b7 quorum\u00a0${quorum}${lowQuorum ? '' : '\u00a0\u2713'}`,
+      quorumMet: true,
+      needsMore: 0,
+      lowQuorum,
+    };
   }
   const needsMore = quorum - voted;
   return {
-    line: `${base} · needs\u00a0${needsMore}\u00a0more\u00a0for\u00a0quorum`,
+    line: `${base} \u00b7 needs\u00a0${needsMore}\u00a0more\u00a0for\u00a0quorum\u00a0(${quorum})`,
     quorumMet: false,
     needsMore,
+    lowQuorum,
   };
+}
+
+/** Tooltip for a quorum that is low relative to the group (see turnoutCopy). */
+export function lowQuorumTooltip(quorum, eligible) {
+  const one = quorum === 1;
+  return `Your group's rules set quorum to ${quorum} vote${one ? '' : 's'} out of ${eligible} \u2014 ` +
+    `binding decisions can pass with ${one ? 'a single ballot' : `just ${quorum} ballots`}. ` +
+    `You can change this under \u201cChange the group's rules\u201d.`;
 }
 
 /**
@@ -201,6 +220,20 @@ export function outcomeHeadline(p = {}) {
 // Vote-celebration copy (VoteCelebration.jsx).
 // ---------------------------------------------------------------------------
 
+/** Shown in the ballot zone before casting — votes are public on-chain. */
+export const BALLOT_PUBLIC_NOTE =
+  'Your vote is public to your co-op — members can see who voted and how.';
+/** One-liner bridging the two voting systems wherever the type badge appears. */
+export const TYPE_EXPLAINER =
+  "Polls count every member equally. Binding votes use your group's blended weights.";
+/** Provenance suffix for creator-restricted ballots. */
+export const RESTRICTION_PROVENANCE = 'chosen by the vote\u2019s creator';
+/** Caption for results with very few ballots (panel: ghost-town optics). */
+export function earlyResultCaption(voted, eligible) {
+  const frac = eligible > 0 ? `${voted} of ${eligible}` : `${voted}`;
+  return `Early result — ${frac} voted`;
+}
+
 export const CELEBRATION_HEADLINE = 'Your vote is in!';
 /** `pct` = the viewer's total share of this decision. */
 export function celebrationShare(pct) {
@@ -219,7 +252,12 @@ export const CELEBRATION_RETRY = 'Try again';
 
 export const FINALIZE_EXPLAINER =
   "Voting has ended. Counting records the final result on-chain — anyone can " +
-  "do it, it doesn't change the outcome, and it can't be undone.";
+  "do it, it doesn't change the outcome, and it can't be undone. If nobody " +
+  "counts, the result simply waits — nothing is lost.";
+/** Extra confirm-dialog sentence when the vote never reached quorum. */
+export const FINALIZE_SUBQUORUM =
+  "Quorum wasn't met, so counting records “no quorum” — no option wins and " +
+  "nothing changes on-chain.";
 export const FINALIZE_CONFIRM_TITLE = 'Count the votes?';
 export const FINALIZE_CONFIRM_BODY =
   "This records the final tally on-chain. It doesn't change who won and can't be undone.";

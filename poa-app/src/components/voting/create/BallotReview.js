@@ -8,7 +8,7 @@ import {
   Badge,
 } from '@chakra-ui/react';
 import { utils } from 'ethers';
-import { POLL_BADGE, displayName } from '@/config/votingVocabulary';
+import { POLL_BADGE, displayName, TYPE_EXPLAINER } from '@/config/votingVocabulary';
 import { formatVotingEnds } from './DurationField';
 
 /**
@@ -73,6 +73,9 @@ const BallotReview = ({ proposal, whoCanVoteLabel, nativeCurrencySymbol = 'ETH' 
           {POLL_BADGE} · {displayName('Direct Democracy')}
         </Badge>
       </HStack>
+      <Text fontSize="2xs" color="gray.400" mt={-2}>
+        {TYPE_EXPLAINER}
+      </Text>
 
       <Row label="Title">
         <Text fontSize="md" fontWeight="bold" color="white">

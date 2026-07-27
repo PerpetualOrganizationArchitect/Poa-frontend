@@ -26,7 +26,14 @@ export function SupportMeter({ supportPct = 0, thresholdPct = 0, leaderName = nu
   const passes = !threshold || support >= threshold;
 
   return (
-    <Box w="100%">
+    <Box
+      w="100%"
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(support)}
+      aria-label={`Support: ${votedCount === 0 ? 'no votes were cast' : supportCopy(support, threshold)}`}
+    >
       <HStack justify="space-between" mb={1.5} spacing={2}>
         <HStack spacing={1.5} align="center" minW={0}>
           <Icon

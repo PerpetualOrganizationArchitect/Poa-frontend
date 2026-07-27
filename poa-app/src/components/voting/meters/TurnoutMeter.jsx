@@ -19,9 +19,9 @@
  */
 
 import React, { useMemo } from 'react';
-import { Box, HStack, Text, Icon } from '@chakra-ui/react';
+import { Box, HStack, Text, Icon, Tooltip } from '@chakra-ui/react';
 import { PiUsersThree } from 'react-icons/pi';
-import { turnoutCopy } from '@/config/votingVocabulary';
+import { turnoutCopy, lowQuorumTooltip } from '@/config/votingVocabulary';
 
 const AMETHYST = '#9473DC';
 const AMETHYST_SOFT = 'rgba(148, 115, 220, 0.16)';
@@ -33,10 +33,32 @@ export function TurnoutMeter({
   approximate = false,
   variant = 'compact',
 }) {
-  const { line, quorumMet } = useMemo(
+  const { line, quorumMet, lowQuorum } = useMemo(
     () => turnoutCopy({ voted, eligible, quorum, approximate }),
     [voted, eligible, quorum, approximate]
   );
+  // Green celebrates a healthy quorum being met; a trivially low quorum (or
+  // zero turnout) renders neutral so the UI never endorses rubber-stamp rules.
+  const lineColor = !quorumMet
+    ? '#F6C177'
+    : lowQuorum || voted === 0
+      ? 'gray.300'
+      : 'green.300';
+  const ariaProps = {
+    role: 'progressbar',
+    'aria-valuemin': 0,
+    'aria-valuemax': eligible > 0 ? eligible : undefined,
+    'aria-valuenow': voted,
+    'aria-label': `Turnout: ${line.replace(/\u00a0/g, ' ')}`,
+  };
+  const maybeTooltip = (node) =>
+    lowQuorum && quorum > 0 ? (
+      <Tooltip label={lowQuorumTooltip(quorum, eligible)} placement="top" hasArrow bg="gray.700" maxW="300px">
+        {node}
+      </Tooltip>
+    ) : (
+      node
+    );
 
   // Fraction filled = voters / eligible (clamped). No denominator → show a
   // subtle empty rail rather than a misleading full/zero bar.
@@ -45,8 +67,8 @@ export function TurnoutMeter({
     eligible > 0 && quorum > 0 ? Math.min(100, (quorum / eligible) * 100) : null;
 
   if (variant === 'compact') {
-    return (
-      <HStack spacing={1.5} align="center" minW={0}>
+    return maybeTooltip(
+      <HStack spacing={1.5} align="center" minW={0} {...ariaProps} cursor={lowQuorum ? 'help' : undefined}>
         <Icon as={PiUsersThree} boxSize="14px" color={AMETHYST} flexShrink={0} />
         {/* No truncation: "quorum met ✓" clipping to "quorum me…" reads broken.
             Wrapping to a second line on narrow cards is the honest fallback. */}
@@ -62,7 +84,7 @@ export function TurnoutMeter({
   }
 
   return (
-    <Box w="100%">
+    <Box w="100%" {...ariaProps}>
       <HStack justify="space-between" mb={1.5} spacing={2}>
         <HStack spacing={1.5} align="center" minW={0}>
           <Icon as={PiUsersThree} boxSize="15px" color={AMETHYST} flexShrink={0} />
@@ -70,14 +92,17 @@ export function TurnoutMeter({
             Turnout
           </Text>
         </HStack>
-        <Text
-          fontSize="sm"
-          color={quorumMet && voted > 0 ? 'green.300' : quorumMet ? 'gray.300' : '#F6C177'}
-          fontWeight="600"
-          textAlign="right"
-        >
-          {line}
-        </Text>
+        {maybeTooltip(
+          <Text
+            fontSize="sm"
+            color={lineColor}
+            fontWeight="600"
+            textAlign="right"
+            cursor={lowQuorum ? 'help' : undefined}
+          >
+            {line}
+          </Text>
+        )}
       </HStack>
       <Box
         position="relative"
@@ -111,7 +136,7 @@ export function TurnoutMeter({
             w="2px"
             h="12px"
             borderRadius="full"
-            bg={quorumMet && voted > 0 ? 'green.300' : quorumMet ? 'whiteAlpha.500' : '#F6C177'}
+            bg={quorumMet && voted > 0 && !lowQuorum ? 'green.300' : quorumMet ? 'whiteAlpha.500' : '#F6C177'}
           />
         </Box>
       )}

@@ -52,7 +52,7 @@ export function VoterRoster({ roster, live = false }) {
               <Avatar key={v.address} name={v.name} bg="#6B4FB3" color="white" />
             ))}
           </AvatarGroup>
-          <Text fontSize="xs" color="gray.300" noOfLines={1}>
+          <Text fontSize="xs" color="gray.200" noOfLines={1}>
             <Text as="span" color="gray.100" fontWeight="600">{votedNames}</Text>
             {' '}voted
           </Text>
@@ -79,12 +79,12 @@ export function VoterRoster({ roster, live = false }) {
                 {waiting.map((m) => (
                   <WrapItem key={m.address}>
                     <Text
-                      fontSize="2xs"
-                      px={2}
-                      py={0.5}
+                      fontSize="xs"
+                      px={2.5}
+                      py={1}
                       borderRadius="full"
-                      bg="whiteAlpha.100"
-                      color="gray.300"
+                      bg="whiteAlpha.200"
+                      color="gray.200"
                     >
                       {m.name}
                     </Text>
@@ -94,7 +94,7 @@ export function VoterRoster({ roster, live = false }) {
             </Collapse>
           </Box>
         ) : (
-          <Text fontSize="2xs" color="gray.500" pl={0.5}>
+          <Text fontSize="xs" color="gray.400" pl={0.5}>
             {waiting.length} {waiting.length === 1 ? 'member' : 'members'} didn&apos;t vote
           </Text>
         )

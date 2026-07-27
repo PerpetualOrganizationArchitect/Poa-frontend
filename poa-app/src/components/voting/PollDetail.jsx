@@ -84,6 +84,11 @@ import {
   FINALIZE_CONFIRM_TITLE,
   FINALIZE_CONFIRM_BODY,
   YOU_VOTED_CHIP,
+  BALLOT_PUBLIC_NOTE,
+  TYPE_EXPLAINER,
+  RESTRICTION_PROVENANCE,
+  FINALIZE_SUBQUORUM,
+  earlyResultCaption,
   executionStatus,
   outcomeHeadline,
 } from '@/config/votingVocabulary';
@@ -413,6 +418,9 @@ export function PollDetail({
                   {poll.title}
                 </Text>
 
+                <Text fontSize="2xs" color="gray.400">
+                  {TYPE_EXPLAINER}
+                </Text>
                 <Text fontSize="xs" color="gray.300">
                   {poll.proposerUsername && (
                     <Text as="span" color="#C6B4F5" fontWeight="600">by {poll.proposerUsername} · </Text>
@@ -483,6 +491,9 @@ export function PollDetail({
                       {closed ? COMPLETED_ELIGIBILITY_LABEL : ELIGIBILITY_LABEL}{' '}
                       <Text as="span" color={leaderText} fontWeight="600">
                         {restrictedRolesText}
+                        {poll.isHatRestricted && (
+                          <Text as="span" color="gray.500" fontWeight="400"> · {RESTRICTION_PROVENANCE}</Text>
+                        )}
                       </Text>
                     </Text>
                     {!hasVoted && (
@@ -563,7 +574,10 @@ export function PollDetail({
                     </RadioGroup>
                   )}
 
-                  <Button
+                                    <Text fontSize="2xs" color="gray.400" textAlign="center">
+                    {BALLOT_PUBLIC_NOTE}
+                  </Text>
+<Button
                     onClick={handleCast}
                     isDisabled={!voteValid}
                     minH="48px"
@@ -592,6 +606,11 @@ export function PollDetail({
                     {awaitingCount ? 'Provisional results' : 'Results'}
                   </Text>
                   <ResultBars
+                    earlyCaption={
+                      poll.isOngoing && turnout.voted > 0 && turnout.voted < 3
+                        ? earlyResultCaption(turnout.voted, turnout.eligible)
+                        : null
+                    }
                     options={poll.options}
                     winningIndex={closed ? poll.winningOption : leader?.index}
                     userIndexes={userIndexes}
@@ -647,6 +666,9 @@ export function PollDetail({
             </AlertDialogHeader>
             <AlertDialogBody fontSize="sm" color="gray.200">
               {FINALIZE_CONFIRM_BODY}
+              {turnout.voted < (poll.quorum || 0) && (
+                <Text mt={2} color="#F6C177">{FINALIZE_SUBQUORUM}</Text>
+              )}
             </AlertDialogBody>
             <AlertDialogFooter>
               <Button ref={cancelRef} onClick={finalizeConfirm.onClose} variant="outline" color="gray.200" borderColor="whiteAlpha.400" _hover={{ bg: 'whiteAlpha.100' }} isDisabled={finalizing}>

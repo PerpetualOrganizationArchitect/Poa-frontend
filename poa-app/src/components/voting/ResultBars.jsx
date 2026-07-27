@@ -125,6 +125,9 @@ export function ResultBars({
   animate = false,
   reduceMotion = false,
   size = 'md',
+  // Caption + damped bars for results built from very few ballots — a 1-voter
+  // 100% bar must not read like consensus (panel: ghost-town optics).
+  earlyCaption = null,
 }) {
   const userSet = useMemo(() => new Set((userIndexes || []).map(Number)), [userIndexes]);
   const weightByIndex = useMemo(() => {
@@ -151,7 +154,12 @@ export function ResultBars({
   const staggerBase = 0.05; // 50ms lead so the first bar isn't at t=0 exactly
 
   return (
-    <VStack align="stretch" spacing={size === 'sm' ? 2 : 3} w="100%">
+    <VStack align="stretch" spacing={size === 'sm' ? 2 : 3} w="100%" opacity={earlyCaption ? 0.8 : 1}>
+      {earlyCaption && (
+        <Text fontSize="2xs" color="gray.400" fontStyle="italic">
+          {earlyCaption}
+        </Text>
+      )}
       {shown.map(({ option, index }, order) => (
         <Box
           key={option.id || index}

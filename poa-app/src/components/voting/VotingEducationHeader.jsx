@@ -30,6 +30,7 @@ import {
   IconButton,
   useBreakpointValue,
   Badge,
+  Tooltip,
   keyframes,
 } from "@chakra-ui/react";
 import { InfoOutlineIcon, ChevronDownIcon, ChevronUpIcon } from "@chakra-ui/icons";
@@ -318,36 +319,103 @@ export const VotingMobileHeader = ({ selectedTab, PTVoteType, onInfoClick }) => 
 };
 
 /**
- * One-line governance strip shown after the member's first visit to this org's
- * voting page. Clicking it expands the full education content inline.
- *
- * "Blended voting · 80/20 · Your voice: 8.9% · How it works ▾"
+ * Governance strip shown after the member's first visit to this org's voting
+ * page. Type-honest voice numbers (the panel's #1 finding): a poll share AND a
+ * binding share, each labeled — never one ambiguous percentage. A mini weight
+ * bar replaces the "80/20 split" text. On mobile it becomes a two-row tappable
+ * card; the whole strip expands the full explainer.
  */
-const GovernanceStrip = ({ votingClasses, totalSharePct, onExpand }) => {
-  const slices = (votingClasses || [])
-    .filter((c) => Number(c.slicePct) > 0)
-    .map((c) => Math.round(Number(c.slicePct)));
-  const splitText = slices.length > 0 ? slices.join("/") : null;
-  const shareText = totalSharePct != null ? `${totalSharePct.toFixed(1)}%` : null;
+const GovernanceStrip = ({ votingClasses, totalSharePct, poMembers, onExpand }) => {
+  const classes = (votingClasses || []).filter((c) => Number(c.slicePct) > 0);
+  const blendedText = totalSharePct != null ? `${totalSharePct.toFixed(1)}%` : null;
+  const pollText = poMembers > 0 ? `${(100 / poMembers).toFixed(1)}%` : null;
+
+  const voiceNumbers = (
+    <HStack spacing={2} flexWrap="wrap" rowGap={0.5}>
+      <Text fontSize="sm" color="gray.200" fontWeight="600">
+        Your voice:
+      </Text>
+      {pollText && (
+        <Tooltip
+          label={`Polls count every member equally — you're 1 of ${poMembers}.`}
+          placement="bottom"
+          hasArrow
+          bg="gray.700"
+        >
+          <HStack spacing={1} cursor="help">
+            <Text fontSize="sm" color="white" fontWeight="800">{pollText}</Text>
+            <Text fontSize="xs" color="gray.300">on polls</Text>
+          </HStack>
+        </Tooltip>
+      )}
+      {pollText && blendedText && <Text color="gray.500">·</Text>}
+      {blendedText && (
+        <Tooltip
+          label="Binding votes use your group's blended weights (membership + shares)."
+          placement="bottom"
+          hasArrow
+          bg="gray.700"
+        >
+          <HStack spacing={1} cursor="help">
+            <Text fontSize="sm" color="#C6B4F5" fontWeight="800">{blendedText}</Text>
+            <Text fontSize="xs" color="gray.300">on binding votes</Text>
+          </HStack>
+        </Tooltip>
+      )}
+    </HStack>
+  );
+
+  const weightBar = classes.length > 0 && (
+    <Tooltip label={taglineFor("Hybrid")} placement="bottom" hasArrow bg="gray.700">
+      <HStack spacing={1.5} cursor="help">
+        <Flex w="72px" h="10px" borderRadius="full" overflow="hidden" bg="gray.700" flexShrink={0}>
+          {classes.map((cls, i) => (
+            <Box
+              key={cls.classIndex ?? i}
+              w={`${Math.round(Number(cls.slicePct))}%`}
+              h="100%"
+              bg={cls.strategy === "DIRECT" ? "#9F7AEA" : "#63B3ED"}
+            />
+          ))}
+        </Flex>
+        <Text fontSize="xs" color="gray.300">
+          {classes.map((c) => Math.round(Number(c.slicePct))).join("/")}
+        </Text>
+      </HStack>
+    </Tooltip>
+  );
 
   return (
     <Box w="100%" maxW="1440px" mx="auto" mb={6}>
       <Flex
         align="center"
-        justify="center"
-        gap={3}
-        px={5}
-        py={2.5}
+        justify={{ base: "space-between", md: "center" }}
+        direction={{ base: "column", md: "row" }}
+        gap={{ base: 1.5, md: 4 }}
+        px={{ base: 4, md: 6 }}
+        py={{ base: 3, md: 3 }}
         borderRadius="2xl"
         position="relative"
         zIndex={1}
-        boxShadow="lg"
+        border="1px solid rgba(148, 115, 220, 0.35)"
+        boxShadow="0 0 24px rgba(148, 115, 220, 0.14), 0 4px 16px rgba(0,0,0,0.3)"
         cursor="pointer"
         role="button"
+        tabIndex={0}
         aria-label="Show how Blended voting works"
         onClick={onExpand}
-        transition="background 0.2s ease"
-        _hover={{ ".gov-strip-cta": { color: "white" } }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onExpand();
+          }
+        }}
+        transition="border-color 0.2s ease, box-shadow 0.2s ease"
+        _hover={{
+          borderColor: "rgba(148, 115, 220, 0.6)",
+          ".gov-strip-cta": { color: "white" },
+        }}
+        _focusVisible={{ outline: "2px solid #9473DC", outlineOffset: "2px" }}
       >
         <Box
           className="glass"
@@ -360,32 +428,29 @@ const GovernanceStrip = ({ votingClasses, totalSharePct, onExpand }) => {
           borderRadius="inherit"
           zIndex={-1}
         />
-        <HStack spacing={2} divider={<Box color="gray.600" px={1}>·</Box>} flexWrap="wrap" justify="center">
+
+        {/* Row 1 (mobile) / left cluster (desktop): system name + weight bar */}
+        <HStack spacing={3} w={{ base: "100%", md: "auto" }} justify={{ base: "space-between", md: "flex-start" }}>
           <HStack spacing={1.5}>
             <Box w="8px" h="8px" borderRadius="full" bg={AMETHYST} />
-            <Text fontSize="sm" color="white" fontWeight="600">
+            <Text fontSize="sm" color="white" fontWeight="700">
               {displayName("Hybrid")}
             </Text>
           </HStack>
-          {splitText && (
-            <Text fontSize="sm" color="gray.200">
-              {splitText} split
-            </Text>
-          )}
-          {shareText && (
-            <HStack spacing={1}>
-              <Text fontSize="sm" color="gray.300">
-                Your voice:
-              </Text>
-              <Text fontSize="sm" color="#C6B4F5" fontWeight="700">
-                {shareText}
-              </Text>
-            </HStack>
-          )}
-          <HStack spacing={1} className="gov-strip-cta" color="gray.300">
-            <Text fontSize="sm">How it works</Text>
-            <ChevronDownIcon />
+          {weightBar}
+          {/* Mobile: chevron sits at the row edge as the tap affordance */}
+          <HStack spacing={1} className="gov-strip-cta" color="#C6B4F5" display={{ base: "flex", md: "none" }}>
+            <ChevronDownIcon boxSize={5} />
           </HStack>
+        </HStack>
+
+        {/* Row 2 (mobile) / middle cluster (desktop): the voice numbers */}
+        {voiceNumbers}
+
+        {/* Desktop-only CTA */}
+        <HStack spacing={1} className="gov-strip-cta" color="#C6B4F5" display={{ base: "none", md: "flex" }}>
+          <Text fontSize="sm" fontWeight="600">How it works</Text>
+          <ChevronDownIcon />
         </HStack>
       </Flex>
     </Box>
@@ -581,7 +646,7 @@ export const VotingEducationContent = ({ selectedTab, PTVoteType }) => {
  * expands to the full card on click. The "seen" flag is per-org localStorage.
  */
 const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
-  const { orgId } = usePOContext();
+  const { orgId, poMembers } = usePOContext();
   const { votingClasses } = useVotingContext();
   const { totalSharePct } = useVotingPower();
 
@@ -618,6 +683,7 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
       <GovernanceStrip
         votingClasses={votingClasses}
         totalSharePct={totalSharePct}
+        poMembers={poMembers}
         onExpand={() => setCollapsed(false)}
       />
     );

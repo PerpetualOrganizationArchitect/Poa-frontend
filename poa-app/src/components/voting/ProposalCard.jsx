@@ -49,6 +49,7 @@ import {
   STATUS_CLOSING_SOON,
   STATUS_AWAITING_COUNT,
   FINALIZE_VERB,
+  earlyResultCaption,
   executionStatus,
   outcomeHeadline,
 } from '@/config/votingVocabulary';
@@ -293,6 +294,11 @@ export function ProposalCard({
               userWeights={userWeights}
               maxRows={3}
               size="sm"
+              earlyCaption={
+                proposal.isOngoing && turnout.voted > 0 && turnout.voted < 3
+                  ? earlyResultCaption(turnout.voted, turnout.eligible)
+                  : null
+              }
             />
           ) : (
             // Pre-vote: neutral option NAMES only — no bars, counts, or pills.

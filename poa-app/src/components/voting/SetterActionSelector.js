@@ -128,14 +128,61 @@ const TemplateCard = ({ template, isSelected, onClick }) => {
 };
 
 /**
+ * Build a BEFORE → AFTER diff line for the five rule templates when the current
+ * on-chain value is known. Returns null for every other template (or when the
+ * current value / new input is missing) so the preview renders unchanged.
+ */
+function buildRuleDiff(template, values, currentValues) {
+  if (!template || !currentValues) return null;
+  const { hybridThresholdPct, hybridQuorum, ddThresholdPct, ddQuorum, votingClasses } = currentValues;
+  const known = (v) => v !== null && v !== undefined && v !== '';
+
+  switch (template.id) {
+    case 'change-threshold-hybrid':
+      return known(hybridThresholdPct) && known(values.threshold)
+        ? `Support to pass: ${hybridThresholdPct}% → ${values.threshold}%`
+        : null;
+    case 'change-threshold-dd':
+      return known(ddThresholdPct) && known(values.threshold)
+        ? `Support to pass: ${ddThresholdPct}% → ${values.threshold}%`
+        : null;
+    case 'change-quorum-hybrid':
+      return known(hybridQuorum) && known(values.quorum)
+        ? `Quorum: ${hybridQuorum} → ${values.quorum}`
+        : null;
+    case 'change-quorum-dd':
+      return known(ddQuorum) && known(values.quorum)
+        ? `Quorum: ${ddQuorum} → ${values.quorum}`
+        : null;
+    case 'change-voting-split': {
+      const cur = votingClasses || [];
+      const next = values.classWeights || [];
+      if (cur.length === 0 || next.length === 0) return null;
+      const parts = next.map((c, i) => {
+        const label = (c.strategy === 'DIRECT' || c.strategy === 0) ? 'Members' : 'Contributors';
+        const before = cur[i]?.slicePct;
+        return known(before)
+          ? `${label}: ${before}% → ${c.slicePct}%`
+          : `${label}: ${c.slicePct}%`;
+      });
+      return parts.join('  ·  ');
+    }
+    default:
+      return null;
+  }
+}
+
+/**
  * Preview of what the setter action will do
  */
-const SetterPreview = ({ template, values, roleNames, projectNames }) => {
+const SetterPreview = ({ template, values, roleNames, projectNames, currentValues }) => {
   if (!template) return null;
 
   const previewText = template.preview
     ? template.preview(values, roleNames, projectNames)
     : `Execute ${template.name}`;
+
+  const diffLine = buildRuleDiff(template, values, currentValues);
 
   return (
     <Alert
@@ -152,6 +199,11 @@ const SetterPreview = ({ template, values, roleNames, projectNames }) => {
         <Text fontSize="sm" color="gray.300">
           {previewText}
         </Text>
+        {diffLine && (
+          <Text fontSize="sm" fontWeight="600" color="blue.100" fontFamily="mono">
+            {diffLine}
+          </Text>
+        )}
       </VStack>
     </Alert>
   );
@@ -168,6 +220,7 @@ const SetterActionSelector = ({
   roleNames = {},
   projectNames = {},
   votingClasses = [],
+  currentValues = null,
 }) => {
   const [mode, setMode] = useState('template');
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -364,6 +417,7 @@ const SetterActionSelector = ({
                 values={proposal.setterValues || {}}
                 roleNames={roleNames}
                 projectNames={projectNames}
+                currentValues={currentValues}
               />
             </>
           )}

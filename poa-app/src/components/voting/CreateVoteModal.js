@@ -85,6 +85,7 @@ const CreateVoteModal = ({
   roleNames = {},
   projectNames: projectNamesProp,
   votingClasses = [],
+  currentValues = null,
   leaderboardData = [],
   ongoingProposals = [],
 }) => {
@@ -579,6 +580,7 @@ const CreateVoteModal = ({
                         allProjects={allProjects}
                         roleNames={roleNames}
                         votingClasses={votingClasses}
+                        currentValues={currentValues}
                         projectNames={projectNames}
                       />
                     )}

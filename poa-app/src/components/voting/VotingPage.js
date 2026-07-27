@@ -16,8 +16,10 @@
  */
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { Box, Container, Center, Flex, Heading, Button, Icon } from "@chakra-ui/react";
-import { PiPlusCircle } from "react-icons/pi";
+import { useRouter } from "next/router";
+import { Box, Container, Center, Flex, Heading, Button, Icon, Link } from "@chakra-ui/react";
+import { PiPlusCircle, PiScales } from "react-icons/pi";
+import { getTemplateById } from "@/config/setterDefinitions";
 import PulseLoader from "@/components/shared/PulseLoader";
 import GlassBack from "./GlassBack";
 import { usePOContext } from "@/context/POContext";
@@ -33,6 +35,7 @@ import VotingEducationHeader from "./VotingEducationHeader";
 import { VotingBoard } from "./VotingBoard";
 import { PollDetail } from "./PollDetail";
 import CreateVoteModal from "./CreateVoteModal";
+import OrgConstitution from "./OrgConstitution";
 
 // Custom hooks for logic extraction
 import { usePollNavigation } from "../../hooks/usePollNavigation";
@@ -40,6 +43,7 @@ import { useProposalForm } from "../../hooks/useProposalForm";
 import { useTour } from "@/features/tour";
 
 const VotingPage = () => {
+  const router = useRouter();
   const [showCreatePoll, setShowCreatePoll] = useState(false);
   const { currentStepDef, isActive: isTourActive } = useTour();
   const tourOpenedModalRef = useRef(false);
@@ -82,6 +86,10 @@ const VotingPage = () => {
     hybridVotingCompleted,
     votingType: PTVoteType,
     votingClasses,
+    hybridThresholdPct,
+    hybridQuorum,
+    ddThresholdPct,
+    ddQuorum,
     refetch,
   } = useVotingContext();
 
@@ -175,6 +183,7 @@ const VotingPage = () => {
     toggleRestrictedRole,
     handleSetterChange,
     handleSubmit,
+    restoreProposal,
   } = useProposalForm({
     onSubmit: handleProposalSubmit,
   });
@@ -194,6 +203,58 @@ const VotingPage = () => {
   const handleCreatePollClick = useCallback(() => {
     setShowCreatePoll(prev => !prev);
   }, []);
+
+  // Current rule values, threaded to SetterActionSelector so the setter preview
+  // can render a BEFORE → AFTER diff for the five rule templates.
+  const currentRuleValues = useMemo(() => ({
+    hybridThresholdPct,
+    hybridQuorum,
+    ddThresholdPct,
+    ddQuorum,
+    votingClasses,
+  }), [hybridThresholdPct, hybridQuorum, ddThresholdPct, ddQuorum, votingClasses]);
+
+  // "Propose a change" from the Constitution panel — prefills the create form
+  // with the matching setter template preselected, then opens the modal. Mirrors
+  // exactly the state SetterActionSelector.handleTemplateSelect sets on click
+  // (setterContract/Function + initialized setterValues) so the modal lands on
+  // the template's configured step, not the category picker.
+  const handleProposeRuleChange = useCallback((templateId) => {
+    const template = getTemplateById(templateId);
+    if (!template) return;
+    const setterValues = (template.inputs || []).reduce((acc, input) => {
+      if (input.type === 'votingClassWeights') {
+        acc[input.name] = votingClasses.length > 0 ? votingClasses.map(c => ({ ...c })) : [];
+      } else {
+        acc[input.name] = input.default || '';
+      }
+      return acc;
+    }, {});
+    restoreProposal({
+      type: 'setter',
+      setterMode: 'template',
+      setterTemplate: templateId,
+      setterContract: template.contract || '',
+      setterFunction: template.functionName || '',
+      setterValues,
+      setterParams: [],
+    });
+    setShowCreatePoll(true);
+  }, [restoreProposal, votingClasses]);
+
+  // Deep link support: /voting?propose=<templateId> (from the /rules page)
+  // opens the create modal with that rule template preselected, once.
+  const proposeParamHandledRef = useRef(false);
+  useEffect(() => {
+    if (!router.isReady || proposeParamHandledRef.current) return;
+    const templateId = router.query.propose;
+    if (!templateId || typeof templateId !== 'string') return;
+    proposeParamHandledRef.current = true;
+    handleProposeRuleChange(templateId);
+    // Strip the param so a refresh / back doesn't reopen the modal.
+    const { propose, ...rest } = router.query;
+    router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
+  }, [router.isReady, router.query, handleProposeRuleChange, router]);
 
   // Finalize ("Count the votes") — routed through PollDetail's AlertDialog.
   // RETURNS the result so the confirm dialog can await it.
@@ -272,9 +333,28 @@ const VotingPage = () => {
 
             {/* Board header row: title + Create Vote CTA (top-right). */}
             <Flex justify="space-between" align="center" mb={5} gap={3} flexWrap="wrap">
-              <Heading as="h1" size="lg" color="white" fontWeight="800">
-                Votes
-              </Heading>
+              <Flex align="center" gap={3} flexWrap="wrap">
+                <Heading as="h1" size="lg" color="white" fontWeight="800">
+                  Votes
+                </Heading>
+                <Link
+                  display="inline-flex"
+                  alignItems="center"
+                  gap={1}
+                  fontSize="sm"
+                  fontWeight="600"
+                  color="gray.300"
+                  _hover={{ color: "white", textDecoration: "none" }}
+                  onClick={() => {
+                    if (typeof document !== "undefined") {
+                      document.getElementById("our-rules")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                  }}
+                >
+                  <Icon as={PiScales} boxSize={4} />
+                  Our rules
+                </Link>
+              </Flex>
               {canCreate && (
                 <Button
                   leftIcon={<Icon as={PiPlusCircle} boxSize={5} />}
@@ -305,6 +385,12 @@ const VotingPage = () => {
             />
           </Box>
 
+          {/* Constitution — "Our rules" (collapsible, below the board). */}
+          <OrgConstitution
+            hasMemberRole={hasMemberRole}
+            onProposeRuleChange={handleProposeRuleChange}
+          />
+
           <CreateVoteModal
             isOpen={showCreatePoll}
             onClose={handleCreatePollClick}
@@ -323,6 +409,7 @@ const VotingPage = () => {
             loadingSubmit={loadingSubmit}
             roleNames={roleNames}
             votingClasses={votingClasses}
+            currentValues={currentRuleValues}
             leaderboardData={leaderboardData}
             ongoingProposals={hybridVotingOngoing}
           />

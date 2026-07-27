@@ -106,6 +106,24 @@ export function turnoutCopy({ voted = 0, eligible = 0, quorum = 0, approximate =
   };
 }
 
+/**
+ * Static "what it takes to pass" rule line, member-facing. Reuses the turnout
+ * fraction-of-members phrasing so the Constitution panel and the live meters
+ * speak the same language, e.g. "passes over 25% support · quorum 1 of 9".
+ * `thresholdPct` = support-to-pass line, `quorum` = minimum voters,
+ * `eligible` = member denominator (0 → omit the "of N" aside).
+ */
+export function passRuleCopy({ thresholdPct = 0, quorum = 0, eligible = 0 } = {}) {
+  const support = thresholdPct > 0
+    ? `passes over ${Math.round(thresholdPct)}% support`
+    : 'passes by simple majority';
+  if (!quorum || quorum <= 0) {
+    return `${support} · no quorum`;
+  }
+  const denom = eligible > 0 ? ` of ${eligible}` : '';
+  return `${support} · quorum ${quorum}${denom}`;
+}
+
 /** Tooltip for a quorum that is low relative to the group (see turnoutCopy). */
 export function lowQuorumTooltip(quorum, eligible) {
   const one = quorum === 1;
@@ -343,6 +361,7 @@ export default {
   sliceBadge,
   ineligibleCopy,
   turnoutCopy,
+  passRuleCopy,
   supportCopy,
   STATUS_LIVE,
   STATUS_CLOSING_SOON,

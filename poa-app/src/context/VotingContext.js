@@ -259,6 +259,13 @@ const initialVotingState = {
     ongoingPolls: [],
     votingType: 'Hybrid',
     votingClasses: [],
+    // Rule constants (additive — surfaced for the Constitution panel). These are
+    // the same threshold/quorum values already read from the org in the data
+    // effect; storing them here makes the group's live rules legible on /voting.
+    hybridThresholdPct: 0,
+    hybridQuorum: 0,
+    ddThresholdPct: 0,
+    ddQuorum: 0,
 };
 
 function votingReducer(state, action) {
@@ -439,6 +446,8 @@ export const VotingProvider = ({ children }) => {
             if (org.hybridVoting) {
                 const hybridThreshold = org.hybridVoting.thresholdPct || 0;
                 const hybridQuorum = org.hybridVoting.quorum || 0;
+                update.hybridThresholdPct = hybridThreshold;
+                update.hybridQuorum = hybridQuorum;
 
                 // Process voting classes first — transformProposal needs them for
                 // the per-class-weighted percentage math (matches contract logic).
@@ -475,12 +484,16 @@ export const VotingProvider = ({ children }) => {
                 update.hybridVotingOngoing = [];
                 update.hybridVotingCompleted = [];
                 update.votingClasses = [];
+                update.hybridThresholdPct = 0;
+                update.hybridQuorum = 0;
             }
 
             // Process Direct Democracy Voting proposals
             if (org.directDemocracyVoting) {
                 const ddThreshold = org.directDemocracyVoting.thresholdPct || 0;
                 const ddQuorum = org.directDemocracyVoting.quorum || 0;
+                update.ddThresholdPct = ddThreshold;
+                update.ddQuorum = ddQuorum;
                 ddProposals = (org.directDemocracyVoting.ddvProposals || []).map(p =>
                     transformProposal(mergeOptimistic(p), org.directDemocracyVoting.id, 'Direct Democracy', ddThreshold, ddQuorum, [], accountAddress)
                 );
@@ -491,6 +504,8 @@ export const VotingProvider = ({ children }) => {
             } else {
                 update.democracyVotingOngoing = [];
                 update.democracyVotingCompleted = [];
+                update.ddThresholdPct = 0;
+                update.ddQuorum = 0;
             }
 
             // Combine all ongoing polls from already-transformed proposals
@@ -520,6 +535,10 @@ export const VotingProvider = ({ children }) => {
         ongoingPolls: state.ongoingPolls,
         votingType: state.votingType,
         votingClasses: state.votingClasses,
+        hybridThresholdPct: state.hybridThresholdPct,
+        hybridQuorum: state.hybridQuorum,
+        ddThresholdPct: state.ddThresholdPct,
+        ddQuorum: state.ddQuorum,
     }), [state, loading, error, refetchVoting, addOptimisticVote, removeOptimisticVote]);
 
     return (

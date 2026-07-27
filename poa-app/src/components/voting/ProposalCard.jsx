@@ -258,6 +258,14 @@ export function ProposalCard({
           {proposal.title}
         </Text>
 
+        {/* Plain-language translation of what a binding proposal enacts —
+            technical titles ("setUniversalFactory…") get a human subtitle. */}
+        {isBinding && (proposal.actionSummaries?.length || 0) > 0 && (
+          <Text fontSize="xs" color="gray.300" noOfLines={1} fontStyle="italic">
+            {proposal.actionSummaries[0]}
+          </Text>
+        )}
+
         {/* Meta line — opened + reserved proposer slot */}
         <HStack spacing={1.5} color="gray.300" fontSize="xs">
           <Text noOfLines={1}>

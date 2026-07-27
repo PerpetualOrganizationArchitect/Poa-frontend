@@ -456,6 +456,33 @@ export function PollDetail({
                 </Box>
               )}
 
+              {/* What this proposal enacts, in plain language (from metadata). */}
+              {(poll.actionSummaries?.length || 0) > 0 && (
+                <Box borderRadius="xl" p={4} position="relative" overflow="hidden" zIndex={1}>
+                  <GlassBack light />
+                  <Text
+                    fontSize="xs"
+                    fontWeight="bold"
+                    color="purple.300"
+                    mb={2}
+                    textTransform="uppercase"
+                    letterSpacing="wide"
+                  >
+                    What this enacts
+                  </Text>
+                  <VStack align="stretch" spacing={1.5}>
+                    {poll.actionSummaries.map((line, i) => (
+                      <HStack key={i} align="flex-start" spacing={2}>
+                        <Box w="5px" h="5px" borderRadius="full" bg={amethyst} mt="7px" flexShrink={0} />
+                        <Text fontSize="sm" color="gray.100" lineHeight="1.55">
+                          {line}
+                        </Text>
+                      </HStack>
+                    ))}
+                  </VStack>
+                </Box>
+              )}
+
               {/* c. TurnoutMeter (always) + SupportMeter (post-vote/closed only) */}
               <Box borderRadius="xl" p={4} position="relative" overflow="hidden" zIndex={1}>
                 <GlassBack light />

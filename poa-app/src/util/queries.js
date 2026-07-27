@@ -390,6 +390,8 @@ export const FETCH_VOTING_DATA_WITH_PROPOSER = gql`
             id
             description
             optionNames
+            actionSummaries
+            promotedFrom
           }
           numOptions
           startTimestamp
@@ -427,6 +429,8 @@ export const FETCH_VOTING_DATA_WITH_PROPOSER = gql`
             id
             description
             optionNames
+            actionSummaries
+            promotedFrom
           }
           numOptions
           startTimestamp

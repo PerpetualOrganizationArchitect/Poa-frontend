@@ -246,6 +246,8 @@ function transformProposal(proposal, votingTypeId, type, thresholdPct = 0, quoru
         // Passthroughs for subgraph fields that ship later (undefined until the
         // query fetches them — ProposalCard's proposer slot self-enables).
         proposerUsername: proposal.proposerUsername ?? proposal.creatorUsername ?? null,
+        actionSummaries: metadata.actionSummaries || [],
+        promotedFrom: metadata.promotedFrom || null,
         userHasVoted: userVote !== null,
         userVote,
     };

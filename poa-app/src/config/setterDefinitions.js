@@ -52,7 +52,7 @@ export const SETTER_CATEGORIES = {
 export const CONTRACT_MAP = {
   hybridVoting: {
     contextKey: 'votingContractAddress',
-    displayName: 'Hybrid Voting',
+    displayName: 'Blended Voting',
     description: 'Main voting contract for proposals'
   },
   directDemocracyVoting: {
@@ -81,8 +81,8 @@ export const SETTER_TEMPLATES = [
   {
     id: 'change-threshold-hybrid',
     category: 'voting',
-    name: 'Change Hybrid Voting Threshold',
-    description: 'Set the minimum support percentage required for hybrid votes to pass',
+    name: 'Change Blended Voting Threshold',
+    description: 'Set the minimum support percentage required for blended votes to pass',
     contract: 'hybridVoting',
     functionName: 'setConfig',
     inputs: [
@@ -101,7 +101,7 @@ export const SETTER_TEMPLATES = [
       const encodedValue = utils.hexZeroPad(utils.hexlify(Number(values.threshold)), 32);
       return [configKey, encodedValue];
     },
-    preview: (values) => `Change hybrid voting threshold to ${values.threshold}%`
+    preview: (values) => `Change blended voting threshold to ${values.threshold}%`
   },
   {
     id: 'change-threshold-dd',
@@ -131,8 +131,8 @@ export const SETTER_TEMPLATES = [
   {
     id: 'change-quorum-hybrid',
     category: 'voting',
-    name: 'Change Hybrid Voting Quorum',
-    description: 'Set the minimum number of voters required for hybrid votes to be valid',
+    name: 'Change Blended Voting Quorum',
+    description: 'Set the minimum number of voters required for blended votes to be valid',
     contract: 'hybridVoting',
     functionName: 'setConfig',
     inputs: [
@@ -151,7 +151,7 @@ export const SETTER_TEMPLATES = [
       const encodedValue = utils.hexZeroPad(utils.hexlify(Number(values.quorum)), 32);
       return [configKey, encodedValue];
     },
-    preview: (values) => `Change hybrid voting quorum to ${values.quorum} voters`
+    preview: (values) => `Change blended voting quorum to ${values.quorum} voters`
   },
   {
     id: 'change-voting-split',
@@ -222,8 +222,8 @@ export const SETTER_TEMPLATES = [
   {
     id: 'allow-proposal-creator-hybrid',
     category: 'permissions',
-    name: 'Allow Role to Create Hybrid Proposals',
-    description: 'Grant or revoke a role\'s permission to create new hybrid voting proposals',
+    name: 'Allow Role to Create Blended Proposals',
+    description: 'Grant or revoke a role\'s permission to create new blended voting proposals',
     contract: 'hybridVoting',
     functionName: 'setCreatorHatAllowed',
     inputs: [
@@ -248,7 +248,7 @@ export const SETTER_TEMPLATES = [
     preview: (values, roleNames) => {
       const roleName = roleNames?.[values.role] || `Role ${values.role}`;
       const action = values.allowed === 'Grant' ? 'Allow' : 'Revoke';
-      return `${action} "${roleName}" to create hybrid voting proposals`;
+      return `${action} "${roleName}" to create blended voting proposals`;
     }
   },
   {
@@ -304,26 +304,26 @@ export const SETTER_TEMPLATES = [
   {
     id: 'pause-hybrid-voting',
     category: 'emergency',
-    name: 'Pause Hybrid Voting',
-    description: 'Temporarily disable all hybrid voting activity (emergency use only)',
+    name: 'Pause Blended Voting',
+    description: 'Temporarily disable all blended voting activity (emergency use only)',
     contract: 'hybridVoting',
     functionName: 'pause',
     inputs: [],
     dangerLevel: 'critical',
-    warning: 'This will prevent ALL hybrid voting proposals and votes until unpaused',
+    warning: 'This will prevent ALL blended voting proposals and votes until unpaused',
     encode: () => [],
-    preview: () => 'Pause hybrid voting - no proposals or votes will be allowed'
+    preview: () => 'Pause blended voting - no proposals or votes will be allowed'
   },
   {
     id: 'unpause-hybrid-voting',
     category: 'emergency',
-    name: 'Resume Hybrid Voting',
-    description: 'Re-enable hybrid voting after an emergency pause',
+    name: 'Resume Blended Voting',
+    description: 'Re-enable blended voting after an emergency pause',
     contract: 'hybridVoting',
     functionName: 'unpause',
     inputs: [],
     encode: () => [],
-    preview: () => 'Resume hybrid voting - proposals and votes will be allowed again'
+    preview: () => 'Resume blended voting - proposals and votes will be allowed again'
   },
   {
     id: 'pause-dd-voting',

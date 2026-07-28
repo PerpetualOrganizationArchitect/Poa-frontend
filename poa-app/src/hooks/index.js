@@ -18,9 +18,9 @@ export { useSwipeNavigation } from './useSwipeNavigation';
 
 // Voting Hooks
 export { usePollNavigation } from './usePollNavigation';
-export { useVotingPagination } from './useVotingPagination';
 export { useProposalForm } from './useProposalForm';
 export { useWinnerStatus } from './useWinnerStatus';
+export { useVoteLanes } from './useVoteLanes';
 
 // Organization Structure
 export { useOrgStructure } from './useOrgStructure';

@@ -34,7 +34,7 @@ const EmptyState = ({ text }) => {
       position="relative"
       p={{ base: 3, md: 4 }}
       zIndex={1}
-      color="rgba(333, 333, 333, 1)"
+      color="white"
       transition="transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease, border-color 0.3s ease"
       _hover={{ 
         transform: "translateY(-3px)",

@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { usePOContext } from "@/context/POContext";
 import { useIsOrgAdmin } from "@/hooks/useIsOrgAdmin";
 import { useOrgName } from "@/hooks/useOrgName";
+import { useVoteLanes } from "@/hooks/useVoteLanes";
 import { useTaskDrafts } from "@/hooks/useTaskDrafts";
 import { orgUrl } from "@/util/orgUrl";
 import DraftsReviewModal from "@/components/TaskManager/DraftsReviewModal";
@@ -48,6 +49,12 @@ const Navbar = React.memo(() => {
   // Check if user is an org admin (for showing Settings link)
   // Use AuthContext's unified address so passkey users get admin check too
   const { isAdmin } = useIsOrgAdmin(orgId, accountAddress);
+
+  // "Needs your vote" nudge on the Voting nav item — the strongest cheap
+  // turnout signal a small org has. Lanes come from the same shared selector
+  // the board uses, so the numbers can never disagree.
+  const { lanes: voteLanes } = useVoteLanes();
+  const needsVoteCount = voteLanes?.needsVote?.length || 0;
 
   // Navigation items - conditionally include Learn & Earn based on educationHubEnabled
   const navItems = useMemo(() => [
@@ -156,8 +163,25 @@ const Navbar = React.memo(() => {
             fontWeight="extrabold"
             fontSize="xl"
             mx={"2%"}
+            position="relative"
           >
             Voting
+            {needsVoteCount > 0 && (
+              <Badge
+                aria-label={`${needsVoteCount} ${needsVoteCount === 1 ? 'vote needs' : 'votes need'} you`}
+                position="absolute"
+                top="-6px"
+                right="-16px"
+                borderRadius="full"
+                px={1.5}
+                fontSize="2xs"
+                fontWeight="800"
+                bg="#F2836B"
+                color="white"
+              >
+                {needsVoteCount}
+              </Badge>
+            )}
           </Link>
           {!hideTreasury && (
             <Link

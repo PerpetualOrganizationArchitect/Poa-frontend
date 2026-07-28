@@ -9,7 +9,7 @@
 <!-- Static pages -->
 <url>
   <loc>https://poa.box/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>weekly</changefreq>
   <priority>1.00</priority>
   <image:image>
@@ -19,7 +19,7 @@
 </url>
 <url>
   <loc>https://poa.box/about/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.80</priority>
   <image:image>
@@ -29,7 +29,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>weekly</changefreq>
   <priority>0.90</priority>
   <image:image>
@@ -39,7 +39,7 @@
 </url>
 <url>
   <loc>https://poa.box/explore/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>weekly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -49,7 +49,7 @@
 </url>
 <url>
   <loc>https://poa.box/protocol/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>weekly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -59,7 +59,7 @@
 </url>
 <url>
   <loc>https://poa.box/create/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.80</priority>
   <image:image>
@@ -71,7 +71,7 @@
 <!-- Documentation pages -->
 <url>
   <loc>https://poa.box/docs/AlphaV1/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -81,7 +81,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/TheGraph/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -91,7 +91,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/account-abstraction/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -101,7 +101,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/cashout/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -111,7 +111,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/contributionVoting/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -121,7 +121,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/create/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -131,7 +131,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/cross-chain-architecture/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -141,7 +141,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/deployment-wizard/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -151,7 +151,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/directDemocracy/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -161,7 +161,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/gas-sponsor/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -171,7 +171,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/hats-and-roles/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -181,7 +181,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/hybridVoting/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -191,7 +191,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/join/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -201,7 +201,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/learn-and-earn/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -211,7 +211,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/passkey-onboarding/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -221,7 +221,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/perpetualOrganization/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -231,7 +231,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/protocol/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -241,7 +241,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/roles-and-permissions/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -251,7 +251,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/task-manager/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -261,7 +261,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/treasury-management/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -271,7 +271,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/vouching-and-trust/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -281,7 +281,7 @@
 </url>
 <url>
   <loc>https://poa.box/docs/white-label-hosting/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.70</priority>
   <image:image>
@@ -293,7 +293,7 @@
 <!-- Blog pages -->
 <url>
   <loc>https://poa.box/blog/AlphaV1/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -303,7 +303,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/TheGraph/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -313,7 +313,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/account-abstraction/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -323,7 +323,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/cashout/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -333,7 +333,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/contributionVoting/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -343,7 +343,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/create/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -353,7 +353,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/cross-chain-architecture/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -363,7 +363,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/deployment-wizard/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -373,7 +373,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/directDemocracy/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -383,7 +383,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/gas-sponsor/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -393,7 +393,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/hats-and-roles/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -403,7 +403,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/hybridVoting/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -413,7 +413,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/join/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -423,7 +423,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/learn-and-earn/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -433,7 +433,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/passkey-onboarding/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -443,7 +443,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/perpetualOrganization/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -453,7 +453,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/protocol/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -463,7 +463,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/roles-and-permissions/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -473,7 +473,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/task-manager/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -483,7 +483,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/treasury-management/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -493,7 +493,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/vouching-and-trust/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>
@@ -503,7 +503,7 @@
 </url>
 <url>
   <loc>https://poa.box/blog/white-label-hosting/</loc>
-  <lastmod>2026-07-09</lastmod>
+  <lastmod>2026-07-12</lastmod>
   <changefreq>monthly</changefreq>
   <priority>0.60</priority>
   <image:image>

@@ -31,6 +31,7 @@ import {
   useBreakpointValue,
   Badge,
   Tooltip,
+  SimpleGrid,
   keyframes,
 } from "@chakra-ui/react";
 import { InfoOutlineIcon, ChevronDownIcon, ChevronUpIcon } from "@chakra-ui/icons";
@@ -44,7 +45,7 @@ import { VotePowerReceipt } from "@/components/voting/VotePowerReceipt";
 import {
   displayName,
   taglineFor,
-  BLENDED_EXPLAINER,
+  TYPE_EXPLAINER,
 } from "@/config/votingVocabulary";
 
 // Breathing animation for official governance indicator
@@ -157,164 +158,155 @@ const ClassWeightBar = ({ votingClasses }) => {
 };
 
 /**
- * Expandable "How Blended voting works" footer, kept for members who want the
- * plain-language explanation beyond their personal receipt.
+ * The full "How Blended voting works" explainer — restored from the
+ * pre-overhaul header (Hudson: the old explainer taught better) and upgraded
+ * with live org numbers. ALWAYS visible when the education card is open:
+ * expanding "How it works" from the strip must reveal the whole explanation,
+ * not a second collapsed section.
+ *
+ * Teaching structure (kept from the original):
+ *   1. "Two factors determine your voting power" — side-by-side class cards
+ *      (Membership equal-vote / Contribution shares earned by completing
+ *      tasks, with the quadratic sentence when the org uses it).
+ *   2. A worked example with real weights and the org's real member count.
+ *   3. The principle line: everyone has a voice; contributors earn influence.
  */
-const HowBlendedWorks = ({ votingClasses }) => {
-  const { currentStepDef, isActive: isTourActive } = useTour();
-  const tourWantsExpanded = isTourActive && currentStepDef?.id === "voting-hybrid-detail";
-  const [isExpanded, setIsExpanded] = useState(false);
-  const showExpanded = isExpanded || tourWantsExpanded;
+const BlendedExplainerPanel = ({ votingClasses, poMembers }) => {
+  const classes = votingClasses || [];
+  const direct = classes.find((c) => c.strategy === "DIRECT");
+  const token = classes.find((c) => c.strategy === "ERC20_BAL");
+  const democracyWeight = direct ? Math.round(Number(direct.slicePct)) : 50;
+  const contributionWeight = token ? Math.round(Number(token.slicePct)) : 50;
+  const isQuadratic = !!token?.quadratic;
+  const memberCount = poMembers > 0 ? poMembers : 6;
 
-  const direct = (votingClasses || []).find((c) => c.strategy === "DIRECT");
-  const token = (votingClasses || []).find((c) => c.strategy === "ERC20_BAL");
+  const exMembership = democracyWeight / memberCount;
+  const exContribution = (contributionWeight * 10) / 100;
 
   return (
-    <Box w="100%" display="flex" flexDirection="column" alignItems="center">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setIsExpanded((prev) => !prev)}
-        color="gray.300"
-        _hover={{ color: "white", bg: "whiteAlpha.100" }}
-        rightIcon={showExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
-        fontWeight="normal"
-      >
-        How Blended voting works
-      </Button>
+    <Box
+      data-tour="voting-hybrid-detail"
+      mt={2}
+      p={{ base: 4, md: 5 }}
+      bg="whiteAlpha.50"
+      borderRadius="xl"
+      border="1px solid"
+      borderColor="whiteAlpha.100"
+      w="100%"
+      maxW="640px"
+    >
+      <VStack spacing={4} align="stretch">
+        <VStack align="start" spacing={2}>
+          <Heading size="sm" color="white">
+            How Blended voting works
+          </Heading>
+          <Text fontSize="sm" color="gray.300">
+            Two factors determine your voting power:
+          </Text>
+        </VStack>
 
-      <Collapse in={showExpanded} animateOpacity>
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          {/* Membership */}
+          <Box
+            p={3}
+            bg="rgba(128, 90, 213, 0.1)"
+            borderRadius="lg"
+            border="1px solid"
+            borderColor="rgba(128, 90, 213, 0.3)"
+          >
+            <VStack align="start" spacing={2}>
+              <HStack>
+                <Box w="12px" h="12px" borderRadius="full" bg="purple.400" />
+                <Text fontWeight="bold" color="purple.300" fontSize="sm">
+                  Membership
+                </Text>
+                <Badge colorScheme="purple" variant="subtle" fontSize="2xs">
+                  {democracyWeight}%
+                </Badge>
+              </HStack>
+              <Text fontSize="xs" color="gray.300">
+                Every member gets an equal share of this portion. With{" "}
+                {memberCount} members, each gets 1/{memberCount} of the
+                membership weight.
+              </Text>
+            </VStack>
+          </Box>
+
+          {/* Contribution */}
+          <Box
+            p={3}
+            bg="rgba(49, 130, 206, 0.1)"
+            borderRadius="lg"
+            border="1px solid"
+            borderColor="rgba(49, 130, 206, 0.3)"
+          >
+            <VStack align="start" spacing={2}>
+              <HStack>
+                <Box w="12px" h="12px" borderRadius="full" bg="blue.400" />
+                <Text fontWeight="bold" color="blue.300" fontSize="sm">
+                  Contribution
+                </Text>
+                <Badge colorScheme="blue" variant="subtle" fontSize="2xs">
+                  {contributionWeight}%
+                </Badge>
+              </HStack>
+              <Text fontSize="xs" color="gray.300">
+                Your share of this portion is based on your shares, earned by
+                completing tasks. More shares = more influence.
+                {isQuadratic && " Uses quadratic scaling so no single person can dominate."}
+              </Text>
+            </VStack>
+          </Box>
+        </SimpleGrid>
+
+        {/* Worked example — live weights + the org's real member count */}
         <Box
-          data-tour="voting-hybrid-detail"
-          mt={4}
-          p={{ base: 4, md: 5 }}
+          p={3}
           bg="whiteAlpha.50"
-          borderRadius="xl"
+          borderRadius="lg"
           border="1px solid"
           borderColor="whiteAlpha.100"
-          maxW="560px"
         >
-          <VStack spacing={3} align="stretch">
-            <Text fontSize="sm" color="gray.200" lineHeight="1.6">
-              {BLENDED_EXPLAINER}
+          <VStack align="start" spacing={2}>
+            <Text fontWeight="bold" color="white" fontSize="sm">
+              Example
             </Text>
-            {(direct || token) && (
-              <VStack align="start" spacing={1} pl={1}>
-                {direct && (
-                  <Text fontSize="xs" color="#C6B4F5">
-                    Members class: {Math.round(Number(direct.slicePct))}% of every decision,
-                    split equally among eligible members.
-                  </Text>
-                )}
-                {token && (
-                  <Text fontSize="xs" color="#9ECBF0">
-                    Contributors class: {Math.round(Number(token.slicePct))}% of every decision,
-                    split by shares earned{token.quadratic ? " (square-root weighted so no one dominates)" : ""}.
-                  </Text>
-                )}
-              </VStack>
-            )}
+            <Text fontSize="xs" color="gray.300">
+              Say your org has {memberCount} members and 100 total shares, and
+              one member — call her Ana — holds 10 of them.
+            </Text>
+            <VStack align="start" spacing={1} pl={2}>
+              <Text fontSize="xs" color="purple.200">
+                Membership: 1/{memberCount} of {democracyWeight}% ={" "}
+                {exMembership.toFixed(1)}%
+              </Text>
+              <Text fontSize="xs" color="blue.200">
+                Contribution: 10/100 of {contributionWeight}% ={" "}
+                {exContribution.toFixed(1)}%
+              </Text>
+              <Text fontSize="xs" color="green.200" fontWeight="semibold">
+                Ana&apos;s total voting power: {(exMembership + exContribution).toFixed(1)}%
+              </Text>
+              {isQuadratic && (
+                <Text fontSize="xs" color="gray.400" fontStyle="italic">
+                  With quadratic scaling, contribution uses √(shares) for
+                  fairer distribution — actual percentages will differ from
+                  this simplified example.
+                </Text>
+              )}
+            </VStack>
           </VStack>
         </Box>
-      </Collapse>
-    </Box>
-  );
-};
 
-/**
- * Slim mobile-only page header. Sits between the (fixed) navbar clearance
- * and the tabs. Two-line layout: page title + the member's voting share.
- */
-export const VotingMobileHeader = ({ selectedTab, PTVoteType, onInfoClick }) => {
-  const { hasMemberRole } = useUserContext();
-  const { totalSharePct, orgStats, hasVotingPower } = useVotingPower();
-  const sharePct = totalSharePct != null ? totalSharePct : orgStats?.percentOfTotal ?? 0;
-
-  const title = (() => {
-    if (selectedTab === 1) return "Temperature Check";
-    if (PTVoteType === "Hybrid") return displayName("Hybrid");
-    return "Participation Voting";
-  })();
-
-  const subtitle = (() => {
-    if (selectedTab === 1) return "One person, one vote · non-binding";
-    if (!hasMemberRole) return "Members only — join to vote";
-    if (hasVotingPower || sharePct > 0) return `Your voice: ${sharePct.toFixed(1)}%`;
-    return "You don't hold voting power yet";
-  })();
-
-  const isOfficial = selectedTab === 0;
-
-  return (
-    <Flex
-      display={{ base: "flex", md: "none" }}
-      align="center"
-      justify="space-between"
-      px={4}
-      py={3}
-      mb={3}
-      borderRadius="2xl"
-      boxShadow="lg"
-      position="relative"
-      zIndex={0}
-    >
-      <Box
-        className="glass"
-        style={glassLayerStyle}
-        position="absolute"
-        top={0}
-        left={0}
-        right={0}
-        bottom={0}
-        borderRadius="inherit"
-        zIndex={-1}
-      />
-      <VStack align="start" spacing={0.5} flex={1} minW={0}>
-        <HStack spacing={2}>
-          <Box
-            w="8px"
-            h="8px"
-            borderRadius="full"
-            bg={isOfficial
-              ? "linear-gradient(135deg, #F6AD55 0%, #ED8936 100%)"
-              : "blue.400"
-            }
-            boxShadow={isOfficial
-              ? "0 0 8px rgba(237, 137, 54, 0.6)"
-              : "0 0 8px rgba(66, 153, 225, 0.5)"
-            }
-            flexShrink={0}
-          />
-          <Heading
-            as="h1"
-            fontSize="md"
-            fontWeight="bold"
-            bgGradient={isOfficial
-              ? "linear(to-r, orange.300, purple.400)"
-              : "linear(to-r, blue.300, blue.400)"
-            }
-            bgClip="text"
-            noOfLines={1}
-          >
-            {title}
-          </Heading>
-        </HStack>
-        <Text fontSize="xs" color="gray.300" pl={4} noOfLines={1}>
-          {subtitle}
+        <Text fontSize="xs" color="gray.400">
+          This means every member always has a voice, while those who
+          contribute the most earn greater influence over decisions.
+        </Text>
+        <Text fontSize="xs" color="gray.500">
+          {TYPE_EXPLAINER}
         </Text>
       </VStack>
-      <IconButton
-        aria-label="How voting works"
-        icon={<InfoOutlineIcon boxSize="18px" />}
-        variant="ghost"
-        size="sm"
-        color="gray.300"
-        onClick={onInfoClick}
-        _hover={{ color: "white", bg: "whiteAlpha.100" }}
-        flexShrink={0}
-        ml={2}
-      />
-    </Flex>
+    </Box>
   );
 };
 
@@ -463,6 +455,7 @@ const GovernanceStrip = ({ votingClasses, totalSharePct, poMembers, onExpand }) 
  */
 export const VotingEducationContent = ({ selectedTab, PTVoteType }) => {
   const { userData, hasMemberRole } = useUserContext();
+  const { poMembers } = usePOContext();
   const { votingClasses } = useVotingContext();
 
   const { hasVotingPower, isLoading } = useVotingPower();
@@ -589,7 +582,7 @@ export const VotingEducationContent = ({ selectedTab, PTVoteType }) => {
           )}
 
           {/* Plain-language explainer */}
-          <HowBlendedWorks votingClasses={votingClasses} />
+          <BlendedExplainerPanel votingClasses={votingClasses} poMembers={poMembers} />
         </>
       )}
 
@@ -653,6 +646,9 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
   // undefined = not yet resolved, true = collapse to strip, false = show full
   const [collapsed, setCollapsed] = useState(undefined);
 
+  const { currentStepDef, isActive: isTourActive } = useTour();
+  const tourWantsDetail = isTourActive && currentStepDef?.id === "voting-hybrid-detail";
+
   const isBlendedTab = selectedTab === 0 && PTVoteType === "Hybrid";
   const storageKey = orgId ? `poa:votingEduSeen:${orgId}` : null;
 
@@ -676,7 +672,7 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
   }, [storageKey]);
 
   // Only the Blended tab collapses; other tabs always render the full content.
-  const showStrip = isBlendedTab && collapsed === true;
+  const showStrip = isBlendedTab && collapsed === true && !tourWantsDetail;
 
   if (showStrip) {
     return (

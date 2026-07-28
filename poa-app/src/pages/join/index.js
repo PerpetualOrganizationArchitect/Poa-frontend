@@ -356,7 +356,7 @@ const User = () => {
       joinFn,
       {
         pendingMessage: 'Joining organization...',
-        successMessage: 'Successfully joined! Redirecting...',
+        successMessage: 'Successfully joined! Taking you to your profile…',
         refreshEvent: 'member:joined',
       }
     );
@@ -465,7 +465,7 @@ const User = () => {
       joinFn,
       {
         pendingMessage: 'Registering username and joining organization...',
-        successMessage: 'Account created! Redirecting...',
+        successMessage: 'Account created! Taking you to your profile…',
         refreshEvent: 'user:created',
       }
     );

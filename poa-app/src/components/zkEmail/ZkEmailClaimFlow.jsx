@@ -52,6 +52,25 @@ const INBOX_ENABLED = Boolean(CLAIM_INBOX && CLAIM_INBOX_URL);
 const POLL_INTERVAL_MS = 2000;
 const POLL_WINDOW_MS = 600_000; // keep listening for 10 min per step-2 visit
 
+/** Submit-failure copy: bundler/paymaster reverts are hex soup — translate the common ones. The
+ *  prove is cached, so every one of these is retryable with a single tap. */
+function friendlyRetryMessage(error) {
+  const raw = String(error?.message || '');
+  if (/AA33|paymaster|Ineligible|BudgetExceeded/i.test(raw)) {
+    return 'The gas sponsor declined this attempt (it may be briefly out of budget). Your proof is saved — try again in a moment.';
+  }
+  if (/AA31|prefund|insufficient funds/i.test(raw)) {
+    return 'Gas sponsorship hiccup — your proof is saved, just try again.';
+  }
+  if (/nullifier/i.test(raw)) {
+    return 'This email was already used for a claim. Send a fresh email to claim again.';
+  }
+  if (/timeout|timed out|network|fetch/i.test(raw)) {
+    return 'Network hiccup while submitting — your proof is saved, try again.';
+  }
+  return raw.length > 180 ? `${raw.slice(0, 177)}…` : raw;
+}
+
 /* ───────────────────────── Claim celebration + welcome ───────────────────────── */
 
 // Confirms the subgraph has indexed the new member (User entity id = `${orgId}-${address}`, lowercase).
@@ -744,7 +763,10 @@ export default function ZkEmailClaimFlow() {
                     {pollTimedOut ? (
                       <>
                         <Text fontSize="sm" color="orange.600">
-                          Haven’t seen your email yet.
+                          Haven’t seen your email yet. Usual causes: it was sent from a different
+                          address than your invited one, it’s still in your Outbox, or the subject was
+                          edited — it must contain your exact claim line (copy it above). Delivery can
+                          take a minute; re-sending is safe.
                         </Text>
                         <Button
                           size="xs"
@@ -885,7 +907,7 @@ export default function ZkEmailClaimFlow() {
               </Button>
               {step === ZK_CLAIM_STEPS.ERROR && error && (
                 <Text fontSize="xs" color="red.600" mt={2}>
-                  {error.message}
+                  {friendlyRetryMessage(error)}
                 </Text>
               )}
             </Box>

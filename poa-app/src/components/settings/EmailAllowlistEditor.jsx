@@ -7,7 +7,7 @@
  * No governance vote here. ACTIVATING the staged allowlist (writing the root the contract verifies)
  * is a separate governance step (AllowlistActivationPanel).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   AlertIcon,
@@ -110,23 +110,42 @@ export default function EmailAllowlistEditor({ orgId, orgChainId, currentName })
   const [draftHats, setDraftHats] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [activeRoot, setActiveRoot] = useState(null);
+  const [prefilledCount, setPrefilledCount] = useState(0);
+  const prefilledRef = useRef(false);
 
-  // Live on-chain active root (so the admin sees staged-vs-active).
+  // Live on-chain active root (so the admin sees staged-vs-active) — AND prefill the editor with the
+  // currently-ACTIVE entries. Staging always builds a WHOLE replacement list; starting from an empty
+  // editor made "add one email" silently drop every existing domain from the new root.
   useEffect(() => {
     let alive = true;
     (async () => {
       if (!zkEmailInvites || !zkEmailInvitesAddress) return;
       try {
-        const { root } = await zkEmailInvites.getActiveAllowlist(zkEmailInvitesAddress);
-        if (alive) setActiveRoot(root);
+        const { root, cid } = await zkEmailInvites.getActiveAllowlist(zkEmailInvitesAddress);
+        if (!alive) return;
+        setActiveRoot(root);
+        if (prefilledRef.current || !root || root === ZERO_ROOT || !cid || cid === ZERO_ROOT) return;
+        const doc = await safeFetchFromIpfs(bytes32ToIpfsCid(cid));
+        if (!alive || prefilledRef.current) return;
+        // Only trust a doc that matches the on-chain root, and never clobber manual edits.
+        if (doc?.root?.toLowerCase() === String(root).toLowerCase() && Array.isArray(doc.entries)) {
+          const current = doc.entries
+            .filter((e) => (e.type === 'domain' || e.type === 'email') && e.identifier && e.hatIds?.length)
+            .map((e) => ({ type: e.type, identifier: e.identifier, hatIds: e.hatIds }));
+          if (current.length) {
+            prefilledRef.current = true;
+            setEntries((prev) => (prev.length ? prev : current));
+            setPrefilledCount(current.length);
+          }
+        }
       } catch (_) {
-        /* dormant / not deployed */
+        /* dormant / not deployed / doc unavailable — start empty as before */
       }
     })();
     return () => {
       alive = false;
     };
-  }, [zkEmailInvites, zkEmailInvitesAddress]);
+  }, [zkEmailInvites, zkEmailInvitesAddress, safeFetchFromIpfs, bytes32ToIpfsCid]);
 
   const addEntry = () => {
     const id = draftId.trim().toLowerCase();
@@ -249,6 +268,12 @@ export default function EmailAllowlistEditor({ orgId, orgChainId, currentName })
         <Text fontWeight="semibold" mb={2}>
           Add an entry
         </Text>
+        {prefilledCount > 0 && (
+          <Text fontSize="xs" color="gray.500" mb={2}>
+            Loaded the {prefilledCount} currently-active entr{prefilledCount === 1 ? 'y' : 'ies'} below — staging
+            replaces the WHOLE allowlist, so keep them unless you mean to revoke access.
+          </Text>
+        )}
         <Stack direction={{ base: 'column', md: 'row' }} spacing={3}>
           <Select w={{ md: '8rem' }} value={draftType} onChange={(e) => setDraftType(e.target.value)}>
             <option value="domain">Domain</option>

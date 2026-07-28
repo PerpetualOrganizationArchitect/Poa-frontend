@@ -11,8 +11,6 @@ import {
   Box,
   Button,
   Code,
-  Divider,
-  Flex,
   Heading,
   HStack,
   Input,
@@ -428,6 +426,13 @@ export default function ZkEmailClaimFlow() {
     proveProgress,
   } = useClaimZkEmailRole();
   const summary = useZkEmailInviteSummary();
+
+  // A failed claim must be impossible to miss (live feedback: an error went unnoticed).
+  useEffect(() => {
+    if (step === ZK_CLAIM_STEPS.ERROR && errorAlertRef.current) {
+      errorAlertRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [step]);
   const { orgId, subgraphUrl, roleNames: roleNamesMap } = usePOContext();
   const { optimisticJoin } = useUserContext();
   const { emit } = useRefreshEmit();
@@ -440,6 +445,7 @@ export default function ZkEmailClaimFlow() {
   const [pollTick, setPollTick] = useState(0); // bump to restart a timed-out poll window
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const lastInboxEmlRef = useRef(null); // don't re-claim an inbox eml that already failed
+  const errorAlertRef = useRef(null); // scroll failures into view — testers missed the bottom alert
   const signInDisclosure = useDisclosure();
   const subjectClip = useClipboard(claimerAddress ? buildCommand(claimerAddress) : '');
   const inboxClip = useClipboard(CLAIM_INBOX);
@@ -667,8 +673,7 @@ export default function ZkEmailClaimFlow() {
             <Box>
               <Text fontWeight="semibold">Pick a username</Text>
               <Text fontSize="sm" color="gray.600" mt={1} mb={3}>
-                Your passkey is created with your fingerprint — everything else (account, username, role)
-                lands together in one gasless transaction at the end.
+                Face ID / fingerprint becomes your account — no password, no wallet, no gas.
               </Text>
               <HStack spacing={3} align="stretch" flexWrap="wrap">
                 <Input
@@ -688,37 +693,53 @@ export default function ZkEmailClaimFlow() {
                   Create passkey &amp; continue
                 </Button>
               </HStack>
-              <Box mt={4}>
-                <HStack spacing={2} flexWrap="wrap">
-                  <Text fontSize="xs" color="gray.500">
-                    Already have an account?
-                  </Text>
-                  <Button variant="link" size="xs" colorScheme="teal" onClick={signInDisclosure.onOpen}>
-                    Sign in with passkey
-                  </Button>
-                </HStack>
-                <HStack mt={3} spacing={2} align="center" color="gray.400">
-                  <Divider />
-                  <Text fontSize="xs" whiteSpace="nowrap">
-                    or connect a wallet
-                  </Text>
-                  <Divider />
-                </HStack>
-                <Flex justify="center" mt={2}>
-                  <ConnectButton
-                    showBalance={false}
-                    chainStatus="none"
-                    accountStatus="address"
-                    label="Connect Wallet"
-                  />
-                </Flex>
-              </Box>
+              <HStack mt={4} spacing={2} flexWrap="wrap" fontSize="xs" color="gray.500">
+                <Text>Already have an account?</Text>
+                <Button variant="link" size="xs" colorScheme="teal" onClick={signInDisclosure.onOpen}>
+                  Sign in with passkey
+                </Button>
+                <Text>·</Text>
+                <ConnectButton.Custom>
+                  {({ account, openConnectModal, openAccountModal, mounted }) => (
+                    <Button
+                      variant="link"
+                      size="xs"
+                      colorScheme="teal"
+                      onClick={account ? openAccountModal : openConnectModal}
+                      isDisabled={!mounted}
+                    >
+                      {account ? account.displayName : 'Connect a wallet'}
+                    </Button>
+                  )}
+                </ConnectButton.Custom>
+              </HStack>
             </Box>
           )}
 
           {/* ── Step 2: Send the email (auto-pickup) ── */}
           {phase === 2 && (
             <Box>
+              {step === ZK_CLAIM_STEPS.ERROR && error && (
+                <Alert ref={errorAlertRef} status="error" borderRadius="lg" fontSize="sm" mb={4}>
+                  <AlertIcon />
+                  <VStack align="start" spacing={2} w="full">
+                    <Text fontWeight="600">That try didn’t go through</Text>
+                    <Text>{error.message || 'Something went wrong.'}</Text>
+                    {INBOX_ENABLED && lastInboxEmlRef.current && (
+                      <Button
+                        size="xs"
+                        onClick={() => {
+                          lastInboxEmlRef.current = null;
+                          setPollTick((t) => t + 1);
+                        }}
+                      >
+                        Retry with the received email
+                      </Button>
+                    )}
+                  </VStack>
+                </Alert>
+              )}
+
               {!isAuthenticated && pendingAccount && (
                 <HStack justify="space-between" mb={3} fontSize="xs" color="gray.500">
                   <Text>
@@ -732,34 +753,27 @@ export default function ZkEmailClaimFlow() {
 
               {INBOX_ENABLED ? (
                 <>
-                  <Text fontWeight="semibold">Send the verification email</Text>
-                  <Text fontSize="sm" color="gray.600" mt={1} mb={3}>
-                    From your <b>invited email address</b>, using any mail app — we’ll pick it up
-                    automatically the moment it arrives. The body doesn’t matter.
+                  <Text fontWeight="bold" fontSize="lg">
+                    Send this email — that’s the whole step
                   </Text>
-                  <HStack spacing={3} flexWrap="wrap" mb={3}>
-                    <Button
-                      as={ChakraLink}
-                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(CLAIM_INBOX)}&su=${encodeURIComponent(buildCommand(claimerAddress))}`}
-                      isExternal
-                      colorScheme="blue"
-                      size="sm"
-                    >
-                      Compose in Gmail
-                    </Button>
-                    <Button
-                      as={ChakraLink}
-                      href={buildMailto({ to: CLAIM_INBOX, claimer: claimerAddress })}
-                      isExternal
-                      variant="outline"
-                      size="sm"
-                    >
-                      Open my mail app
-                    </Button>
-                  </HStack>
+                  <Text fontSize="sm" color="gray.600" mt={1} mb={3}>
+                    Send it <b>from your invited address</b> — the <b>From</b> line is what gets
+                    verified. The body doesn’t matter, and we’ll spot it the moment it arrives.
+                  </Text>
                   <Box fontSize="sm" borderWidth="1px" borderRadius="md" p={3} bg="blackAlpha.50">
-                    <HStack>
-                      <Text color="gray.500" w="52px" flexShrink={0}>
+                    <HStack align="start">
+                      <Text color="gray.500" w="64px" flexShrink={0}>
+                        From:
+                      </Text>
+                      <Text fontSize="xs" pt="2px">
+                        <b>your invited address</b>
+                        {summary.domains?.length
+                          ? ` — e.g. ${summary.domains.map((d) => `@${d.domain}`).join(' or ')}`
+                          : ''}
+                      </Text>
+                    </HStack>
+                    <HStack mt={1}>
+                      <Text color="gray.500" w="64px" flexShrink={0}>
                         To:
                       </Text>
                       <Code fontSize="xs">{CLAIM_INBOX}</Code>
@@ -768,7 +782,7 @@ export default function ZkEmailClaimFlow() {
                       </Button>
                     </HStack>
                     <HStack mt={1} align="start">
-                      <Text color="gray.500" w="52px" flexShrink={0}>
+                      <Text color="gray.500" w="64px" flexShrink={0}>
                         Subject:
                       </Text>
                       <Code fontSize="xs" whiteSpace="pre-wrap" wordBreak="break-all">
@@ -779,6 +793,30 @@ export default function ZkEmailClaimFlow() {
                       </Button>
                     </HStack>
                   </Box>
+                  <HStack spacing={3} flexWrap="wrap" mt={3}>
+                    <Button
+                      as={ChakraLink}
+                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(CLAIM_INBOX)}&su=${encodeURIComponent(buildCommand(claimerAddress))}`}
+                      isExternal
+                      colorScheme="blue"
+                      size="sm"
+                    >
+                      Open in Gmail
+                    </Button>
+                    <Button
+                      as={ChakraLink}
+                      href={buildMailto({ to: CLAIM_INBOX, claimer: claimerAddress })}
+                      isExternal
+                      variant="outline"
+                      size="sm"
+                    >
+                      Other mail app
+                    </Button>
+                  </HStack>
+                  <Text fontSize="xs" color="gray.500" mt={2}>
+                    Gmail opens in whichever account you’re signed in to — make sure the <b>From</b>{' '}
+                    line shows your invited address before you hit send.
+                  </Text>
 
                   <HStack mt={4} spacing={2}>
                     {pollTimedOut ? (
@@ -858,25 +896,6 @@ export default function ZkEmailClaimFlow() {
                 </>
               )}
 
-              {step === ZK_CLAIM_STEPS.ERROR && error && (
-                <Alert status="error" borderRadius="lg" fontSize="sm" mt={4}>
-                  <AlertIcon />
-                  <VStack align="start" spacing={2} w="full">
-                    <Text>{error.message || 'Something went wrong.'}</Text>
-                    {INBOX_ENABLED && lastInboxEmlRef.current && (
-                      <Button
-                        size="xs"
-                        onClick={() => {
-                          lastInboxEmlRef.current = null;
-                          setPollTick((t) => t + 1);
-                        }}
-                      >
-                        Retry with the received email
-                      </Button>
-                    )}
-                  </VStack>
-                </Alert>
-              )}
             </Box>
           )}
 

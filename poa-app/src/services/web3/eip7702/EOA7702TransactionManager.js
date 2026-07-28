@@ -12,6 +12,7 @@ import { encodeFunctionData } from 'viem';
 import { TransactionResult, TransactionState } from '../core/TransactionManager';
 import PasskeyAccountABI from '../../../../abi/PasskeyAccount.json';
 import { buildUserOpWithFallback, getUserOpHash } from '../passkey/userOpBuilder';
+import { decodeContractRevert, decodeRevertData } from '../../../lib/errors/contractErrors';
 import { encodeHatPaymasterData, encodeClaimPaymasterData } from '../passkey/paymasterData';
 import { ENTRY_POINT_ADDRESS } from '../../../config/passkey';
 import { signUserOpWithWallet } from './walletSigner';
@@ -32,6 +33,18 @@ const AA_ERROR_MESSAGES = {
   AA41: 'Transaction exceeds gas limits.',
   AA51: 'Your account needs native tokens to pay for gas.',
 };
+
+/**
+ * Turn a decoded revert into a display string (curated message → raw require
+ * string → "Contract error: <Name>"), or null.
+ */
+function friendly7702FromDecoded(d) {
+  if (!d) return null;
+  if (d.message) return d.message;
+  if (d.isStringError && d.reason) return d.reason;
+  if (d.name && d.name !== 'Error' && d.name !== 'Panic') return `Contract error: ${d.name}`;
+  return null;
+}
 
 export class EOA7702TransactionManager {
   /**
@@ -124,7 +137,7 @@ export class EOA7702TransactionManager {
       });
 
       if (!receipt.success) {
-        const error = this._parseAAError(receipt.reason || 'UserOp execution failed');
+        const error = this._parseAAError(receipt.reason || 'UserOp execution failed', null, contract?.interface);
         this._notifyState(onStateChange, TransactionState.ERROR, { error });
         return TransactionResult.failure(error);
       }
@@ -148,7 +161,7 @@ export class EOA7702TransactionManager {
         return this.fallbackTxManager.execute(contract, method, args, options);
       }
 
-      const parsedError = this._parseAAError(error.message || 'Unknown error', error);
+      const parsedError = this._parseAAError(error.message || 'Unknown error', error, contract?.interface);
       this._notifyState(onStateChange, TransactionState.ERROR, { error: parsedError });
       return TransactionResult.failure(parsedError);
     }
@@ -257,48 +270,83 @@ export class EOA7702TransactionManager {
     return userOp;
   }
 
-  _parseAAError(message, originalError = null) {
+  _parseAAError(message, originalError = null, iface = null) {
+    const text = message || '';
+
     // 7702-specific error: wallet doesn't support delegation
-    if (message === 'WALLET_7702_UNSUPPORTED') {
+    if (text === 'WALLET_7702_UNSUPPORTED') {
       return {
         category: 'delegation_unsupported',
         userMessage: 'Your wallet does not support gas sponsorship (EIP-7702). The transaction was not sent. Please try again — it will use your own gas.',
-        technicalMessage: message,
+        technicalMessage: text,
         originalError,
       };
     }
 
     // User rejected the delegation or signing prompt
-    if (message.includes('User rejected') || message.includes('user rejected') ||
-        message.includes('User denied') || message.includes('denied by user') ||
+    if (text.includes('User rejected') || text.includes('user rejected') ||
+        text.includes('User denied') || text.includes('denied by user') ||
         originalError?.code === 4001) {
       return {
         category: 'user_rejected',
         userMessage: 'Transaction was cancelled.',
-        technicalMessage: message,
+        technicalMessage: text,
+        originalError,
+      };
+    }
+
+    // Decode the underlying contract revert reason (the real "why") before
+    // falling back to AA codes / generic copy. Same fix as the passkey path.
+    const contractReason = this._decodeContractRevertMessage(text, originalError, iface);
+    if (contractReason) {
+      return {
+        category: 'contract_revert',
+        userMessage: contractReason,
+        technicalMessage: text,
         originalError,
       };
     }
 
     // ERC-4337 AA error codes
     for (const [code, userMessage] of Object.entries(AA_ERROR_MESSAGES)) {
-      if (message.includes(code)) {
+      if (text.includes(code)) {
         return {
           category: 'smart_account_error',
           userMessage: this._paymasterFellBack
             ? 'Gas sponsorship was unavailable and your account has no funds for gas.'
             : userMessage,
-          technicalMessage: message,
+          technicalMessage: text,
           originalError,
         };
       }
     }
     return {
       category: 'unknown_error',
-      userMessage: message.length > 200 ? 'Transaction failed. Please try again.' : message,
-      technicalMessage: message,
+      userMessage: text.length > 200 ? 'Transaction failed. Please try again.' : text,
+      technicalMessage: text,
       originalError,
     };
+  }
+
+  /**
+   * Pull a friendly contract-revert message out of a failed UserOp. Mirrors the
+   * passkey SmartAccountTransactionManager implementation.
+   */
+  _decodeContractRevertMessage(message, originalError, iface) {
+    if (originalError?.revertData) {
+      const d = decodeRevertData(originalError.revertData, iface);
+      const m = friendly7702FromDecoded(d);
+      if (m) return m;
+    }
+    const text = [
+      message,
+      originalError?.shortMessage,
+      originalError?.details,
+      originalError?.cause?.shortMessage,
+      originalError?.cause?.details,
+      originalError?.cause?.message,
+    ].filter(Boolean).join('\n');
+    return friendly7702FromDecoded(decodeContractRevert(originalError, text, iface));
   }
 
   _notifyState(callback, state, data = {}) {

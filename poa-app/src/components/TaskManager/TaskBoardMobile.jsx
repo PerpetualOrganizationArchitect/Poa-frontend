@@ -16,6 +16,8 @@ import { usePOContext } from '@/context/POContext';
 import { userCanCreateTask, ROLE_INDICES } from '@/util/permissions';
 import { isClaimExpired } from '@/util/deadlineUtils';
 import { useNow } from '@/hooks/useNow';
+import { useTaskFilters } from './views/useTaskFilters';
+import { FilteredEmptyState } from './views/TaskFilterBar';
 
 const normalizeHatId = (id) => String(id).trim();
 
@@ -94,6 +96,17 @@ const TaskBoardMobile = forwardRef(({
 
   const showFab = columnTitle === 'Open' && canCreateTask;
 
+  // Board-level 0-match state (with Clear filters) when a filter/search hides
+  // every task across all columns.
+  const { predicate, isFiltering, clearAll } = useTaskFilters();
+  const noMatches = useMemo(() => {
+    if (!isFiltering) return false;
+    for (const c of taskColumns || []) {
+      for (const t of c.tasks || []) if (predicate(t, c.id)) return false;
+    }
+    return true;
+  }, [taskColumns, predicate, isFiltering]);
+
   return (
     <Box
       w="100%"
@@ -131,17 +144,21 @@ const TaskBoardMobile = forwardRef(({
             sx={mobileGlassStyle}
             p={2}
           >
-            <TaskColumn
-              ref={el => taskColumnsRef.current[activeIndex] = el}
-              title={columnTitle}
-              tasks={currentColumn?.tasks || []}
-              columnId={columnId}
-              takeoverTasks={takeoverTasks}
-              projectName={projectName}
-              zIndex={1}
-              isMobile={true}
-              hideTitleInMobile={true}
-            />
+            {noMatches ? (
+              <FilteredEmptyState onClear={clearAll} />
+            ) : (
+              <TaskColumn
+                ref={el => taskColumnsRef.current[activeIndex] = el}
+                title={columnTitle}
+                tasks={currentColumn?.tasks || []}
+                columnId={columnId}
+                takeoverTasks={takeoverTasks}
+                projectName={projectName}
+                zIndex={1}
+                isMobile={true}
+                hideTitleInMobile={true}
+              />
+            )}
           </Box>
         </Box>
       </VStack>

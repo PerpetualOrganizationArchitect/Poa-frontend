@@ -9,6 +9,8 @@ import TaskColumn from './TaskColumn';
 import { glassLayerStyle } from './styles/taskBoardStyles';
 import { isClaimExpired } from '@/util/deadlineUtils';
 import { useNow } from '@/hooks/useNow';
+import { useTaskFilters } from './views/useTaskFilters';
+import { FilteredEmptyState } from './views/TaskFilterBar';
 
 const TaskBoardDesktop = forwardRef(({
   taskColumns,
@@ -29,6 +31,26 @@ const TaskBoardDesktop = forwardRef(({
     getColumnRef: (index) => taskColumnsRef.current[index],
     getAllColumnRefs: () => taskColumnsRef.current,
   }), []);
+
+  // When a filter/search is active and nothing across the whole board matches,
+  // show one board-level empty state (with Clear filters) instead of four
+  // per-column "no match" states.
+  const { predicate, isFiltering, clearAll } = useTaskFilters();
+  const noMatches = useMemo(() => {
+    if (!isFiltering) return false;
+    for (const c of taskColumns || []) {
+      for (const t of c.tasks || []) if (predicate(t, c.id)) return false;
+    }
+    return true;
+  }, [taskColumns, predicate, isFiltering]);
+
+  if (noMatches) {
+    return (
+      <Box width="100%" height="100%" pt={3} display="flex" alignItems="center" justifyContent="center">
+        <FilteredEmptyState onClear={clearAll} />
+      </Box>
+    );
+  }
 
   return (
     <Box

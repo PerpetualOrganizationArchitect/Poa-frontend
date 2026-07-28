@@ -15,6 +15,8 @@ import { useOrgName } from '@/hooks/useOrgName';
 import { useTaskDrafts } from '@/hooks/useTaskDrafts';
 import { calculatePayout } from '../../util/taskUtils';
 import { userCanCreateTask, userCanReviewTask, PERMISSION_MESSAGES, ROLE_INDICES } from '../../util/permissions';
+import { useTaskFilters } from './views/useTaskFilters';
+import { FilteredEmptyState } from './views/TaskFilterBar';
 
 
 const glassLayerStyle = {
@@ -42,6 +44,9 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   const { taskCount, projectsData } = useProjectContext();
   const toast = useToast();
   const { graphUsername, hasMemberRole: userHasMemberRole, userData } = useUserContext();
+  // Shared filter predicate (search + quick-filter chips). Applied per-card at
+  // render so the original task index stays correct for edit-by-index.
+  const { predicate, isFiltering } = useTaskFilters();
 
   // Get user's current hat IDs for permission checking
   const userHatIds = userData?.hatIds || [];
@@ -424,6 +429,16 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
     </Box>
   );
 
+  // Filtered visibility. Keep the source arrays intact (map with the real index)
+  // and only decide what to paint — the header count + empty state read these.
+  // Takeover ghosts are expired In Progress tasks mirrored into Open, so they
+  // are matched against their real 'inProgress' column, not this column's id.
+  const matchTask = (task) => !isFiltering || predicate(task, columnId);
+  const matchTakeover = (task) => !isFiltering || predicate(task, 'inProgress');
+  const visibleTaskCount = (tasks || []).filter(matchTask).length;
+  const visibleTakeoverCount = (takeoverTasks || []).filter(matchTakeover).length;
+  const hasVisible = visibleTaskCount > 0 || visibleTakeoverCount > 0;
+
   return (
     <Box
       ref={drop}
@@ -445,6 +460,11 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
       {(!isMobile || (isMobile && !hideTitleInMobile)) && (
         <Heading size="md" mb={3} mt={0} ml={3} alignItems="center" color='white'>
           {title}
+          {isFiltering && (
+            <Text as="span" fontSize="sm" fontWeight="400" color="whiteAlpha.600" ml={2}>
+              {visibleTaskCount + visibleTakeoverCount}
+            </Text>
+          )}
           {title === 'Open' && (
             <IconButton
               data-tour="add-task-btn"
@@ -488,38 +508,49 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
           },
         }}
       >
-        {(tasks && tasks.length > 0) || takeoverTasks.length > 0 ? (
+        {hasVisible ? (
           <>
-            {(tasks || []).map((task, index) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                columnId={columnId}
-                onEditTask={(updatedTask) => handleEditTask(updatedTask, index)}
-                onEditTaskMetadata={(updatedTask) => handleEditTaskMetadata(updatedTask, index)}
-                isMobile={isMobile}
-              />
-            ))}
+            {(tasks || []).map((task, index) =>
+              matchTask(task) ? (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  columnId={columnId}
+                  onEditTask={(updatedTask) => handleEditTask(updatedTask, index)}
+                  onEditTaskMetadata={(updatedTask) => handleEditTaskMetadata(updatedTask, index)}
+                  isMobile={isMobile}
+                />
+              ) : null,
+            )}
             {/* Expired claims surfaced as claimable from Open (v6 takeover): render-only
                 mirrors — the task also remains in In Progress for its current holder.
                 columnId is the task's REAL column so the chip/modal logic stays truthful. */}
-            {takeoverTasks.map((task) => (
-              <TaskCard
-                key={`takeover-${task.id}`}
-                task={task}
-                columnId="inProgress"
-                isTakeoverGhost
-                onEditTask={() => {}}
-                onEditTaskMetadata={() => {}}
-                isMobile={isMobile}
-              />
-            ))}
+            {takeoverTasks.map((task) =>
+              matchTakeover(task) ? (
+                <TaskCard
+                  key={`takeover-${task.id}`}
+                  task={task}
+                  columnId="inProgress"
+                  isTakeoverGhost
+                  onEditTask={() => {}}
+                  onEditTaskMetadata={() => {}}
+                  isMobile={isMobile}
+                />
+              ) : null,
+            )}
           </>
+        ) : isFiltering ? (
+          // Filtered to empty — show the neutral "no match" state, never the
+          // emoji motivational one. (The whole-board 0-match state with a Clear
+          // button lives in TaskBoardDesktop / TaskBoardMobile.)
+          <Flex justify="center" align="center" height="100%" width="100%">
+            <FilteredEmptyState compact />
+          </Flex>
         ) : (
-          <Flex 
-            justify="center" 
-            align="center" 
-            height="100%" 
+          <Flex
+            justify="center"
+            align="center"
+            height="100%"
             width="100%"
           >
             {renderEmptyState()}

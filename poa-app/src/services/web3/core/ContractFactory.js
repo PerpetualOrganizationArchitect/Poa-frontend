@@ -139,7 +139,7 @@ export class ContractFactory {
   _validateProvider() {
     if (!this.provider && !this.signer) {
       throw new ContractCreationError(
-        'No provider available. Please connect to a network.',
+        'We couldn’t reach the network. Check your connection and try again.',
         Web3ErrorCategory.NETWORK_ERROR
       );
     }

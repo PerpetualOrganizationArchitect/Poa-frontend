@@ -64,7 +64,7 @@ export function useClaimRole(eligibilityModuleAddress) {
   const claimRole = useCallback(async (hatId) => {
     if (!eligibility || !eligibilityModuleAddress) {
       console.error('[useClaimRole] Service not ready or no eligibility module');
-      return { success: false, error: new Error('Service not ready') };
+      return { success: false, error: new Error('We’re still getting things ready — please try again in a moment.') };
     }
 
     setClaimingHatId(hatId);
@@ -96,7 +96,7 @@ export function useClaimRole(eligibilityModuleAddress) {
   const vouchFor = useCallback(async (wearerAddress, hatId) => {
     if (!eligibility || !eligibilityModuleAddress) {
       console.error('[useClaimRole] Service not ready or no eligibility module');
-      return { success: false, error: new Error('Service not ready') };
+      return { success: false, error: new Error('We’re still getting things ready — please try again in a moment.') };
     }
 
     setVouchingFor({ address: wearerAddress, hatId });
@@ -128,7 +128,7 @@ export function useClaimRole(eligibilityModuleAddress) {
   const revokeVouch = useCallback(async (wearerAddress, hatId) => {
     if (!eligibility || !eligibilityModuleAddress) {
       console.error('[useClaimRole] Service not ready or no eligibility module');
-      return { success: false, error: new Error('Service not ready') };
+      return { success: false, error: new Error('We’re still getting things ready — please try again in a moment.') };
     }
 
     setRevokingFor({ address: wearerAddress, hatId });
@@ -178,7 +178,7 @@ export function useClaimRole(eligibilityModuleAddress) {
   const applyForRole = useCallback(async (hatId, applicationData, sponsorshipHatIds = []) => {
     if (!eligibility || !eligibilityModuleAddress) {
       console.error('[useClaimRole] Service not ready or no eligibility module');
-      return { success: false, error: new Error('Service not ready') };
+      return { success: false, error: new Error('We’re still getting things ready — please try again in a moment.') };
     }
 
     setApplyingForHatId(hatId);
@@ -234,7 +234,7 @@ export function useClaimRole(eligibilityModuleAddress) {
   const withdrawApplication = useCallback(async (hatId, sponsorshipHatIds = []) => {
     if (!eligibility || !eligibilityModuleAddress) {
       console.error('[useClaimRole] Service not ready or no eligibility module');
-      return { success: false, error: new Error('Service not ready') };
+      return { success: false, error: new Error('We’re still getting things ready — please try again in a moment.') };
     }
 
     setWithdrawingHatId(hatId);

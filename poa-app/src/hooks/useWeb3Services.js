@@ -15,10 +15,11 @@ import { useNotification } from '../context/NotificationContext';
 import { useRefreshEmit } from '../context/RefreshContext';
 import { useIPFScontext } from '../context/ipfsContext';
 import { waitForSubgraphBlock } from '@/util/waitForSubgraph';
+import { ReadyState, getNotReadyMessage as buildNotReadyMessage } from '@/util/readiness';
 import { usePOContext } from '../context/POContext';
 import { useUserContext } from '../context/UserContext';
 import { INFRASTRUCTURE_CONTRACTS, getInfrastructureAddress } from '../config/contracts';
-import { DEFAULT_NETWORK, DEFAULT_CHAIN_ID } from '../config/networks';
+import { DEFAULT_NETWORK, DEFAULT_CHAIN_ID, NETWORKS } from '../config/networks';
 import { FETCH_INFRASTRUCTURE_ADDRESSES } from '../util/queries';
 import { FETCH_PAYMASTER_ORG_CONFIG, FETCH_PASSKEY_FACTORY_ADDRESS } from '../util/passkeyQueries';
 import { createChainClients } from '../services/web3/utils/chainClients';
@@ -57,7 +58,7 @@ export function useWeb3Services(options = {}) {
   // Without this, passkey-only users get no provider (useClient() returns undefined
   // when no wallet is connected and no chainId is specified).
   const provider = useEthersProvider({ chainId: DEFAULT_CHAIN_ID });
-  const { isPasskeyUser, isAuthenticated, passkeyState, publicClient, bundlerClient } = useAuth();
+  const { isPasskeyUser, isAuthenticated, passkeyConnecting, passkeyState, publicClient, bundlerClient } = useAuth();
 
   // Get IPFS service from context if not provided
   const ipfsContext = useIPFScontext();
@@ -303,12 +304,29 @@ export function useWeb3Services(options = {}) {
     return getInfrastructureAddress(contractName);
   }, []);
 
-  // Check if services are ready (auth-type-aware).
+  // Discriminated readiness so call sites can tell "signed out" from "still
+  // initializing" — and never tell a signed-in user to "connect your wallet".
   // For cross-chain passkey users, also wait for initCode resolution so
   // transactions don't fire before we know whether account deployment is needed.
-  const isReady = isPasskeyUser
-    ? Boolean(isAuthenticated && factory && txManager && crossChainInitCodeResolved)
-    : Boolean(signer && factory && txManager);
+  const readyState = (() => {
+    // Not authenticated and not mid-connection → genuinely signed out.
+    if (!isAuthenticated && !passkeyConnecting) return ReadyState.SIGNED_OUT;
+    const servicesUp = isPasskeyUser
+      ? Boolean(isAuthenticated && factory && txManager && crossChainInitCodeResolved)
+      : Boolean(signer && factory && txManager);
+    return servicesUp ? ReadyState.READY : ReadyState.INITIALIZING;
+  })();
+  // Back-compat: existing `!isReady` checks keep working unchanged.
+  const isReady = readyState === ReadyState.READY;
+
+  // Bound helper so call sites don't re-import readiness or recompute chainName.
+  const orgChainName = orgChainId
+    ? Object.values(NETWORKS).find((n) => n.chainId === orgChainId)?.name
+    : null;
+  const getNotReadyMessage = useCallback(
+    (state = readyState) => buildNotReadyMessage(state, { chainName: orgChainName }),
+    [readyState, orgChainName]
+  );
 
   return useMemo(() => ({
     // Core
@@ -321,11 +339,13 @@ export function useWeb3Services(options = {}) {
     // Utilities
     getContractAddress,
     isReady,
+    readyState,
+    getNotReadyMessage,
     signer,
 
     // Constants
     VotingType,
-  }), [factory, txManager, services, getContractAddress, isReady, signer]);
+  }), [factory, txManager, services, getContractAddress, isReady, readyState, getNotReadyMessage, signer]);
 }
 
 /**
@@ -388,15 +408,20 @@ export function useTransactionWithNotification() {
           emitRefresh();
         }
       } else {
-        // Update to error
-        const message = errorMessage || result.error?.userMessage || 'Transaction failed';
+        // Prefer the PARSED contract reason over the caller's generic static
+        // errorMessage. The parser now decodes the real revert (e.g. "This task
+        // requires an application before claiming") on both the EOA and passkey
+        // paths; showing "Failed to claim task" instead would throw that away.
+        const message = result.error?.userMessage || errorMessage || 'Transaction failed';
         updateNotification(pendingId, message, 'error');
       }
 
       return result;
     } catch (error) {
-      // Handle unexpected errors - update to error
-      const message = errorMessage || error.message || 'An unexpected error occurred';
+      // Thrown (non-TransactionResult) path. Prefer a parsed userMessage if the
+      // throw carried one; otherwise keep the caller's intentional errorMessage
+      // ahead of a raw exception string (so internal errors don't leak to users).
+      const message = error?.userMessage || errorMessage || error?.message || 'An unexpected error occurred';
       updateNotification(pendingId, message, 'error');
 
       return {

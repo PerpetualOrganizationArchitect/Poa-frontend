@@ -38,6 +38,16 @@ import TokenActivityCard from '@/components/profileHub/TokenActivityCard';
 import TokenRequestCard from '@/components/profileHub/TokenRequestCard';
 import RoleProgressionCard, { hasRoleProgressionContent } from '@/components/profileHub/RoleProgressionCard';
 
+import { useAllProjectsFlatTasks } from '@/components/TaskManager/views/useFlatTasks';
+import { MY_WORK_ID } from '@/components/TaskManager/taskViewIds';
+import {
+  effectiveDeadlineSec,
+  dueDateSec,
+  formatRemaining,
+  deadlineSeverity,
+  SEVERITY_SCHEME,
+} from '@/util/deadlineUtils';
+
 // Shared utilities
 import { glassLayerStyle } from '@/components/shared/glassStyles';
 // TIER FEATURE - determineTier, calculateProgress commented out per redesign
@@ -160,7 +170,7 @@ function RecommendedTasksCompact({ tasks, userDAO }) {
               >
                 <HStack justify="space-between">
                   <Text fontSize="sm" fontWeight="medium" color="white" noOfLines={1} flex={1}>
-                    {task.isIndexing ? 'Indexing...' : task.title}
+                    {task.isIndexing ? 'Saving...' : task.title}
                   </Text>
                   <Badge colorScheme="yellow" variant="subtle" fontSize="xs" ml={2}>
                     {task.payout} {tokenLabelLower}
@@ -194,6 +204,15 @@ const UserprofileHub = () => {
 
   const { ongoingPolls } = useVotingContext();
   const { recommendedTasks } = useProjectContext();
+  // Full cross-project task objects carry deadline fields (the user's
+  // assignedTasks query does not), so look up each in-flight task by id to
+  // surface a deadline chip. Purely client-side over already-fetched data.
+  const flatTasks = useAllProjectsFlatTasks();
+  const taskById = useMemo(() => {
+    const m = new Map();
+    for (const t of flatTasks) m.set(t.id, t);
+    return m;
+  }, [flatTasks]);
   const { claimedTasks, userProposals, graphUsername, userDataLoading, error, userData, hasExecRole, hasMemberRole, hasApproverRole } = useUserContext();
   const poContext = usePOContext();
   const avatarMap = poContext?.avatarMap || {};
@@ -408,41 +427,69 @@ const UserprofileHub = () => {
               <VStack pb={2} align="flex-start" position="relative" borderTopRadius="2xl">
                 <div style={glassLayerStyle} />
                 <Text pl={6} pt={2} fontWeight="bold" fontSize={{ base: 'xl', md: '2xl' }}>
-                  {claimedTasks?.length > 0 ? 'Claimed Tasks' : (userProposals?.length > 0 ? 'My Proposals' : 'Ongoing Proposals')}
+                  {claimedTasks?.length > 0 ? 'My Work' : (userProposals?.length > 0 ? 'My Proposals' : 'Ongoing Proposals')}
                 </Text>
               </VStack>
               <VStack spacing={2} align="stretch" p={4} pt={2}>
                 {claimedTasks?.length > 0 ? (
-                  // Claimed Tasks
-                  claimedTasks.slice(0, 3).map((task) => (
-                    <Link2
-                      key={task.id}
-                      href={`/tasks/?task=${task.id}&projectId=${encodeURIComponent(decodeURIComponent(task.projectId))}&org=${encodeURIComponent(userDAO)}`}
-                    >
-                      <Box
-                        bg="black"
-                        p={3}
-                        borderRadius="lg"
-                        _hover={{
-                          bg: 'gray.800',
-                          transform: 'translateY(-2px)',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
-                        }}
-                        transition="transform 0.2s, box-shadow 0.2s, background 0.2s, border-color 0.2s"
-                        cursor="pointer"
+                  // In-flight tasks
+                  <>
+                    {claimedTasks.slice(0, 3).map((task) => {
+                      const full = taskById.get(task.id);
+                      const deadlineSec = full
+                        ? (effectiveDeadlineSec(full) ?? dueDateSec(full))
+                        : null;
+                      const linkProjectId = full?.projectId || task.projectId;
+                      return (
+                        <Link2
+                          key={task.id}
+                          href={`/tasks/?task=${task.id}${linkProjectId ? `&projectId=${encodeURIComponent(decodeURIComponent(linkProjectId))}` : ''}&org=${encodeURIComponent(userDAO)}`}
+                        >
+                          <Box
+                            bg="black"
+                            p={3}
+                            borderRadius="lg"
+                            _hover={{
+                              bg: 'gray.800',
+                              transform: 'translateY(-2px)',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.4)'
+                            }}
+                            transition="transform 0.2s, box-shadow 0.2s, background 0.2s, border-color 0.2s"
+                            cursor="pointer"
+                          >
+                            <HStack justify="space-between">
+                              <Text fontSize="sm" fontWeight="medium" color="white" noOfLines={1} flex={1}>
+                                {task.isIndexing ? 'Saving...' : task.title}
+                              </Text>
+                              <Badge colorScheme="yellow" variant="subtle" fontSize="xs" ml={2}>
+                                {task.payout} {tokenLabel.toLowerCase()}
+                              </Badge>
+                            </HStack>
+                            <HStack mt={2} spacing={2}>
+                              <Badge colorScheme="purple" fontSize="xs">{task.status}</Badge>
+                              {deadlineSec !== null && (
+                                <Badge colorScheme={SEVERITY_SCHEME[deadlineSeverity(deadlineSec)] || 'gray'} fontSize="xs">
+                                  {formatRemaining(deadlineSec)}
+                                </Badge>
+                              )}
+                            </HStack>
+                          </Box>
+                        </Link2>
+                      );
+                    })}
+                    <Link2 href={`/tasks?projectId=${MY_WORK_ID}&org=${encodeURIComponent(userDAO)}`}>
+                      <Text
+                        fontSize="sm"
+                        color="purple.300"
+                        fontWeight="600"
+                        textAlign="right"
+                        pt={1}
+                        _hover={{ color: 'purple.200' }}
                       >
-                        <HStack justify="space-between">
-                          <Text fontSize="sm" fontWeight="medium" color="white" noOfLines={1} flex={1}>
-                            {task.isIndexing ? 'Indexing...' : task.title}
-                          </Text>
-                          <Badge colorScheme="yellow" variant="subtle" fontSize="xs" ml={2}>
-                            {task.payout} {tokenLabel.toLowerCase()}
-                          </Badge>
-                        </HStack>
-                        <Badge colorScheme="purple" fontSize="xs" mt={2}>{task.status}</Badge>
-                      </Box>
+                        View all →
+                      </Text>
                     </Link2>
-                  ))
+                  </>
                 ) : userProposals?.length > 0 ? (
                   // User Proposals - render inline for consistency
                   userProposals.slice(0, 3).map((proposal) => (

@@ -70,6 +70,7 @@ export class VotingService {
       optionNames = [],
       batches = [],
       hatIds = [],
+      actionSummaries = [],
     } = proposalData;
 
     const contract = this.factory.createWritable(contractAddress, HybridVotingABI);
@@ -80,6 +81,7 @@ export class VotingService {
     const descriptionHash = await this._uploadProposalMetadata({
       description,
       optionNames,
+      actionSummaries,
       label: 'Hybrid',
     });
 
@@ -101,8 +103,11 @@ export class VotingService {
    * Returns HashZero only when there is genuinely nothing to upload (empty
    * description AND empty optionNames).
    */
-  async _uploadProposalMetadata({ description, optionNames, label }) {
-    const hasContent = Boolean(description) || (optionNames && optionNames.length > 0);
+  async _uploadProposalMetadata({ description, optionNames, actionSummaries, label }) {
+    const hasContent =
+      Boolean(description)
+      || (optionNames && optionNames.length > 0)
+      || (actionSummaries && actionSummaries.length > 0);
     if (!hasContent) {
       return ethers.constants.HashZero;
     }
@@ -117,6 +122,13 @@ export class VotingService {
     const metadata = {
       description: description || '',
       optionNames: optionNames || [],
+      // Forward-compatible, human-readable previews of the on-chain action(s)
+      // this proposal will run if it passes (e.g. "If Yes wins, send 5 xDAI …").
+      // Purely additive to the metadata JSON — omitted entirely when empty so
+      // existing proposals' CIDs stay byte-identical.
+      ...(actionSummaries && actionSummaries.length > 0
+        ? { actionSummaries }
+        : {}),
       createdAt: Date.now(),
     };
     console.log(`[VotingService] Uploading ${label} proposal metadata to IPFS:`, metadata);
@@ -216,6 +228,7 @@ export class VotingService {
       optionNames = [],
       batches = [],
       hatIds = [],
+      actionSummaries = [],
     } = proposalData;
 
     const contract = this.factory.createWritable(contractAddress, DirectDemocracyVotingABI);
@@ -226,6 +239,7 @@ export class VotingService {
     const descriptionHash = await this._uploadProposalMetadata({
       description,
       optionNames,
+      actionSummaries,
       label: 'DD',
     });
 

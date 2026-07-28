@@ -286,7 +286,7 @@ export class ContractCreationError extends Web3Error {
    */
   static noSigner() {
     return new ContractCreationError(
-      'No signer available. Please connect your wallet.',
+      'We couldn’t reach your account to sign this. Please sign in again, then retry.',
       Web3ErrorCategory.NO_SIGNER
     );
   }

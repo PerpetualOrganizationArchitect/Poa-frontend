@@ -16,6 +16,7 @@ import {
 } from 'viem';
 import { entryPoint07Abi } from 'viem/account-abstraction';
 import { ENTRY_POINT_ADDRESS, GAS_BUFFER_PERCENT, MAX_USEROP_GAS } from '../../../config/passkey';
+import { extractRevertDataFromText, decodeRevertData } from '../../../lib/errors/contractErrors';
 
 /**
  * Build a complete UserOp ready for signing.
@@ -334,6 +335,28 @@ async function estimateGas(userOp, bundlerClient, gasOverrides = {}) {
         || msg.includes('validatePaymasterUserOp')) {
       throw e;
     }
+
+    // A genuine, DECODABLE contract revert means this UserOp will fail on-chain.
+    // Don't paper over it with generous defaults and submit a doomed op (which
+    // wastes the user's time and, on the self-funded path, can't even pay gas) —
+    // re-throw with the revert bytes so the manager surfaces the real reason
+    // immediately. Bundler under-simulation / OOG noise (e.g. recursive Hats
+    // tree-walks in announceWinner) does NOT decode to a known revert, so it
+    // still falls through to the generous-defaults path below.
+    const revertText = [msg, e.shortMessage, e.details, e.cause?.shortMessage, e.cause?.details, e.cause?.message]
+      .filter(Boolean)
+      .join('\n');
+    for (const hex of extractRevertDataFromText(revertText)) {
+      const decoded = decodeRevertData(hex);
+      if (decoded) {
+        const revertErr = new Error(`Contract call would revert: ${decoded.reason || decoded.name || hex}`);
+        revertErr.isContractRevert = true;
+        revertErr.revertData = hex;
+        revertErr.cause = e;
+        throw revertErr;
+      }
+    }
+
     console.warn('Gas estimation failed, using generous defaults:', msg);
   }
 }

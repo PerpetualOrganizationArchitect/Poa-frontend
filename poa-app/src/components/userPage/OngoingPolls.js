@@ -1,88 +1,61 @@
-//react component gets poll data from votingcontext and displays ongoing polls in cards
+// Dashboard "Ongoing Polls" — renders the canonical ProposalCard (compact).
+// Clicking a card deep-links to /voting?poll=<id>&userDAO=<org>, where the
+// board's PollDetail opens it. Data source (VotingContext ongoingPolls) and the
+// deep link (with userDAO) are preserved from the prior implementation.
 
-import React, { useMemo } from 'react';
-
-import CountDown from '../../templateComponents/studentOrgDAO/voting/countDown';
-
-import {
-    HStack,
-    Text,
-    VStack,
-    Badge,
-    Center,
-    Icon,
-    SimpleGrid,
-    Box,
-} from '@chakra-ui/react';
+import React, { useMemo, useCallback } from 'react';
+import { Center, Icon, Text, SimpleGrid } from '@chakra-ui/react';
 import { FiBarChart2 } from 'react-icons/fi';
-
-import Link2 from 'next/link';
-import { useRouter } from "next/router";
-import { useOrgName } from "@/hooks/useOrgName";
+import { useRouter } from 'next/router';
+import { useOrgName } from '@/hooks/useOrgName';
+import { usePOContext } from '@/context/POContext';
+import { ProposalCard } from '@/components/voting/ProposalCard';
+import { BINDING_BADGE, POLL_BADGE } from '@/config/votingVocabulary';
 
 const OngoingPolls = ({ OngoingPolls }) => {
     const router = useRouter();
     const userDAO = useOrgName();
+    const { poMembers } = usePOContext();
     const ongoingPollsExist = OngoingPolls && OngoingPolls.length > 0;
 
-    const randomPolls = useMemo(
+    const polls = useMemo(
         () => (ongoingPollsExist ? [...OngoingPolls].slice(0, 3) : []),
         [OngoingPolls, ongoingPollsExist]
+    );
+
+    const openPoll = useCallback(
+        (poll) => {
+            router.push(`/voting?poll=${poll.id}&userDAO=${encodeURIComponent(userDAO)}`);
+        },
+        [router, userDAO]
     );
 
     if (!ongoingPollsExist) {
         return (
             <Center py={8} flexDirection="column">
                 <Icon as={FiBarChart2} boxSize={8} color="whiteAlpha.300" mb={3} />
-                <Text fontSize="sm" color="whiteAlpha.500" fontWeight="medium">
+                <Text fontSize="sm" color="whiteAlpha.600" fontWeight="medium">
                     No active polls
                 </Text>
-                <Text fontSize="xs" color="whiteAlpha.300" mt={1}>
+                <Text fontSize="xs" color="whiteAlpha.400" mt={1}>
                     Polls will appear here when voting is open
                 </Text>
             </Center>
         );
     }
 
-    function calculateRemainingTime(expirationTimestamp) {
-        const currentTimestamp = Math.floor(Date.now() / 1000);
-        return expirationTimestamp - currentTimestamp;
-    }
-
     return (
         <SimpleGrid minChildWidth="240px" spacing={3}>
-            {randomPolls.map((poll) => {
-                const remaining = calculateRemainingTime(poll?.endTimestamp);
-                return (
-                    <Box
-                        key={poll.id}
-                        _hover={{ transform: "translateY(-2px)", boxShadow: "0 8px 25px rgba(0,0,0,0.3)" }}
-                        transition="transform 0.2s, box-shadow 0.2s, background 0.2s, border-color 0.2s"
-                        p={4}
-                        borderRadius="2xl"
-                        overflow="hidden"
-                        bg="black"
-                    >
-                        <Link2 href={`/voting/?poll=${poll.id}&org=${encodeURIComponent(userDAO)}`}>
-                            <VStack textColor="white" align="stretch" spacing={3}>
-                                <Text mt="-2" fontSize="md" lineHeight="99%" fontWeight="extrabold" noOfLines={2}>
-                                    {poll.title}
-                                </Text>
-                                <HStack justify="space-between" align="center">
-                                    <Badge colorScheme="blue">{poll.type}</Badge>
-                                    {remaining > 0 ? (
-                                        <CountDown duration={remaining} />
-                                    ) : (
-                                        <Text fontSize="sm" fontWeight="bold" color="whiteAlpha.700" whiteSpace="nowrap">
-                                            Voting open
-                                        </Text>
-                                    )}
-                                </HStack>
-                            </VStack>
-                        </Link2>
-                    </Box>
-                );
-            })}
+            {polls.map((poll) => (
+                <ProposalCard
+                    key={poll.id}
+                    proposal={poll}
+                    size="compact"
+                    typeBadge={poll.type === 'Direct Democracy' ? POLL_BADGE : BINDING_BADGE}
+                    poMembers={poMembers}
+                    onOpen={openPoll}
+                />
+            ))}
         </SimpleGrid>
     );
 };

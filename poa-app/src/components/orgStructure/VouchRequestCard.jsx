@@ -16,6 +16,7 @@ import {
   Icon,
 } from '@chakra-ui/react';
 import { FiUserPlus, FiUserMinus, FiCheck } from 'react-icons/fi';
+import { lightCardStyle } from '@/components/shared/glassStyles';
 import { VouchProgressBar } from './VouchProgressBar';
 import UserIdentity from '@/components/common/UserIdentity';
 
@@ -57,8 +58,8 @@ export function VouchRequestCard({
   const getButtonConfig = () => {
     if (!isConnected) {
       return {
-        label: 'Connect Wallet',
-        tooltip: 'Connect your wallet to vouch',
+        label: 'Sign in to vouch',
+        tooltip: 'Sign in to vouch for this member.',
         disabled: true,
         isLoading: false,
         colorScheme: 'gray',
@@ -119,12 +120,9 @@ export function VouchRequestCard({
 
   return (
     <Box
-      bg="white"
+      {...lightCardStyle}
       borderRadius="lg"
       p={4}
-      border="1px solid"
-      borderColor="warmGray.100"
-      boxShadow="0 2px 4px rgba(0, 0, 0, 0.04)"
       _hover={{
         bg: 'warmGray.50',
         borderColor: 'warmGray.200',
@@ -166,6 +164,13 @@ export function VouchRequestCard({
           quorum={quorum}
           size="sm"
         />
+
+        {/* Awaiting first vouch — fresh on-chain applicant with no vouches yet */}
+        {vouchers.length === 0 && !isComplete && (
+          <Text fontSize="xs" color="warmGray.400" fontStyle="italic">
+            Applied — awaiting first vouch
+          </Text>
+        )}
 
         {/* Voucher List */}
         {vouchers.length > 0 && (

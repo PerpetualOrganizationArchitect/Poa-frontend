@@ -280,6 +280,11 @@ export const UserProvider = ({ children }) => {
     const errorMessage = error?.message || null;
 
     const contextValue = useMemo(() => ({
+        // Connected user's address (passkey smart account or EOA), auth-aware.
+        // Consumers (e.g. TaskCardModal's isClaimer check) rely on this; omitting
+        // it previously made `account` undefined → the claimer could never submit
+        // their own task from the modal (Submit stayed disabled for everyone).
+        address: effectiveAddress,
         userDataLoading,
         userProposals,
         userData,
@@ -294,6 +299,7 @@ export const UserProvider = ({ children }) => {
         refetchUserData,
         optimisticJoin,
     }), [
+        effectiveAddress,
         userDataLoading,
         userProposals,
         userData,

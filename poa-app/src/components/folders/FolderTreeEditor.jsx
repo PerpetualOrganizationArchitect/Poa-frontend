@@ -294,7 +294,7 @@ export default function FolderTreeEditor({
     }
 
     if (!taskService || !taskManagerContractAddress) {
-      setSavingError(new Error('Web3 not ready.'));
+      setSavingError(new Error('Still getting things ready — give it a moment, then try again.'));
       return;
     }
     if (loadedRoot === null) {

@@ -75,7 +75,7 @@ const QuizModal = ({ module }) => {
 
     if (!result.success) {
       // Check if it's an incorrect answer vs other error
-      const errorMessage = result.error?.message || '';
+      const errorMessage = result.error?.userMessage || '';
       if (errorMessage.includes('incorrect') || errorMessage.includes('wrong') || errorMessage.includes('InvalidAnswer')) {
         toast({
           title: "Incorrect Answer",

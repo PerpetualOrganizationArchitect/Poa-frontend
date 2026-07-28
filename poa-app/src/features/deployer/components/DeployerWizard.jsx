@@ -422,8 +422,8 @@ export function DeployerWizard({
   const handleDeploy = async (deployConfig = {}) => {
     if (!deployerAddress) {
       toast({
-        title: 'Wallet not connected',
-        description: 'Please connect your wallet to deploy',
+        title: 'Sign in needed',
+        description: 'We couldn’t confirm you’re signed in. Sign in again, then create your organization.',
         status: 'error',
         duration: 5000,
         isClosable: true,

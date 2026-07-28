@@ -1,38 +1,49 @@
 /**
- * VotingPage
- * Main voting page component for proposal management and voting
+ * VotingPage — the lifecycle voting board.
+ *
+ * Wave 2: replaces the old tabbed VotingTabs/VotingPanel surface with a single
+ * lifecycle board (VotingBoard) fed by useVoteLanes, one GovernanceStrip
+ * education header on top, and ONE PollDetail (replacing pollModal +
+ * CompletedPollModal) driven by usePollNavigation.
+ *
+ * Container responsibilities (kept out of the presentation components):
+ *   - CreateVoteModal wiring + handleProposalSubmit (forwarding actionSummaries)
+ *   - vote handlers (return the executeWithNotification result so PollDetail can
+ *     roll back its optimistic celebration on failure)
+ *   - the finalize handler ("Count the votes"), routed through PollDetail's
+ *     AlertDialog confirm
+ *   - tour auto-open of CreateVoteModal at the create-vote-preview step
  */
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import {
-  Box,
-  Container,
-  Center,
-  TabPanel,
-} from "@chakra-ui/react";
+import { useRouter } from "next/router";
+import { Box, Container, Center, Flex, Heading, Button, Icon, Link } from "@chakra-ui/react";
+import { PiPlusCircle, PiScales } from "react-icons/pi";
+import { getTemplateById } from "@/config/setterDefinitions";
 import PulseLoader from "@/components/shared/PulseLoader";
+import GlassBack from "./GlassBack";
 import { usePOContext } from "@/context/POContext";
 import { useVotingContext } from "@/context/VotingContext";
-import { useWeb3, useOrgTheme } from "@/hooks";
+import { useUserContext } from "@/context/UserContext";
+import { useAuth } from "@/context/AuthContext";
+import { useWeb3, useOrgTheme, useVoteLanes } from "@/hooks";
+import { useOrgName } from "@/hooks/useOrgName";
 import { VotingType } from "@/services/web3/domain/VotingService";
 
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import VotingEducationHeader from "./VotingEducationHeader";
-import PollModal from "@/templateComponents/studentOrgDAO/voting/pollModal";
-import CompletedPollModal from "@/templateComponents/studentOrgDAO/voting/CompletedPollModal";
-
-import VotingTabs from "./VotingTabs";
-import VotingPanel from "./VotingPanel";
+import { VotingBoard } from "./VotingBoard";
+import { PollDetail } from "./PollDetail";
 import CreateVoteModal from "./CreateVoteModal";
+import OrgConstitution from "./OrgConstitution";
 
 // Custom hooks for logic extraction
 import { usePollNavigation } from "../../hooks/usePollNavigation";
-import { useVotingPagination } from "../../hooks/useVotingPagination";
 import { useProposalForm } from "../../hooks/useProposalForm";
-import { useWinnerStatus } from "../../hooks/useWinnerStatus";
 import { useTour } from "@/features/tour";
 
 const VotingPage = () => {
+  const router = useRouter();
   const [showCreatePoll, setShowCreatePoll] = useState(false);
   const { currentStepDef, isActive: isTourActive } = useTour();
   const tourOpenedModalRef = useRef(false);
@@ -51,8 +62,9 @@ const VotingPage = () => {
   }, [isTourActive, currentStepDef?.id, showCreatePoll]);
 
   // Web3 services hook
-  const { voting, executeWithNotification, isReady } = useWeb3();
+  const { voting, executeWithNotification } = useWeb3();
   const { pageBackground } = useOrgTheme();
+  const userDAO = useOrgName();
 
   const {
     directDemocracyVotingContractAddress,
@@ -64,32 +76,38 @@ const VotingPage = () => {
     poContextLoading,
     roleNames,
     leaderboardData,
+    poMembers,
   } = usePOContext();
 
   const {
     hybridVotingOngoing,
-    hybridVotingCompleted,
     democracyVotingOngoing,
     democracyVotingCompleted,
+    hybridVotingCompleted,
     votingType: PTVoteType,
     votingClasses,
+    hybridThresholdPct,
+    hybridQuorum,
+    ddThresholdPct,
+    ddQuorum,
+    refetch,
   } = useVotingContext();
 
-  // Poll navigation and selection
+  const { hasMemberRole } = useUserContext();
+  const { accountAddress } = useAuth();
+  const isConnected = !!accountAddress;
+
+  // Derived lifecycle lanes (shared definitions with /votes + dashboard).
+  const { lanes, loading, error } = useVoteLanes();
+
+  // Poll navigation + the single PollDetail surface.
   const {
     selectedPoll,
-    selectedOption,
-    setSelectedOption,
-    selectedTab,
     votingTypeSelected,
-    handleTabChange,
     handlePollClick,
     getContractAddressForVotingType,
-    isPollModalOpen,
-    onPollModalOpen,
-    onPollModalClose,
-    isCompletedModalOpen,
-    onCompletedModalClose,
+    isDetailOpen,
+    onDetailClose,
   } = usePollNavigation({
     democracyVotingOngoing,
     democracyVotingCompleted,
@@ -98,33 +116,22 @@ const VotingPage = () => {
     PTVoteType,
   });
 
-  // Get proposals for current tab
-  // Tab 0 = Hybrid/Participation Voting (Official governance)
-  // Tab 1 = Direct Democracy (Informal polls)
-  const currentOngoing = selectedTab === 0 ? hybridVotingOngoing : democracyVotingOngoing;
-  const currentCompleted = selectedTab === 0 ? hybridVotingCompleted : democracyVotingCompleted;
+  // PollDetail must render LIVE data — selectedPoll is a click-time snapshot,
+  // so optimistic votes and 30s polling refreshes would never reach an open
+  // detail (celebration bars would exclude the user's own vote). Re-derive the
+  // fresh transformed proposal by id on every context update.
+  const livePoll = useMemo(() => {
+    if (!selectedPoll) return null;
+    const all = [
+      ...hybridVotingOngoing,
+      ...hybridVotingCompleted,
+      ...democracyVotingOngoing,
+      ...democracyVotingCompleted,
+    ];
+    return all.find((p) => p.id === selectedPoll.id) || selectedPoll;
+  }, [selectedPoll, hybridVotingOngoing, hybridVotingCompleted, democracyVotingOngoing, democracyVotingCompleted]);
 
-  // Pagination for ongoing proposals only
-  const {
-    displayedOngoing,
-    handlePreviousOngoing,
-    handleNextOngoing,
-    resetPagination,
-  } = useVotingPagination({
-    ongoingProposals: currentOngoing,
-    completedProposals: currentCompleted,
-  });
-
-  // Winner status
-  const {
-    showDetermineWinner,
-    calculateRemainingTime,
-    getWinner,
-  } = useWinnerStatus({
-    proposals: currentOngoing,
-  });
-
-  // Proposal creation form
+  // Proposal creation
   const handleProposalSubmit = useCallback(async (proposalData) => {
     if (!voting) return;
 
@@ -136,12 +143,11 @@ const VotingPage = () => {
       optionNames: proposalData.optionNames || [],
       batches: proposalData.batches || [],
       hatIds: proposalData.hatIds || [],
+      // Forward human-readable action previews so the metadata JSON carries
+      // them (useProposalForm emits this; the old VotingPage dropped it).
+      actionSummaries: proposalData.actionSummaries || [],
     };
 
-    // Setter, election, and createRole proposals use HybridVoting (main
-    // governance) which triggers Executor. Executor is the superAdmin of
-    // EligibilityModule + ToggleModule and `onlyExecutor` on every other
-    // contract, so the winning batch can call any of these atomically.
     const isExecutionProposal =
       proposalData.type === 'setter'
       || proposalData.type === 'election'
@@ -177,11 +183,11 @@ const VotingPage = () => {
     toggleRestrictedRole,
     handleSetterChange,
     handleSubmit,
+    restoreProposal,
   } = useProposalForm({
     onSubmit: handleProposalSubmit,
   });
 
-  // Contract addresses object for setter proposals
   const contractAddresses = useMemo(() => ({
     votingContractAddress,
     directDemocracyVotingContractAddress,
@@ -190,42 +196,87 @@ const VotingPage = () => {
     participationTokenAddress,
   }), [votingContractAddress, directDemocracyVotingContractAddress, taskManagerContractAddress, executorContractAddress, participationTokenAddress]);
 
-  // Wrapper for handleSubmit that passes eligibilityModule and contract addresses
   const handlePollCreated = useCallback(() => {
     return handleSubmit(eligibilityModuleAddress, contractAddresses);
   }, [handleSubmit, eligibilityModuleAddress, contractAddresses]);
 
-  // Handle tab changes with pagination reset
-  const handleTabsChange = useCallback((index) => {
-    handleTabChange(index);
-    resetPagination();
-  }, [handleTabChange, resetPagination]);
-
-  // Toggle create poll modal
   const handleCreatePollClick = useCallback(() => {
     setShowCreatePoll(prev => !prev);
   }, []);
 
-  // Get winner handler
+  // Current rule values, threaded to SetterActionSelector so the setter preview
+  // can render a BEFORE → AFTER diff for the five rule templates.
+  const currentRuleValues = useMemo(() => ({
+    hybridThresholdPct,
+    hybridQuorum,
+    ddThresholdPct,
+    ddQuorum,
+    votingClasses,
+  }), [hybridThresholdPct, hybridQuorum, ddThresholdPct, ddQuorum, votingClasses]);
+
+  // "Propose a change" from the Constitution panel — prefills the create form
+  // with the matching setter template preselected, then opens the modal. Mirrors
+  // exactly the state SetterActionSelector.handleTemplateSelect sets on click
+  // (setterContract/Function + initialized setterValues) so the modal lands on
+  // the template's configured step, not the category picker.
+  const handleProposeRuleChange = useCallback((templateId) => {
+    const template = getTemplateById(templateId);
+    if (!template) return;
+    const setterValues = (template.inputs || []).reduce((acc, input) => {
+      if (input.type === 'votingClassWeights') {
+        acc[input.name] = votingClasses.length > 0 ? votingClasses.map(c => ({ ...c })) : [];
+      } else {
+        acc[input.name] = input.default || '';
+      }
+      return acc;
+    }, {});
+    restoreProposal({
+      type: 'setter',
+      setterMode: 'template',
+      setterTemplate: templateId,
+      setterContract: template.contract || '',
+      setterFunction: template.functionName || '',
+      setterValues,
+      setterParams: [],
+    });
+    setShowCreatePoll(true);
+  }, [restoreProposal, votingClasses]);
+
+  // Deep link support: /voting?propose=<templateId> (from the /rules page)
+  // opens the create modal with that rule template preselected, once.
+  const proposeParamHandledRef = useRef(false);
+  useEffect(() => {
+    if (!router.isReady || proposeParamHandledRef.current) return;
+    const templateId = router.query.propose;
+    if (!templateId || typeof templateId !== 'string') return;
+    proposeParamHandledRef.current = true;
+    handleProposeRuleChange(templateId);
+    // Strip the param so a refresh / back doesn't reopen the modal.
+    const { propose, ...rest } = router.query;
+    router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
+  }, [router.isReady, router.query, handleProposeRuleChange, router]);
+
+  // Finalize ("Count the votes") — routed through PollDetail's AlertDialog.
+  // RETURNS the result so the confirm dialog can await it.
   const handleGetWinner = useCallback(async (contractAddress, proposalId, isHybrid = false) => {
-    if (!voting) return;
+    if (!voting) return { success: false };
 
     const type = isHybrid ? VotingType.HYBRID : VotingType.DIRECT_DEMOCRACY;
-    await executeWithNotification(
+    return executeWithNotification(
       () => voting.announceWinner(type, contractAddress, proposalId),
       {
-        pendingMessage: 'Announcing winner...',
-        successMessage: 'Winner announced successfully!',
+        pendingMessage: 'Counting the votes...',
+        successMessage: 'Result recorded on-chain!',
         refreshEvent: 'proposal:completed',
       }
     );
   }, [voting, executeWithNotification]);
 
-  // Vote handlers for PollModal
+  // Vote handlers — RETURN the executeWithNotification result so PollDetail can
+  // react (roll back the optimistic celebration + show the calm error on fail).
   const handleDDVote = useCallback(async (contractAddress, proposalId, optionIndices, weights) => {
-    if (!voting) return;
-
-    await executeWithNotification(
+    if (!voting) return { success: false };
+    return executeWithNotification(
       () => voting.castDDVote(contractAddress, proposalId, optionIndices, weights),
       {
         pendingMessage: 'Casting vote...',
@@ -236,9 +287,8 @@ const VotingPage = () => {
   }, [voting, executeWithNotification]);
 
   const handleHybridVote = useCallback(async (contractAddress, proposalId, optionIndices, weights) => {
-    if (!voting) return;
-
-    await executeWithNotification(
+    if (!voting) return { success: false };
+    return executeWithNotification(
       () => voting.castHybridVote(contractAddress, proposalId, optionIndices, weights),
       {
         pendingMessage: 'Casting vote...',
@@ -247,6 +297,8 @@ const VotingPage = () => {
       }
     );
   }, [voting, executeWithNotification]);
+
+  const canCreate = hasMemberRole;
 
   return (
     <>
@@ -257,43 +309,87 @@ const VotingPage = () => {
         </Center>
       ) : (
         <Container maxW="container.2xl" py={4} px={{ base: "1%", md: "3%" }} minH="100vh" background={pageBackground()}>
-          <VotingTabs
-            selectedTab={selectedTab}
-            handleTabsChange={handleTabsChange}
-            PTVoteType={PTVoteType}
-            headerSlot={<VotingEducationHeader selectedTab={selectedTab} PTVoteType={PTVoteType} />}
+          {/* GovernanceStrip — wave-1 education header (collapses after first visit). */}
+          <Box data-tour="voting-header" mb={6}>
+            <VotingEducationHeader selectedTab={0} PTVoteType={PTVoteType} />
+          </Box>
+
+          {/* Board panel — the dark glass container the whole board lives in.
+              Lane headers, chips, and cards are unreadable directly on themed
+              org backgrounds (e.g. Test6 mint), so everything sits on glass,
+              matching the /votes archive panels and the old VotingPanel. */}
+          <Box
+            position="relative"
+            zIndex={1}
+            borderRadius="3xl"
+            p={{ base: 4, md: 8 }}
+            mb={8}
+            w="100%"
+            maxW="1400px"
+            mx="auto"
+            boxShadow="lg"
           >
-            <TabPanel>
-              <VotingPanel
-                displayedOngoingProposals={displayedOngoing}
-                completedProposals={currentCompleted}
-                showDetermineWinner={showDetermineWinner}
-                getWinner={handleGetWinner}
-                calculateRemainingTime={calculateRemainingTime}
-                contractAddress={votingContractAddress}
-                onPollClick={handlePollClick}
-                onPreviousOngoingClick={handlePreviousOngoing}
-                onNextOngoingClick={handleNextOngoing}
-                onCreateClick={handleCreatePollClick}
-                showCreatePoll={showCreatePoll}
-              />
-            </TabPanel>
-            <TabPanel>
-              <VotingPanel
-                displayedOngoingProposals={displayedOngoing}
-                completedProposals={currentCompleted}
-                showDetermineWinner={showDetermineWinner}
-                getWinner={handleGetWinner}
-                calculateRemainingTime={calculateRemainingTime}
-                contractAddress={directDemocracyVotingContractAddress}
-                onPollClick={handlePollClick}
-                onPreviousOngoingClick={handlePreviousOngoing}
-                onNextOngoingClick={handleNextOngoing}
-                onCreateClick={handleCreatePollClick}
-                showCreatePoll={showCreatePoll}
-              />
-            </TabPanel>
-          </VotingTabs>
+            <GlassBack />
+
+            {/* Board header row: title + Create Vote CTA (top-right). */}
+            <Flex justify="space-between" align="center" mb={5} gap={3} flexWrap="wrap">
+              <Flex align="center" gap={3} flexWrap="wrap">
+                <Heading as="h1" size="lg" color="white" fontWeight="800">
+                  Votes
+                </Heading>
+                <Link
+                  display="inline-flex"
+                  alignItems="center"
+                  gap={1}
+                  fontSize="sm"
+                  fontWeight="600"
+                  color="gray.300"
+                  _hover={{ color: "white", textDecoration: "none" }}
+                  onClick={() => {
+                    if (typeof document !== "undefined") {
+                      document.getElementById("our-rules")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                  }}
+                >
+                  <Icon as={PiScales} boxSize={4} />
+                  Our rules
+                </Link>
+              </Flex>
+              {canCreate && (
+                <Button
+                  leftIcon={<Icon as={PiPlusCircle} boxSize={5} />}
+                  minH="44px"
+                  bg="#9473DC"
+                  color="white"
+                  _hover={{ bg: "#B79BF0" }}
+                  onClick={handleCreatePollClick}
+                >
+                  Create vote
+                </Button>
+              )}
+            </Flex>
+
+            <VotingBoard
+              lanes={lanes}
+              loading={loading}
+              error={error}
+              onRetry={refetch}
+              onOpenPoll={(p) => handlePollClick(p, !p.isOngoing)}
+              onFinalize={(p) => handlePollClick(p, false)}
+              poMembers={poMembers}
+              isConnected={isConnected}
+              isMember={hasMemberRole}
+              canCreate={canCreate}
+              onCreate={handleCreatePollClick}
+              orgName={userDAO}
+            />
+          </Box>
+
+          {/* Constitution — "Our rules" (collapsible, below the board). */}
+          <OrgConstitution
+            hasMemberRole={hasMemberRole}
+            onProposeRuleChange={handleProposeRuleChange}
+          />
 
           <CreateVoteModal
             isOpen={showCreatePoll}
@@ -313,29 +409,23 @@ const VotingPage = () => {
             loadingSubmit={loadingSubmit}
             roleNames={roleNames}
             votingClasses={votingClasses}
+            currentValues={currentRuleValues}
             leaderboardData={leaderboardData}
             ongoingProposals={hybridVotingOngoing}
           />
 
-          <PollModal
-            isOpen={isPollModalOpen}
-            onClose={onPollModalClose}
-            handleVote={votingTypeSelected === "Direct Democracy" ? handleDDVote : handleHybridVote}
+          {/* ONE detail surface for ongoing AND completed polls. */}
+          <PollDetail
+            poll={livePoll}
+            isOpen={isDetailOpen}
+            onClose={onDetailClose}
+            onVote={votingTypeSelected === "Direct Democracy" ? handleDDVote : handleHybridVote}
+            onFinalize={handleGetWinner}
             contractAddress={getContractAddressForVotingType(
               directDemocracyVotingContractAddress,
               votingContractAddress
             )}
-            selectedPoll={selectedPoll}
-            selectedOption={selectedOption}
-            setSelectedOption={setSelectedOption}
-            onOpen={onPollModalOpen}
-          />
-
-          <CompletedPollModal
-            isOpen={isCompletedModalOpen}
-            onClose={onCompletedModalClose}
-            selectedPoll={selectedPoll}
-            voteType={votingTypeSelected}
+            votingTypeSelected={votingTypeSelected}
           />
         </Container>
       )}

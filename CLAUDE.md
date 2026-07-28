@@ -18,53 +18,54 @@ cd poa-app && yarn e2e:test-passkey # virtual-passkey crypto self-test
 No unit/integration tests; the E2E harness above is the only automated coverage.
 No Prettier. No formatting commands.
 
-## Default workflow for agents
+## Frontend changes: verify on Test6
 
-When making frontend changes, **default to `yarn dev:e2e-passkey`** — the passkey
-identity has full permissions on Test6 (Gnosis) and can open every permission-gated
-modal (Add Task, Edit Task, project / treasury actions, etc.) without a
-permission-denied toast. Use plain `yarn dev:e2e` (auto-connected burner EOA on
-Test6) only when you specifically need to test as an unvouched / minimal-permission
-user, or are exercising the direct-EOA tx path rather than the ERC-4337 UserOp
-path. Both modes auto-connect, so no wallet popup either way — never use plain
-`yarn dev` for agent work.
+To make AND verify a frontend change, drive it through the **`test6-verify`** Smithers
+workflow (see the Smithers section) — it *enforces* the implement → build → Test6
+Playwright verification (gif) → review loop. Doing it inline? Follow the same flow by
+hand. Either way these repo facts hold:
 
-Setup is one-time per laptop: `yarn e2e:setup` generates a stable burner EOA +
-virtual passkey at `~/.poa/e2e.env` (shared across every workspace) and prints
-two vouch URLs for a member to click. Once vouched, the agent can claim hats and
-exercise every member-tier flow.
+- **Test6 (Gnosis) is the sandbox — fire real tx there.** Both agent identities (burner
+  EOA + passkey) are authorized for every permission-gated flow. **Stop** for mainnet
+  orgs, multi-sig broadcasts, or anything that would burn real value.
+- Dev server: `cd poa-app && yarn dev:e2e-passkey` (passkey identity, full perms,
+  auto-connects). Use `yarn dev:e2e` (burner EOA) only to test as an unvouched /
+  minimal-permission user or the direct-EOA tx path. Never plain `yarn dev` for agent
+  work. `yarn e2e:setup` is one-time per laptop (writes `~/.poa/e2e.env`).
+- **Run ONE dev server, under node 20.10 (not bun).** Multiple `next dev` processes
+  share `poa-app/.next/` and corrupt each other's webpack chunks → `Cannot find
+  module ./chunks/vendor-chunks/react-icons.js` → pages 500 in the browser (this is
+  what breaks Playwright/Chromium). If chunks break: `lsof -ti:<port> | xargs kill -9`,
+  `rm -rf poa-app/.next`, then start a single server.
+- Browser testing uses the Playwright MCP (`.mcp.json`). Share a **gif** (gitignored:
+  `/*.gif`, `/poa-app/*.gif`), not PNGs.
+- Before a PR touching E2E-intercepted files (`AuthContext.js`, `_app.js`,
+  `passkeySign.js`, `passkeyCreate.js`, `ProviderConverter.jsx`, anything under
+  `src/services/e2e/`): `yarn build && yarn e2e:check` (no E2E symbols in the prod bundle).
 
-**Test6 is the sandbox org — fire real on-chain transactions there.** Both
-agent identities (burner EOA + passkey) are authorized on Test6 (Gnosis) for
-every permission-gated flow. When verifying a feature end-to-end (folder
-publish, project budget edit, task create, vote propose, etc.), don't stop at
-"the diff in memory matches expectations" — actually click Save / Submit /
-Publish and watch the tx land + the subgraph re-index. Test6 exists to be
-written to; using it is cheaper than asking the user to re-run a flow you
-declined to drive. Stop only for flows that affect mainnet orgs, multi-sig
-broadcasts, or anything that would burn real value.
+Full E2E docs: `poa-app/scripts/e2e/README.md`. Known follow-ups: `BACKLOG.md` next to it.
 
-For browser-driven testing, use the Playwright MCP server (configured in
-`.mcp.json`). The `mcp__playwright__browser_*` tools (navigate, snapshot,
-console_messages, click, fill_form, etc.) drive the auto-connected E2E
-session — preferred over running a separate Playwright script. Pair it
-with `yarn dev:e2e-passkey` to exercise permission-gated flows end-to-end.
+## Smithers (durable agent orchestration)
 
-When you need a visual artifact to share back, **record a gif of the
-flow rather than dropping individual screenshots into the repo root**.
-Gifs are gitignored (`/*.gif`, `/poa-app/*.gif`); PNGs in the repo are
-not, so they pile up. Capture a sequence with `browser_run_code_unsafe`
-+ Playwright's video recording, then convert with ffmpeg
-(`ffmpeg -i video.webm -vf "fps=10,scale=800:-1" out.gif`). For a
-single-frame snapshot, prefer `browser_snapshot` (cheap text accessibility
-tree, no image artifact written) over `browser_take_screenshot`.
+`.smithers/` holds Smithers workflows that run long / multi-step / verify-heavy work
+as durable, resumable runs. The agent operates Smithers on the user's behalf — don't
+hand these commands to the user.
 
-Before opening a PR that touches anything in `src/services/e2e/` or any of the
-files E2E intercepts (`AuthContext.js`, `_app.js`, `passkeySign.js`,
-`passkeyCreate.js`, `ProviderConverter.jsx`), run `yarn build && yarn e2e:check`
-to confirm no E2E symbols leaked into the production bundle.
-
-Full docs: `poa-app/scripts/e2e/README.md`. Known follow-ups: `BACKLOG.md` next to it.
+- **When to reach for it:** work with phases, iterate-until-pass loops, Test6
+  verification, runs while the user is away, or that spans repos. Skip it for
+  one-shot edits or quick questions — do those inline.
+- **`test6-verify` is the standard verify loop.** It *automates* the "Default workflow
+  for agents" Test6 flow above — implement → `yarn build` gate → Playwright
+  verification on Test6 (real tx + a recorded gif) → independent code review →
+  independent design review of the screenshots, looping until all pass:
+  `bunx smithers-orchestrator workflow run test6-verify --prompt "<change>"`
+- Spawned agents run at the repo root and **read this CLAUDE.md**, so the Test6 / E2E
+  details above are the shared source of truth for both inline work and Smithers runs
+  — keep them here rather than duplicating them into the workflow.
+- **Catalog:** `bunx smithers-orchestrator workflow list`. **Watch a run:**
+  `bunx smithers-orchestrator ps | inspect <id> | logs <id> -f | ui <id>`.
+- Always invoke as `bunx smithers-orchestrator <cmd>` (never bare `smithers` — that's
+  an unrelated npm package).
 
 ## Stack
 

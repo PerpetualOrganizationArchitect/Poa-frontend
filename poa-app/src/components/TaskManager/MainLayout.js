@@ -10,12 +10,8 @@ import ProjectSwitcherDrawer from './ProjectSwitcherDrawer';
 import { useFolderDoc } from '../folders/useFolderDoc';
 import { TaskBoardProvider } from '../../context/TaskBoardContext';
 import AllTasksView from './views/AllTasksView';
-
-// Sentinel projectId used in the URL when the user has selected the
-// "All Tasks" sidebar entry. Kept short + URL-safe; matched as a literal
-// in handleSelectProject + the render branch below. Exported so the /tasks
-// page can default mobile into this mode without duplicating the magic string.
-export const ALL_TASKS_ID = '__all__';
+import MyWorkView from './views/MyWorkView';
+import { ALL_TASKS_ID, MY_WORK_ID } from './taskViewIds';
 import { useDataBaseContext} from '../../context/dataBaseContext';
 import { useIPFScontext } from '../../context/ipfsContext';
 import { useUserContext } from '../../context/UserContext';
@@ -31,6 +27,10 @@ import { StarIcon, TimeIcon } from '@chakra-ui/icons';
 import { Modal, ModalOverlay, ModalContent, ModalCloseButton, ModalBody, ModalFooter, Spacer } from '@chakra-ui/react';
 import { useTour } from '@/features/tour';
 import { glassLayerStyle as boardGlassStyle } from './styles/taskBoardStyles';
+
+// Re-export the URL sentinels (defined in the dependency-free ./taskViewIds leaf)
+// so existing consumers keep importing them from MainLayout.
+export { ALL_TASKS_ID, MY_WORK_ID } from './taskViewIds';
 
 // --- Example task board shown during tour when no real projects exist ---
 
@@ -333,7 +333,14 @@ const MainLayout = () => {
     router.push(`/tasks?projectId=${ALL_TASKS_ID}&org=${encodeURIComponent(userDAO)}&view=${view}`);
   };
 
+  // "My Work" — personal cross-project view. Deep-linkable and back/forward
+  // safe for the same reason as All Tasks: the URL is the source of truth.
+  const handleSelectMyWork = () => {
+    router.push(`/tasks?projectId=${MY_WORK_ID}&org=${encodeURIComponent(userDAO)}`);
+  };
+
   const allTasksMode = router.query.projectId === ALL_TASKS_ID;
+  const myWorkMode = router.query.projectId === MY_WORK_ID;
 
   // Create project using the new service
   const handleCreateProject = useCallback(async (projectData) => {
@@ -415,7 +422,7 @@ const MainLayout = () => {
           <Box position="relative">
             <ProjectSidebar
               projects={projects}
-              selectedProject={allTasksMode ? null : selectedProject}
+              selectedProject={allTasksMode || myWorkMode ? null : selectedProject}
               onSelectProject={handleSelectProject}
               onOpenCreateModal={onProjectModalOpen}
               onToggleSidebar={toggleSidebar}
@@ -425,6 +432,8 @@ const MainLayout = () => {
               onEditFolders={folderEditor.onOpen}
               onSelectAllTasks={handleSelectAllTasks}
               allTasksSelected={allTasksMode}
+              onSelectMyWork={handleSelectMyWork}
+              myWorkSelected={myWorkMode}
             />
           </Box>
         )}
@@ -447,14 +456,22 @@ const MainLayout = () => {
           {/* Compact sticky mobile top bar — project name + view switcher. */}
           {isMobile && projects.length > 0 && (
             <MobileTopBar
-              variant={allTasksMode ? 'allTasks' : 'project'}
-              projectName={allTasksMode ? undefined : selectedProject?.name}
+              variant={myWorkMode ? 'myWork' : allTasksMode ? 'allTasks' : 'project'}
+              projectName={allTasksMode || myWorkMode ? undefined : selectedProject?.name}
               onOpen={projectDrawer.onOpen}
-              allowBoard={!allTasksMode}
+              allowBoard={!allTasksMode && !myWorkMode}
             />
           )}
-          
-          {allTasksMode ? (
+
+          {myWorkMode ? (
+            <Box flex="1" minH={0} width="100%" overflow={isMobile ? 'hidden' : 'auto'}>
+              <MyWorkView
+                isDesktop={!isMobile}
+                sidebarVisible={sidebarVisible}
+                toggleSidebar={toggleSidebar}
+              />
+            </Box>
+          ) : allTasksMode ? (
             <Box flex="1" minH={0} width="100%" overflow={isMobile ? 'hidden' : 'auto'}>
               <AllTasksView
                 isDesktop={!isMobile}
@@ -567,8 +584,10 @@ const MainLayout = () => {
           projects={projects}
           selectedProjectId={selectedProject?.id}
           allTasksMode={allTasksMode}
+          myWorkMode={myWorkMode}
           onSelectProject={handleSelectProject}
           onSelectAllTasks={handleSelectAllTasks}
+          onSelectMyWork={handleSelectMyWork}
           onCreateProject={onProjectModalOpen}
         />
       )}

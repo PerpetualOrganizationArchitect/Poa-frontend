@@ -333,8 +333,8 @@ export default function OrgMetadataEditor({
 
     if (!isReady || !factory) {
       toast({
-        title: 'Wallet not connected',
-        description: 'Please connect your wallet to save changes',
+        title: 'Not ready yet',
+        description: 'Still getting things ready — give it a moment, then try again. If this keeps happening, sign in again.',
         status: 'error',
         duration: 3000,
       });

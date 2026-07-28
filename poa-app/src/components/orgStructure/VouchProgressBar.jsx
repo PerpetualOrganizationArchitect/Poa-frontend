@@ -39,7 +39,9 @@ export function VouchProgressBar({
   compact = false,
 }) {
   const percentage = quorum > 0 ? Math.min((current / quorum) * 100, 100) : 0;
-  const isComplete = current >= quorum;
+  // Require a positive quorum: quorum===0 means "unknown / not loaded yet", not
+  // "no vouches needed". Without this, a 0/0 state renders a misleading "(Complete!)".
+  const isComplete = quorum > 0 && current >= quorum;
   const colorScheme = getProgressColor(percentage);
 
   // Size configurations

@@ -1,13 +1,46 @@
-import React, { createContext, useContext, useEffect, useMemo, useCallback, useReducer, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useCallback, useReducer, useRef, useState } from 'react';
 import { useQuery } from '@apollo/client';
-import { FETCH_VOTING_DATA_NEW } from '../util/queries';
+import { FETCH_VOTING_DATA_NEW, FETCH_VOTING_DATA_WITH_PROPOSER } from '../util/queries';
+import { hasProposerField } from '../util/subgraphCapabilities';
 import { usePOContext } from './POContext';
 import { useRefreshSubscription, RefreshEvent } from './RefreshContext';
 import { useSubgraphClient } from '../util/apolloClient';
+import { useUserActive } from '../hooks/useUserActive';
+import { useAuth } from './AuthContext';
 
 const VotingContext = createContext();
 
 export const useVotingContext = () => useContext(VotingContext);
+
+/**
+ * Grace period (ms) an optimistic vote stays merged before it auto-expires.
+ * Matches the repo-wide optimistic grace convention — do NOT shorten. The
+ * subgraph has 5-15s indexing lag; this window keeps the user's own vote
+ * visible until the real vote is indexed.
+ */
+const OPTIMISTIC_VOTE_GRACE_MS = 65000;
+
+/**
+ * Pure helper: find the merged vote cast by `address` on a transformed
+ * proposal. Returns {optionIndexes, optionWeights} or null. Exported so
+ * callers outside VotingProvider (or below a different auth boundary) can
+ * derive per-user vote state without duplicating the lookup.
+ *
+ * @param {object} proposal - A transformed proposal (has `.votes`)
+ * @param {string} address - Voter address (case-insensitive)
+ */
+export function findUserVote(proposal, address) {
+    if (!proposal || !address) return null;
+    const lower = address.toLowerCase();
+    const match = (proposal.votes || []).find(
+        v => (v.voter || '').toLowerCase() === lower
+    );
+    if (!match) return null;
+    return {
+        optionIndexes: match.optionIndexes || [],
+        optionWeights: match.optionWeights || [],
+    };
+}
 
 /**
  * Compute per-option scores for a Hybrid proposal using the same N-class
@@ -70,7 +103,7 @@ function computeHybridOptionScores(votes, numOptions, slices) {
     return { scores, voterCounts, distinctVoters: votes.length };
 }
 
-function transformProposal(proposal, votingTypeId, type, thresholdPct = 0, quorum = 0, votingClasses = []) {
+function transformProposal(proposal, votingTypeId, type, thresholdPct = 0, quorum = 0, votingClasses = [], viewerAddress = null) {
     const currentTime = Math.floor(Date.now() / 1000);
     const endTime = parseInt(proposal.endTimestamp) || 0;
     // A proposal is "ongoing" if it's still Active (needs voting or winner announcement)
@@ -170,6 +203,21 @@ function transformProposal(proposal, votingTypeId, type, thresholdPct = 0, quoru
         ? parseInt(proposal.winningOption, 10)
         : null;
 
+    // Per-viewer vote state (merged votes array includes any optimistic vote).
+    // Additive fields only — existing output shape is unchanged.
+    const mergedVotes = proposal.votes || [];
+    let userVote = null;
+    if (viewerAddress) {
+        const lower = viewerAddress.toLowerCase();
+        const own = mergedVotes.find(v => (v.voter || '').toLowerCase() === lower);
+        if (own) {
+            userVote = {
+                optionIndexes: own.optionIndexes || [],
+                optionWeights: own.optionWeights || [],
+            };
+        }
+    }
+
     return {
         id: proposal.id,
         proposalId: proposal.proposalId,
@@ -195,6 +243,13 @@ function transformProposal(proposal, votingTypeId, type, thresholdPct = 0, quoru
         quorum,
         isHatRestricted: proposal.isHatRestricted,
         restrictedHatIds: proposal.restrictedHatIds || [],
+        // Passthroughs for subgraph fields that ship later (undefined until the
+        // query fetches them — ProposalCard's proposer slot self-enables).
+        proposerUsername: proposal.proposerUsername ?? proposal.creatorUsername ?? null,
+        actionSummaries: metadata.actionSummaries || [],
+        promotedFrom: metadata.promotedFrom || null,
+        userHasVoted: userVote !== null,
+        userVote,
     };
 }
 
@@ -206,6 +261,13 @@ const initialVotingState = {
     ongoingPolls: [],
     votingType: 'Hybrid',
     votingClasses: [],
+    // Rule constants (additive — surfaced for the Constitution panel). These are
+    // the same threshold/quorum values already read from the org in the data
+    // effect; storing them here makes the group's live rules legible on /voting.
+    hybridThresholdPct: 0,
+    hybridQuorum: 0,
+    ddThresholdPct: 0,
+    ddQuorum: 0,
 };
 
 function votingReducer(state, action) {
@@ -222,17 +284,111 @@ export const VotingProvider = ({ children }) => {
 
     const { orgId, subgraphUrl } = usePOContext();
     const client = useSubgraphClient(subgraphUrl);
+    const isActive = useUserActive();
+    const { accountAddress } = useAuth();
 
-    const { data, loading, refetch } = useQuery(FETCH_VOTING_DATA_NEW, {
+    // Proposer attribution self-enables: probe the serving subgraph's schema
+    // once (cached) and upgrade to the richer query only when the field exists
+    // — asking for an unknown field errors the entire org query.
+    const [proposerSupported, setProposerSupported] = useState(false);
+    useEffect(() => {
+        let cancelled = false;
+        // Reset on every endpoint switch: a cross-chain org may serve an older
+        // schema, and carrying `true` over would error its entire org query.
+        setProposerSupported(false);
+        if (!subgraphUrl) return undefined;
+        hasProposerField(subgraphUrl).then((has) => {
+            if (!cancelled) setProposerSupported(!!has);
+        });
+        return () => { cancelled = true; };
+    }, [subgraphUrl]);
+
+    // pollInterval keeps voting data fresh so another member's vote appears
+    // without a reload. Voting is event-driven, but events only fire for the
+    // acting user; gentle 30s polling surfaces everyone else's activity.
+    // Polling pauses when the tab is hidden or the user is idle (useUserActive).
+    const { data, loading, error, refetch } = useQuery(
+        proposerSupported ? FETCH_VOTING_DATA_WITH_PROPOSER : FETCH_VOTING_DATA_NEW,
+        {
         variables: { orgId: orgId },
         skip: !orgId,
         fetchPolicy: 'cache-first',
+        pollInterval: isActive ? 30000 : 0,
         client,
-    });
+        }
+    );
 
     // Ref-stabilize refetch so callbacks don't re-create when Apollo returns a new reference
     const refetchRef = useRef(refetch);
     refetchRef.current = refetch;
+
+    // When the user returns (tab visible / mouse moves), refetch immediately
+    // so stale data doesn't persist until the next poll tick.
+    const wasActiveRef = useRef(isActive);
+    useEffect(() => {
+        if (isActive && !wasActiveRef.current && orgId) {
+            refetchRef.current();
+        }
+        wasActiveRef.current = isActive;
+    }, [isActive, orgId]);
+
+    // ── Optimistic votes ────────────────────────────────────────────────
+    // Map<proposalCompositeId, { vote, insertedAt }>. Merged into the matching
+    // raw proposal's votes array before transformProposal so the user's own
+    // vote shows instantly during the 5-15s subgraph indexing window.
+    const [optimisticVotes, setOptimisticVotes] = useState({});
+    const optimisticTimersRef = useRef(new Map());
+
+    const addOptimisticVote = useCallback((proposalCompositeId, vote) => {
+        if (!proposalCompositeId || !vote) return;
+        setOptimisticVotes(prev => ({
+            ...prev,
+            [proposalCompositeId]: { vote, insertedAt: Date.now() },
+        }));
+
+        // Grace: auto-expire 65s after insertion. Firing a state update forces
+        // the merge to recompute so the entry drops out (by which point the
+        // real subgraph vote should have indexed). Do NOT shorten this window.
+        const existingTimer = optimisticTimersRef.current.get(proposalCompositeId);
+        if (existingTimer) clearTimeout(existingTimer);
+        const timer = setTimeout(() => {
+            optimisticTimersRef.current.delete(proposalCompositeId);
+            setOptimisticVotes(prev => {
+                if (!prev[proposalCompositeId]) return prev;
+                const next = { ...prev };
+                delete next[proposalCompositeId];
+                return next;
+            });
+        }, OPTIMISTIC_VOTE_GRACE_MS);
+        optimisticTimersRef.current.set(proposalCompositeId, timer);
+    }, []);
+
+    // Roll back an optimistic vote (e.g. the cast tx failed). Clears the entry
+    // and its pending expiry timer so the celebration can restore the ballot
+    // without a stale merged vote lingering for the rest of the grace window.
+    const removeOptimisticVote = useCallback((proposalCompositeId) => {
+        if (!proposalCompositeId) return;
+        const timer = optimisticTimersRef.current.get(proposalCompositeId);
+        if (timer) {
+            clearTimeout(timer);
+            optimisticTimersRef.current.delete(proposalCompositeId);
+        }
+        setOptimisticVotes(prev => {
+            if (!prev[proposalCompositeId]) return prev;
+            const next = { ...prev };
+            delete next[proposalCompositeId];
+            return next;
+        });
+    }, []);
+
+    // Clear any pending expiry timers on unmount.
+    useEffect(() => {
+        const timers = optimisticTimersRef.current;
+        return () => {
+            timers.forEach(t => clearTimeout(t));
+            timers.clear();
+        };
+    }, []);
 
     // Refetch immediately — executeWithNotification already waited for the
     // subgraph to index the transaction block before emitting the event.
@@ -256,6 +412,35 @@ export const VotingProvider = ({ children }) => {
             let ddProposals = [];
             const update = {};
 
+            // Merge any optimistic vote for a proposal into a COPY of its raw
+            // votes array before transforming. Dedupe: if a real subgraph vote
+            // from the same voter already exists, drop the optimistic one (the
+            // real vote wins). Returns the proposal (possibly a shallow copy).
+            const mergeOptimistic = (proposal) => {
+                const entry = optimisticVotes[proposal.id];
+                if (!entry) return proposal;
+                const { vote } = entry;
+                const voterLower = (vote.voter || '').toLowerCase();
+                const realVotes = proposal.votes || [];
+                const alreadyReal = realVotes.some(
+                    v => (v.voter || '').toLowerCase() === voterLower
+                );
+                if (alreadyReal) return proposal;
+                return {
+                    ...proposal,
+                    votes: [
+                        ...realVotes,
+                        {
+                            voter: vote.voter,
+                            voterUsername: vote.voterUsername || '',
+                            optionIndexes: vote.optionIndexes || [],
+                            optionWeights: vote.optionWeights || [],
+                            classRawPowers: vote.classRawPowers || [],
+                        },
+                    ],
+                };
+            };
+
             if (org.hybridVoting) {
                 update.votingType = 'Hybrid';
             } else if (org.directDemocracyVoting) {
@@ -266,6 +451,8 @@ export const VotingProvider = ({ children }) => {
             if (org.hybridVoting) {
                 const hybridThreshold = org.hybridVoting.thresholdPct || 0;
                 const hybridQuorum = org.hybridVoting.quorum || 0;
+                update.hybridThresholdPct = hybridThreshold;
+                update.hybridQuorum = hybridQuorum;
 
                 // Process voting classes first — transformProposal needs them for
                 // the per-class-weighted percentage math (matches contract logic).
@@ -292,7 +479,7 @@ export const VotingProvider = ({ children }) => {
                 update.votingClasses = activeClasses;
 
                 hybridProposals = (org.hybridVoting.proposals || []).map(p =>
-                    transformProposal(p, org.hybridVoting.id, 'Hybrid', hybridThreshold, hybridQuorum, activeClasses)
+                    transformProposal(mergeOptimistic(p), org.hybridVoting.id, 'Hybrid', hybridThreshold, hybridQuorum, activeClasses, accountAddress)
                 );
                 update.hybridVotingOngoing = hybridProposals.filter(p => p.isOngoing);
                 const hybridCompleted = hybridProposals.filter(p => !p.isOngoing);
@@ -302,14 +489,18 @@ export const VotingProvider = ({ children }) => {
                 update.hybridVotingOngoing = [];
                 update.hybridVotingCompleted = [];
                 update.votingClasses = [];
+                update.hybridThresholdPct = 0;
+                update.hybridQuorum = 0;
             }
 
             // Process Direct Democracy Voting proposals
             if (org.directDemocracyVoting) {
                 const ddThreshold = org.directDemocracyVoting.thresholdPct || 0;
                 const ddQuorum = org.directDemocracyVoting.quorum || 0;
+                update.ddThresholdPct = ddThreshold;
+                update.ddQuorum = ddQuorum;
                 ddProposals = (org.directDemocracyVoting.ddvProposals || []).map(p =>
-                    transformProposal(p, org.directDemocracyVoting.id, 'Direct Democracy', ddThreshold, ddQuorum)
+                    transformProposal(mergeOptimistic(p), org.directDemocracyVoting.id, 'Direct Democracy', ddThreshold, ddQuorum, [], accountAddress)
                 );
                 update.democracyVotingOngoing = ddProposals.filter(p => p.isOngoing);
                 const ddCompleted = ddProposals.filter(p => !p.isOngoing);
@@ -318,6 +509,8 @@ export const VotingProvider = ({ children }) => {
             } else {
                 update.democracyVotingOngoing = [];
                 update.democracyVotingCompleted = [];
+                update.ddThresholdPct = 0;
+                update.ddQuorum = 0;
             }
 
             // Combine all ongoing polls from already-transformed proposals
@@ -329,7 +522,10 @@ export const VotingProvider = ({ children }) => {
             // Single dispatch — one re-render instead of 7
             dispatch({ type: 'SET_VOTING_DATA', payload: update });
         }
-    }, [data]);
+    }, [data, optimisticVotes, accountAddress]);
+
+    // Stable refetch passthrough so a retry banner can re-run the query.
+    const refetchVoting = useCallback(() => refetchRef.current?.(), []);
 
     const contextValue = useMemo(() => ({
         hybridVotingOngoing: state.hybridVotingOngoing,
@@ -337,10 +533,18 @@ export const VotingProvider = ({ children }) => {
         democracyVotingOngoing: state.democracyVotingOngoing,
         democracyVotingCompleted: state.democracyVotingCompleted,
         loading,
+        error,
+        refetch: refetchVoting,
+        addOptimisticVote,
+        removeOptimisticVote,
         ongoingPolls: state.ongoingPolls,
         votingType: state.votingType,
         votingClasses: state.votingClasses,
-    }), [state, loading]);
+        hybridThresholdPct: state.hybridThresholdPct,
+        hybridQuorum: state.hybridQuorum,
+        ddThresholdPct: state.ddThresholdPct,
+        ddQuorum: state.ddQuorum,
+    }), [state, loading, error, refetchVoting, addOptimisticVote, removeOptimisticVote]);
 
     return (
         <VotingContext.Provider value={contextValue}>

@@ -98,12 +98,20 @@ export const TaskBoardProvider = ({
   // Get services from the new hook — do NOT pass { ipfsService: { addToIpfs } } here,
   // useWeb3Services already gets it from useIPFScontext(). Passing an inline object
   // creates a new reference every render, causing all services to be recreated.
-  const { task: taskService, isReady } = useWeb3Services();
+  const { task: taskService, isReady, getNotReadyMessage } = useWeb3Services();
 
   // Ref to access current taskColumns inside callbacks without adding taskColumns
   // to their dependency arrays (which would recreate every callback on each column change).
   const taskColumnsRef = useRef(taskColumns);
   taskColumnsRef.current = taskColumns;
+
+  // Latest-ref for getNotReadyMessage. The action callbacks below key their deps on
+  // `isReady` (a boolean), which stays false across the signed-out → initializing
+  // transition even though getNotReadyMessage's identity changes with readyState.
+  // Reading it through a stable ref avoids capturing a stale (e.g. "signed out")
+  // message and keeps the callbacks from being recreated on every readiness change.
+  const getNotReadyMessageRef = useRef(getNotReadyMessage);
+  getNotReadyMessageRef.current = getNotReadyMessage;
 
   // Optimistic lock: prevents poll-interval from overwriting local optimistic state.
   // After an optimistic update, server data is suppressed until it catches up or
@@ -219,7 +227,7 @@ export const TaskBoardProvider = ({
     claimedBy
   ) => {
     if (!isReady || !taskService) {
-      addNotification('Web3 not ready. Please connect your wallet.', 'error');
+      addNotification(getNotReadyMessageRef.current(), 'error');
       return;
     }
 
@@ -355,7 +363,7 @@ export const TaskBoardProvider = ({
    */
   const addTask = useCallback(async (task, destColumnId) => {
     if (!isReady || !taskService) {
-      addNotification('Web3 not ready. Please connect your wallet.', 'error');
+      addNotification(getNotReadyMessageRef.current(), 'error');
       return;
     }
 
@@ -469,7 +477,7 @@ export const TaskBoardProvider = ({
    */
   const addTaskBatch = useCallback(async (drafts, projectId, destColumnId) => {
     if (!isReady || !taskService) {
-      addNotification('Web3 not ready. Please connect your wallet.', 'error');
+      addNotification(getNotReadyMessageRef.current(), 'error');
       return { success: false };
     }
     if (!Array.isArray(drafts) || drafts.length === 0) {
@@ -589,7 +597,7 @@ export const TaskBoardProvider = ({
    */
   const editTask = useCallback(async (updatedTask, destColumnId, destTaskIndex, projectName) => {
     if (!isReady || !taskService) {
-      addNotification('Web3 not ready. Please connect your wallet.', 'error');
+      addNotification(getNotReadyMessageRef.current(), 'error');
       return;
     }
 
@@ -673,7 +681,7 @@ export const TaskBoardProvider = ({
    */
   const editTaskMetadata = useCallback(async (updatedTask, destColumnId, destTaskIndex, projectName) => {
     if (!isReady || !taskService) {
-      addNotification('Web3 not ready. Please connect your wallet.', 'error');
+      addNotification(getNotReadyMessageRef.current(), 'error');
       return;
     }
 
@@ -738,7 +746,7 @@ export const TaskBoardProvider = ({
    */
   const deleteTask = useCallback(async (taskId, columnId) => {
     if (!isReady || !taskService) {
-      addNotification('Web3 not ready. Please connect your wallet.', 'error');
+      addNotification(getNotReadyMessageRef.current(), 'error');
       return;
     }
 
@@ -796,7 +804,7 @@ export const TaskBoardProvider = ({
    */
   const applyForTask = useCallback(async (taskId, applicationData, applicantAddress) => {
     if (!isReady || !taskService) {
-      addNotification('Web3 not ready. Please connect your wallet.', 'error');
+      addNotification(getNotReadyMessageRef.current(), 'error');
       return { success: false };
     }
 
@@ -860,7 +868,7 @@ export const TaskBoardProvider = ({
    */
   const approveApplication = useCallback(async (taskId, applicantAddress, applicantUsername) => {
     if (!isReady || !taskService) {
-      addNotification('Web3 not ready. Please connect your wallet.', 'error');
+      addNotification(getNotReadyMessageRef.current(), 'error');
       return { success: false };
     }
 
@@ -932,7 +940,7 @@ export const TaskBoardProvider = ({
    */
   const assignTask = useCallback(async (taskId, assigneeAddress, assigneeUsername) => {
     if (!isReady || !taskService) {
-      addNotification('Web3 not ready. Please connect your wallet.', 'error');
+      addNotification(getNotReadyMessageRef.current(), 'error');
       return { success: false };
     }
 
@@ -1029,7 +1037,7 @@ export const TaskBoardProvider = ({
    */
   const takeOverTask = useCallback(async (task, newAssigneeAddress, newAssigneeUsername) => {
     if (!isReady || !taskService) {
-      addNotification('Web3 not ready. Please connect your wallet.', 'error');
+      addNotification(getNotReadyMessageRef.current(), 'error');
       return { success: false };
     }
 
@@ -1081,7 +1089,7 @@ export const TaskBoardProvider = ({
    */
   const rejectTask = useCallback(async (task, rejectionReason) => {
     if (!isReady || !taskService) {
-      addNotification('Web3 not ready. Please connect your wallet.', 'error');
+      addNotification(getNotReadyMessageRef.current(), 'error');
       return { success: false };
     }
 

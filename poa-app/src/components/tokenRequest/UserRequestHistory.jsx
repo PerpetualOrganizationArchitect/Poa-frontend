@@ -93,7 +93,7 @@ const UserRequestHistory = () => {
       );
 
       if (!result.success) {
-        throw new Error(result.error?.message || 'Failed to cancel request');
+        throw new Error(result.error?.userMessage || 'Failed to cancel request');
       }
     } catch (error) {
       console.error('Error cancelling request:', error);

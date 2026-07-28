@@ -359,6 +359,105 @@ export const FETCH_VOTING_DATA_NEW = gql`
   }
 `;
 
+// Same query with proposer attribution (subgraph-pop #195 fields). Only used
+// once the serving subgraph is confirmed to have Proposal.proposer — an
+// unknown field errors the ENTIRE org query (see subgraphCapabilities.js).
+export const FETCH_VOTING_DATA_WITH_PROPOSER = gql`
+  query FetchVotingDataWithProposer($orgId: Bytes!) {
+    organization(id: $orgId) {
+      id
+      hybridVoting {
+        id
+        thresholdPct
+        quorum
+        votingClasses(where: { isActive: true }, orderBy: classIndex, orderDirection: asc) {
+          id
+          classIndex
+          version
+          strategy
+          slicePct
+          quadratic
+          minBalance
+          asset
+          hatIds
+          isActive
+        }
+        proposals(orderBy: startTimestamp, orderDirection: desc, first: 50) {
+          id
+          proposalId
+          proposer
+          proposerUsername
+          title
+          descriptionHash
+          metadata {
+            id
+            description
+            optionNames
+            actionSummaries
+            promotedFrom
+          }
+          numOptions
+          startTimestamp
+          endTimestamp
+          status
+          winningOption
+          isValid
+          wasExecuted
+          executionFailed
+          executionError
+          isHatRestricted
+          restrictedHatIds
+          votes {
+            voter
+            voterUsername
+            optionIndexes
+            optionWeights
+            classRawPowers
+            votedAt
+          }
+        }
+      }
+      directDemocracyVoting {
+        id
+        thresholdPct
+        quorum
+        ddvProposals(orderBy: startTimestamp, orderDirection: desc, first: 50) {
+          id
+          proposalId
+          proposer
+          proposerUsername
+          title
+          descriptionHash
+          metadata {
+            id
+            description
+            optionNames
+            actionSummaries
+            promotedFrom
+          }
+          numOptions
+          startTimestamp
+          endTimestamp
+          status
+          winningOption
+          isValid
+          executionFailed
+          executionError
+          isHatRestricted
+          restrictedHatIds
+          votes {
+            voter
+            voterUsername
+            optionIndexes
+            optionWeights
+          }
+        }
+      }
+    }
+  }
+`;
+
+
 // Fetch projects and tasks data
 export const FETCH_PROJECTS_DATA_NEW = gql`
   query FetchProjectsDataNew($orgId: Bytes!) {

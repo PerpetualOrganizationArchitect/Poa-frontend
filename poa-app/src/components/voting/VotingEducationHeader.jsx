@@ -1,16 +1,23 @@
 /**
  * VotingEducationHeader
- * Comprehensive educational header for the voting page that explains the hybrid voting system
- * using progressive disclosure and the "Two Voices" metaphor.
+ * Educational header for the voting page. Explains "Blended voting" (HybridVoting
+ * on-chain) with an N-class weight bar + the member's own VotePowerReceipt.
  *
- * Displays:
- * - User's actual voting power values
- * - Class weights from the contract
- * - Step-by-step explanation of how votes are calculated
- * - Visual representation of voting power breakdown
+ * Product direction (Hudson):
+ *  - "Blended voting" everywhere a member can see it (never "Hybrid").
+ *  - Honest power: the weight bar reflects the real N voting classes and the
+ *    receipt shows the member's own share — no fabricated 50/50 default.
+ *  - Collapse-after-first-visit: the full header shows on a member's first
+ *    visit to an org's voting page; after that a one-line GovernanceStrip that
+ *    expands back to the full header on click.
+ *
+ * Exports (API consumed by VotingTabs / VotingPage — keep stable):
+ *  - default VotingEducationHeader({ selectedTab, PTVoteType })  → desktop card / headerSlot
+ *  - VotingEducationContent({ selectedTab, PTVoteType })          → shared inner content (drawer + card)
+ *  - VotingMobileHeader({ selectedTab, PTVoteType, onInfoClick }) → slim mobile page header
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Box,
   Flex,
@@ -22,13 +29,24 @@ import {
   Button,
   IconButton,
   useBreakpointValue,
-  Tooltip,
   Badge,
+  Tooltip,
   SimpleGrid,
-  Skeleton,
   keyframes,
 } from "@chakra-ui/react";
-import { InfoOutlineIcon } from "@chakra-ui/icons";
+import { InfoOutlineIcon, ChevronDownIcon, ChevronUpIcon } from "@chakra-ui/icons";
+import { PiUsers, PiChartBar, PiSquareHalfFill } from "react-icons/pi";
+import { useVotingPower } from "@/hooks";
+import { useUserContext } from "@/context/UserContext";
+import { usePOContext } from "@/context/POContext";
+import { useVotingContext } from "@/context/VotingContext";
+import { useTour } from "@/features/tour";
+import { VotePowerReceipt } from "@/components/voting/VotePowerReceipt";
+import {
+  displayName,
+  taglineFor,
+  TYPE_EXPLAINER,
+} from "@/config/votingVocabulary";
 
 // Breathing animation for official governance indicator
 const breathe = keyframes`
@@ -41,11 +59,6 @@ const breathe = keyframes`
     border-color: rgba(237, 137, 54, 0.5);
   }
 `;
-import { ChevronDownIcon, ChevronUpIcon } from "@chakra-ui/icons";
-import { useVotingPower } from "@/hooks";
-import { useUserContext } from "@/context/UserContext";
-import { usePOContext } from "@/context/POContext";
-import { useTour } from "@/features/tour";
 
 const glassLayerStyle = {
   position: "absolute",
@@ -58,517 +71,405 @@ const glassLayerStyle = {
   border: "1px solid rgba(148, 115, 220, 0.2)",
 };
 
+const AMETHYST = "#9473DC";
+
 /**
- * Compact education dropdown for users without voting power
+ * Per-class strategy visual meta for the weight bar.
  */
-const LearnMoreDropdown = ({ classWeights, classConfig }) => {
-  const { currentStepDef, isActive: isTourActive } = useTour();
-  const tourWantsExpanded = isTourActive && currentStepDef?.id === 'voting-hybrid-detail';
-  const [isExpanded, setIsExpanded] = useState(false);
-  const showExpanded = isExpanded || tourWantsExpanded;
-  const democracyWeight = classWeights?.democracy ?? 50;
-  const contributionWeight = classWeights?.contribution ?? 50;
-  const isQuadratic = classConfig?.some(c => c.strategy === 'ERC20_BAL' && c.quadratic) ?? false;
+function classVisual(cls) {
+  if (cls.strategy === "DIRECT") {
+    return { color: "#9F7AEA", icon: PiUsers, kind: "members" };
+  }
+  return cls.quadratic
+    ? { color: "#63B3ED", icon: PiSquareHalfFill, kind: "shares √" }
+    : { color: "#63B3ED", icon: PiChartBar, kind: "shares" };
+}
+
+/**
+ * N-class weight bar — one segment per voting class by slicePct. Reuses the
+ * visual idea of the deployer's MultiClassWeightBar, adapted to the voting
+ * page's dark glass surface + amethyst accents.
+ */
+const ClassWeightBar = ({ votingClasses }) => {
+  const labelMinPct = useBreakpointValue({ base: 30, md: 18 }) ?? 30;
+  const classes = (votingClasses || []).filter((c) => Number(c.slicePct) > 0);
+
+  if (classes.length === 0) return null;
 
   return (
-    <Box w="100%" display="flex" flexDirection="column" alignItems="center">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setIsExpanded(prev => !prev)}
-        color="gray.400"
-        _hover={{ color: "white", bg: "whiteAlpha.100" }}
-        rightIcon={isExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
-        fontWeight="normal"
-      >
-        Learn more about hybrid voting
-      </Button>
+    <VStack spacing={2} w="100%" maxW="560px">
+      <Text fontSize="xs" color="gray.300">
+        How votes are weighted
+      </Text>
+      <Box w="100%">
+        <Flex
+          w="100%"
+          h="36px"
+          borderRadius="full"
+          overflow="hidden"
+          bg="gray.700"
+          boxShadow="inner"
+        >
+          {classes.map((cls, idx) => {
+            const v = classVisual(cls);
+            const slice = Math.round(Number(cls.slicePct));
+            return (
+              <Flex
+                key={cls.classIndex ?? idx}
+                w={`${slice}%`}
+                h="100%"
+                bg={v.color}
+                align="center"
+                justify="center"
+                borderRight={idx < classes.length - 1 ? "1px solid rgba(0,0,0,0.3)" : "none"}
+              >
+                <HStack spacing={1}>
+                  <Text fontSize="sm" fontWeight="bold" color="white">
+                    {slice}%
+                  </Text>
+                  {slice >= labelMinPct && (
+                    <Text fontSize="2xs" color="whiteAlpha.900" noOfLines={1}>
+                      {v.kind}
+                    </Text>
+                  )}
+                </HStack>
+              </Flex>
+            );
+          })}
+        </Flex>
 
-      <Collapse in={showExpanded} animateOpacity>
+        {/* Legend */}
+        <HStack spacing={3} justify="center" mt={1.5} flexWrap="wrap">
+          {classes.map((cls, idx) => {
+            const v = classVisual(cls);
+            return (
+              <HStack key={cls.classIndex ?? idx} spacing={1}>
+                <Box w="8px" h="8px" borderRadius="full" bg={v.color} />
+                <Text fontSize="2xs" color="gray.300" noOfLines={1}>
+                  {v.kind}
+                </Text>
+              </HStack>
+            );
+          })}
+        </HStack>
+      </Box>
+    </VStack>
+  );
+};
+
+/**
+ * The full "How Blended voting works" explainer — restored from the
+ * pre-overhaul header (Hudson: the old explainer taught better) and upgraded
+ * with live org numbers. ALWAYS visible when the education card is open:
+ * expanding "How it works" from the strip must reveal the whole explanation,
+ * not a second collapsed section.
+ *
+ * Teaching structure (kept from the original):
+ *   1. "Two factors determine your voting power" — side-by-side class cards
+ *      (Membership equal-vote / Contribution shares earned by completing
+ *      tasks, with the quadratic sentence when the org uses it).
+ *   2. A worked example with real weights and the org's real member count.
+ *   3. The principle line: everyone has a voice; contributors earn influence.
+ */
+const BlendedExplainerPanel = ({ votingClasses, poMembers }) => {
+  const classes = votingClasses || [];
+  const direct = classes.find((c) => c.strategy === "DIRECT");
+  const token = classes.find((c) => c.strategy === "ERC20_BAL");
+  const democracyWeight = direct ? Math.round(Number(direct.slicePct)) : 50;
+  const contributionWeight = token ? Math.round(Number(token.slicePct)) : 50;
+  const isQuadratic = !!token?.quadratic;
+  const memberCount = poMembers > 0 ? poMembers : 6;
+
+  const exMembership = democracyWeight / memberCount;
+  const exContribution = (contributionWeight * 10) / 100;
+
+  return (
+    <Box
+      data-tour="voting-hybrid-detail"
+      mt={2}
+      p={{ base: 4, md: 5 }}
+      bg="whiteAlpha.50"
+      borderRadius="xl"
+      border="1px solid"
+      borderColor="whiteAlpha.100"
+      w="100%"
+      maxW="640px"
+    >
+      <VStack spacing={4} align="stretch">
+        <VStack align="start" spacing={2}>
+          <Heading size="sm" color="white">
+            How Blended voting works
+          </Heading>
+          <Text fontSize="sm" color="gray.300">
+            Two factors determine your voting power:
+          </Text>
+        </VStack>
+
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          {/* Membership */}
+          <Box
+            p={3}
+            bg="rgba(128, 90, 213, 0.1)"
+            borderRadius="lg"
+            border="1px solid"
+            borderColor="rgba(128, 90, 213, 0.3)"
+          >
+            <VStack align="start" spacing={2}>
+              <HStack>
+                <Box w="12px" h="12px" borderRadius="full" bg="purple.400" />
+                <Text fontWeight="bold" color="purple.300" fontSize="sm">
+                  Membership
+                </Text>
+                <Badge colorScheme="purple" variant="subtle" fontSize="2xs">
+                  {democracyWeight}%
+                </Badge>
+              </HStack>
+              <Text fontSize="xs" color="gray.300">
+                Every member gets an equal share of this portion. With{" "}
+                {memberCount} members, each gets 1/{memberCount} of the
+                membership weight.
+              </Text>
+            </VStack>
+          </Box>
+
+          {/* Contribution */}
+          <Box
+            p={3}
+            bg="rgba(49, 130, 206, 0.1)"
+            borderRadius="lg"
+            border="1px solid"
+            borderColor="rgba(49, 130, 206, 0.3)"
+          >
+            <VStack align="start" spacing={2}>
+              <HStack>
+                <Box w="12px" h="12px" borderRadius="full" bg="blue.400" />
+                <Text fontWeight="bold" color="blue.300" fontSize="sm">
+                  Contribution
+                </Text>
+                <Badge colorScheme="blue" variant="subtle" fontSize="2xs">
+                  {contributionWeight}%
+                </Badge>
+              </HStack>
+              <Text fontSize="xs" color="gray.300">
+                Your share of this portion is based on your shares, earned by
+                completing tasks. More shares = more influence.
+                {isQuadratic && " Uses quadratic scaling so no single person can dominate."}
+              </Text>
+            </VStack>
+          </Box>
+        </SimpleGrid>
+
+        {/* Worked example — live weights + the org's real member count */}
         <Box
-          data-tour="voting-hybrid-detail"
-          mt={4}
-          p={{ base: 4, md: 5 }}
+          p={3}
           bg="whiteAlpha.50"
-          borderRadius="xl"
+          borderRadius="lg"
           border="1px solid"
           borderColor="whiteAlpha.100"
         >
-          <VStack spacing={4} align="stretch">
-            <VStack align="start" spacing={2}>
-              <Heading size="sm" color="white">
-                How Hybrid Voting Works
-              </Heading>
-              <Text fontSize="sm" color="gray.300">
-                Two factors determine your voting power:
-              </Text>
-            </VStack>
-
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-              {/* Membership */}
-              <Box
-                p={3}
-                bg="rgba(128, 90, 213, 0.1)"
-                borderRadius="lg"
-                border="1px solid"
-                borderColor="rgba(128, 90, 213, 0.3)"
-              >
-                <VStack align="start" spacing={2}>
-                  <HStack>
-                    <Box w="12px" h="12px" borderRadius="full" bg="purple.400" />
-                    <Text fontWeight="bold" color="purple.300" fontSize="sm">
-                      Membership
-                    </Text>
-                    <Badge colorScheme="purple" variant="subtle" fontSize="2xs">
-                      {democracyWeight}%
-                    </Badge>
-                  </HStack>
-                  <Text fontSize="xs" color="gray.300">
-                    Every member gets an equal share of this portion. If there
-                    are 6 members, each gets 1/6 of the membership weight.
-                  </Text>
-                </VStack>
-              </Box>
-
-              {/* Contribution */}
-              <Box
-                p={3}
-                bg="rgba(49, 130, 206, 0.1)"
-                borderRadius="lg"
-                border="1px solid"
-                borderColor="rgba(49, 130, 206, 0.3)"
-              >
-                <VStack align="start" spacing={2}>
-                  <HStack>
-                    <Box w="12px" h="12px" borderRadius="full" bg="blue.400" />
-                    <Text fontWeight="bold" color="blue.300" fontSize="sm">
-                      Contribution
-                    </Text>
-                    <Badge colorScheme="blue" variant="subtle" fontSize="2xs">
-                      {contributionWeight}%
-                    </Badge>
-                  </HStack>
-                  <Text fontSize="xs" color="gray.300">
-                    Your share of this portion is based on your shares,
-                    earned by completing tasks. More shares = more influence.
-                    {isQuadratic && " Uses quadratic scaling so no single person can dominate."}
-                  </Text>
-                </VStack>
-              </Box>
-            </SimpleGrid>
-
-            {/* Worked example */}
-            <Box
-              p={3}
-              bg="whiteAlpha.50"
-              borderRadius="lg"
-              border="1px solid"
-              borderColor="whiteAlpha.100"
-            >
-              <VStack align="start" spacing={2}>
-                <Text fontWeight="bold" color="white" fontSize="sm">
-                  Example
-                </Text>
-                <Text fontSize="xs" color="gray.300">
-                  Say there are 6 members and 100 total shares. You hold 10 shares.
-                </Text>
-                <VStack align="start" spacing={1} pl={2}>
-                  <Text fontSize="xs" color="purple.200">
-                    Membership: 1/6 of {democracyWeight}% = {(democracyWeight / 6).toFixed(1)}%
-                  </Text>
-                  <Text fontSize="xs" color="blue.200">
-                    Contribution: 10/100 of {contributionWeight}% = {(contributionWeight * 10 / 100).toFixed(1)}%
-                  </Text>
-                  <Text fontSize="xs" color="green.200" fontWeight="semibold">
-                    Your total voting power: {((democracyWeight / 6) + (contributionWeight * 10 / 100)).toFixed(1)}%
-                  </Text>
-                  {isQuadratic && (
-                    <Text fontSize="xs" color="gray.400" fontStyle="italic">
-                      With quadratic scaling, contribution uses √(shares) for fairer distribution — actual percentages will differ from this simplified example.
-                    </Text>
-                  )}
-                </VStack>
-              </VStack>
-            </Box>
-
-            <Text fontSize="xs" color="gray.400">
-              This means every member always has a voice, while those who
-              contribute the most earn greater influence over decisions.
+          <VStack align="start" spacing={2}>
+            <Text fontWeight="bold" color="white" fontSize="sm">
+              Example
             </Text>
+            <Text fontSize="xs" color="gray.300">
+              Say your org has {memberCount} members and 100 total shares, and
+              one member — call her Ana — holds 10 of them.
+            </Text>
+            <VStack align="start" spacing={1} pl={2}>
+              <Text fontSize="xs" color="purple.200">
+                Membership: 1/{memberCount} of {democracyWeight}% ={" "}
+                {exMembership.toFixed(1)}%
+              </Text>
+              <Text fontSize="xs" color="blue.200">
+                Contribution: 10/100 of {contributionWeight}% ={" "}
+                {exContribution.toFixed(1)}%
+              </Text>
+              <Text fontSize="xs" color="green.200" fontWeight="semibold">
+                Ana&apos;s total voting power: {(exMembership + exContribution).toFixed(1)}%
+              </Text>
+              {isQuadratic && (
+                <Text fontSize="xs" color="gray.400" fontStyle="italic">
+                  With quadratic scaling, contribution uses √(shares) for
+                  fairer distribution — actual percentages will differ from
+                  this simplified example.
+                </Text>
+              )}
+            </VStack>
           </VStack>
         </Box>
-      </Collapse>
+
+        <Text fontSize="xs" color="gray.400">
+          This means every member always has a voice, while those who
+          contribute the most earn greater influence over decisions.
+        </Text>
+        <Text fontSize="xs" color="gray.500">
+          {TYPE_EXPLAINER}
+        </Text>
+      </VStack>
     </Box>
   );
 };
 
 /**
- * Visual component showing the "Two Voices" voting power breakdown
- * with actual numerical values and class weights
+ * Governance strip shown after the member's first visit to this org's voting
+ * page. Type-honest voice numbers (the panel's #1 finding): a poll share AND a
+ * binding share, each labeled — never one ambiguous percentage. A mini weight
+ * bar replaces the "80/20 split" text. On mobile it becomes a two-row tappable
+ * card; the whole strip expands the full explainer.
  */
-const TwoVoicesBar = ({ membershipPower, contributionPower, classWeights, classConfig, isLoading, hasMemberRole }) => {
-  const totalPower = membershipPower + contributionPower;
-  const isQuadratic = classConfig?.some(c => c.strategy === 'ERC20_BAL' && c.quadratic) ?? false;
-  const democracyWeight = classWeights?.democracy ?? 50;
-  const contributionWeight = classWeights?.contribution ?? 50;
-  // Hide the secondary in-segment label below this width % to avoid clipping.
-  // Quadratic gets a stricter desktop threshold because " √" makes the label wider.
-  const labelMinPct = useBreakpointValue({ base: 35, md: isQuadratic ? 25 : 20 }) ?? 35;
+const GovernanceStrip = ({ votingClasses, totalSharePct, poMembers, onExpand }) => {
+  const classes = (votingClasses || []).filter((c) => Number(c.slicePct) > 0);
+  const blendedText = totalSharePct != null ? `${totalSharePct.toFixed(1)}%` : null;
+  const pollText = poMembers > 0 ? `${(100 / poMembers).toFixed(1)}%` : null;
 
-  // If loading, show skeleton
-  if (isLoading) {
-    return (
-      <VStack spacing={3} w="100%" maxW="500px">
-        <Skeleton height="20px" width="150px" />
-        <Skeleton height="32px" width="100%" borderRadius="full" />
-        <Skeleton height="16px" width="200px" />
-      </VStack>
-    );
-  }
-
-  // Don't show the voting power bar if user has no voting power
-  if (totalPower === 0 || !hasMemberRole) {
-    return null;
-  }
-
-  return (
-    <VStack spacing={3} w="100%" maxW="500px">
-      <Text fontSize="xs" color="gray.500">
-        How votes are weighted
+  const voiceNumbers = (
+    <HStack spacing={2} flexWrap="wrap" rowGap={0.5}>
+      <Text fontSize="sm" color="gray.200" fontWeight="600">
+        Your voice:
       </Text>
+      {pollText && (
+        <Tooltip
+          label={`Polls count every member equally — you're 1 of ${poMembers}.`}
+          placement="bottom"
+          hasArrow
+          bg="gray.700"
+        >
+          <HStack spacing={1} cursor="help">
+            <Text fontSize="sm" color="white" fontWeight="800">{pollText}</Text>
+            <Text fontSize="xs" color="gray.300">on polls</Text>
+          </HStack>
+        </Tooltip>
+      )}
+      {pollText && blendedText && <Text color="gray.500">·</Text>}
+      {blendedText && (
+        <Tooltip
+          label="Binding votes use your group's blended weights (membership + shares)."
+          placement="bottom"
+          hasArrow
+          bg="gray.700"
+        >
+          <HStack spacing={1} cursor="help">
+            <Text fontSize="sm" color="#C6B4F5" fontWeight="800">{blendedText}</Text>
+            <Text fontSize="xs" color="gray.300">on binding votes</Text>
+          </HStack>
+        </Tooltip>
+      )}
+    </HStack>
+  );
 
-      {/* Class weight bar */}
-      <Box w="100%" position="relative">
-        <Flex w="100%" h="36px" borderRadius="full" overflow="hidden" bg="gray.700" boxShadow="inner">
-          {/* Membership class */}
-          <Tooltip
-            label={
-              <VStack spacing={1} align="start" p={1}>
-                <Text fontWeight="bold">Membership</Text>
-                <Text fontSize="xs">Equal vote for every member — {democracyWeight}% of the final decision.</Text>
-              </VStack>
-            }
-            placement="top"
-            hasArrow
-            bg="gray.700"
-            p={2}
-          >
-            <Flex
-              w={`${democracyWeight}%`}
+  const weightBar = classes.length > 0 && (
+    <Tooltip label={taglineFor("Hybrid")} placement="bottom" hasArrow bg="gray.700">
+      <HStack spacing={1.5} cursor="help">
+        <Flex w="72px" h="10px" borderRadius="full" overflow="hidden" bg="gray.700" flexShrink={0}>
+          {classes.map((cls, i) => (
+            <Box
+              key={cls.classIndex ?? i}
+              w={`${Math.round(Number(cls.slicePct))}%`}
               h="100%"
-              bg="linear-gradient(90deg, #805AD5 0%, #9F7AEA 100%)"
-              align="center"
-              justify="center"
-              cursor="help"
-              transition="filter 0.3s"
-              _hover={{ filter: "brightness(1.15)" }}
-            >
-              <HStack spacing={1}>
-                <Text fontSize="sm" fontWeight="bold" color="white">
-                  {democracyWeight}%
-                </Text>
-                {democracyWeight >= labelMinPct && (
-                  <Text fontSize="2xs" color="whiteAlpha.800">
-                    membership
-                  </Text>
-                )}
-              </HStack>
-            </Flex>
-          </Tooltip>
-
-          {/* Contribution class */}
-          <Tooltip
-            label={
-              <VStack spacing={1} align="start" p={1}>
-                <Text fontWeight="bold">Contribution{isQuadratic ? ' (Quadratic)' : ''}</Text>
-                <Text fontSize="xs">
-                  {isQuadratic
-                    ? `Shares are square-root weighted — ${contributionWeight}% of the final decision. This gives fairer representation across holders.`
-                    : `Based on your shares — ${contributionWeight}% of the final decision.`
-                  }
-                </Text>
-              </VStack>
-            }
-            placement="top"
-            hasArrow
-            bg="gray.700"
-            p={2}
-          >
-            <Flex
-              w={`${contributionWeight}%`}
-              h="100%"
-              bg="linear-gradient(90deg, #3182CE 0%, #63B3ED 100%)"
-              align="center"
-              justify="center"
-              cursor="help"
-              transition="filter 0.3s"
-              _hover={{ filter: "brightness(1.15)" }}
-            >
-              <HStack spacing={1}>
-                <Text fontSize="sm" fontWeight="bold" color="white">
-                  {contributionWeight}%
-                </Text>
-                {contributionWeight >= labelMinPct && (
-                  <Text fontSize="2xs" color="whiteAlpha.800">
-                    contribution{isQuadratic ? ' √' : ''}
-                  </Text>
-                )}
-              </HStack>
-            </Flex>
-          </Tooltip>
+              bg={cls.strategy === "DIRECT" ? "#9F7AEA" : "#63B3ED"}
+            />
+          ))}
         </Flex>
-
-        {/* Legend — anchors color to label so narrow segments stay readable on touch */}
-        <HStack spacing={3} justify="center" mt={1.5}>
-          <HStack spacing={1}>
-            <Box w="8px" h="8px" borderRadius="full" bg="#9F7AEA" />
-            <Text fontSize="2xs" color="gray.400">membership</Text>
-          </HStack>
-          <HStack spacing={1}>
-            <Box w="8px" h="8px" borderRadius="full" bg="#63B3ED" />
-            <Text fontSize="2xs" color="gray.400">
-              contribution{isQuadratic ? ' √' : ''}
-            </Text>
-          </HStack>
-        </HStack>
-      </Box>
-
-    </VStack>
-  );
-};
-
-/**
- * Stats panel showing user's effective voting share breakdown by class
- */
-const VotingPowerStats = ({ classWeights, orgStats, poMembers, classConfig }) => {
-  const isQuadratic = classConfig?.some(c => c.strategy === 'ERC20_BAL' && c.quadratic) ?? false;
-  const membershipPct = orgStats?.membershipPercent ?? 0;
-  const contributionPct = orgStats?.contributionPercent ?? 0;
-  const totalPct = orgStats?.percentOfTotal ?? 0;
-  const democracyWeight = classWeights?.democracy ?? 50;
-  const contributionWeight = classWeights?.contribution ?? 50;
-
-  return (
-    <VStack spacing={3} w="100%" maxW="500px">
-      <Text fontSize="sm" color="gray.300" fontWeight="semibold">
-        Your Personal Voting Power
-      </Text>
-
-      {/* Effective percentage breakdown: membership + contribution = total */}
-      <HStack
-        spacing={0}
-        w="100%"
-        justify="space-between"
-        p={3}
-        bg="whiteAlpha.50"
-        borderRadius="lg"
-        border="1px solid"
-        borderColor="whiteAlpha.100"
-      >
-        <VStack spacing={0} flex={1}>
-          <Text fontSize="md" fontWeight="bold" color="purple.300">
-            {membershipPct.toFixed(1)}%
-          </Text>
-          <Text fontSize="2xs" color="gray.500">membership</Text>
-        </VStack>
-        <Text color="gray.600" fontSize="xs">+</Text>
-        <VStack spacing={0} flex={1}>
-          <Text fontSize="md" fontWeight="bold" color="blue.300">
-            {contributionPct.toFixed(1)}%
-          </Text>
-          <HStack spacing={1} justify="center">
-            <Text fontSize="2xs" color="gray.500">contribution</Text>
-            {isQuadratic && (
-              <Tooltip
-                label="Square-root weighted — your influence is based on √(your shares) vs the sum of √(everyone's shares), giving fairer representation"
-                placement="top"
-                hasArrow
-                bg="gray.700"
-                p={2}
-                maxW="240px"
-                fontSize="xs"
-              >
-                <Text fontSize="2xs" color="blue.400" cursor="help" opacity={0.7}>√</Text>
-              </Tooltip>
-            )}
-          </HStack>
-        </VStack>
-        <Text color="gray.600" fontSize="xs">=</Text>
-        <VStack spacing={0} flex={1}>
-          <HStack spacing={1} justify="center">
-            <Text fontSize="md" fontWeight="bold" color="green.300">
-              {totalPct.toFixed(1)}%
-            </Text>
-            <Tooltip
-              label={
-                <VStack spacing={2} align="start" p={1}>
-                  <Text fontWeight="bold" fontSize="sm">How your voting power works</Text>
-                  <Text fontSize="xs">
-                    Your effective share is the sum of two weighted class scores:
-                  </Text>
-                  <VStack spacing={1} align="start" pl={2}>
-                    <Text fontSize="xs" color="purple.200">
-                      Membership ({democracyWeight}% weight): Your equal share among {poMembers} members
-                    </Text>
-                    <Text fontSize="xs" color="blue.200">
-                      Contribution ({contributionWeight}% weight): Your share based on shares earned{isQuadratic ? ' (√ weighted)' : ''}
-                    </Text>
-                  </VStack>
-                  <Text fontSize="xs" color="gray.300" fontStyle="italic">
-                    Each class is scored independently, then combined by weight to determine your total influence.
-                  </Text>
-                </VStack>
-              }
-              placement="top"
-              hasArrow
-              bg="gray.700"
-              p={3}
-              maxW="300px"
-            >
-              <Box as="span" display="inline-flex" cursor="help">
-                <InfoOutlineIcon color="gray.500" boxSize="12px" />
-              </Box>
-            </Tooltip>
-          </HStack>
-          <Text fontSize="2xs" color="gray.500">your share</Text>
-        </VStack>
-      </HStack>
-    </VStack>
-  );
-};
-
-/**
- * Slim mobile-only page header. Sits between the (fixed) navbar clearance
- * and the tabs — fills what was otherwise dead space with a real page title,
- * the user's voting power as a subtitle, and an info icon that opens the
- * explainer drawer. Two-line layout for proper visual hierarchy.
- */
-export const VotingMobileHeader = ({ selectedTab, PTVoteType, onInfoClick }) => {
-  const { hasMemberRole } = useUserContext();
-  const { orgStats, hasVotingPower } = useVotingPower();
-  const totalPct = orgStats?.percentOfTotal ?? 0;
-
-  const title = (() => {
-    if (selectedTab === 1) return "Temperature Check";
-    if (PTVoteType === "Hybrid") return "Hybrid Voting";
-    return "Participation Voting";
-  })();
-
-  const subtitle = (() => {
-    if (selectedTab === 1) return "One person, one vote · non-binding";
-    if (!hasMemberRole) return "Members only — join to vote";
-    if (hasVotingPower) return `Your share: ${totalPct.toFixed(1)}%`;
-    return "You don't hold voting power yet";
-  })();
-
-  const isOfficial = selectedTab === 0;
-
-  return (
-    <Flex
-      display={{ base: "flex", md: "none" }}
-      align="center"
-      justify="space-between"
-      px={4}
-      py={3}
-      mb={3}
-      borderRadius="2xl"
-      boxShadow="lg"
-      position="relative"
-      zIndex={0}
-    >
-      <Box
-        className="glass"
-        style={glassLayerStyle}
-        position="absolute"
-        top={0}
-        left={0}
-        right={0}
-        bottom={0}
-        borderRadius="inherit"
-        zIndex={-1}
-      />
-      <VStack align="start" spacing={0.5} flex={1} minW={0}>
-        <HStack spacing={2}>
-          <Box
-            w="8px"
-            h="8px"
-            borderRadius="full"
-            bg={isOfficial
-              ? "linear-gradient(135deg, #F6AD55 0%, #ED8936 100%)"
-              : "blue.400"
-            }
-            boxShadow={isOfficial
-              ? "0 0 8px rgba(237, 137, 54, 0.6)"
-              : "0 0 8px rgba(66, 153, 225, 0.5)"
-            }
-            flexShrink={0}
-          />
-          <Heading
-            as="h1"
-            fontSize="md"
-            fontWeight="bold"
-            bgGradient={isOfficial
-              ? "linear(to-r, orange.300, purple.400)"
-              : "linear(to-r, blue.300, blue.400)"
-            }
-            bgClip="text"
-            noOfLines={1}
-          >
-            {title}
-          </Heading>
-        </HStack>
-        <Text fontSize="xs" color="gray.400" pl={4} noOfLines={1}>
-          {subtitle}
+        <Text fontSize="xs" color="gray.300">
+          {classes.map((c) => Math.round(Number(c.slicePct))).join("/")}
         </Text>
-      </VStack>
-      <IconButton
-        aria-label="How voting works"
-        icon={<InfoOutlineIcon boxSize="18px" />}
-        variant="ghost"
-        size="sm"
-        color="gray.400"
-        onClick={onInfoClick}
-        _hover={{ color: "white", bg: "whiteAlpha.100" }}
-        flexShrink={0}
-        ml={2}
-      />
-    </Flex>
+      </HStack>
+    </Tooltip>
+  );
+
+  return (
+    <Box w="100%" maxW="1440px" mx="auto" mb={6}>
+      <Flex
+        align="center"
+        justify={{ base: "space-between", md: "center" }}
+        direction={{ base: "column", md: "row" }}
+        gap={{ base: 1.5, md: 4 }}
+        px={{ base: 4, md: 6 }}
+        py={{ base: 3, md: 3 }}
+        borderRadius="2xl"
+        position="relative"
+        zIndex={1}
+        border="1px solid rgba(148, 115, 220, 0.35)"
+        boxShadow="0 0 24px rgba(148, 115, 220, 0.14), 0 4px 16px rgba(0,0,0,0.3)"
+        cursor="pointer"
+        role="button"
+        tabIndex={0}
+        aria-label="Show how Blended voting works"
+        onClick={onExpand}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onExpand();
+          }
+        }}
+        transition="border-color 0.2s ease, box-shadow 0.2s ease"
+        _hover={{
+          borderColor: "rgba(148, 115, 220, 0.6)",
+          ".gov-strip-cta": { color: "white" },
+        }}
+        _focusVisible={{ outline: "2px solid #9473DC", outlineOffset: "2px" }}
+      >
+        <Box
+          className="glass"
+          style={glassLayerStyle}
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          borderRadius="inherit"
+          zIndex={-1}
+        />
+
+        {/* Row 1 (mobile) / left cluster (desktop): system name + weight bar */}
+        <HStack spacing={3} w={{ base: "100%", md: "auto" }} justify={{ base: "space-between", md: "flex-start" }}>
+          <HStack spacing={1.5}>
+            <Box w="8px" h="8px" borderRadius="full" bg={AMETHYST} />
+            <Text fontSize="sm" color="white" fontWeight="700">
+              {displayName("Hybrid")}
+            </Text>
+          </HStack>
+          {weightBar}
+          {/* Mobile: chevron sits at the row edge as the tap affordance */}
+          <HStack spacing={1} className="gov-strip-cta" color="#C6B4F5" display={{ base: "flex", md: "none" }}>
+            <ChevronDownIcon boxSize={5} />
+          </HStack>
+        </HStack>
+
+        {/* Row 2 (mobile) / middle cluster (desktop): the voice numbers */}
+        {voiceNumbers}
+
+        {/* Desktop-only CTA */}
+        <HStack spacing={1} className="gov-strip-cta" color="#C6B4F5" display={{ base: "none", md: "flex" }}>
+          <Text fontSize="sm" fontWeight="600">How it works</Text>
+          <ChevronDownIcon />
+        </HStack>
+      </Flex>
+    </Box>
   );
 };
 
 /**
  * Inner content of the educational header. Used by both the desktop card
- * (rendered inline above the tabs) and the mobile bottom-sheet drawer
- * (opened from the info icon in the mobile page header).
+ * (rendered inline above the tabs) and the mobile bottom-sheet drawer.
  */
 export const VotingEducationContent = ({ selectedTab, PTVoteType }) => {
-
   const { userData, hasMemberRole } = useUserContext();
   const { poMembers } = usePOContext();
+  const { votingClasses } = useVotingContext();
 
-  const {
-    membershipPower,
-    contributionPower,
-    classWeights,
-    classConfig,
-    orgStats,
-    hasVotingPower,
-    isLoading,
-  } = useVotingPower();
+  const { hasVotingPower, isLoading } = useVotingPower();
 
   const headingSize = useBreakpointValue({ base: "lg", md: "xl" });
-  // Tab 0 = Hybrid/Participation Voting, Tab 1 = Direct Democracy
+  // Tab 0 = Blended/Participation Voting, Tab 1 = Direct Democracy
   const showHybridEducation = selectedTab === 0 && PTVoteType === "Hybrid";
   const showParticipationEducation = selectedTab === 0 && PTVoteType === "Participation";
 
-
-  // Get the appropriate title and tagline
-  // Tab 0 = Hybrid/Participation Voting, Tab 1 = Direct Democracy
   const getTitle = () => {
     if (selectedTab === 1) {
       return "Quick Temperature Check";
     } else if (PTVoteType === "Hybrid") {
-      return "Hybrid Voting";
+      return displayName("Hybrid");
     } else {
       return "Participation Voting";
     }
@@ -578,7 +479,7 @@ export const VotingEducationContent = ({ selectedTab, PTVoteType }) => {
     if (selectedTab === 1) {
       return "One person, one vote — gauge sentiment without commitment";
     } else if (PTVoteType === "Hybrid") {
-      return "Binding decisions weighted by membership + contributions";
+      return taglineFor("Hybrid");
     } else {
       return "Official governance based on your contributions";
     }
@@ -588,165 +489,204 @@ export const VotingEducationContent = ({ selectedTab, PTVoteType }) => {
 
   return (
     <VStack spacing={5} w="100%">
-        {/* Type indicator badge + Title */}
-        <VStack spacing={3}>
-          {/* Official/Informal badge */}
-          {/* Tab 0 = Hybrid/Participation (Official), Tab 1 = Democracy (Informal) */}
-          {selectedTab === 0 ? (
-            <HStack
-              spacing={2}
-              bg="rgba(237, 137, 54, 0.1)"
-              border="1px solid rgba(237, 137, 54, 0.3)"
+      {/* Type indicator badge + Title */}
+      <VStack spacing={3}>
+        {/* Tab 0 = Blended/Participation (Official), Tab 1 = Democracy (Informal) */}
+        {selectedTab === 0 ? (
+          <HStack
+            spacing={2}
+            bg="rgba(237, 137, 54, 0.1)"
+            border="1px solid rgba(237, 137, 54, 0.3)"
+            borderRadius="full"
+            px={3}
+            py={1.5}
+            animation={`${breathe} 3s ease-in-out infinite`}
+          >
+            <Box
+              w="8px"
+              h="8px"
               borderRadius="full"
-              px={3}
-              py={1.5}
-              animation={`${breathe} 3s ease-in-out infinite`}
+              bg="linear-gradient(135deg, #F6AD55 0%, #ED8936 100%)"
+              boxShadow="0 0 8px rgba(237, 137, 54, 0.6)"
+            />
+            <Text
+              fontSize="xs"
+              color="orange.300"
+              fontWeight="semibold"
+              textTransform="uppercase"
+              letterSpacing="wide"
             >
-              <Box
-                w="8px"
-                h="8px"
-                borderRadius="full"
-                bg="linear-gradient(135deg, #F6AD55 0%, #ED8936 100%)"
-                boxShadow="0 0 8px rgba(237, 137, 54, 0.6)"
-              />
-              <Text
-                fontSize="xs"
-                color="orange.300"
-                fontWeight="semibold"
-                textTransform="uppercase"
-                letterSpacing="wide"
-              >
-                Official Governance
-              </Text>
-            </HStack>
-          ) : (
-            <HStack
-              spacing={2}
-              bg="whiteAlpha.100"
+              Official Governance
+            </Text>
+          </HStack>
+        ) : (
+          <HStack
+            spacing={2}
+            bg="whiteAlpha.100"
+            borderRadius="full"
+            px={3}
+            py={1.5}
+          >
+            <Box
+              w="8px"
+              h="8px"
               borderRadius="full"
-              px={3}
-              py={1.5}
+              bg="blue.400"
+              boxShadow="0 0 8px rgba(66, 153, 225, 0.5)"
+            />
+            <Text
+              fontSize="xs"
+              color="gray.300"
+              fontWeight="semibold"
+              textTransform="uppercase"
+              letterSpacing="wide"
             >
-              <Box
-                w="8px"
-                h="8px"
-                borderRadius="full"
-                bg="blue.400"
-                boxShadow="0 0 8px rgba(66, 153, 225, 0.5)"
-              />
-              <Text
-                fontSize="xs"
-                color="gray.400"
-                fontWeight="semibold"
-                textTransform="uppercase"
-                letterSpacing="wide"
-              >
-                Informal Poll
-              </Text>
-            </HStack>
+              Informal Poll
+            </Text>
+          </HStack>
+        )}
+
+        {/* Title */}
+        <Heading
+          color="ghostwhite"
+          size={headingSize}
+          bgGradient={selectedTab === 0
+            ? "linear(to-r, orange.300, purple.400)"
+            : "linear(to-r, blue.300, blue.400)"
+          }
+          bgClip="text"
+          textAlign="center"
+        >
+          {getTitle()}
+        </Heading>
+        <Text
+          color="gray.300"
+          fontSize={{ base: "sm", md: "md" }}
+          textAlign="center"
+        >
+          {getTagline()}
+        </Text>
+      </VStack>
+
+      {/* Blended Voting Education Section */}
+      {showHybridEducation && (
+        <>
+          {/* N-class weight bar — how the decision is split across classes */}
+          <ClassWeightBar votingClasses={votingClasses} />
+
+          {/* The member's own truthful power receipt */}
+          {hasMemberRole && (
+            <Box w="100%" maxW="560px">
+              <VotePowerReceipt variant="full" hideExplainer />
+            </Box>
           )}
 
-          {/* Title */}
-          <Heading
-            color="ghostwhite"
-            size={headingSize}
-            bgGradient={selectedTab === 0
-              ? "linear(to-r, orange.300, purple.400)"
-              : "linear(to-r, blue.300, blue.400)"
-            }
-            bgClip="text"
-            textAlign="center"
+          {/* Plain-language explainer */}
+          <BlendedExplainerPanel votingClasses={votingClasses} poMembers={poMembers} />
+        </>
+      )}
+
+      {/* Participation Voting (non-blended) Education */}
+      {showParticipationEducation && (
+        <VStack spacing={3}>
+          <Box
+            p={4}
+            bg="whiteAlpha.50"
+            borderRadius="lg"
+            border="1px solid"
+            borderColor="rgba(237, 137, 54, 0.15)"
+            maxW="500px"
           >
-            {getTitle()}
-          </Heading>
-          <Text
-            color="gray.300"
-            fontSize={{ base: "sm", md: "md" }}
-            textAlign="center"
-          >
-            {getTagline()}
-          </Text>
+            <VStack spacing={2}>
+              <Text fontSize="sm" color="gray.200" textAlign="center">
+                Binding governance weighted by your shares.
+                Complete tasks and contribute to earn more influence.
+              </Text>
+              {userData?.participationTokenBalance && (
+                <HStack spacing={2}>
+                  <Text fontSize="xs" color="gray.300">Your shares:</Text>
+                  <Badge colorScheme="orange" variant="subtle">
+                    {ptBalance}
+                  </Badge>
+                </HStack>
+              )}
+            </VStack>
+          </Box>
         </VStack>
+      )}
 
-        {/* Hybrid Voting Education Section */}
-        {showHybridEducation && (
-          <>
-            {/* Two Voices visualization bar - shows user's personal power */}
-            <TwoVoicesBar
-              membershipPower={membershipPower}
-              contributionPower={contributionPower}
-              classWeights={classWeights}
-              classConfig={classConfig}
-              isLoading={isLoading}
-              hasMemberRole={hasMemberRole}
-            />
-
-            {/* Voting Power Stats Grid */}
-            {hasVotingPower && !isLoading && (
-              <VotingPowerStats
-                classWeights={classWeights}
-                poMembers={poMembers}
-                orgStats={orgStats}
-                classConfig={classConfig}
-              />
-            )}
-
-            {/* Learn more dropdown - always show for hybrid voting */}
-            <LearnMoreDropdown classWeights={classWeights} classConfig={classConfig} />
-          </>
-        )}
-
-        {/* Participation Voting (non-hybrid) Education */}
-        {showParticipationEducation && (
-          <VStack spacing={3}>
-            <Box
-              p={4}
-              bg="whiteAlpha.50"
-              borderRadius="lg"
-              border="1px solid"
-              borderColor="rgba(237, 137, 54, 0.15)"
-              maxW="500px"
-            >
-              <VStack spacing={2}>
-                <Text fontSize="sm" color="gray.300" textAlign="center">
-                  Binding governance weighted by your shares.
-                  Complete tasks and contribute to earn more influence.
-                </Text>
-                {userData?.participationTokenBalance && (
-                  <HStack spacing={2}>
-                    <Text fontSize="xs" color="gray.400">Your shares:</Text>
-                    <Badge colorScheme="orange" variant="subtle">
-                      {ptBalance}
-                    </Badge>
-                  </HStack>
-                )}
-              </VStack>
-            </Box>
-          </VStack>
-        )}
-
-        {/* Simple message for Democracy voting - no Total members, just clean explanation */}
-        {selectedTab === 1 && (
-          <Text
-            fontSize="sm"
-            color="gray.400"
-            textAlign="center"
-            maxW="400px"
-          >
-            One person, one vote. Results are non-binding.
-          </Text>
-        )}
-      </VStack>
+      {/* Simple message for Democracy voting */}
+      {selectedTab === 1 && (
+        <Text
+          fontSize="sm"
+          color="gray.300"
+          textAlign="center"
+          maxW="400px"
+        >
+          One person, one vote. Results are non-binding.
+        </Text>
+      )}
+    </VStack>
   );
 };
 
 /**
  * Desktop-only educational header card. Mobile users access the same content
  * via the "How voting works" button + bottom-sheet drawer in VotingTabs.
+ *
+ * Collapse-after-first-visit: on a member's first visit to this org's voting
+ * page we show the full card; thereafter a one-line GovernanceStrip that
+ * expands to the full card on click. The "seen" flag is per-org localStorage.
  */
 const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
+  const { orgId, poMembers } = usePOContext();
+  const { votingClasses } = useVotingContext();
+  const { totalSharePct } = useVotingPower();
+
+  // undefined = not yet resolved, true = collapse to strip, false = show full
+  const [collapsed, setCollapsed] = useState(undefined);
+
+  const { currentStepDef, isActive: isTourActive } = useTour();
+  const tourWantsDetail = isTourActive && currentStepDef?.id === "voting-hybrid-detail";
+
+  const isBlendedTab = selectedTab === 0 && PTVoteType === "Hybrid";
+  const storageKey = orgId ? `poa:votingEduSeen:${orgId}` : null;
+
+  useEffect(() => {
+    if (!storageKey) return;
+    let seen = false;
+    try {
+      seen = typeof window !== "undefined" && window.localStorage.getItem(storageKey) === "1";
+    } catch {
+      seen = false;
+    }
+    setCollapsed(seen);
+    // Mark as seen for next time.
+    if (!seen) {
+      try {
+        window.localStorage.setItem(storageKey, "1");
+      } catch {
+        /* ignore storage failures */
+      }
+    }
+  }, [storageKey]);
+
+  // Only the Blended tab collapses; other tabs always render the full content.
+  const showStrip = isBlendedTab && collapsed === true && !tourWantsDetail;
+
+  if (showStrip) {
+    return (
+      <GovernanceStrip
+        votingClasses={votingClasses}
+        totalSharePct={totalSharePct}
+        poMembers={poMembers}
+        onExpand={() => setCollapsed(false)}
+      />
+    );
+  }
+
   return (
-    <Box display={{ base: "none", md: "block" }}>
+    <Box>
       <Flex
         align="center"
         mb={6}
@@ -776,6 +716,21 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
           zIndex={-1}
         />
         <VotingEducationContent selectedTab={selectedTab} PTVoteType={PTVoteType} />
+        {/* Re-collapse to the one-line strip without waiting for the next visit. */}
+        {isBlendedTab && (
+          <Button
+            variant="ghost"
+            size="xs"
+            mt={1}
+            mb={2}
+            color="gray.400"
+            _hover={{ color: "white", bg: "whiteAlpha.100" }}
+            rightIcon={<ChevronUpIcon />}
+            onClick={() => setCollapsed(true)}
+          >
+            Hide
+          </Button>
+        )}
       </Flex>
     </Box>
   );

@@ -140,7 +140,7 @@ export function useVouchFirstOnboarding({
    */
   const createCredentialAndLink = useCallback(async (username, selectedHatId) => {
     if (!factoryAddress || !publicClient) {
-      setError(new Error('Infrastructure not ready. Please try again.'));
+      setError(new Error('We couldn’t get your account ready just yet. Please try again in a moment.'));
       return;
     }
 
@@ -202,12 +202,12 @@ export function useVouchFirstOnboarding({
    */
   const completeOnboarding = useCallback(async (username) => {
     if (!pendingCredential) {
-      setError(new Error('No pending credential found.'));
+      setError(new Error('We couldn’t find your in-progress sign-up. Please start creating your account again.'));
       return;
     }
 
     if (!publicClient || !bundlerClient || !factoryAddress || !registryAddress || !quickJoinContractAddress || !paymasterAddress || !orgId) {
-      setError(new Error('Infrastructure not ready. Please try again.'));
+      setError(new Error('We couldn’t finish setting up your account just yet. Please try again in a moment.'));
       return;
     }
 

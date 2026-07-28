@@ -6,6 +6,8 @@ import EmptyState from '@/components/voting/EmptyState';
 import { COLUMN_TITLES } from '@/util/taskUtils';
 import { dueDateSec, effectiveDeadlineSec } from '@/util/deadlineUtils';
 import { useFlatTasks } from '../useFlatTasks';
+import { useTaskFilters } from '../useTaskFilters';
+import { FilteredEmptyState } from '../TaskFilterBar';
 import TaskRow from './TaskRow';
 import ListControls from './ListControls';
 import {
@@ -106,7 +108,15 @@ const useLocalState = (key, defaultValue) => {
 
 const ListView = ({ projectName, tasks: tasksOverride, showProject = false, allowCreate = false }) => {
   const ownTasks = useFlatTasks();
-  const tasks = tasksOverride ?? ownTasks;
+  const allTasks = tasksOverride ?? ownTasks;
+  // Shared search + quick-filter predicate — applied before sort/group.
+  const { predicate, isFiltering, clearAll } = useTaskFilters();
+  // Pass columnId explicitly (flat tasks carry it) so column-dependent chips
+  // match the Board callers' predicate(task, columnId) signature.
+  const tasks = useMemo(
+    () => (isFiltering ? allTasks.filter((t) => predicate(t, t.columnId)) : allTasks),
+    [allTasks, predicate, isFiltering],
+  );
   const isMobile = useBreakpointValue({ base: true, md: false });
   const [hideCompleted, setHideCompleted] = useState(false);
   const [sortId, setSortId] = useLocalState(SORT_KEY, 'created_desc');
@@ -159,7 +169,7 @@ const ListView = ({ projectName, tasks: tasksOverride, showProject = false, allo
     return keys.map((k) => ({ key: k, label: groupLabelFor(groupId, k), tasks: buckets.get(k) }));
   }, [groupId, sortedTasks]);
 
-  const isLoading = tasks.length === 0 && projectName == null;
+  const isLoading = allTasks.length === 0 && projectName == null;
 
   const content = (
     <Box
@@ -253,16 +263,23 @@ const ListView = ({ projectName, tasks: tasksOverride, showProject = false, allo
             <PulseLoader size="lg" color="purple.300" />
           </Center>
         ) : sortedTasks.length === 0 ? (
-          <Box maxW="540px" mx="auto" my={6}>
-            <EmptyState
-              text={
-                tasks.length === 0
-                  ? 'No tasks yet — create your first task to get started.'
-                  : 'All tasks are completed. Toggle off "Hide completed" to see them.'
-              }
-            />
-            {tasks.length === 0 && <EmptyStateCreateButton />}
-          </Box>
+          // Only the "no match" state when the filter itself produced nothing.
+          // If it matched tasks but "Hide completed" then masked them all,
+          // fall through to the normal completed-tasks empty state instead.
+          isFiltering && tasks.length === 0 ? (
+            <FilteredEmptyState onClear={clearAll} />
+          ) : (
+            <Box maxW="540px" mx="auto" my={6}>
+              <EmptyState
+                text={
+                  allTasks.length === 0
+                    ? 'No tasks yet — create your first task to get started.'
+                    : 'All tasks are completed. Toggle off "Hide completed" to see them.'
+                }
+              />
+              {allTasks.length === 0 && <EmptyStateCreateButton />}
+            </Box>
+          )
         ) : groupedView ? (
           <Box>
             {groupedView.map((g) => (

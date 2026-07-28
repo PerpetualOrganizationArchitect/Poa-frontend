@@ -3,7 +3,7 @@
  * Hook for managing proposal form state and submission
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useToast } from '@chakra-ui/react';
 import { utils, constants as ethersConstants, providers as ethersProviders } from 'ethers';
 import {
@@ -32,7 +32,7 @@ const defaultProposal = {
   name: "",
   description: "",
   execution: "",
-  time: 0,
+  time: 72,
   options: ["", ""],
   type: "normal",
   transferAddress: "",
@@ -144,6 +144,15 @@ export function useProposalForm({ onSubmit }) {
     });
   }, []);
 
+  // Direct setter for the intent-gallery card entry. The card UI has no
+  // synthetic <select> event, so we synthesize the { target: { value } } shape
+  // handleProposalTypeChange expects — keeping ONE code path for type changes so
+  // the state transitions (clearing restrictions, election/role fields, etc.)
+  // stay byte-identical to the old dropdown flow.
+  const setProposalType = useCallback((newType) => {
+    handleProposalTypeChange({ target: { value: newType } });
+  }, [handleProposalTypeChange]);
+
   const handleTransferAddressChange = useCallback((e) => {
     setProposal(prev => ({ ...prev, transferAddress: e.target.value }));
   }, []);
@@ -209,6 +218,14 @@ export function useProposalForm({ onSubmit }) {
 
   const resetForm = useCallback(() => {
     setProposal(defaultProposal);
+  }, []);
+
+  // Hydrate the whole form from a persisted draft (useVoteDraft). Merged over
+  // defaultProposal so a draft written by an older schema can't leave required
+  // keys undefined. Only ever called with the user's own localStorage payload.
+  const restoreProposal = useCallback((draft) => {
+    if (!draft || typeof draft !== 'object') return;
+    setProposal(prev => ({ ...defaultProposal, ...draft }));
   }, []);
 
   const validateTransferProposal = useCallback(() => {
@@ -550,6 +567,49 @@ export function useProposalForm({ onSubmit }) {
 
     return true;
   }, [proposal.setterMode, proposal.setterTemplate, proposal.setterContract, proposal.setterFunction, proposal.setterValues, proposal.setterParams, toast]);
+
+  // Human-readable preview lines for the confirm step AND the forward-compatible
+  // actionSummaries metadata (task 9). These mirror the exact strings the create
+  // flow already computes (setter preview, transfer sentence, election / role
+  // summaries). Purely descriptive — never touches on-chain params.
+  // NOTE: declared before handleSubmit so its dependency reference is out of the
+  // temporal dead zone when the useCallback deps array evaluates.
+  const buildActionSummaries = useCallback(() => {
+    const summaries = [];
+    if (proposal.type === 'transferFunds') {
+      const amt = proposal.transferAmount || '?';
+      const addr = proposal.transferAddress || '';
+      const short = addr.length > 10 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
+      summaries.push(`If "Yes" wins, send ${amt} ${nativeCurrencySymbol} from the treasury to ${short}.`);
+    } else if (proposal.type === 'setter') {
+      if (proposal.setterMode === 'template' && proposal.setterTemplate) {
+        const tmpl = getTemplateById(proposal.setterTemplate);
+        if (tmpl?.preview) {
+          try {
+            const line = tmpl.preview(proposal.setterValues || {});
+            if (line) summaries.push(line);
+          } catch { /* preview is best-effort */ }
+        }
+      } else if (proposal.setterContract && proposal.setterFunction) {
+        summaries.push(`Call ${proposal.setterFunction} on ${proposal.setterContract}.`);
+      }
+    } else if (proposal.type === 'election') {
+      const roleLabel = proposal.electionRoleId ? `role ${proposal.electionRoleId}` : 'the selected role';
+      const names = (proposal.electionCandidates || []).map(c => c.name).filter(Boolean);
+      if (names.length) {
+        summaries.push(`Elect one of: ${names.join(', ')} to ${roleLabel}. The winner receives it automatically.`);
+      }
+    } else if (proposal.type === 'createRole') {
+      const rc = proposal.roleConfig || {};
+      if (rc.name) {
+        const wearerCount = (rc.initialWearers || []).length;
+        summaries.push(
+          `Create the role "${rc.name}"${wearerCount ? ` and grant it to ${wearerCount} member(s)` : ''}.`
+        );
+      }
+    }
+    return summaries;
+  }, [proposal, nativeCurrencySymbol]);
 
   const buildProposalData = useCallback((eligibilityModuleAddress, contractAddresses, freshHoldersOverride = null, hatsProtocolAddress = null, predictedRoleHatId = null, metadataCIDBytes32 = null) => {
     let numOptions;
@@ -1037,6 +1097,20 @@ export function useProposalForm({ onSubmit }) {
       return false;
     }
 
+    // Restricted voting with an empty allowlist would submit hatIds: [] and
+    // silently fall back to "everyone can vote" — the opposite of the user's
+    // intent. Block it here (backstop for the inline validation in the modal).
+    if (proposal.isRestricted && (proposal.restrictedHatIds?.length ?? 0) === 0) {
+      toast({
+        title: "No Roles Selected",
+        description: "You restricted who can vote but didn't pick any roles. Select at least one, or turn restriction off.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+      return false;
+    }
+
     return true;
   }, [
     proposal.name,
@@ -1044,6 +1118,8 @@ export function useProposalForm({ onSubmit }) {
     proposal.type,
     proposal.setterMode,
     proposal.setterTemplate,
+    proposal.isRestricted,
+    proposal.restrictedHatIds,
     toast,
   ]);
 
@@ -1267,6 +1343,12 @@ export function useProposalForm({ onSubmit }) {
         }
       }
 
+      // Forward-compatible: human-readable action previews for the uploaded
+      // metadata JSON. Additive only — does NOT alter numOptions/batches/
+      // optionNames or any on-chain param. Safe for VotingService to thread
+      // into _uploadProposalMetadata; ignored by callers that don't forward it.
+      const actionSummaries = buildActionSummaries();
+
       await onSubmit({
         name: finalName,
         description: finalDescription,
@@ -1274,6 +1356,7 @@ export function useProposalForm({ onSubmit }) {
         numOptions,
         batches,
         optionNames,
+        actionSummaries,
         type: proposal.type,
         transferAddress: proposal.transferAddress,
         transferAmount: proposal.transferAmount,
@@ -1330,11 +1413,80 @@ export function useProposalForm({ onSubmit }) {
       setLoadingSubmit(false);
       return false;
     }
-  }, [proposal, validateBasicFields, validateTransferProposal, validateElectionProposal, validateNormalProposal, validateSetterProposal, validateCreateRoleProposal, buildProposalData, onSubmit, resetForm, toast, orgChainId, orgNetwork, nativeCurrencySymbol, addToIpfs]);
+  }, [proposal, validateBasicFields, validateTransferProposal, validateElectionProposal, validateNormalProposal, validateSetterProposal, validateCreateRoleProposal, buildProposalData, buildActionSummaries, onSubmit, resetForm, toast, orgChainId, orgNetwork, nativeCurrencySymbol, addToIpfs]);
+
+  // ---------------------------------------------------------------------------
+  // Inline field-level validation (non-blocking; the submit-time toast
+  // validators above stay as the authoritative backstop). This drives the
+  // FormControl isInvalid / FormErrorMessage UI and the disabled-with-reason
+  // Create button. Keys are stable field names the modal maps to controls.
+  // ---------------------------------------------------------------------------
+  const fieldErrors = useMemo(() => {
+    const errors = {};
+
+    // Title — required except when a setter template auto-fills it.
+    const setterProvidesTitle =
+      proposal.type === 'setter'
+      && proposal.setterMode === 'template'
+      && proposal.setterTemplate;
+    if (!setterProvidesTitle && (!proposal.name || proposal.name.trim() === '')) {
+      errors.name = 'Give your vote a title.';
+    }
+
+    // Duration — must be at least 1 hour.
+    const durationHours = Number(proposal.time);
+    if (isNaN(durationHours) || durationHours < 1) {
+      errors.time = 'Voting must run for at least 1 hour.';
+    }
+
+    // Normal — at least 2 non-empty options.
+    if (proposal.type === 'normal') {
+      const nonEmpty = (proposal.options || []).filter(o => o.trim() !== '');
+      if (nonEmpty.length < 2) {
+        errors.options = 'Add at least 2 options.';
+      }
+    }
+
+    // Transfer funds — valid recipient + positive amount.
+    if (proposal.type === 'transferFunds') {
+      if (!proposal.transferAddress || !utils.isAddress(proposal.transferAddress)) {
+        errors.transferAddress = 'Enter a valid recipient address (0x…).';
+      }
+      const amt = parseFloat(proposal.transferAmount);
+      if (isNaN(amt) || amt <= 0) {
+        errors.transferAmount = 'Enter an amount greater than 0.';
+      }
+    }
+
+    // Restricted voting with an empty allowlist.
+    if (proposal.isRestricted && (proposal.restrictedHatIds?.length ?? 0) === 0) {
+      errors.restrictedHatIds = 'Pick at least one role, or turn restriction off.';
+    }
+
+    return errors;
+  }, [
+    proposal.type,
+    proposal.name,
+    proposal.time,
+    proposal.options,
+    proposal.transferAddress,
+    proposal.transferAmount,
+    proposal.isRestricted,
+    proposal.restrictedHatIds,
+    proposal.setterMode,
+    proposal.setterTemplate,
+  ]);
+
+  const isValid = Object.keys(fieldErrors).length === 0;
 
   return {
     proposal,
     loadingSubmit,
+    fieldErrors,
+    isValid,
+    setProposalType,
+    buildActionSummaries,
+    restoreProposal,
     handleInputChange,
     handleOptionChange,
     addOption,

@@ -38,7 +38,7 @@ export default function SignInModal({ isOpen, onClose, onSuccess, onCreateAccoun
       onSuccess?.();
     } catch (err) {
       console.error('Failed to sign in with passkey:', err);
-      setError(err.message || 'Failed to sign in. Please try again.');
+      setError('We couldn’t sign you in. Please try again.');
     }
   };
 

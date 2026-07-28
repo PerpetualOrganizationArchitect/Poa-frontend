@@ -4,6 +4,8 @@ import PulseLoader from '@/components/shared/PulseLoader';
 import EmptyState from '@/components/voting/EmptyState';
 import { useDataBaseContext } from '@/context/dataBaseContext';
 import { useFlatTasks } from '../useFlatTasks';
+import { useTaskFilters } from '../useTaskFilters';
+import { FilteredEmptyState } from '../TaskFilterBar';
 import {
   toMs,
   startOfDayMs,
@@ -38,7 +40,16 @@ const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 
 const GanttView = ({ projectName, tasks: tasksOverride }) => {
   const ownTasks = useFlatTasks();
-  const tasks = tasksOverride ?? ownTasks;
+  const allTasks = tasksOverride ?? ownTasks;
+  // Shared search + quick-filter predicate.
+  const { predicate, isFiltering, clearAll } = useTaskFilters();
+  // Flat tasks already carry columnId (useFlatTasks), but pass it explicitly so
+  // column-dependent chips (open / needs-review / expired) behave identically to
+  // the Board callers, which pass predicate(task, columnId).
+  const tasks = useMemo(
+    () => (isFiltering ? allTasks.filter((t) => predicate(t, t.columnId)) : allTasks),
+    [allTasks, predicate, isFiltering],
+  );
   const { selectedProject, projects } = useDataBaseContext();
   const [zoom, setZoom] = useState('30d');
   const [collapsed, setCollapsed] = useState(() => new Set());
@@ -169,7 +180,7 @@ const GanttView = ({ projectName, tasks: tasksOverride }) => {
     );
   }
 
-  const isLoading = tasks.length === 0 && projectName == null;
+  const isLoading = allTasks.length === 0 && projectName == null;
 
   return (
     <Box
@@ -215,9 +226,15 @@ const GanttView = ({ projectName, tasks: tasksOverride }) => {
             <PulseLoader size="lg" color="purple.300" />
           </Box>
         ) : tasks.length === 0 ? (
-          <Box maxW="540px" mx="auto" my={6}>
-            <EmptyState text="No tasks yet — create one from the Board to get started." />
-          </Box>
+          isFiltering ? (
+            <Box flex="1" display="flex" alignItems="center" justifyContent="center">
+              <FilteredEmptyState onClear={clearAll} />
+            </Box>
+          ) : (
+            <Box maxW="540px" mx="auto" my={6}>
+              <EmptyState text="No tasks yet — create one from the Board to get started." />
+            </Box>
+          )
         ) : (
           // Single shared scroller for both axes. The task-name column lives
           // inside this scroller too via `position: sticky; left: 0`, and the

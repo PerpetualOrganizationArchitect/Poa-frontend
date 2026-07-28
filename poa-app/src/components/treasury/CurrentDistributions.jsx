@@ -158,7 +158,7 @@ const CurrentDistributions = ({
     }
 
     if (!treasury || !isReady) {
-      throw new Error('Web3 services not ready');
+      throw new Error('Still getting things ready — give it a moment, then try again.');
     }
 
     const result = await executeWithNotification(
@@ -178,7 +178,7 @@ const CurrentDistributions = ({
     if (result.success) {
       refetch?.();
     } else {
-      throw new Error('Claim transaction failed');
+      throw new Error('We couldn’t claim your share. Please try again.');
     }
   };
 

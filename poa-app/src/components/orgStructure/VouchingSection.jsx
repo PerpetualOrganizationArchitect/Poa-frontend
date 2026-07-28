@@ -27,6 +27,7 @@ import {
 } from 'react-icons/fi';
 import { useVouches } from '@/hooks/useVouches';
 import { useClaimRole } from '@/hooks/useClaimRole';
+import { lightSectionStyle, lightCardStyle } from '@/components/shared/glassStyles';
 import { VouchRequestCard } from './VouchRequestCard';
 import { VouchForNewMember } from './VouchForNewMember';
 
@@ -60,10 +61,7 @@ function RoleVouchAccordion({
 
   return (
     <Box
-      bg="white"
-      border="1px solid"
-      borderColor="warmGray.100"
-      borderRadius="xl"
+      {...lightCardStyle}
       overflow="hidden"
       mb={3}
     >
@@ -307,13 +305,7 @@ export function VouchingSection({
     return null;
   }
 
-  const sectionStyle = embedded ? {} : {
-    bg: 'rgba(255, 255, 255, 0.8)',
-    border: '1px solid',
-    borderColor: 'warmGray.200',
-    borderRadius: '2xl',
-    boxShadow: '0 4px 24px rgba(0, 0, 0, 0.06)',
-  };
+  const sectionStyle = embedded ? {} : lightSectionStyle;
 
   // Loading state
   if (loading) {
@@ -403,7 +395,7 @@ export function VouchingSection({
               No pending vouch requests
             </Text>
             <Text color="warmGray.400" fontSize="sm">
-              Users seeking roles will appear here once they receive their first vouch
+              Users who apply to join a role will appear here, ready to be vouched for
             </Text>
           </Box>
         ) : (

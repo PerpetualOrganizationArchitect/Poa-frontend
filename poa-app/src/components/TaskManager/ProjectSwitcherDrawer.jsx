@@ -22,7 +22,7 @@ import {
   Icon,
 } from '@chakra-ui/react';
 import { AddIcon, SearchIcon } from '@chakra-ui/icons';
-import { FiLayers } from 'react-icons/fi';
+import { FiLayers, FiBriefcase } from 'react-icons/fi';
 
 const countProjectTasks = (project) => {
   if (!project?.columns) return 0;
@@ -37,8 +37,10 @@ const ProjectSwitcherDrawer = ({
   projects,
   selectedProjectId,
   allTasksMode,
+  myWorkMode,
   onSelectProject,
   onSelectAllTasks,
+  onSelectMyWork,
   onCreateProject,
 }) => {
   const [query, setQuery] = useState('');
@@ -60,6 +62,11 @@ const ProjectSwitcherDrawer = ({
 
   const handleSelectAllTasks = () => {
     onSelectAllTasks();
+    onClose();
+  };
+
+  const handleSelectMyWork = () => {
+    onSelectMyWork();
     onClose();
   };
 
@@ -119,6 +126,43 @@ const ProjectSwitcherDrawer = ({
                 borderRadius="md"
               />
             </InputGroup>
+          )}
+
+          {/* My Work shortcut */}
+          {onSelectMyWork && (
+            <Box
+              as="button"
+              type="button"
+              onClick={handleSelectMyWork}
+              w="100%"
+              p={3}
+              mb={3}
+              textAlign="left"
+              borderRadius="lg"
+              cursor="pointer"
+              border="1px solid"
+              borderColor={myWorkMode ? 'teal.300' : 'rgba(56,178,172,0.35)'}
+              bgGradient={
+                myWorkMode
+                  ? 'linear(135deg, rgba(56,178,172,0.45) 0%, rgba(159,122,234,0.28) 100%)'
+                  : 'linear(135deg, rgba(56,178,172,0.20) 0%, rgba(159,122,234,0.12) 100%)'
+              }
+              _hover={{
+                borderColor: 'teal.300',
+                bgGradient: 'linear(135deg, rgba(56,178,172,0.33) 0%, rgba(159,122,234,0.20) 100%)',
+              }}
+              transition="background 0.15s ease, border-color 0.15s ease"
+            >
+              <HStack spacing={2} mb={0.5}>
+                <Icon as={FiBriefcase} color="whiteAlpha.900" boxSize="14px" />
+                <Text fontWeight="700" fontSize="sm" color="white">
+                  My Work
+                </Text>
+              </HStack>
+              <Text fontSize="xs" color="whiteAlpha.700" pl="22px">
+                Everything on your plate
+              </Text>
+            </Box>
           )}
 
           {/* All Tasks shortcut */}

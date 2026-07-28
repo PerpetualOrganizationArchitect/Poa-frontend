@@ -170,6 +170,18 @@ function poReducer(state, action) {
     }
 }
 
+// Org-lookup fetch timeout. A hanging subgraph endpoint (gateway latency,
+// rate-limit queue, stalled connection) must not hang the whole org resolution
+// forever — abort so the per-source try/catch treats it as a (retryable) failure
+// instead of leaving Promise.all pending indefinitely.
+const ORG_LOOKUP_TIMEOUT_MS = 12000;
+function fetchWithTimeout(url, init = {}, timeoutMs = ORG_LOOKUP_TIMEOUT_MS) {
+  if (typeof AbortController === 'undefined') return fetch(url, init);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 export const POProvider = ({ children }) => {
     const router = useRouter();
     // useOrgName covers query-param + window.location.search fallback +
@@ -230,10 +242,14 @@ export const POProvider = ({ children }) => {
 
         async function findOrg() {
             const sources = getAllSubgraphUrls();
+            // Track whether ANY source failed (timeout / network / abort) vs every
+            // source responding cleanly with "no such org". A failure is transient
+            // and should be retried; a clean "not found everywhere" is terminal.
+            let anySourceFailed = false;
             try {
                 const results = await Promise.all(sources.map(async (source) => {
                     try {
-                        const res = await fetch(source.url, {
+                        const res = await fetchWithTimeout(source.url, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -245,6 +261,7 @@ export const POProvider = ({ children }) => {
                         const org = json?.data?.organizations?.[0];
                         return org ? { ...org, chainId: source.chainId } : null;
                     } catch (err) {
+                        anySourceFailed = true;
                         console.warn(`[POContext] Failed to query ${source.name}:`, err.message);
                         return null;
                     }
@@ -257,10 +274,13 @@ export const POProvider = ({ children }) => {
                         payload: { orgId: found.id, orgChainId: found.chainId },
                     });
                     setOrgLookupLoading(false);
-                } else if (isNewOrg && retryCount < MAX_RETRIES) {
-                    // Newly deployed org — subgraph may not have indexed yet, retry
+                } else if ((isNewOrg || anySourceFailed) && retryCount < MAX_RETRIES) {
+                    // Either a newly deployed org the subgraph hasn't indexed yet, OR a
+                    // transient lookup failure (a source hung/timed out/errored). Retry
+                    // rather than wrongly concluding the org doesn't exist — otherwise a
+                    // single slow gateway strands the user (e.g. on /join) at a dead end.
                     retryCount++;
-                    console.log(`[POContext] New org "${poName}" not indexed yet, retrying (${retryCount}/${MAX_RETRIES})...`);
+                    console.log(`[POContext] Org "${poName}" unresolved (newOrg=${isNewOrg}, sourceFailed=${anySourceFailed}), retrying (${retryCount}/${MAX_RETRIES})...`);
                     setTimeout(() => {
                         if (!cancelled) findOrg();
                     }, RETRY_INTERVAL);

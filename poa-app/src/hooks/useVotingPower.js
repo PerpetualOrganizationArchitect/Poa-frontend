@@ -1,11 +1,24 @@
 /**
  * useVotingPower - Hook for calculating and displaying user's voting power
- * VERSION: 2.0 (simplified - uses VotingContext data)
+ * VERSION: 3.0 (truthful N-class breakdown)
  *
- * Provides a breakdown of how the user's vote is calculated in hybrid voting:
- * - Membership power (from direct democracy class)
- * - Contribution power (from participation token balance)
- * - Combined total and percentage of org voting power
+ * Provides a breakdown of how the user's vote is calculated in Blended voting
+ * ("Hybrid" on-chain). Two shapes are returned:
+ *
+ *  - LEGACY fields (membershipPower, contributionPower, classWeights, isHybrid,
+ *    hasVotingPower, message, status, orgStats, classConfig, isLoading) — kept
+ *    working, with their historical 2-bucket collapse, so existing consumers
+ *    (pollModal, TokenActivityCard, the education header's older widgets) keep
+ *    rendering unchanged.
+ *
+ *  - classBreakdown[] — the TRUTHFUL per-class view. One entry per active
+ *    voting class from VotingContext.votingClasses. This is null while classes
+ *    are still loading; it is NEVER fabricated from a 50/50 default. New
+ *    surfaces (VotePowerReceipt) render from this.
+ *
+ * See CLAUDE.md "Token amounts are always 18-decimal wei" — the ERC20_BAL math
+ * intentionally mirrors the existing formatTokenAmount-based comparison so the
+ * legacy fields stay byte-for-byte compatible.
  */
 
 import { useMemo } from 'react';
@@ -64,14 +77,154 @@ function parseTokenBalance(balanceString) {
 }
 
 /**
+ * Normalize a hat ID for set comparison (strings vs bigints vs hex).
+ */
+function normalizeHatId(id) {
+  if (id === null || id === undefined) return '';
+  const str = String(id).trim();
+  if (!str) return '';
+  try {
+    // Collapse hex / decimal representations to a canonical decimal string.
+    return BigInt(str).toString();
+  } catch {
+    return str.toLowerCase();
+  }
+}
+
+/**
+ * Does the user hold at least one of the class's gating hats?
+ * An empty gate (hatIds === []) means "every member is eligible".
+ */
+function userHoldsGatingHat(classHatIds, userHatIds) {
+  if (!classHatIds || classHatIds.length === 0) return true;
+  const userSet = new Set((userHatIds || []).map(normalizeHatId));
+  return classHatIds.map(normalizeHatId).some((h) => userSet.has(h));
+}
+
+/**
+ * Count how many leaderboard members are eligible for a DIRECT class (hold a
+ * gating hat). Returns { count, approximate } — approximate is true when we
+ * could not compute a real holder count and fell back to poMembers.
+ */
+function countDirectHolders(cls, leaderboardData, poMembers) {
+  const gateHats = (cls.hatIds || []).map(normalizeHatId).filter(Boolean);
+
+  // Ungated class → every member is a holder.
+  if (gateHats.length === 0) {
+    return { count: poMembers || 0, approximate: !poMembers };
+  }
+
+  if (Array.isArray(leaderboardData) && leaderboardData.length > 0) {
+    const gateSet = new Set(gateHats);
+    let count = 0;
+    for (const u of leaderboardData) {
+      const userHats = (u.hatIds || []).map(normalizeHatId);
+      if (userHats.some((h) => gateSet.has(h))) count += 1;
+    }
+    if (count > 0) return { count, approximate: false };
+  }
+
+  // No leaderboard data (or nobody matched) — approximate with member count.
+  return { count: poMembers || 0, approximate: true };
+}
+
+/**
+ * Compute a single class's per-user standing.
+ */
+function computeClassEntry({
+  cls,
+  userHatIds,
+  userBalanceRaw,
+  leaderboardData,
+  poMembers,
+  roleNames,
+}) {
+  const slicePct = Number(cls.slicePct) || 0;
+  const base = {
+    classIndex: Number(cls.classIndex ?? 0),
+    strategy: cls.strategy,
+    slicePct,
+    quadratic: !!cls.quadratic,
+    minBalance: cls.minBalance != null ? String(cls.minBalance) : '0',
+    asset: cls.asset ?? null,
+    hatIds: (cls.hatIds || []).map((h) => String(h)),
+    roleNames: roleNames || [],
+    label: '', // filled by the consumer via votingVocabulary.classLabel
+    eligible: false,
+    ineligibleReason: null,
+    userRawPower: 0,
+    userClassSharePct: 0, // this user's fraction of THIS class (0..1)
+    contributionToTotalPct: 0, // userClassSharePct * slicePct, in percent (0..100)
+    approximate: false,
+  };
+
+  if (cls.strategy === VOTING_STRATEGY.DIRECT) {
+    const eligible = userHoldsGatingHat(cls.hatIds, userHatIds);
+    if (!eligible) {
+      return { ...base, eligible: false, ineligibleReason: 'no_role' };
+    }
+    const { count, approximate } = countDirectHolders(cls, leaderboardData, poMembers);
+    const holders = count > 0 ? count : 1;
+    const share = 1 / holders;
+    return {
+      ...base,
+      eligible: true,
+      userRawPower: 1, // one equal vote
+      userClassSharePct: share,
+      contributionToTotalPct: share * slicePct,
+      approximate,
+      _holders: holders,
+    };
+  }
+
+  // ERC20_BAL (shares / token) class
+  const balance = parseTokenBalance(userBalanceRaw || '0');
+  const minBalance = parseTokenBalance(formatTokenAmount(cls.minBalance || '0'));
+
+  if (balance <= 0n) {
+    return { ...base, eligible: false, ineligibleReason: 'no_balance' };
+  }
+  if (balance < minBalance) {
+    return { ...base, eligible: false, ineligibleReason: 'below_min_balance' };
+  }
+
+  const userPower = cls.quadratic ? sqrt(balance) : balance;
+
+  // Sum eligible power across the org from leaderboard balances.
+  let totalPower = 0n;
+  if (Array.isArray(leaderboardData) && leaderboardData.length > 0) {
+    for (const u of leaderboardData) {
+      const b = parseTokenBalance(u.token || '0');
+      if (b <= 0n || b < minBalance) continue;
+      totalPower += cls.quadratic ? sqrt(b) : b;
+    }
+  }
+  if (totalPower <= 0n) {
+    // Leaderboard not loaded — the user is the only known holder.
+    totalPower = userPower;
+  }
+
+  const share = totalPower > 0n ? Number(userPower) / Number(totalPower) : 0;
+  return {
+    ...base,
+    eligible: true,
+    userRawPower: Number(userPower),
+    userClassSharePct: share,
+    contributionToTotalPct: share * slicePct,
+    approximate: !(Array.isArray(leaderboardData) && leaderboardData.length > 0),
+  };
+}
+
+/**
  * Hook to calculate user's voting power breakdown
  */
 export function useVotingPower() {
-  const { poMembers, leaderboardData } = usePOContext();
+  const { poMembers, leaderboardData, roleNames: contextRoleNames } = usePOContext();
   const { userData, hasMemberRole } = useUserContext();
   const { votingType, votingClasses: subgraphClasses, loading: votingLoading } = useVotingContext();
 
-  // Default class configuration for fallback (matches subgraph enum format)
+  // Default class configuration for the LEGACY fallback path only. The new
+  // classBreakdown never uses this — while classes load it stays null.
   const defaultClasses = [
     {
       strategy: 'DIRECT',
@@ -91,7 +244,7 @@ export function useVotingPower() {
     },
   ];
 
-  // Use subgraph classes if available, otherwise use defaults
+  // Use subgraph classes if available, otherwise use defaults (LEGACY only).
   const classConfig = useMemo(() => {
     if (votingType !== 'Hybrid') return null;
 
@@ -107,10 +260,71 @@ export function useVotingPower() {
     return defaultClasses;
   }, [votingType, subgraphClasses]);
 
+  // Have the REAL classes loaded from the subgraph? (Not the fabricated default.)
+  const hasRealClasses = !!(subgraphClasses && subgraphClasses.length > 0);
+
   // Derive loading state
   const isLoading = votingLoading;
 
-  // Calculate voting power
+  // Resolve role names for each DIRECT class's gating hats.
+  const roleNameLookup = useMemo(() => {
+    if (!contextRoleNames || typeof contextRoleNames !== 'object') return {};
+    return contextRoleNames;
+  }, [contextRoleNames]);
+
+  const resolveRoleNames = useMemo(() => {
+    return (hatIds) => {
+      if (!Array.isArray(hatIds)) return [];
+      return hatIds
+        .map((h) => {
+          const key = String(h);
+          if (roleNameLookup[key]) return roleNameLookup[key];
+          try {
+            const dec = BigInt(key).toString();
+            if (roleNameLookup[dec]) return roleNameLookup[dec];
+          } catch {
+            /* not numeric */
+          }
+          return null;
+        })
+        .filter(Boolean);
+    };
+  }, [roleNameLookup]);
+
+  // ---------------------------------------------------------------------
+  // TRUTHFUL per-class breakdown. Null until real classes have loaded.
+  // ---------------------------------------------------------------------
+  const classBreakdown = useMemo(() => {
+    if (votingType !== 'Hybrid') return null;
+    if (!hasRealClasses) return null; // never fabricate 50/50 here
+
+    const userHatIds = userData?.hatIds || [];
+    const userBalanceRaw = userData?.participationTokenBalance || '0';
+
+    return subgraphClasses
+      .map((cls) => {
+        const roleNames = cls.strategy === VOTING_STRATEGY.DIRECT
+          ? resolveRoleNames(cls.hatIds || [])
+          : [];
+        return computeClassEntry({
+          cls,
+          userHatIds,
+          userBalanceRaw,
+          leaderboardData,
+          poMembers,
+          roleNames,
+        });
+      })
+      .sort((a, b) => a.classIndex - b.classIndex);
+  }, [votingType, hasRealClasses, subgraphClasses, userData, leaderboardData, poMembers, resolveRoleNames]);
+
+  // Headline: this user's total share of the decision, summed across eligible classes.
+  const totalSharePct = useMemo(() => {
+    if (!classBreakdown) return null;
+    return classBreakdown.reduce((sum, c) => sum + (c.eligible ? c.contributionToTotalPct : 0), 0);
+  }, [classBreakdown]);
+
+  // Calculate voting power (LEGACY 2-bucket fields — unchanged behavior)
   const votingPower = useMemo(() => {
     // Default response for non-members or when data isn't loaded
     const defaultPower = {
@@ -268,10 +482,25 @@ export function useVotingPower() {
     return result;
   }, [classConfig, userData, hasMemberRole, votingType, poMembers, leaderboardData]);
 
+  // While real Blended classes haven't loaded, report the truthful loading
+  // status on the new surface without disturbing the legacy `status` above.
+  const breakdownStatus = (() => {
+    if (votingType !== 'Hybrid') return 'ready';
+    if (!hasMemberRole) return 'not_member';
+    if (!hasRealClasses) return 'loading';
+    return 'ready';
+  })();
+
   return {
     ...votingPower,
     classConfig,
     isLoading,
+    // New truthful N-class fields (null-safe for old consumers that ignore them)
+    classBreakdown,
+    totalSharePct,
+    breakdownStatus,
+    hasRealClasses,
+    votingType,
   };
 }
 

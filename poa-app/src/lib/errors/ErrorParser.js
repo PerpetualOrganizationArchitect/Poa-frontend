@@ -3,51 +3,16 @@
  * Parses blockchain errors into user-friendly messages
  */
 
-import { ethers } from 'ethers';
 import { Web3ErrorCategory, TransactionError } from './Web3Error';
+import { decodeContractRevert, messageForErrorName } from './contractErrors';
 
 /**
- * Known custom error selectors (4-byte function selectors)
- * These are keccak256(errorSignature)[0:4]
- * Add more as needed
+ * NOTE: the authoritative selector→name map (generated from the ABIs) and the
+ * full error-name→friendly-message dictionary now live in `contractErrors.js`,
+ * shared with the passkey (ERC-4337) path. The old hand-maintained selector map
+ * here had several stale/wrong selectors (e.g. BadStatus/NotClaimer/AlreadyVoted)
+ * that silently never matched — decoding is now ABI-first via `decodeContractRevert`.
  */
-const CUSTOM_ERROR_SELECTORS = {
-  '0x48cbf26d': 'TargetNotAllowed',  // keccak256("TargetNotAllowed()")
-  '0xb7c6d77a': 'TargetSelf',        // keccak256("TargetSelf()")
-  '0x82b42900': 'Unauthorized',       // keccak256("Unauthorized()")
-  '0x8a0fcb60': 'AlreadyVoted',       // keccak256("AlreadyVoted()")
-  '0x47031d84': 'VotingExpired',      // keccak256("VotingExpired()")
-  '0x59120e37': 'VotingOpen',         // keccak256("VotingOpen()")
-  '0x89a89086': 'InvalidQuorum',      // keccak256("InvalidQuorum()")
-  '0xd4e6f304': 'RoleNotAllowed',     // keccak256("RoleNotAllowed()")
-  '0x9996b315': 'BadStatus',          // keccak256("BadStatus()")
-  '0xb6c3e8f0': 'NotClaimer',         // keccak256("NotClaimer()")
-  '0x82d5d76a': 'InvalidTarget',      // keccak256("InvalidTarget()")
-
-  // ParticipationToken errors
-  '0x291fc442': 'NotMember',          // keccak256("NotMember()")
-  '0x1f2a2005': 'ZeroAmount',         // keccak256("ZeroAmount()")
-  '0x65f84cc0': 'NotApprover',        // keccak256("NotApprover()")
-  '0x101f817a': 'AlreadyApproved',    // keccak256("AlreadyApproved()")
-  '0x36838924': 'RequestUnknown',     // keccak256("RequestUnknown()")
-  '0xe39da59e': 'NotRequester',       // keccak256("NotRequester()")
-  '0xa741a045': 'AlreadySet',         // keccak256("AlreadySet()")
-  '0xe6c4247b': 'InvalidAddress',     // keccak256("InvalidAddress()")
-  '0x8574adcf': 'TransfersDisabled',  // keccak256("TransfersDisabled()")
-};
-
-/**
- * Try to decode a custom error from its 4-byte selector
- * @param {string} errorData - Error data hex string
- * @returns {string|null} Error name or null
- */
-function decodeCustomErrorSelector(errorData) {
-  if (!errorData || typeof errorData !== 'string') return null;
-
-  // Extract first 4 bytes (10 chars including 0x)
-  const selector = errorData.slice(0, 10).toLowerCase();
-  return CUSTOM_ERROR_SELECTORS[selector] || null;
-}
 
 /**
  * Common contract revert patterns and their user-friendly messages
@@ -66,6 +31,13 @@ const REVERT_PATTERNS = {
   'Unauthorized': 'You do not have permission for this action. The project may need role permissions configured.',
   'Insufficient permissions': 'You do not have the required permissions.',
 
+  // Hats-protocol / eligibility require() strings (string reverts, not custom errors).
+  // These come back via Error(string), so they match by substring here.
+  'Not eligible to claim hat': "You're not eligible to claim this role yet. You may need more vouches, or you may already hold it.",
+  'not eligible': "You're not eligible for this role yet. You may need more vouches, or you may already hold it.",
+  'already wearing': 'You already hold this role.',
+  'not active': 'This role is not currently active for your account.',
+
   // Voting errors
   'Proposal expired': 'This proposal has expired.',
   'Already voted': 'You have already voted on this proposal.',
@@ -83,7 +55,6 @@ const REVERT_PATTERNS = {
   'RoleNotAllowed': 'Your role is not allowed to perform this action.',
   'TargetNotAllowed': 'The target contract is not in the allowed targets list. The organization admin needs to add this contract to the voting allowlist.',
   'TargetSelf': 'A voting contract cannot create proposals that target itself. Use the other voting contract.',
-  'InvalidTarget': 'The target contract is not whitelisted for execution. The organization needs to add this contract to the voting allowlist via a governance proposal.',
   'WeightSumNot100': 'Vote weights must sum to 100.',
   'LengthMismatch': 'Array lengths do not match.',
   'DuplicateIndex': 'Duplicate option index in vote.',
@@ -178,42 +149,25 @@ function extractRevertReason(error) {
 }
 
 /**
- * Try to decode custom error using ABI
- * @param {Error} error - Original error
- * @param {Array} [abi] - Contract ABI
- * @returns {Object|null} Decoded error or null
- */
-function tryDecodeCustomError(error, abi) {
-  if (!abi) return null;
-
-  const errorData = error.data
-    || error.error?.data?.data
-    || (typeof error.error?.data === 'string' ? error.error.data : null);
-  if (!errorData) return null;
-
-  try {
-    const iface = new ethers.utils.Interface(abi);
-    const decodedError = iface.parseError(errorData);
-    return {
-      name: decodedError.name,
-      args: decodedError.args,
-      signature: decodedError.signature,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Get user-friendly message from revert reason
- * @param {string} reason - Revert reason
+ * Get user-friendly message from a revert reason / error name.
+ *
+ * Order:
+ *   1. Exact error-name match against the curated contract dictionary
+ *      (contractErrors.js) then the legacy REVERT_PATTERNS — deterministic,
+ *      no substring shadowing for decoded PascalCase names.
+ *   2. Substring match over REVERT_PATTERNS — for raw require() strings.
+ *
+ * @param {string} reason - Revert reason or decoded error name
  * @returns {string|null} User-friendly message or null
  */
 function matchRevertPattern(reason) {
   if (!reason) return null;
 
-  const lowerReason = reason.toLowerCase();
+  // Exact-name match wins (guards against e.g. a short key shadowing a longer name).
+  const exact = messageForErrorName(reason) || REVERT_PATTERNS[reason];
+  if (exact) return exact;
 
+  const lowerReason = reason.toLowerCase();
   for (const [pattern, message] of Object.entries(REVERT_PATTERNS)) {
     if (lowerReason.includes(pattern.toLowerCase())) {
       return message;
@@ -221,6 +175,39 @@ function matchRevertPattern(reason) {
   }
 
   return null;
+}
+
+/**
+ * Resolve a friendly userMessage + reason from a reverting error, shared by the
+ * CONTRACT_REVERT and GAS_ESTIMATION_FAILED branches so both surface the same
+ * decoded message.
+ *
+ * Tries, in order: an explicit string reason (require() messages) → the
+ * curated dictionary → ABI/selector decode of the raw revert bytes (handles
+ * both ethers' gas-estimation nesting and any hex embedded in the message text).
+ *
+ * @param {Error} error - Original error
+ * @param {Array|Object} [abi] - Contract ABI/fragments or a built ethers Interface
+ * @returns {{ userMessage: string|null, reason: string|null }}
+ */
+function resolveRevert(error, abi) {
+  let reason = extractRevertReason(error);
+  let userMessage = matchRevertPattern(reason);
+
+  if (!userMessage) {
+    const text = [error?.message, error?.error?.message, error?.error?.data?.message]
+      .filter(Boolean)
+      .join('\n');
+    const decoded = decodeContractRevert(error, text, abi);
+    if (decoded) {
+      reason = decoded.reason || reason;
+      userMessage = decoded.message
+        || (decoded.isStringError ? matchRevertPattern(decoded.reason) || decoded.reason : null)
+        || (decoded.name && decoded.name !== 'Error' ? `Contract error: ${decoded.name}` : null);
+    }
+  }
+
+  return { userMessage, reason };
 }
 
 /**
@@ -324,25 +311,12 @@ export function parseError(error, abi = null, context = {}) {
     );
   }
 
-  // Gas estimation failed - try to get revert reason
+  // Gas estimation failed — usually means the tx WOULD revert. This is the
+  // common pre-flight path for permission/state guards (ethers throws
+  // UNPREDICTABLE_GAS_LIMIT). Decode the custom error / revert reason here too —
+  // previously this branch only consulted a (stale) hardcoded selector map.
   if (category === Web3ErrorCategory.GAS_ESTIMATION_FAILED) {
-    let reason = extractRevertReason(error);
-    let userMessage = matchRevertPattern(reason);
-
-    // Try to decode custom error from error data if no reason found
-    if (!userMessage) {
-      const errorData = error.error?.data?.data
-        || (typeof error.error?.data === 'string' ? error.error.data : null)
-        || error.data;
-      if (errorData) {
-        const customErrorName = decodeCustomErrorSelector(errorData);
-        if (customErrorName) {
-          reason = customErrorName;
-          userMessage = matchRevertPattern(customErrorName);
-        }
-      }
-    }
-
+    const { userMessage, reason } = resolveRevert(error, abi);
     return new ParsedError(
       category,
       userMessage || 'Transaction would fail. Please check your inputs.',
@@ -353,28 +327,11 @@ export function parseError(error, abi = null, context = {}) {
 
   // Contract revert - try to extract and match reason
   if (category === Web3ErrorCategory.CONTRACT_REVERT) {
-    const reason = extractRevertReason(error);
-    let userMessage = matchRevertPattern(reason);
-
-    // Try custom error decoding
-    if (!userMessage && abi) {
-      const decoded = tryDecodeCustomError(error, abi);
-      if (decoded) {
-        // Check if we have a user-friendly message for this custom error name
-        userMessage = matchRevertPattern(decoded.name) || `Contract error: ${decoded.name}`;
-      }
-    }
-
-    // Fallback to generic revert message
-    if (!userMessage) {
-      userMessage = reason
-        ? `Transaction failed: ${reason}`
-        : 'Transaction rejected by the contract.';
-    }
+    const { userMessage, reason } = resolveRevert(error, abi);
 
     return new ParsedError(
       category,
-      userMessage,
+      userMessage || (reason ? `Transaction failed: ${reason}` : 'Transaction rejected by the contract.'),
       reason || 'Contract revert',
       error
     );

@@ -11,6 +11,7 @@ import { encodeFunctionData } from 'viem';
 import { TransactionResult, TransactionState } from './TransactionManager';
 import PasskeyAccountABI from '../../../../abi/PasskeyAccount.json';
 import { buildUserOpWithFallback, getUserOpHash } from '../passkey/userOpBuilder';
+import { decodeContractRevert, decodeRevertData } from '../../../lib/errors/contractErrors';
 import { signUserOpWithPasskey } from '../passkey/passkeySign';
 import { encodeHatPaymasterData, encodeClaimPaymasterData } from '../passkey/paymasterData';
 import { ENTRY_POINT_ADDRESS } from '../../../config/passkey';
@@ -43,6 +44,19 @@ const AA_FALLBACK_MESSAGES = {
   AA21: 'Gas sponsorship was unavailable and your account has no funds to pay for gas.',
   AA51: 'Gas sponsorship was unavailable and your account has no funds to pay for gas.',
 };
+
+/**
+ * Turn a decodeRevertData/decodeContractRevert result into a display string,
+ * or null when there's nothing meaningful to show. Mirrors the EOA path's
+ * fallback (curated message → raw require string → "Contract error: <Name>").
+ */
+function friendlyFromDecoded(d) {
+  if (!d) return null;
+  if (d.message) return d.message;
+  if (d.isStringError && d.reason) return d.reason;
+  if (d.name && d.name !== 'Error' && d.name !== 'Panic') return `Contract error: ${d.name}`;
+  return null;
+}
 
 export class SmartAccountTransactionManager {
   /**
@@ -139,7 +153,7 @@ export class SmartAccountTransactionManager {
       });
 
       if (!receipt.success) {
-        const error = this._parseAAError(receipt.reason || 'UserOp execution failed');
+        const error = this._parseAAError(receipt.reason || 'UserOp execution failed', null, contract?.interface);
         this._notifyState(onStateChange, TransactionState.ERROR, { error });
         return TransactionResult.failure(error);
       }
@@ -162,7 +176,9 @@ export class SmartAccountTransactionManager {
       console.error('Error:', error.message);
       console.error('=== END SMART ACCOUNT TX ERROR ===');
 
-      const parsedError = this._parseAAError(error.message || 'Unknown error', error);
+      // Pass the target contract's interface so a contract revert (custom error
+      // or require string) bubbled up from gas estimation decodes to its real reason.
+      const parsedError = this._parseAAError(error.message || 'Unknown error', error, contract?.interface);
       this._notifyState(onStateChange, TransactionState.ERROR, { error: parsedError });
 
       return TransactionResult.failure(parsedError);
@@ -326,55 +342,114 @@ export class SmartAccountTransactionManager {
   }
 
   /**
-   * Parse ERC-4337 AA error codes into user-friendly messages.
-   * @param {string} message - Error message
-   * @param {Error} [originalError] - Original error object
+   * Parse a failed UserOp into a user-friendly message.
+   *
+   * Resolution order:
+   *   1. WebAuthn cancellation (user intent).
+   *   2. The underlying CONTRACT revert reason — the real "why". Pimlico surfaces
+   *      it inside the simulation error (e.g. "...reverted during simulation with
+   *      reason: 0x08c379a0…" for an Error(string), or a 4-byte custom-error
+   *      selector). Previously this was dropped and users saw a generic message.
+   *   3. ERC-4337 AA error codes (prefund/gas/paymaster validation).
+   *   4. Paymaster-specific failures.
+   *   5. Generic fallback.
+   *
+   * @param {string} message - Error message text
+   * @param {Error} [originalError] - Original error object (viem/bundler error)
+   * @param {Object} [iface] - Target contract's ethers Interface for ABI decoding
    * @returns {Object} Parsed error with userMessage and technicalMessage
    */
-  _parseAAError(message, originalError = null) {
-    // Check for AA error codes — use fallback-specific messages when paymaster was
-    // expected but unavailable (so the user knows the real issue is no gas budget + no funds)
+  _parseAAError(message, originalError = null, iface = null) {
+    const text = message || '';
+
+    // 1. WebAuthn cancellation — highest priority (user intent, not a failure).
+    if (text.includes('NotAllowedError') || text.includes('The operation either timed out or was not allowed')) {
+      return {
+        category: 'user_rejected',
+        userMessage: 'Authentication cancelled.',
+        technicalMessage: text,
+        originalError,
+      };
+    }
+
+    // 2. Decode the underlying contract revert reason, if any.
+    const contractReason = this._decodeContractRevertMessage(text, originalError, iface);
+    if (contractReason) {
+      return {
+        category: 'contract_revert',
+        userMessage: contractReason,
+        technicalMessage: text,
+        originalError,
+      };
+    }
+
+    // 3. ERC-4337 AA error codes — use fallback-specific messages when paymaster
+    // was expected but unavailable (so the user knows the real issue is no gas
+    // budget + no funds, not a contract problem).
     for (const [code, userMessage] of Object.entries(AA_ERROR_MESSAGES)) {
-      if (message.includes(code)) {
+      if (text.includes(code)) {
         const fallbackMsg = this._paymasterFellBack ? AA_FALLBACK_MESSAGES[code] : null;
         return {
           category: 'smart_account_error',
           userMessage: fallbackMsg || userMessage,
-          technicalMessage: message,
+          technicalMessage: text,
           originalError,
         };
       }
     }
 
-    // Check for user cancellation (WebAuthn)
-    if (message.includes('NotAllowedError') || message.includes('The operation either timed out or was not allowed')) {
-      return {
-        category: 'user_rejected',
-        userMessage: 'Authentication cancelled.',
-        technicalMessage: message,
-        originalError,
-      };
-    }
-
-    // Check for paymaster-specific errors
-    if (message.includes('paymaster') || message.includes('Paymaster')) {
+    // 4. Paymaster-specific errors.
+    if (text.includes('paymaster') || text.includes('Paymaster')) {
       return {
         category: 'paymaster_error',
         userMessage: 'Gas sponsorship failed. The organization may need to add more funds.',
-        technicalMessage: message,
+        technicalMessage: text,
         originalError,
       };
     }
 
-    // Generic — if paymaster fell back, hint at the real cause
+    // 5. Generic — if paymaster fell back, hint at the real cause.
     return {
       category: 'smart_account_error',
       userMessage: this._paymasterFellBack
         ? 'Gas sponsorship was unavailable and your account has no funds to pay for gas.'
         : 'Transaction failed. Please try again.',
-      technicalMessage: message,
+      technicalMessage: text,
       originalError,
     };
+  }
+
+  /**
+   * Pull a friendly contract-revert message out of a failed UserOp, if one is
+   * decodable. Prefers structured revert bytes attached by userOpBuilder (when a
+   * simulation revert short-circuits submission), then scans the viem error's
+   * text fields (shortMessage/details/cause) for an anchored revert blob.
+   *
+   * @returns {string|null}
+   */
+  _decodeContractRevertMessage(message, originalError, iface) {
+    // Structured revert bytes attached by userOpBuilder when it aborts a doomed op.
+    if (originalError?.revertData) {
+      const d = decodeRevertData(originalError.revertData, iface);
+      const m = friendlyFromDecoded(d);
+      if (m) return m;
+    }
+
+    // Scan the richest available text fields. viem only reliably keeps the raw
+    // reason in shortMessage/details/cause — `.message` carries it too but is not
+    // a stable contract across viem minors, so we feed all of them.
+    const text = [
+      message,
+      originalError?.shortMessage,
+      originalError?.details,
+      originalError?.cause?.shortMessage,
+      originalError?.cause?.details,
+      originalError?.cause?.message,
+      originalError?.cause?.cause?.message,
+    ].filter(Boolean).join('\n');
+
+    const decoded = decodeContractRevert(originalError, text, iface);
+    return friendlyFromDecoded(decoded);
   }
 
   /**

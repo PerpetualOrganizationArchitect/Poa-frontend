@@ -22,6 +22,7 @@ import {
   SEVERITY_SCHEME,
 } from '@/util/deadlineUtils';
 import { useNow } from '@/hooks/useNow';
+import { useTaskIndicators } from '@/hooks/useTaskIndicators';
 import { darkCardStyle } from '@/components/shared/glassStyles';
 
 // `isTakeoverGhost`: render-only mirror of an expired-claimed task shown in the
@@ -44,6 +45,10 @@ const TaskCard = ({ task, columnId, onEditTask, onEditTaskMetadata, isMobile, is
   const claimDeadlineSec = columnId === 'inProgress' ? effectiveDeadlineSec(task) : null;
   const due = dueDateSec(task);
   const softOverdue = isOverdueSoft(task, now);
+
+  // "Mine" / "needs my review" accents — same resolution the filter chips and
+  // My Work view use. The takeover ghost's dashed border wins over the teal ring.
+  const { isMine, needsMyReview } = useTaskIndicators(task, columnId);
 
   const router = useRouter();
   const userDAO = useOrgName();
@@ -146,8 +151,8 @@ const TaskCard = ({ task, columnId, onEditTask, onEditTaskMetadata, isMobile, is
         sx={isCardMobile ? mobileCardStyle : desktopCardStyle}
         onClick={openTask}
         role="group"
-        border={isTakeoverGhost ? '1.5px dashed' : undefined}
-        borderColor={isTakeoverGhost ? 'orange.300' : undefined}
+        border={isTakeoverGhost ? '1.5px dashed' : (isMine ? '1.5px solid' : undefined)}
+        borderColor={isTakeoverGhost ? 'orange.300' : (isMine ? 'teal.300' : undefined)}
       >
         {/* Task title with better typography */}
         <Text
@@ -271,6 +276,14 @@ const TaskCard = ({ task, columnId, onEditTask, onEditTaskMetadata, isMobile, is
             </HStack>
 
             <HStack spacing={1.5}>
+              {/* Needs-my-review accent — only when this In Review task sits in a
+                  project the current user can review (gated inside useTaskIndicators). */}
+              {needsMyReview && (
+                <Badge colorScheme="orange" {...badgeStyle}>
+                  Review
+                </Badge>
+              )}
+
               {columnId === 'completed' && (
                 <Badge colorScheme="green" {...badgeStyle}>
                   <CheckIcon mr={1} boxSize={2} />

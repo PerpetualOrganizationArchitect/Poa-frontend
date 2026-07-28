@@ -65,7 +65,7 @@ const ExecutivePage = () => {
     // This functionality needs to be implemented via the Executor contract
     toast({
       title: 'Not Implemented',
-      description: 'Minting executive hats requires Hats Protocol integration via governance proposal',
+      description: 'Assigning leadership roles happens through a governance vote. This shortcut isn’t available yet.',
       status: 'info',
       duration: 5000,
       isClosable: true,
@@ -97,7 +97,7 @@ const ExecutivePage = () => {
       console.error('Error minting NFT:', error);
       toast({
         title: 'Error',
-        description: 'Failed to mint NFT. See console for details.',
+        description: 'We couldn’t grant that role. Please try again.',
         status: 'error',
         duration: 3000,
         isClosable: true,

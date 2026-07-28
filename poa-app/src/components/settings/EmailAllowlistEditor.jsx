@@ -8,6 +8,7 @@
  * is a separate governance step (AllowlistActivationPanel).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 import {
   Alert,
   AlertIcon,
@@ -56,6 +57,7 @@ const ZERO_ROOT = '0x00000000000000000000000000000000000000000000000000000000000
 export default function EmailAllowlistEditor({ orgId, orgChainId, currentName }) {
   const toast = useToast();
   const { addToIpfs, safeFetchFromIpfs, bytes32ToIpfsCid } = useIPFScontext();
+  const router = useRouter();
   const { factory, txManager, isReady, zkEmailInvites } = useWeb3Services();
   const { executeWithNotification } = useTransactionWithNotification();
   const { isPasskeyUser } = useAuth();
@@ -252,8 +254,25 @@ export default function EmailAllowlistEditor({ orgId, orgChainId, currentName })
             </Text>
             {!isActive && staged.cid && (
               <Box mt={2}>
-                <Text color="gray.600">
-                  To activate: Governance → New proposal → “Activate Email Allowlist”, with:
+                <Button
+                  size="sm"
+                  colorScheme="teal"
+                  onClick={() =>
+                    router.push(
+                      `/voting/?${new URLSearchParams({
+                        org: currentName || '',
+                        propose: 'activate-email-allowlist',
+                        prefill_root: staged.root,
+                        prefill_cid: ipfsCidToBytes32(staged.cid),
+                      })}`,
+                    )
+                  }
+                >
+                  Create activation proposal →
+                </Button>
+                <Text color="gray.600" fontSize="xs" mt={2}>
+                  Opens Voting with the “Activate Email Allowlist” proposal pre-filled (root + CID below) —
+                  review, create, members vote, then it goes live.
                 </Text>
                 <Code fontSize="xs" display="block" w="full" whiteSpace="pre-wrap" mt={1}>
                   {`root: ${staged.root}\ncid:  ${ipfsCidToBytes32(staged.cid)}`}

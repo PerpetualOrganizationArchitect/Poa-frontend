@@ -11,6 +11,8 @@ import {
   Box,
   Button,
   Code,
+  Divider,
+  Flex,
   Heading,
   HStack,
   Input,
@@ -686,15 +688,31 @@ export default function ZkEmailClaimFlow() {
                   Create passkey &amp; continue
                 </Button>
               </HStack>
-              <HStack spacing={3} mt={3}>
-                <Text fontSize="xs" color="gray.500">
-                  Already have an account?
-                </Text>
-                <Button variant="link" size="xs" onClick={signInDisclosure.onOpen}>
-                  Sign in with passkey
-                </Button>
-                <ConnectButton showBalance={false} chainStatus="none" accountStatus="address" />
-              </HStack>
+              <Box mt={4}>
+                <HStack spacing={2} flexWrap="wrap">
+                  <Text fontSize="xs" color="gray.500">
+                    Already have an account?
+                  </Text>
+                  <Button variant="link" size="xs" colorScheme="teal" onClick={signInDisclosure.onOpen}>
+                    Sign in with passkey
+                  </Button>
+                </HStack>
+                <HStack mt={3} spacing={2} align="center" color="gray.400">
+                  <Divider />
+                  <Text fontSize="xs" whiteSpace="nowrap">
+                    or connect a wallet
+                  </Text>
+                  <Divider />
+                </HStack>
+                <Flex justify="center" mt={2}>
+                  <ConnectButton
+                    showBalance={false}
+                    chainStatus="none"
+                    accountStatus="address"
+                    label="Connect Wallet"
+                  />
+                </Flex>
+              </Box>
             </Box>
           )}
 

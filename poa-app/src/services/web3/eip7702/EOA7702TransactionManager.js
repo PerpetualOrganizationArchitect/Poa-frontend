@@ -12,7 +12,7 @@ import { encodeFunctionData } from 'viem';
 import { TransactionResult, TransactionState } from '../core/TransactionManager';
 import PasskeyAccountABI from '../../../../abi/PasskeyAccount.json';
 import { buildUserOpWithFallback, getUserOpHash } from '../passkey/userOpBuilder';
-import { encodeHatPaymasterData } from '../passkey/paymasterData';
+import { encodeHatPaymasterData, encodeClaimPaymasterData } from '../passkey/paymasterData';
 import { ENTRY_POINT_ADDRESS } from '../../../config/passkey';
 import { signUserOpWithWallet } from './walletSigner';
 import { buildEOAAuthorization } from './authorizationBuilder';
@@ -73,6 +73,7 @@ export class EOA7702TransactionManager {
     const {
       onStateChange,
       paymasterHatIds: overrideHatIds,
+      paymasterClaimTarget,
       callGasLimit,
       callGasLimitMultiplier,
     } = options;
@@ -95,7 +96,7 @@ export class EOA7702TransactionManager {
       const authorization = await buildEOAAuthorization(this.walletClient, this.eoaDelegationAddress);
 
       // 4. Build UserOp with paymaster fallback
-      const userOp = await this._buildUserOpWithFallback(callData, authorization, overrideHatIds, {
+      const userOp = await this._buildUserOpWithFallback(callData, authorization, overrideHatIds, paymasterClaimTarget, {
         callGasLimit,
         callGasLimitMultiplier,
       });
@@ -178,7 +179,7 @@ export class EOA7702TransactionManager {
       });
 
       const authorization = await buildEOAAuthorization(this.walletClient, this.eoaDelegationAddress);
-      const userOp = await this._buildUserOpWithFallback(callData, authorization, null, {
+      const userOp = await this._buildUserOpWithFallback(callData, authorization, null, null, {
         callGasLimit,
         callGasLimitMultiplier,
       });
@@ -225,13 +226,17 @@ export class EOA7702TransactionManager {
     }
   }
 
-  async _buildUserOpWithFallback(callData, authorization, overrideHatIds = null, gasOverrides = {}) {
+  async _buildUserOpWithFallback(callData, authorization, overrideHatIds = null, claimTarget = null, gasOverrides = {}) {
     const effectiveHatIds = overrideHatIds?.length > 0 ? overrideHatIds : this.hatIds;
-    const hasPaymaster = this.paymasterAddress && this.orgId && effectiveHatIds?.length > 0;
+    const hasPaymaster = this.paymasterAddress && this.orgId && (claimTarget || effectiveHatIds?.length > 0);
 
-    // Build paymaster data entries for each hat
+    // CLAIM subject first (no eligibility pre-check; required for a first-role claim by a
+    // not-yet-eligible account), then the hat-subject entries as fallbacks.
     const paymasterDataEntries = hasPaymaster
-      ? effectiveHatIds.map((hatId) => encodeHatPaymasterData({ hatId, orgId: this.orgId }))
+      ? [
+          ...(claimTarget ? [encodeClaimPaymasterData({ claimTarget, orgId: this.orgId })] : []),
+          ...(effectiveHatIds || []).map((hatId) => encodeHatPaymasterData({ hatId, orgId: this.orgId })),
+        ]
       : [];
 
     const userOp = await buildUserOpWithFallback({

@@ -59,6 +59,16 @@ export function removeCredential(accountAddress) {
 }
 
 /**
+ * Remove ALL saved passkey credentials — a full local "forget this device" sign-out.
+ * Non-destructive to the authenticator: the passkey still lives in the device/hardware, so the
+ * user can re-attach later via discoverable WebAuthn ("Sign in with passkey"). This only drops the
+ * cached credential pointers that drive auto-restore, so a signed-out state actually sticks.
+ */
+export function clearAllCredentials() {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+/**
  * Check if any passkey credentials are saved.
  * @returns {boolean}
  */

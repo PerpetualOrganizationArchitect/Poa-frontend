@@ -259,21 +259,25 @@ export function useClaimZkEmailRole() {
         let root;
         let cid;
         if (oneStep) {
-          // Read directly (no tx manager for a not-yet-signed-in user).
-          const [r, c] = await Promise.all([
+          // Read directly (no tx manager for a not-yet-signed-in user). Sequential (not Promise.all)
+          // + retry: concurrent eth_calls to a rate-limited public RPC intermittently return empty for
+          // the second call → CALL_EXCEPTION data="0x". Mirrors ZkEmailInvitesService.getActiveAllowlist.
+          const readBytes32 = (functionName) =>
             publicClient.readContract({
               address: zkEmailInvitesAddress,
-              abi: [{ name: 'merkleRoot', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'bytes32' }] }],
-              functionName: 'merkleRoot',
-            }),
-            publicClient.readContract({
-              address: zkEmailInvitesAddress,
-              abi: [{ name: 'allowlistCid', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'bytes32' }] }],
-              functionName: 'allowlistCid',
-            }),
-          ]);
-          root = r;
-          cid = c;
+              abi: [{ name: functionName, type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'bytes32' }] }],
+              functionName,
+            });
+          for (let attempt = 0; ; attempt++) {
+            try {
+              root = await readBytes32('merkleRoot');
+              cid = await readBytes32('allowlistCid');
+              break;
+            } catch (e) {
+              if (attempt >= 2) throw e;
+              await new Promise((res) => setTimeout(res, 600));
+            }
+          }
         } else {
           ({ root, cid } = await zkEmailInvites.getActiveAllowlist(zkEmailInvitesAddress));
         }
@@ -427,7 +431,6 @@ export function useClaimZkEmailRole() {
                 proof,
                 hatIds: entry.hatIds,
                 merkleProof: entry.proof,
-                sponsorHatId: entry.hatIds[0],
                 onStep: (s) =>
                   setStep(s === 'submitting' || s === 'confirming' ? ZK_CLAIM_STEPS.SUBMITTING : ZK_CLAIM_STEPS.SIGNING),
               });
@@ -472,14 +475,19 @@ export function useClaimZkEmailRole() {
           await switchChainAsync({ chainId: orgChainId });
         }
         setStep(ZK_CLAIM_STEPS.SUBMITTING);
+        // CLAIM paymaster subject (0x05) first — the hub sponsors the op bound to the ZkEmailInvites
+        // proxy with NO eligibility pre-check (a first-role claimer isn't eligible until the claim
+        // itself grants it); entry hats remain as fallback subjects.
         const submit =
           mode === 'email'
             ? () =>
                 zkEmailInvites.claimRoleByEmail(zkEmailInvitesAddress, proof, claimer, entry.hatIds, entry.proof, {
+                  paymasterClaimTarget: zkEmailInvitesAddress,
                   paymasterHatIds: entry.hatIds,
                 })
             : () =>
                 zkEmailInvites.claimRoleByDomain(zkEmailInvitesAddress, proof, claimer, entry.hatIds, entry.proof, {
+                  paymasterClaimTarget: zkEmailInvitesAddress,
                   paymasterHatIds: entry.hatIds,
                 });
         const result = await executeWithNotification(submit, {

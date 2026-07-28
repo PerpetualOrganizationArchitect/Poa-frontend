@@ -20,8 +20,8 @@ import UniversalAccountRegistryABI from '../../../../abi/UniversalAccountRegistr
 import ZkEmailInvitesABI from '../../../../abi/ZkEmailInvites.json';
 import { createPasskeyCredential } from '../passkey/passkeyCreate';
 import { signUserOpWithPasskey, signRegistrationChallenge, computeRegistrationChallenge } from '../passkey/passkeySign';
-import { buildUserOp, getUserOpHash } from '../passkey/userOpBuilder';
-import { encodeOnboardingPaymasterData } from '../passkey/paymasterData';
+import { buildUserOpWithFallback, getUserOpHash } from '../passkey/userOpBuilder';
+import { encodeClaimPaymasterData, encodeHatPaymasterData } from '../passkey/paymasterData';
 import { ENTRY_POINT_ADDRESS } from '../../../config/passkey';
 
 const REGISTRATION_DEADLINE_SECONDS = 1209600;
@@ -85,11 +85,10 @@ export class ZkEmailOnboardingService {
    * @param {Object} p.proof formatted proof from prover.js (hex fields)
    * @param {Array}  p.hatIds entry's hat IDs (decimal strings)
    * @param {Array}  p.merkleProof bytes32[] proof for the entry's leaf
-   * @param {string|bigint} p.sponsorHatId hat whose org budget sponsors the UserOp
    * @param {Function} [p.onStep] progress callback: 'signing_registration' | 'signing' | 'submitting' | 'confirming'
    * @returns {{ accountAddress, transactionHash }}
    */
-  async registerAndClaim({ credential, accountAddress, username, mode, proof, hatIds, merkleProof, sponsorHatId, onStep = () => {} }) {
+  async registerAndClaim({ credential, accountAddress, username, mode, proof, hatIds, merkleProof, onStep = () => {} }) {
     const { credentialId, publicKeyX, publicKeyY, rawCredentialId } = credential;
     const salt = toBig(credential.salt);
 
@@ -146,15 +145,22 @@ export class ZkEmailOnboardingService {
       args: [this.zkEmailInvitesAddress, 0n, inner],
     });
 
-    const paymasterData = encodeOnboardingPaymasterData({ hatId: sponsorHatId, orgId: this.orgId });
-    const userOp = await buildUserOp({
+    // CLAIM subject (0x05) first: the hub binds the op to the ZkEmailInvites proxy and does NO
+    // eligibility pre-check — required for a FRESH account's first claim (a HAT subject fails
+    // validation before the claim can grant eligibility). Budget: keccak(0x05, proxy). The entry
+    // hats follow as fallback subjects for orgs whose claim budget isn't configured yet.
+    const paymasterDataEntries = [
+      encodeClaimPaymasterData({ claimTarget: this.zkEmailInvitesAddress, orgId: this.orgId }),
+      ...hatIds.map((hatId) => encodeHatPaymasterData({ hatId, orgId: this.orgId })),
+    ];
+    const userOp = await buildUserOpWithFallback({
       sender: accountAddress,
       callData,
       bundlerClient: this.bundlerClient,
       publicClient: this.publicClient,
       initCode,
       paymasterAddress: this.paymasterAddress,
-      paymasterData,
+      paymasterDataEntries,
     });
 
     onStep('signing');

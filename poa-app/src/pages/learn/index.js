@@ -42,9 +42,10 @@ import { useUserContext } from '@/context/UserContext';
 import { getNetworkByChainId } from '@/config/networks';
 import QuizModal from '@/components/eduHub/QuizModal';
 import { useRouter } from 'next/router';
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 const EducationHub = () => {
-  const { poContextLoading, educationModules, educationHubAddress, educationHubEnabled, orgChainId } = usePOContext();
+  const { poContextLoading, orgStatus, educationModules, educationHubAddress, educationHubEnabled, orgChainId } = usePOContext();
   const { pageBackground } = useOrgTheme();
   const { completedModules, hasExecRole } = useUserContext();
   const { education, executeWithNotification } = useWeb3();
@@ -55,14 +56,21 @@ const EducationHub = () => {
   const toast = useToast();
   const router = useRouter();
   const userDAO = useOrgName();
+  const orgGate = useOrgGate();
 
-  // Redirect to dashboard if education hub is disabled (skip during tour)
+  // Redirect to dashboard if education hub is disabled (skip during tour).
+  // Gated on orgStatus === 'ready', NOT on `userDAO` being truthy: an early
+  // return does not cancel an effect declared above it, so without this a
+  // not-found org gets bounced off its dead end onto /dashboard — which shows
+  // its own dead end, after a confusing detour. A disabled education hub is
+  // only a real fact once there is a real org.
   const { isActive: isTourActive } = useTour();
   useEffect(() => {
+    if (orgStatus !== 'ready') return;
     if (!poContextLoading && !educationHubEnabled && userDAO && !isTourActive) {
       router.replace(`/dashboard/?org=${encodeURIComponent(userDAO)}`);
     }
-  }, [poContextLoading, educationHubEnabled, userDAO, isTourActive, router]);
+  }, [orgStatus, poContextLoading, educationHubEnabled, userDAO, isTourActive, router]);
 
   // Form state
   const [moduleTitle, setModuleTitle] = useState('');
@@ -156,6 +164,8 @@ const EducationHub = () => {
     }
   });
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
   return (
     <>
       <SEOHead

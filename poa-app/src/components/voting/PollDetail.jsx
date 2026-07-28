@@ -39,7 +39,6 @@ import {
   ModalBody,
   ModalCloseButton,
   Box,
-  Flex,
   HStack,
   VStack,
   Text,
@@ -72,6 +71,7 @@ import { useUserContext } from '@/context/UserContext';
 import { useVotingContext } from '@/context/VotingContext';
 import { useVotingPower } from '@/hooks/useVotingPower';
 import { useRoleNames } from '@/hooks/useRoleNames';
+import { useOrgName } from '@/hooks/useOrgName';
 import { usePOContext } from '@/context/POContext';
 import {
   displayName,
@@ -112,15 +112,37 @@ import {
 
 const { amethyst, amethystBright, leaderText } = VOTE_PALETTE;
 
-/** Copy-deep-link button — clipboards the current URL. */
-function CopyLinkButton() {
+/**
+ * Copy-deep-link button — clipboards a link that re-opens THIS poll.
+ *
+ * Builds the URL from the poll id instead of snapshotting window.location:
+ * opening a card fires a shallow `router.push` that writes ?poll= and then
+ * opens the modal, and Next's push resolves asynchronously — so a mount-time
+ * `window.location.href` read copied the bare board URL (no ?poll=), and never
+ * refreshed when the user opened a different poll from the same page.
+ *
+ * origin + pathname still come from the live location so the deployed site's
+ * trailing slash and any IPFS-gateway path prefix survive, and the link stays
+ * on whichever surface the user copied from (/voting or /votes — both mount
+ * usePollNavigation and resolve ?poll= against the same proposal arrays).
+ */
+function CopyLinkButton({ poll }) {
+  const userDAO = useOrgName();
   const [href, setHref] = useState('');
+
   useEffect(() => {
-    if (typeof window !== 'undefined') setHref(window.location.href);
-  }, []);
+    if (typeof window === 'undefined' || !poll?.id) return;
+    const params = new URLSearchParams();
+    params.set('poll', poll.id);
+    // usePollNavigation writes the canonical `userDAO`; without it a link
+    // pasted into a fresh browser has no org to resolve.
+    if (userDAO) params.set('userDAO', userDAO);
+    setHref(`${window.location.origin}${window.location.pathname}?${params.toString()}`);
+  }, [poll?.id, userDAO]);
+
   const { onCopy, hasCopied } = useClipboard(href);
   return (
-    <Tooltip label={hasCopied ? 'Link copied' : 'Copy link'} placement="top" hasArrow bg="gray.700">
+    <Tooltip label={hasCopied ? 'Link copied' : 'Copy link'} placement="bottom" hasArrow bg="gray.700">
       <IconButton
         aria-label="Copy link to this poll"
         icon={hasCopied ? <CheckIcon /> : <LinkIcon />}
@@ -128,6 +150,7 @@ function CopyLinkButton() {
         variant="ghost"
         color={hasCopied ? 'green.300' : 'gray.300'}
         _hover={{ bg: 'whiteAlpha.100', color: 'white' }}
+        isDisabled={!href}
         onClick={onCopy}
       />
     </Tooltip>
@@ -351,7 +374,27 @@ export function PollDetail({
           // Drag-handle affordance for the bottom sheet.
           <Box w="40px" h="4px" borderRadius="full" bg="whiteAlpha.400" mx="auto" mt={3} mb={1} />
         )}
-        {!isMobile && <ModalCloseButton color="gray.300" />}
+
+        {/* Modal chrome. Copy-link used to sit at the right edge of the badge
+            row inside the body, which put it diagonally UNDER the absolutely
+            positioned X — the two 32px targets overlapped by 20×16px and the
+            copy button won hit-testing over the X's bottom-left corner. Both
+            controls now share one top-right cluster on a single baseline.
+
+            The X renders at every breakpoint: it used to be desktop-only, but
+            `size="full"` gives the mobile sheet a 100vh min-height that beats
+            contentSx's 92vh max-height, so there is no overlay left to tap and
+            the drag handle is decorative — a mobile member had no way out. */}
+        <HStack
+          position="absolute"
+          top={{ base: 3, md: 2 }}
+          insetEnd={3}
+          spacing={2}
+          zIndex={2}
+        >
+          <CopyLinkButton poll={poll} />
+          <ModalCloseButton position="static" color="gray.300" />
+        </HStack>
 
         <ModalBody px={{ base: 5, md: 6 }} py={{ base: 4, md: 6 }}>
           {celebration ? (
@@ -373,10 +416,38 @@ export function PollDetail({
             />
           ) : (
             <VStack align="stretch" spacing={5}>
-              {/* a. Header */}
+              {/* a. Header — the inline-end padding reserves the corner the
+                  copy/close cluster floats in, so badges never run under it
+                  (the row wraps, and the "You voted" chip is conditional). */}
               <VStack align="stretch" spacing={2}>
-                <Flex justify="space-between" align="flex-start" gap={3}>
-                  <HStack spacing={2} flexWrap="wrap">
+                <HStack spacing={2} flexWrap="wrap" align="flex-start" pe={{ base: 8, md: 16 }}>
+                  <Badge
+                    px={2}
+                    py={0.5}
+                    borderRadius="md"
+                    textTransform="none"
+                    fontSize="2xs"
+                    fontWeight="700"
+                    bg={isBinding ? VOTE_PALETTE.amethystSoft : 'rgba(66, 153, 225, 0.16)'}
+                    color={isBinding ? leaderText : '#90CDF4'}
+                    border="1px solid"
+                    borderColor={isBinding ? VOTE_PALETTE.amethystBorder : 'rgba(66, 153, 225, 0.3)'}
+                  >
+                    {isBinding ? BINDING_BADGE : POLL_BADGE}
+                  </Badge>
+                  <Badge
+                    px={2}
+                    py={0.5}
+                    borderRadius="md"
+                    textTransform="none"
+                    fontSize="2xs"
+                    fontWeight="600"
+                    bg="whiteAlpha.100"
+                    color="gray.200"
+                  >
+                    {displayName(poll.type)}
+                  </Badge>
+                  {hasVoted && (
                     <Badge
                       px={2}
                       py={0.5}
@@ -384,45 +455,14 @@ export function PollDetail({
                       textTransform="none"
                       fontSize="2xs"
                       fontWeight="700"
-                      bg={isBinding ? VOTE_PALETTE.amethystSoft : 'rgba(66, 153, 225, 0.16)'}
-                      color={isBinding ? leaderText : '#90CDF4'}
-                      border="1px solid"
-                      borderColor={isBinding ? VOTE_PALETTE.amethystBorder : 'rgba(66, 153, 225, 0.3)'}
+                      bg="rgba(72, 187, 120, 0.16)"
+                      color="green.200"
+                      border="1px solid rgba(72, 187, 120, 0.3)"
                     >
-                      {isBinding ? BINDING_BADGE : POLL_BADGE}
+                      {YOU_VOTED_CHIP}
                     </Badge>
-                    <Badge
-                      px={2}
-                      py={0.5}
-                      borderRadius="md"
-                      textTransform="none"
-                      fontSize="2xs"
-                      fontWeight="600"
-                      bg="whiteAlpha.100"
-                      color="gray.200"
-                    >
-                      {displayName(poll.type)}
-                    </Badge>
-                    {hasVoted && (
-                      <Badge
-                        px={2}
-                        py={0.5}
-                        borderRadius="md"
-                        textTransform="none"
-                        fontSize="2xs"
-                        fontWeight="700"
-                        bg="rgba(72, 187, 120, 0.16)"
-                        color="green.200"
-                        border="1px solid rgba(72, 187, 120, 0.3)"
-                      >
-                        {YOU_VOTED_CHIP}
-                      </Badge>
-                    )}
-                  </HStack>
-                  <HStack spacing={0}>
-                    <CopyLinkButton />
-                  </HStack>
-                </Flex>
+                  )}
+                </HStack>
 
                 <Text fontSize={{ base: 'xl', md: '2xl' }} fontWeight="800" color="white" lineHeight="1.2">
                   {poll.title}

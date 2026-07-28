@@ -19,10 +19,12 @@ import { useUserContext } from "@/context/UserContext";
 import { useOrgTheme } from "@/hooks";
 import { useOrgName } from "@/hooks/useOrgName";
 import OrgConstitution from "@/components/voting/OrgConstitution";
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 const RulesPage = () => {
   const router = useRouter();
   const userDAO = useOrgName();
+  const orgGate = useOrgGate();
   const { poContextLoading } = usePOContext();
   const { hasMemberRole } = useUserContext();
   const { pageBackground } = useOrgTheme();
@@ -42,6 +44,8 @@ const RulesPage = () => {
     />
   );
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
   return (
     <>
       {seoHead}

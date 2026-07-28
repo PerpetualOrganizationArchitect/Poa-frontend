@@ -33,6 +33,7 @@ export { useIsOrgAdmin } from './useIsOrgAdmin';
 export { useRoleNames } from './useRoleNames';
 export { useVotingPower } from './useVotingPower';
 export { useTreasuryShare } from './useTreasuryShare';
+export { useVotingIntro } from './useVotingIntro';
 
 // Passkey Vouch-First Onboarding
 export { useVouchFirstOnboarding } from './useVouchFirstOnboarding';

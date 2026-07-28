@@ -22,6 +22,7 @@ import { PiPlusCircle, PiScales } from "react-icons/pi";
 import { getTemplateById } from "@/config/setterDefinitions";
 import PulseLoader from "@/components/shared/PulseLoader";
 import GlassBack from "./GlassBack";
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 import { usePOContext } from "@/context/POContext";
 import { useVotingContext } from "@/context/VotingContext";
 import { useUserContext } from "@/context/UserContext";
@@ -65,6 +66,7 @@ const VotingPage = () => {
   const { voting, executeWithNotification } = useWeb3();
   const { pageBackground } = useOrgTheme();
   const userDAO = useOrgName();
+  const orgGate = useOrgGate();
 
   const {
     directDemocracyVotingContractAddress,
@@ -85,6 +87,7 @@ const VotingPage = () => {
     democracyVotingCompleted,
     hybridVotingCompleted,
     votingType: PTVoteType,
+    resolveMissingPoll,
     votingClasses,
     hybridThresholdPct,
     hybridQuorum,
@@ -114,6 +117,7 @@ const VotingPage = () => {
     hybridVotingOngoing,
     hybridVotingCompleted,
     PTVoteType,
+    resolveMissingPoll,
   });
 
   // PollDetail must render LIVE data — selectedPoll is a click-time snapshot,
@@ -300,6 +304,9 @@ const VotingPage = () => {
 
   const canCreate = hasMemberRole;
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
+
   return (
     <>
       <Navbar />
@@ -309,9 +316,14 @@ const VotingPage = () => {
         </Center>
       ) : (
         <Container maxW="container.2xl" py={4} px={{ base: "1%", md: "3%" }} minH="100vh" background={pageBackground()}>
-          {/* GovernanceStrip — wave-1 education header (collapses after first visit). */}
+          {/* GovernanceStrip — the one-line education header. `modalOpen` holds
+              its first-visit coach-mark back while a modal owns the screen. */}
           <Box data-tour="voting-header" mb={6}>
-            <VotingEducationHeader selectedTab={0} PTVoteType={PTVoteType} />
+            <VotingEducationHeader
+              selectedTab={0}
+              PTVoteType={PTVoteType}
+              modalOpen={isDetailOpen || showCreatePoll}
+            />
           </Box>
 
           {/* Board panel — the dark glass container the whole board lives in.

@@ -346,6 +346,34 @@ export function useClaimZkEmailRole() {
           const eHash = await emailHash(fromEmail);
           entry = proofForEmailHash(tree, eHash);
           if (entry) mode = 'email';
+          // Fail fast BEFORE the ~30s prove: specific-address entries are one-registration-per-address
+          // on-chain (a fresh email does not grant a second registration). Fail-open on read errors —
+          // the contract enforces regardless.
+          if (entry) {
+            try {
+              const already = await publicClient.readContract({
+                address: zkEmailInvitesAddress,
+                abi: [{
+                  name: 'isEmailRegistered',
+                  type: 'function',
+                  stateMutability: 'view',
+                  inputs: [{ type: 'bytes32' }],
+                  outputs: [{ type: 'bool' }],
+                }],
+                functionName: 'isEmailRegistered',
+                args: [eHash],
+              });
+              if (already) {
+                return fail(
+                  new Error(
+                    `${fromEmail} has already been used to register here. If this is your address and you need to re-register (e.g. you lost access to your old account), ask an org admin to re-open it.`,
+                  ),
+                );
+              }
+            } catch (_) {
+              /* pre-flight only — the contract still rejects duplicates */
+            }
+          }
         }
         if (!entry && dkimDomain) {
           entry = await proofForDomain(tree, dkimDomain);

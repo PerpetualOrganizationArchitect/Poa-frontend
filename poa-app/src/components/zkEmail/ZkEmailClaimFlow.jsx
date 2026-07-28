@@ -62,6 +62,9 @@ function friendlyRetryMessage(error) {
   if (/AA31|prefund|insufficient funds/i.test(raw)) {
     return 'Gas sponsorship hiccup — your proof is saved, just try again.';
   }
+  if (/EmailAlreadyRegistered/i.test(raw)) {
+    return 'This email address has already registered here — ask an org admin to re-open it if you need to register again.';
+  }
   if (/nullifier/i.test(raw)) {
     return 'This email was already used for a claim. Send a fresh email to claim again.';
   }

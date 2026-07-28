@@ -18,6 +18,7 @@ import {
   Progress,
   Spinner,
   Text,
+  keyframes,
   useClipboard,
   useDisclosure,
   VStack,
@@ -27,9 +28,14 @@ import {
 import { useRouter } from 'next/router';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { FaCopy, FaCheck } from 'react-icons/fa';
+import { gql } from '@apollo/client';
 import { useAuth } from '@/context/AuthContext';
+import { usePOContext } from '@/context/POContext';
+import { useUserContext } from '@/context/UserContext';
+import { useRefreshEmit, RefreshEvent } from '@/context/RefreshContext';
+import { getClient } from '@/util/apolloClient';
 import { useClaimZkEmailRole, ZK_CLAIM_STEPS } from '@/hooks/useClaimZkEmailRole';
-import { useZkEmailInviteSummary } from '@/hooks/useZkEmailInviteSummary';
+import { useZkEmailInviteSummary, hatKey } from '@/hooks/useZkEmailInviteSummary';
 import { useOrgName } from '@/hooks/useOrgName';
 import { orgUrl } from '@/util/orgUrl';
 import { buildCommand, buildMailto, prefetchCircuitArtifacts } from '@/lib/zkemail/prover';
@@ -45,6 +51,167 @@ const INBOX_ENABLED = Boolean(CLAIM_INBOX && CLAIM_INBOX_URL);
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_WINDOW_MS = 600_000; // keep listening for 10 min per step-2 visit
+
+/* ───────────────────────── Claim celebration + welcome ───────────────────────── */
+
+// Confirms the subgraph has indexed the new member (User entity id = `${orgId}-${address}`, lowercase).
+const CONFIRM_MEMBER_INDEXED = gql`
+  query ConfirmMemberIndexed($id: ID!) {
+    user(id: $id) {
+      id
+    }
+  }
+`;
+
+const confettiFall = keyframes`
+  0%   { transform: translate3d(0, -8vh, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate3d(var(--drift), 108vh, 0) rotate(660deg); opacity: 0.85; }
+`;
+const CONFETTI_COLORS = ['#38B2AC', '#9F7AEA', '#F6E05E', '#F687B3', '#63B3ED', '#68D391'];
+
+/** Lightweight confetti burst — pure CSS keyframes (house style, no dependency), honors reduced motion. */
+function ConfettiBurst() {
+  const pieces = useMemo(
+    () =>
+      Array.from({ length: 36 }, (_, i) => ({
+        left: `${(i * 61) % 100}%`,
+        delay: `${((i * 37) % 100) / 100}s`,
+        duration: `${2.2 + ((i * 53) % 100) / 60}s`,
+        drift: `${(((i * 29) % 100) - 50) * 2}px`,
+        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+        w: `${6 + ((i * 13) % 6)}px`,
+        h: `${10 + ((i * 17) % 8)}px`,
+      })),
+    [],
+  );
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return null;
+  }
+  return (
+    <Box position="fixed" inset={0} pointerEvents="none" overflow="hidden" zIndex={1400} aria-hidden>
+      {pieces.map((c, i) => (
+        <Box
+          key={i}
+          position="absolute"
+          top="-16px"
+          left={c.left}
+          w={c.w}
+          h={c.h}
+          bg={c.color}
+          borderRadius="2px"
+          style={{ '--drift': c.drift }}
+          animation={`${confettiFall} ${c.duration} ${c.delay} cubic-bezier(0.25, 0.8, 0.6, 1) forwards`}
+        />
+      ))}
+    </Box>
+  );
+}
+
+/**
+ * Post-claim welcome: celebrates, shows WHO you now are (roles, verified email, account) from
+ * in-memory claim data (never a fresh subgraph query — indexing lags the mint by seconds), points at
+ * what to do next, and tracks profile indexing so the hand-off to /profile isn't a shrug.
+ */
+function ClaimWelcome({ org, username, accountAddress, roleNames, verifiedAs, profileReady, onProfile, onClaimAnother }) {
+  const short = accountAddress ? `${accountAddress.slice(0, 6)}…${accountAddress.slice(-4)}` : '';
+  return (
+    <VStack py={4} spacing={4} align="stretch">
+      <VStack spacing={1} textAlign="center">
+        <Heading size="lg">🎉 Welcome to {org}!</Heading>
+        <Text fontSize="sm" color="gray.600">
+          {username ? `You’re in, ${username}.` : 'You’re in.'} Your email checked out and your role is on-chain.
+        </Text>
+      </VStack>
+
+      <Box borderWidth="1px" borderRadius="lg" p={4} bg="teal.50" borderColor="teal.200">
+        <VStack align="stretch" spacing={2} fontSize="sm">
+          {roleNames.length > 0 && (
+            <HStack>
+              <Text color="gray.600" flexShrink={0}>
+                Your role{roleNames.length > 1 ? 's' : ''}:
+              </Text>
+              <Wrap spacing={1}>
+                {roleNames.map((n) => (
+                  <WrapItem key={n}>
+                    <Badge colorScheme="teal">{n}</Badge>
+                  </WrapItem>
+                ))}
+              </Wrap>
+            </HStack>
+          )}
+          {verifiedAs && (
+            <HStack>
+              <Text color="gray.600" flexShrink={0}>
+                Verified as:
+              </Text>
+              <Code fontSize="xs">{verifiedAs}</Code>
+            </HStack>
+          )}
+          {short && (
+            <HStack>
+              <Text color="gray.600" flexShrink={0}>
+                Your account:
+              </Text>
+              <Code fontSize="xs">{short}</Code>
+            </HStack>
+          )}
+        </VStack>
+      </Box>
+
+      <Box fontSize="sm" color="gray.600">
+        <Text fontWeight="600" mb={1} color="gray.700">
+          What you can do now
+        </Text>
+        <VStack align="stretch" spacing={1}>
+          <Text>
+            •{' '}
+            <ChakraLink color="teal.600" href={orgUrl(org, 'tasks')}>
+              Pick up a task
+            </ChakraLink>{' '}
+            and earn participation tokens
+          </Text>
+          <Text>
+            •{' '}
+            <ChakraLink color="teal.600" href={orgUrl(org, 'voting')}>
+              Vote
+            </ChakraLink>{' '}
+            on active proposals
+          </Text>
+          <Text>
+            •{' '}
+            <ChakraLink color="teal.600" href={orgUrl(org, 'learn')}>
+              Learn &amp; earn
+            </ChakraLink>{' '}
+            with the org’s modules
+          </Text>
+        </VStack>
+      </Box>
+
+      <HStack fontSize="xs" color={profileReady ? 'green.600' : 'gray.500'} justify="center">
+        {profileReady ? (
+          <>
+            <FaCheck />
+            <Text>Your profile is ready.</Text>
+          </>
+        ) : (
+          <>
+            <Spinner size="xs" />
+            <Text>Setting up your profile — this takes a few seconds…</Text>
+          </>
+        )}
+      </HStack>
+
+      <HStack justify="center">
+        <Button colorScheme="teal" onClick={onProfile} isDisabled={!org}>
+          Go to your profile →
+        </Button>
+        <Button variant="outline" onClick={onClaimAnother}>
+          Claim another
+        </Button>
+      </HStack>
+    </VStack>
+  );
+}
 
 /** Verified who-can-join summary (domains + roles from the root-matched allowlist file). */
 function InviteSummary({ summary }) {
@@ -233,8 +400,13 @@ export default function ZkEmailClaimFlow() {
     discardPendingPasskey,
     newAccountReady,
     claimerAddress,
+    meta,
+    proveProgress,
   } = useClaimZkEmailRole();
   const summary = useZkEmailInviteSummary();
+  const { orgId, subgraphUrl, roleNames: roleNamesMap } = usePOContext();
+  const { optimisticJoin } = useUserContext();
+  const { emit } = useRefreshEmit();
   const router = useRouter();
   const org = useOrgName();
   const fileRef = useRef(null);
@@ -256,6 +428,83 @@ export default function ZkEmailClaimFlow() {
 
   const hasClaimTarget = Boolean(claimerAddress);
   const stepsLive = summary.status === 'active' || summary.status === 'degraded';
+  const done = step === ZK_CLAIM_STEPS.DONE;
+
+  /* ── Post-claim: celebrate, bridge the subgraph indexing gap, then hand off to /profile. ── */
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [profileReady, setProfileReady] = useState(false);
+  const optimisticDoneRef = useRef(false);
+
+  // Names for the hats just claimed (in-memory `meta.hatIds` -> POContext role-name map; hatKey
+  // normalizes hex allowlist ids vs decimal subgraph ids).
+  const claimedRoleNames = useMemo(() => {
+    if (!meta?.hatIds?.length) return [];
+    const normalized = {};
+    Object.entries(roleNamesMap || {}).forEach(([id, name]) => {
+      const k = hatKey(id);
+      if (k) normalized[k] = name;
+    });
+    return [...new Set(meta.hatIds.map((h) => normalized[hatKey(h)]).filter(Boolean))];
+  }, [meta, roleNamesMap]);
+
+  // Celebration burst + optimistic membership: the profile hub renders correctly the moment the user
+  // lands on it (UserContext.optimisticJoin sets hatIds/username with a stale-response lock and its
+  // own delayed refetch) instead of flashing the pre-claim welcome screen while the subgraph indexes.
+  useEffect(() => {
+    if (!done) {
+      optimisticDoneRef.current = false;
+      setShowConfetti(false);
+      setProfileReady(false);
+      return undefined;
+    }
+    if (optimisticDoneRef.current) return undefined;
+    optimisticDoneRef.current = true;
+    setShowConfetti(true);
+    const confettiTimer = setTimeout(() => setShowConfetti(false), 4500);
+    try {
+      optimisticJoin({ address: accountAddress, hatIds: meta?.hatIds || [], username: username || undefined });
+    } catch (_) {
+      /* optimistic-only — the poll below still refreshes real data */
+    }
+    return () => clearTimeout(confettiTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done]);
+
+  // Poll the subgraph until OUR new membership is actually indexed, then push one more refetch —
+  // covers gateways slower than the ~7s waitForSubgraphBlock window (whose single refetch can land
+  // on stale data and never retry). Bounded; purely a freshness/UX concern.
+  useEffect(() => {
+    if (!(done && orgId && subgraphUrl && accountAddress)) return undefined;
+    let alive = true;
+    const id = `${orgId}-${accountAddress}`.toLowerCase();
+    const client = getClient(subgraphUrl);
+    const startedAt = Date.now();
+    (async () => {
+      while (alive && Date.now() - startedAt < 90_000) {
+        try {
+          const { data } = await client.query({
+            query: CONFIRM_MEMBER_INDEXED,
+            variables: { id },
+            fetchPolicy: 'network-only',
+          });
+          if (data?.user?.id) {
+            if (alive) {
+              setProfileReady(true);
+              emit(RefreshEvent.ROLE_CLAIMED, { indexed: true });
+            }
+            return;
+          }
+        } catch (_) {
+          /* transient — keep polling */
+        }
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done, orgId, subgraphUrl, accountAddress]);
 
   // Single derived phase — no second state machine to drift from the hook.
   const phase = useMemo(() => {
@@ -596,11 +845,24 @@ export default function ZkEmailClaimFlow() {
                 {step === ZK_CLAIM_STEPS.CHECKING
                   ? 'Checking the organization’s allowlist…'
                   : step === ZK_CLAIM_STEPS.PROVING
-                    ? 'Proving your email in your browser — usually ~15 seconds (plus a one-time download the first time)…'
+                    ? proveProgress?.phase === 'download'
+                      ? `Downloading the proving key — part ${proveProgress.done} of ${proveProgress.total} (one-time, cached after this)…`
+                      : proveProgress?.phase === 'assemble'
+                        ? 'Preparing the proving key…'
+                        : 'Computing your proof in your browser — usually 15–40 seconds…'
                     : step === ZK_CLAIM_STEPS.SIGNING
                       ? 'Confirm with your passkey — your account, username, and role go on-chain together…'
                       : 'Submitting your claim…'}
               </Text>
+              {step === ZK_CLAIM_STEPS.PROVING && proveProgress?.phase === 'download' && (
+                <Progress
+                  value={(proveProgress.done / Math.max(proveProgress.total, 1)) * 100}
+                  size="xs"
+                  colorScheme="teal"
+                  borderRadius="full"
+                  w="240px"
+                />
+              )}
             </VStack>
           )}
 
@@ -629,28 +891,24 @@ export default function ZkEmailClaimFlow() {
             </Box>
           )}
 
-          {/* ── Step 5: Done ── */}
+          {/* ── Step 5: Done — celebrate, welcome, bridge the subgraph gap, hand off to /profile ── */}
           {phase === 5 && (
-            <VStack py={4} spacing={4}>
-              <Alert status="success" borderRadius="lg">
-                <AlertIcon />
-                Role claimed! You’re signed in and your new role will appear shortly.
-              </Alert>
-              <HStack>
-                <Button colorScheme="teal" onClick={() => router.push(orgUrl(org, 'dashboard'))} isDisabled={!org}>
-                  Go to your dashboard
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    reset();
-                    setFileName('');
-                  }}
-                >
-                  Claim another
-                </Button>
-              </HStack>
-            </VStack>
+            <>
+              {showConfetti && <ConfettiBurst />}
+              <ClaimWelcome
+                org={org}
+                username={username}
+                accountAddress={accountAddress}
+                roleNames={claimedRoleNames}
+                verifiedAs={meta?.mode === 'email' ? meta?.fromEmail : meta?.domain ? `@${meta.domain}` : ''}
+                profileReady={profileReady}
+                onProfile={() => router.push(`/profile/?org=${encodeURIComponent(org)}`)}
+                onClaimAnother={() => {
+                  reset();
+                  setFileName('');
+                }}
+              />
+            </>
           )}
         </Box>
       )}

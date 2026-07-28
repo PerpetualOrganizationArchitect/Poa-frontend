@@ -155,7 +155,7 @@ function _formatProof(proof) {
  * Generate a DOMAIN proof (`ZkEmailProof`) for `claimer`. Used for whole-domain allowlist entries.
  * @returns {Promise<{ proof: Object, meta: { domain: string, fromEmail: string, nullifier: string } }>}
  */
-export async function generateDomainProof({ emlText, claimer }) {
+export async function generateDomainProof({ emlText, claimer, onProgress }) {
   _requireManifest('PopRoleClaim');
   const { inputs, header } = await _baseInputs(emlText, claimer);
   const { dkimDomain, fromEmail } = parseEml(emlText);
@@ -166,7 +166,8 @@ export async function generateDomainProof({ emlText, claimer }) {
   _fromWindowInputs(inputs, header, fromEmail);
 
   const [{ loadZkey }, snarkjs] = await Promise.all([import('./zkeyLoader'), import('snarkjs')]);
-  const { zkey, wasmUrl } = await loadZkey(GATEWAY, MANIFEST.PopRoleClaim); // chunked -> in-memory zkey
+  const { zkey, wasmUrl } = await loadZkey(GATEWAY, MANIFEST.PopRoleClaim, onProgress); // chunked -> in-memory zkey
+  if (onProgress) onProgress({ phase: 'prove' });
   const { proof, publicSignals } = await snarkjs.groth16.fullProve(inputs, wasmUrl, zkey);
   // publicSignals = [pubkeyHash, emailNullifier, claimerAddress, fromDomainHash]
   if (BigInt(publicSignals[2]) !== BigInt(claimer)) {
@@ -189,7 +190,7 @@ export async function generateDomainProof({ emlText, claimer }) {
  * inputs are computed identically to `circuits/scripts/gen-inputs.mjs`.
  * @returns {Promise<{ proof: Object, meta: { domain: string, fromEmail: string, emailHash: string, nullifier: string } }>}
  */
-export async function generateEmailAddressProof({ emlText, claimer }) {
+export async function generateEmailAddressProof({ emlText, claimer, onProgress }) {
   _requireManifest('PopRoleClaimV2');
   const { inputs, header } = await _baseInputs(emlText, claimer);
   const { dkimDomain, fromEmail } = parseEml(emlText);
@@ -200,7 +201,8 @@ export async function generateEmailAddressProof({ emlText, claimer }) {
   _fromWindowInputs(inputs, header, fromEmail);
 
   const [{ loadZkey }, snarkjs] = await Promise.all([import('./zkeyLoader'), import('snarkjs')]);
-  const { zkey, wasmUrl } = await loadZkey(GATEWAY, MANIFEST.PopRoleClaimV2); // chunked -> in-memory zkey
+  const { zkey, wasmUrl } = await loadZkey(GATEWAY, MANIFEST.PopRoleClaimV2, onProgress); // chunked -> in-memory zkey
+  if (onProgress) onProgress({ phase: 'prove' });
   const { proof, publicSignals } = await snarkjs.groth16.fullProve(inputs, wasmUrl, zkey);
   // publicSignals = [pubkeyHash, emailNullifier, claimerAddress, emailHash, fromDomainHash]
   if (BigInt(publicSignals[2]) !== BigInt(claimer)) {

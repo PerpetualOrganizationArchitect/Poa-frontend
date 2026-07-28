@@ -148,7 +148,7 @@ async function readSummaryFromSubgraph(subgraphUrl, moduleAddress) {
 const EMPTY = { status: 'absent', key: '', rawDomains: [], rawEmailHats: [], emailCount: 0 };
 
 /** Normalize any hat-id representation (hex or decimal string) to a canonical decimal string. */
-function hatKey(id) {
+export function hatKey(id) {
   try {
     return BigInt(String(id).trim()).toString();
   } catch (_) {

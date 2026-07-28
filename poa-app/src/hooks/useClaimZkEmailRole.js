@@ -77,6 +77,8 @@ export function useClaimZkEmailRole() {
   const [step, setStep] = useState(ZK_CLAIM_STEPS.IDLE);
   const [error, setError] = useState(null);
   const [meta, setMeta] = useState(null);
+  // Live prove-phase feedback: {phase:'download',done,total} | {phase:'assemble'|'cache-hit'|'prove'}.
+  const [proveProgress, setProveProgress] = useState(null);
   const [pendingAccount, setPendingAccount] = useState(null);
 
   /* ── Infra for the one-step path (org-chain clients + addresses, same sourcing as onboarding) ── */
@@ -143,6 +145,7 @@ export function useClaimZkEmailRole() {
     setStep(ZK_CLAIM_STEPS.IDLE);
     setError(null);
     setMeta(null);
+    setProveProgress(null);
     readyRef.current = null;
     proofCacheRef.current = null;
     setReady(false);
@@ -367,8 +370,8 @@ export function useClaimZkEmailRole() {
           setStep(ZK_CLAIM_STEPS.PROVING);
           ({ proof, meta: proofMeta } =
             mode === 'email'
-              ? await generateEmailAddressProof({ emlText, claimer })
-              : await generateDomainProof({ emlText, claimer }));
+              ? await generateEmailAddressProof({ emlText, claimer, onProgress: setProveProgress })
+              : await generateDomainProof({ emlText, claimer, onProgress: setProveProgress }));
           proofCacheRef.current = { emlText, claimer, mode, proof, proofMeta };
         }
         setMeta({ mode, hatIds: entry.hatIds, ...proofMeta });
@@ -542,6 +545,7 @@ export function useClaimZkEmailRole() {
     step,
     error,
     meta,
+    proveProgress,
     // one-step onboarding surface
     pendingAccount,
     prepareNewPasskey,

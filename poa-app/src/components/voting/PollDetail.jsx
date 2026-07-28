@@ -144,7 +144,7 @@ export function PollDetail({
   votingTypeSelected,
 }) {
   const { accountAddress } = useAuth();
-  const { userData, graphUsername } = useUserContext();
+  const { userData, graphUsername, hasMemberRole } = useUserContext();
   const { addOptimisticVote, removeOptimisticVote } = useVotingContext();
   const { classBreakdown, totalSharePct } = useVotingPower();
   const { getRoleNamesString } = useRoleNames();
@@ -202,7 +202,10 @@ export function PollDetail({
   // "Voting ended" counts as closed for visibility: no bandwagon risk remains,
   // and hiding standings on an ended-but-uncounted vote reads as broken.
   const showResults = hasVoted || closed || !!poll?.isExpired;
-  const canVote = !!poll?.isOngoing && !poll?.isExpired && eligible && !hasVoted;
+  // Visitors (no account) and non-members see everything but can't cast —
+  // the read surface is public, the ballot is membership's.
+  const canAct = !!accountAddress && hasMemberRole;
+  const canVote = !!poll?.isOngoing && !poll?.isExpired && eligible && !hasVoted && canAct;
 
   const restrictedRolesText =
     poll?.isHatRestricted && (poll?.restrictedHatIds || []).length > 0
@@ -531,10 +534,18 @@ export function PollDetail({
                       </Text>
                     </Text>
                     {!hasVoted && (
-                      <Text fontSize="xs" color={eligible ? 'green.300' : '#F6C177'} fontWeight="600">
-                        {eligible
-                          ? "You're eligible ✓"
-                          : `Only ${restrictedRolesText} can vote on this one`}
+                      <Text
+                        fontSize="xs"
+                        color={!canAct ? '#C6B4F5' : eligible ? 'green.300' : '#F6C177'}
+                        fontWeight="600"
+                      >
+                        {!accountAddress
+                          ? 'Votes here are public — connect and join to take part'
+                          : !hasMemberRole
+                            ? 'Votes here are public — join this org to take part'
+                            : eligible
+                              ? "You're eligible ✓"
+                              : `Only ${restrictedRolesText} can vote on this one`}
                       </Text>
                     )}
                   </VStack>

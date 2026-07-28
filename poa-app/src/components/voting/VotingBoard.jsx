@@ -277,14 +277,29 @@ export function VotingBoard({
           <SkeletonLane title="Needs your vote" />
           <SkeletonLane title="Live votes" />
         </VStack>
-      ) : !isConnected ? (
-        <EmptyBoard kind="not-connected" orgName={orgName} />
-      ) : !isMember ? (
-        <EmptyBoard kind="not-member" orgName={orgName} />
       ) : totalAny === 0 ? (
-        <EmptyBoard kind="quiet" orgName={orgName} onCreate={onCreate} canCreate={canCreate} />
+        <EmptyBoard
+          kind={!isConnected ? 'not-connected' : !isMember ? 'not-member' : 'quiet'}
+          orgName={orgName}
+          onCreate={onCreate}
+          canCreate={canCreate}
+        />
       ) : (
         <VStack align="stretch" spacing={8}>
+          {/* Governance is PUBLIC — visitors see everything, members act.
+              Gating the read view behind login contradicted the mission
+              (votes are on-chain public; transparency is the product). */}
+          {(!isConnected || !isMember) && (
+            <Box position="relative" zIndex={1} borderRadius="xl" p={3} overflow="hidden">
+              <GlassBack light />
+              <Text fontSize="sm" color="gray.200" textAlign="center">
+                You&apos;re viewing as a visitor — votes here are public.{' '}
+                <Text as="span" color="#C6B4F5" fontWeight="600">
+                  {isConnected ? `Join ${orgName || 'this org'} to take part.` : `Connect and join ${orgName || 'this org'} to take part.`}
+                </Text>
+              </Text>
+            </Box>
+          )}
           <Lane title="Needs your vote" count={needsVote.length} accent>
             <LaneGrid items={needsVote} cardProps={cardProps} accent />
           </Lane>

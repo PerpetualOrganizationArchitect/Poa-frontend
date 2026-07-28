@@ -27,6 +27,24 @@ export function buildCommand(claimer) {
   return `Claim POP role for ${claimer}`;
 }
 
+/**
+ * Warm the proving key for `kind` ('domain' -> PopRoleClaim v1, 'email' -> PopRoleClaimV2) so the
+ * ~640 MB chunked download runs during the send-email dead time instead of blocking the Verify step.
+ * Fire-and-forget: never throws, dedupes with the prove-time load (zkeyLoader), and is a no-op when
+ * the manifest isn't configured. Repeat visits hit the IndexedDB cache and finish instantly.
+ */
+export async function prefetchCircuitArtifacts(kind) {
+  const name = kind === 'email' ? 'PopRoleClaimV2' : 'PopRoleClaim';
+  const cid = MANIFEST[name];
+  if (!GATEWAY || !cid || cid.startsWith('__')) return;
+  try {
+    const { prefetchZkey } = await import('./zkeyLoader');
+    prefetchZkey(GATEWAY, cid);
+  } catch (_) {
+    /* best-effort warm-up only */
+  }
+}
+
 /** A `mailto:` link that pre-fills the verification email (subject carries the bound address). */
 export function buildMailto({ to = '', claimer }) {
   return `mailto:${to}?subject=${encodeURIComponent(buildCommand(claimer))}`;

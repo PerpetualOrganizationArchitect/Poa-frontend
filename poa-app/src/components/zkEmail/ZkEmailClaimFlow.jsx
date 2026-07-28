@@ -32,7 +32,7 @@ import { useClaimZkEmailRole, ZK_CLAIM_STEPS } from '@/hooks/useClaimZkEmailRole
 import { useZkEmailInviteSummary } from '@/hooks/useZkEmailInviteSummary';
 import { useOrgName } from '@/hooks/useOrgName';
 import { orgUrl } from '@/util/orgUrl';
-import { buildCommand, buildMailto } from '@/lib/zkemail/prover';
+import { buildCommand, buildMailto, prefetchCircuitArtifacts } from '@/lib/zkemail/prover';
 import SignInModal from '@/components/passkey/SignInModal';
 
 // Optional claim inbox (a Cloudflare Email Worker — see cloudflare-worker-claim-inbox/). When BOTH
@@ -43,7 +43,7 @@ const CLAIM_INBOX = process.env.NEXT_PUBLIC_ZKEMAIL_INBOX || '';
 const CLAIM_INBOX_URL = (process.env.NEXT_PUBLIC_ZKEMAIL_INBOX_URL || '').replace(/\/$/, '');
 const INBOX_ENABLED = Boolean(CLAIM_INBOX && CLAIM_INBOX_URL);
 
-const POLL_INTERVAL_MS = 4000;
+const POLL_INTERVAL_MS = 2000;
 const POLL_WINDOW_MS = 600_000; // keep listening for 10 min per step-2 visit
 
 /** Verified who-can-join summary (domains + roles from the root-matched allowlist file). */
@@ -288,6 +288,17 @@ export default function ZkEmailClaimFlow() {
       setCreating(false);
     }
   }, [prepareNewPasskey, username]);
+
+  // Warm the proving key while the user is off sending their email: the ~640 MB chunked download
+  // (first visit) runs during mail-delivery dead time instead of blocking the Verify step, and repeat
+  // visits resolve instantly from the IndexedDB cache. Which circuit: a domain entry proves v1
+  // (PopRoleClaim); an allowlist with ONLY specific-address entries proves v2. Mixed allowlists warm
+  // v1 (one ~640 MB key in memory is plenty) — a v2 claim then downloads on demand as before.
+  useEffect(() => {
+    if (!(phase === 2 && stepsLive)) return;
+    prefetchCircuitArtifacts(summary.domains?.length ? 'domain' : 'email');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase === 2, stepsLive]);
 
   // Auto-poll: while on the Send step, quietly watch the claim inbox for the delivered email and
   // start verification the moment it arrives — the user never clicks "I sent it". An inbox eml that

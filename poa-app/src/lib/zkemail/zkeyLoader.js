@@ -74,12 +74,58 @@ async function fetchParts(gateway, cids, onProgress) {
 }
 
 /**
- * Load a chunked zkey from `gateway` given its `manifestCid`.
+ * In-session memo + in-flight dedup, keyed by manifest CID.
+ *
+ * Two callers need the SAME load: the step-2 PREFETCH (fired while the user is off sending their
+ * email, hiding the ~download behind mail-delivery dead time) and the prove-time `loadZkey`. Without
+ * dedup they would race and download the ~640 MB key twice; without the memo a second prove in the
+ * same session would re-read it from IndexedDB. Progress listeners fan out so the prove-time UI still
+ * gets download progress for a load the prefetch started. Failed loads clear the slot so a retry
+ * actually retries.
+ */
+const inFlight = new Map(); // manifestCid -> { promise, listeners: Set<fn> }
+
+function _entry(manifestCid) {
+  let entry = inFlight.get(manifestCid);
+  if (!entry) {
+    entry = { promise: null, listeners: new Set() };
+    inFlight.set(manifestCid, entry);
+  }
+  return entry;
+}
+
+/**
+ * Fire-and-forget warm-up: start (or join) the load so the key is ready before proving. Never throws —
+ * a failed prefetch just means prove-time falls back to a fresh, error-surfacing load.
+ */
+export function prefetchZkey(gateway, manifestCid, onProgress) {
+  if (!gateway || !manifestCid) return;
+  loadZkey(gateway, manifestCid, onProgress).catch(() => {
+    /* swallowed — prefetch is best-effort; loadZkey cleared the slot so prove retries cleanly */
+  });
+}
+
+/**
+ * Load a chunked zkey from `gateway` given its `manifestCid`. Deduplicates concurrent calls and
+ * memoizes the result for the session (the assembled buffer is reused, not re-read from IndexedDB).
  * @returns {Promise<{ zkey: { type: 'mem', data: Uint8Array }, wasmUrl: string }>}
  */
-export async function loadZkey(gateway, manifestCid, onProgress) {
-  if (!gateway || !manifestCid) throw new Error('ZK artifacts gateway/manifest CID not configured.');
+export function loadZkey(gateway, manifestCid, onProgress) {
+  if (!gateway || !manifestCid) return Promise.reject(new Error('ZK artifacts gateway/manifest CID not configured.'));
 
+  const entry = _entry(manifestCid);
+  if (onProgress) entry.listeners.add(onProgress);
+  if (!entry.promise) {
+    const fanOut = (p) => entry.listeners.forEach((fn) => fn(p));
+    entry.promise = _loadZkeyUncached(gateway, manifestCid, fanOut).catch((e) => {
+      inFlight.delete(manifestCid); // let the next call retry from scratch
+      throw e;
+    });
+  }
+  return entry.promise;
+}
+
+async function _loadZkeyUncached(gateway, manifestCid, onProgress) {
   const manifestBytes = await fetchCidBytes(gateway, manifestCid);
   const manifest = JSON.parse(new TextDecoder().decode(manifestBytes));
   const wasmUrl = fileUrl(gateway, manifest.wasmCid);

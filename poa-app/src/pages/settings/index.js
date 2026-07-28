@@ -25,6 +25,7 @@ import { usePOContext } from '@/context/POContext';
 import { useIsOrgAdmin, useOrgTheme } from '@/hooks';
 import { useOrgName } from '@/hooks/useOrgName';
 import OrgMetadataEditor from '@/components/settings/OrgMetadataEditor';
+import EmailAllowlistEditor from '@/components/settings/EmailAllowlistEditor';
 
 const SettingsPage = () => {
   const router = useRouter();
@@ -173,6 +174,8 @@ const SettingsPage = () => {
             currentTaskPayoutHoursOnly={taskPayoutHoursOnly}
             currentTaskPayoutHourlyRate={taskPayoutHourlyRate}
           />
+
+          <EmailAllowlistEditor orgId={orgId} orgChainId={orgChainId} currentName={userDAO} />
         </VStack>
       </Box>
     </Box>

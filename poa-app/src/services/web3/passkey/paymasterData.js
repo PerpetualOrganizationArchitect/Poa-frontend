@@ -27,6 +27,7 @@ export const SubjectType = {
   HAT: 0x01,
   ONBOARDING: 0x03,
   ORG_DEPLOY: 0x04,
+  CLAIM: 0x05,
 };
 
 /**
@@ -123,6 +124,25 @@ export function encodeHatPaymasterData({ hatId, orgId }) {
   return encodePaymasterData({
     subjectType: SubjectType.HAT,
     subjectId: toHex(BigInt(hatId), { size: 32 }),
+    orgId,
+  });
+}
+
+/**
+ * Encode paymaster data for a CLAIM operation (e.g. the zk-email role claim).
+ * Uses SubjectType.CLAIM (0x05): the hub does NO wearer-eligibility pre-check — the claim contract
+ * itself is the gate (ZK proof + allowlist), and it grants eligibility during execution. The hub
+ * BINDS the op to the claim contract (callData must be execute(claimTarget, 0, …)) and spends from
+ * the org's dedicated claim budget keccak(0x05, claimTarget). This is what makes a FRESH,
+ * not-yet-eligible account's first claim sponsorable (HAT subjects fail validation pre-claim).
+ *
+ * @param {string} claimTarget - The org's claim contract address (e.g. the ZkEmailInvites proxy)
+ * @param {string} orgId - bytes32 org ID hex string
+ */
+export function encodeClaimPaymasterData({ claimTarget, orgId }) {
+  return encodePaymasterData({
+    subjectType: SubjectType.CLAIM,
+    subjectId: claimTarget,
     orgId,
   });
 }

@@ -13,7 +13,7 @@ import PasskeyAccountABI from '../../../../abi/PasskeyAccount.json';
 import { buildUserOpWithFallback, getUserOpHash } from '../passkey/userOpBuilder';
 import { decodeContractRevert, decodeRevertData } from '../../../lib/errors/contractErrors';
 import { signUserOpWithPasskey } from '../passkey/passkeySign';
-import { encodeHatPaymasterData } from '../passkey/paymasterData';
+import { encodeHatPaymasterData, encodeClaimPaymasterData } from '../passkey/paymasterData';
 import { ENTRY_POINT_ADDRESS } from '../../../config/passkey';
 import { NETWORKS, DEFAULT_NETWORK } from '../../../config/networks';
 
@@ -97,6 +97,7 @@ export class SmartAccountTransactionManager {
     const {
       onStateChange,
       paymasterHatIds: overrideHatIds,
+      paymasterClaimTarget,
       value,
       callGasLimit,
       callGasLimitMultiplier,
@@ -118,7 +119,7 @@ export class SmartAccountTransactionManager {
       });
 
       // 3. Build UserOp — try with paymaster first, fall back to self-funded
-      const userOp = await this._buildUserOpWithFallback(callData, overrideHatIds, {
+      const userOp = await this._buildUserOpWithFallback(callData, overrideHatIds, paymasterClaimTarget, {
         callGasLimit,
         callGasLimitMultiplier,
       });
@@ -216,7 +217,7 @@ export class SmartAccountTransactionManager {
       });
 
       // Build UserOp — try with paymaster first, fall back to self-funded
-      const userOp = await this._buildUserOpWithFallback(callData, null, {
+      const userOp = await this._buildUserOpWithFallback(callData, null, null, {
         callGasLimit,
         callGasLimitMultiplier,
       });
@@ -275,11 +276,11 @@ export class SmartAccountTransactionManager {
    * @param {string[]} [overrideHatIds] - Override hat IDs for paymaster budget
    * @param {Object} [gasOverrides] - Optional gas overrides ({ callGasLimit, callGasLimitMultiplier })
    */
-  async _buildUserOpWithFallback(callData, overrideHatIds = null, gasOverrides = {}) {
+  async _buildUserOpWithFallback(callData, overrideHatIds = null, claimTarget = null, gasOverrides = {}) {
     // Use override hat IDs if provided (e.g., target hat for first role claim),
     // otherwise fall back to the user's current hats.
     const effectiveHatIds = overrideHatIds?.length > 0 ? overrideHatIds : this.hatIds;
-    const hasPaymaster = this.paymasterAddress && this.orgId && effectiveHatIds?.length > 0;
+    const hasPaymaster = this.paymasterAddress && this.orgId && (claimTarget || effectiveHatIds?.length > 0);
 
     console.log('[SmartAccountTxMgr] Paymaster check:', {
       hasPaymaster,
@@ -310,8 +311,14 @@ export class SmartAccountTransactionManager {
     }
 
     // Build paymaster data for each hat ID so the builder can try them all
+    // CLAIM subject first (no eligibility pre-check; required for a first-role claim by a
+    // not-yet-eligible account), then the hat-subject entries as fallbacks for orgs that predate
+    // the CLAIM budget config.
     const paymasterDataEntries = hasPaymaster
-      ? effectiveHatIds.map((hatId) => encodeHatPaymasterData({ hatId, orgId: this.orgId }))
+      ? [
+          ...(claimTarget ? [encodeClaimPaymasterData({ claimTarget, orgId: this.orgId })] : []),
+          ...(effectiveHatIds || []).map((hatId) => encodeHatPaymasterData({ hatId, orgId: this.orgId })),
+        ]
       : [];
 
     const userOp = await buildUserOpWithFallback({

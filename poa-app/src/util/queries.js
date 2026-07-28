@@ -208,6 +208,9 @@ export const FETCH_ORG_FULL_DATA = gql`
           }
         }
       }
+      zkEmailInvites {
+        id
+      }
       educationHub {
         id
         modules {

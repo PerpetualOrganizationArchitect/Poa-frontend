@@ -29,7 +29,7 @@ const Navbar = React.memo(() => {
   const { isPasskeyUser, accountAddress, isAuthenticated } = useAuth();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
-  const { educationHubEnabled, hideTreasury, orgId } = usePOContext();
+  const { educationHubEnabled, zkEmailInvitesEnabled, hideTreasury, orgId } = usePOContext();
   const { drafts, count: draftCount, projectsWithDrafts, removeDraft, clearProjectDrafts } = useTaskDrafts();
   const [isDraftsModalOpen, setIsDraftsModalOpen] = useState(false);
   const showDraftsChip = !!orgId && draftCount > 0;
@@ -63,8 +63,9 @@ const Navbar = React.memo(() => {
     { name: 'Voting', path: orgUrl(org, 'voting') },
     ...(!hideTreasury ? [{ name: 'Treasury', path: orgUrl(org, 'treasury') }] : []),
     ...(educationHubEnabled ? [{ name: 'Learn & Earn', path: orgUrl(org, 'learn') }] : []),
+    ...(zkEmailInvitesEnabled ? [{ name: 'Claim by Email', path: orgUrl(org, 'claim') }] : []),
     ...(isAdmin ? [{ name: 'Settings', path: orgUrl(org, 'settings') }] : []),
-  ], [org, hideTreasury, educationHubEnabled, isAdmin]);
+  ], [org, hideTreasury, educationHubEnabled, zkEmailInvitesEnabled, isAdmin]);
 
   // Sections shown in the mobile swipe-wheel: the content sections only.
   // Settings stays as the gear (desktop) / drawer row — it's a config surface,

@@ -560,6 +560,7 @@ function DeployerPageContent() {
         participationVotingEnabled: !hybridVotingEnabled,
         electionEnabled: state.features.electionHubEnabled,
         educationHubEnabled: state.features.educationHubEnabled,
+        zkEmailEnabled: state.features.zkEmailInvitesEnabled,
         infoIPFSHash,
         quorumPercentageDD: state.voting.ddQuorum,
         quorumPercentagePV: state.voting.hybridQuorum,

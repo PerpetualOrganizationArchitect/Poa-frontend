@@ -127,6 +127,7 @@ const initialState = {
     nftMembershipContractAddress: '',
     votingContractAddress: '',
     educationHubAddress: '',
+    zkEmailInvitesAddress: '',
     executorContractAddress: '',
     eligibilityModuleAddress: '',
     eligibilityModuleAdminHat: null,
@@ -142,6 +143,7 @@ const initialState = {
     topHatId: null,
     creatorHatIds: [],
     educationHubEnabled: false,
+    zkEmailInvitesEnabled: false,
     hideTreasury: false,
     useTokenSymbol: false,
     // Org-level "Pay by hours only" task-payout setting (ignores difficulty).
@@ -376,6 +378,9 @@ export const POProvider = ({ children }) => {
 
             // Build metadata fields
             const eduHubId = org.educationHub?.id || '';
+            // ZkEmailInvites is an OPTIONAL per-org module (like EducationHub) — present only when
+            // the org opted in and the chain has ZK Email infra wired. Empty/absent otherwise.
+            const zkEmailInvitesId = org.zkEmailInvites?.id || '';
             const adminHat = org.metadataAdminHatId;
 
             // The subgraph keeps `eligibilityModuleAdminHat` in
@@ -451,6 +456,8 @@ export const POProvider = ({ children }) => {
                     directDemocracyVotingContractAddress: org.directDemocracyVoting?.id || '',
                     educationHubAddress: eduHubId,
                     educationHubEnabled: !!(eduHubId && eduHubId !== ZERO_ADDRESS),
+                    zkEmailInvitesAddress: zkEmailInvitesId,
+                    zkEmailInvitesEnabled: !!(zkEmailInvitesId && zkEmailInvitesId !== ZERO_ADDRESS),
                     executorContractAddress: org.executorContract?.id || '',
                     eligibilityModuleAddress: org.eligibilityModule?.id || '',
                     participationTokenAddress: org.participationToken?.id || '',
@@ -622,6 +629,7 @@ export const POProvider = ({ children }) => {
         nftMembershipContractAddress: state.nftMembershipContractAddress,
         votingContractAddress: state.votingContractAddress,
         educationHubAddress: state.educationHubAddress,
+        zkEmailInvitesAddress: state.zkEmailInvitesAddress,
         executorContractAddress: state.executorContractAddress,
         eligibilityModuleAddress: state.eligibilityModuleAddress,
         eligibilityModuleAdminHat: state.eligibilityModuleAdminHat,
@@ -645,6 +653,7 @@ export const POProvider = ({ children }) => {
         organizerHatIds: state.organizerHatIds,
         foldersRoot: state.foldersRoot,
         educationHubEnabled: state.educationHubEnabled,
+        zkEmailInvitesEnabled: state.zkEmailInvitesEnabled,
         hideTreasury: state.hideTreasury,
         useTokenSymbol: state.useTokenSymbol,
         // Hours-only task payout: raw fields (for the settings editor) plus a

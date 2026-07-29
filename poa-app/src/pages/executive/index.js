@@ -14,6 +14,7 @@ import {
 } from '@chakra-ui/react';
 import PulseLoader from "@/components/shared/PulseLoader";
 import { usePOContext } from '@/context/POContext';
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 const ExecutivePage = () => {
   const {
@@ -23,6 +24,7 @@ const ExecutivePage = () => {
     poContextLoading,
     roleHatIds,
   } = usePOContext();
+  const orgGate = useOrgGate();
   const [executives, setExecutives] = useState([]);
   const [loadingExecs, setLoadingExecs] = useState(true);
   const [addressToMint, setAddressToMint] = useState('');
@@ -116,6 +118,8 @@ const ExecutivePage = () => {
     />
   );
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
   if (loading || poContextLoading) {
     return (
       <>

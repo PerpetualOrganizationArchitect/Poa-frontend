@@ -60,6 +60,7 @@ import { orgUrl } from '@/util/orgUrl';
 import ConnectedAccountBadge from '@/components/common/ConnectedAccountBadge';
 import { VouchFirstPhase } from '@/hooks/useVouchFirstOnboarding';
 import { getAllCredentials } from '@/services/web3/passkey/passkeyStorage';
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 // Subtle pulse animation for CTA buttons when form is ready
 const pulse = keyframes`
@@ -77,6 +78,13 @@ const User = () => {
   const router = useRouter();
   const { vouch: vouchAddress, hatId: vouchHatId } = router.query;
   const userDAO = useOrgName();
+  // Invite-link wording: people reach /join from a shared link, so name the
+  // thing that's actually broken rather than talking about "organizations".
+  const orgGate = useOrgGate({
+    notFoundTitle: (name) => `That invite points to an organization we can’t find`,
+    notFoundBody:
+      'Names are case-sensitive, and a brand-new org can take a minute to appear. Ask whoever shared the link to check it, or browse the organizations that are live now.',
+  });
   const usernameInputRef = useRef(null);
   const toast = useToast();
 
@@ -600,6 +608,8 @@ const User = () => {
     return seoHead;
   }
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
   return (
     <>
       {seoHead}

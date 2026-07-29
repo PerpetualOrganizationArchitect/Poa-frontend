@@ -7,17 +7,17 @@
  *  - "Blended voting" everywhere a member can see it (never "Hybrid").
  *  - Honest power: the weight bar reflects the real N voting classes and the
  *    receipt shows the member's own share — no fabricated 50/50 default.
- *  - Collapse-after-first-visit: the full header shows on a member's first
- *    visit to an org's voting page; after that a one-line GovernanceStrip that
- *    expands back to the full header on click.
+ *  - Always-collapsed by default: the page opens on the one-line
+ *    GovernanceStrip, which expands to the full header on click. It used to
+ *    auto-expand on a member's first visit; VotingIntroNudge now points at the
+ *    strip on visits 1 and 3 instead (see @/lib/voting/votingIntro).
  *
- * Exports (API consumed by VotingTabs / VotingPage — keep stable):
- *  - default VotingEducationHeader({ selectedTab, PTVoteType })  → desktop card / headerSlot
- *  - VotingEducationContent({ selectedTab, PTVoteType })          → shared inner content (drawer + card)
- *  - VotingMobileHeader({ selectedTab, PTVoteType, onInfoClick }) → slim mobile page header
+ * Exports:
+ *  - default VotingEducationHeader({ selectedTab, PTVoteType, modalOpen })
+ *  - VotingEducationContent({ selectedTab, PTVoteType }) → the inner card body
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   Box,
   Flex,
@@ -36,12 +36,13 @@ import {
 } from "@chakra-ui/react";
 import { InfoOutlineIcon, ChevronDownIcon, ChevronUpIcon } from "@chakra-ui/icons";
 import { PiUsers, PiChartBar, PiSquareHalfFill } from "react-icons/pi";
-import { useVotingPower } from "@/hooks";
+import { useVotingIntro, useVotingPower } from "@/hooks";
 import { useUserContext } from "@/context/UserContext";
 import { usePOContext } from "@/context/POContext";
 import { useVotingContext } from "@/context/VotingContext";
 import { useTour } from "@/features/tour";
 import { VotePowerReceipt } from "@/components/voting/VotePowerReceipt";
+import { VotingIntroNudge } from "@/components/voting/VotingIntroNudge";
 import {
   displayName,
   taglineFor,
@@ -631,57 +632,54 @@ export const VotingEducationContent = ({ selectedTab, PTVoteType }) => {
 };
 
 /**
- * Desktop-only educational header card. Mobile users access the same content
- * via the "How voting works" button + bottom-sheet drawer in VotingTabs.
+ * The education header, at every breakpoint — the strip and the card it expands
+ * into are the only path to this explainer (the old VotingTabs bottom-sheet
+ * drawer went away with the tabs).
  *
- * Collapse-after-first-visit: on a member's first visit to this org's voting
- * page we show the full card; thereafter a one-line GovernanceStrip that
- * expands to the full card on click. The "seen" flag is per-org localStorage.
+ * The page ALWAYS opens on the one-line GovernanceStrip, which expands to the
+ * full card on click. It used to auto-expand the whole explainer on a member's
+ * first visit, which buried the board under an essay; instead VotingIntroNudge
+ * points at the strip on visits 1 and 3 (see @/lib/voting/votingIntro).
  */
-const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
+const VotingEducationHeader = ({ selectedTab, PTVoteType, modalOpen = false }) => {
   const { orgId, poMembers } = usePOContext();
   const { votingClasses } = useVotingContext();
   const { totalSharePct } = useVotingPower();
 
-  // undefined = not yet resolved, true = collapse to strip, false = show full
-  const [collapsed, setCollapsed] = useState(undefined);
+  // The member opened the explainer on this page view.
+  const [expanded, setExpanded] = useState(false);
 
   const { currentStepDef, isActive: isTourActive } = useTour();
   const tourWantsDetail = isTourActive && currentStepDef?.id === "voting-hybrid-detail";
 
   const isBlendedTab = selectedTab === 0 && PTVoteType === "Hybrid";
-  const storageKey = orgId ? `poa:votingEduSeen:${orgId}` : null;
 
-  useEffect(() => {
-    if (!storageKey) return;
-    let seen = false;
-    try {
-      seen = typeof window !== "undefined" && window.localStorage.getItem(storageKey) === "1";
-    } catch {
-      seen = false;
-    }
-    setCollapsed(seen);
-    // Mark as seen for next time.
-    if (!seen) {
-      try {
-        window.localStorage.setItem(storageKey, "1");
-      } catch {
-        /* ignore storage failures */
-      }
-    }
-  }, [storageKey]);
+  // Hold the coach-mark while something else owns the screen — the guided tour,
+  // or a modal (a ?poll= deep link opens PollDetail on load). This only defers:
+  // the nudge reappears when the overlay closes, so the visit isn't spent.
+  const { nudge, dismiss, markLearned } = useVotingIntro(orgId, {
+    suppressed: isTourActive || modalOpen,
+  });
+
+  // Opening the explainer — however you got there — retires the nudge for good.
+  const expand = useCallback(() => {
+    setExpanded(true);
+    markLearned();
+  }, [markLearned]);
 
   // Only the Blended tab collapses; other tabs always render the full content.
-  const showStrip = isBlendedTab && collapsed === true && !tourWantsDetail;
+  const showStrip = isBlendedTab && !expanded && !tourWantsDetail;
 
   if (showStrip) {
     return (
-      <GovernanceStrip
-        votingClasses={votingClasses}
-        totalSharePct={totalSharePct}
-        poMembers={poMembers}
-        onExpand={() => setCollapsed(false)}
-      />
+      <VotingIntroNudge variant={nudge} onShowMe={expand} onDismiss={dismiss}>
+        <GovernanceStrip
+          votingClasses={votingClasses}
+          totalSharePct={totalSharePct}
+          poMembers={poMembers}
+          onExpand={expand}
+        />
+      </VotingIntroNudge>
     );
   }
 
@@ -726,7 +724,7 @@ const VotingEducationHeader = ({ selectedTab, PTVoteType }) => {
             color="gray.400"
             _hover={{ color: "white", bg: "whiteAlpha.100" }}
             rightIcon={<ChevronUpIcon />}
-            onClick={() => setCollapsed(true)}
+            onClick={() => setExpanded(false)}
           >
             Hide
           </Button>

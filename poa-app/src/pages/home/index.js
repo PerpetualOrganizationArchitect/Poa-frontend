@@ -23,6 +23,7 @@ import { useOrgName } from "@/hooks/useOrgName";
 import { useIPFScontext } from "@/context/ipfsContext";
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import { useAuth } from "@/context/AuthContext";
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 // Same gradient generator as the explore/browser page
 const getOrgGradient = (name) => {
@@ -92,6 +93,7 @@ const Home = () => {
   const { pageBackground, backgroundMode, onBackground, onBackgroundMuted, onBackgroundSubtle } = useOrgTheme();
   const router = useRouter();
   const userDAO = useOrgName();
+  const orgGate = useOrgGate();
   const { fetchImageFromIpfs } = useIPFScontext();
 
   const { isPasskeyUser, isAuthenticated } = useAuth();
@@ -132,6 +134,8 @@ const Home = () => {
     ? { color: 'white', bg: 'whiteAlpha.200' }
     : { color: 'warmGray.900', bg: 'blackAlpha.100' };
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
   return (
     <>
       <SEOHead

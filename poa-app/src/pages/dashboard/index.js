@@ -43,6 +43,7 @@ import { useOrgName } from '@/hooks/useOrgName';
 import { VouchingSection } from '@/components/orgStructure/VouchingSection';
 import { OrgStructureCard } from '@/components/dashboard/OrgStructureCard';
 import { glassLayerStyle } from '@/components/shared/glassStyles';
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 const PerpetualOrgDashboard = () => {
   const { ongoingPolls } = useVotingContext();
@@ -51,6 +52,7 @@ const PerpetualOrgDashboard = () => {
   const { startTour, isActive: isTourActive } = useTour();
   const router = useRouter();
   const userDAO = useOrgName();
+  const orgGate = useOrgGate();
   // null until the IPFS fetch resolves — anything else (notably {}) renders
   // an `<img src="[object Object]">` that the browser resolves as a relative
   // path and 404s before the real src lands.
@@ -124,6 +126,8 @@ const PerpetualOrgDashboard = () => {
     veryhard: 'red'
   };
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
   return (
     <>
       <SEOHead

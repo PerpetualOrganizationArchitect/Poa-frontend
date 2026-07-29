@@ -43,6 +43,7 @@ import { VotingType } from "@/services/web3/domain/VotingService";
 import EmptyState from "@/components/voting/EmptyState";
 import { ProposalCard } from "@/components/voting/ProposalCard";
 import { PollDetail } from "@/components/voting/PollDetail";
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 import { BINDING_BADGE, POLL_BADGE } from "@/config/votingVocabulary";
 
 const glassLayerStyle = {
@@ -67,6 +68,7 @@ const FILTERS = [
 const VotingHistoryPage = () => {
   const router = useRouter();
   const userDAO = useOrgName();
+  const orgGate = useOrgGate();
 
   const {
     poContextLoading,
@@ -81,6 +83,10 @@ const VotingHistoryPage = () => {
     hybridVotingOngoing,
     hybridVotingCompleted,
     votingType: PTVoteType,
+    resolveMissingPoll,
+    loadMoreProposals,
+    loadingMoreProposals,
+    hasMoreProposals,
   } = useVotingContext();
   const { voting, executeWithNotification } = useWeb3();
 
@@ -94,7 +100,6 @@ const VotingHistoryPage = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("newest");
   const [displayCount, setDisplayCount] = useState(ITEMS_PER_PAGE);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Responsive values
   const headingSize = useBreakpointValue({ base: "lg", md: "xl" });
@@ -115,6 +120,7 @@ const VotingHistoryPage = () => {
     hybridVotingOngoing,
     hybridVotingCompleted,
     PTVoteType,
+    resolveMissingPoll,
   });
 
   // PollDetail must render LIVE data — selectedPoll is a click-time snapshot;
@@ -167,7 +173,10 @@ const VotingHistoryPage = () => {
     [processedProposals, displayCount]
   );
 
-  const hasMore = displayCount < processedProposals.length;
+  // Two kinds of "more": rows we already hold but haven't rendered, and older
+  // proposals still sitting on the server outside the query's page window.
+  const hasLocalMore = displayCount < processedProposals.length;
+  const hasMore = hasLocalMore || hasMoreProposals;
   const totalCount = processedProposals.length;
 
   const handleBackClick = useCallback(() => {
@@ -191,13 +200,19 @@ const VotingHistoryPage = () => {
     resetPage();
   }, []);
 
-  const handleLoadMore = useCallback(() => {
-    setIsLoadingMore(true);
-    setTimeout(() => {
+  // Render what we already have first; only go back to the subgraph once the
+  // local list is exhausted. `loadMoreProposals` widens the shared pool, so the
+  // newly fetched votes flow through the same transform and land in this list.
+  const handleLoadMore = useCallback(async () => {
+    if (hasLocalMore) {
       setDisplayCount((prev) => prev + ITEMS_PER_PAGE);
-      setIsLoadingMore(false);
-    }, 300);
-  }, []);
+      return;
+    }
+    // `addedCompleted`, not `added`: a page of still-open votes grows the pool
+    // but not the archive, and bumping the window then would show nothing.
+    const { addedCompleted } = await loadMoreProposals();
+    if (addedCompleted > 0) setDisplayCount((prev) => prev + ITEMS_PER_PAGE);
+  }, [hasLocalMore, loadMoreProposals]);
 
   const handleClearFilters = useCallback(() => {
     setSearchQuery("");
@@ -233,6 +248,9 @@ const VotingHistoryPage = () => {
       noIndex
     />
   );
+
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
 
   if (poContextLoading) {
     return (
@@ -432,14 +450,16 @@ const VotingHistoryPage = () => {
                       variant="outline"
                       size="lg"
                       onClick={handleLoadMore}
-                      isLoading={isLoadingMore}
+                      isLoading={loadingMoreProposals}
                       loadingText="Loading..."
                       borderRadius="xl"
                       px={8}
                       _hover={{ bg: "rgba(148, 115, 220, 0.2)", transform: "translateY(-2px)" }}
                       transition="transform 0.3s ease, background 0.3s ease"
                     >
-                      Load More ({processedProposals.length - displayCount} remaining)
+                      {hasLocalMore
+                        ? `Load More (${processedProposals.length - displayCount} remaining)`
+                        : "Load older votes"}
                     </Button>
                   )}
                 </VStack>
@@ -448,12 +468,44 @@ const VotingHistoryPage = () => {
                   {hasActiveFilters ? (
                     <VStack spacing={4}>
                       <Text color="gray.300" fontSize="lg">No proposals match your filters</Text>
-                      <Button variant="ghost" colorScheme="purple" onClick={handleClearFilters}>
-                        Clear Filters
-                      </Button>
+                      <HStack spacing={3}>
+                        <Button variant="ghost" colorScheme="purple" onClick={handleClearFilters}>
+                          Clear Filters
+                        </Button>
+                        {/* Search and filters only see what has been fetched, so
+                            a miss here may just mean the match is older. */}
+                        {hasMoreProposals && (
+                          <Button
+                            colorScheme="purple"
+                            variant="outline"
+                            onClick={handleLoadMore}
+                            isLoading={loadingMoreProposals}
+                            loadingText="Loading..."
+                          >
+                            Search older votes
+                          </Button>
+                        )}
+                      </HStack>
                     </VStack>
                   ) : (
-                    <EmptyState text="No Voting History" />
+                    <VStack spacing={4}>
+                      <EmptyState text="No Voting History" />
+                      {/* An org whose newest 50 proposals are all still open has
+                          an empty archive with older votes behind them — without
+                          this there is no control to reach them. */}
+                      {hasMoreProposals && (
+                        <Button
+                          colorScheme="purple"
+                          variant="outline"
+                          onClick={handleLoadMore}
+                          isLoading={loadingMoreProposals}
+                          loadingText="Loading..."
+                          borderRadius="xl"
+                        >
+                          Load older votes
+                        </Button>
+                      )}
+                    </VStack>
                   )}
                 </Center>
               )}

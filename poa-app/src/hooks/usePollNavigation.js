@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { useDisclosure } from '@chakra-ui/react';
 import { useOrgName } from '@/hooks/useOrgName';
+import { useNotificationContext } from '@/context/NotificationContext';
 
 export function usePollNavigation({
   democracyVotingOngoing = [],
@@ -14,9 +15,14 @@ export function usePollNavigation({
   hybridVotingOngoing = [],
   hybridVotingCompleted = [],
   PTVoteType = 'Hybrid',
+  // Fetches a single proposal by id when it isn't in the loaded arrays
+  // (VotingContext.resolveMissingPoll) — the deep-link rescue for polls outside
+  // the query's 50-proposal window.
+  resolveMissingPoll,
 }) {
   const router = useRouter();
   const userDAO = useOrgName();
+  const { addNotification } = useNotificationContext();
 
   // Keep the resolved org available in callbacks without adding it to deps.
   const userDAORef = useRef(userDAO);
@@ -36,6 +42,10 @@ export function usePollNavigation({
   // modal the user just dismissed. We suppress re-opening THIS id until the
   // `poll` query param changes to a DIFFERENT value. (audit data-findings #9)
   const userClosedPollRef = useRef(null);
+  // Poll ids we've already told the user are unresolvable. The URL effect re-runs
+  // on every refetch and optimistic merge; without this the same dead link would
+  // raise a notification every 30 seconds.
+  const notFoundShownRef = useRef(new Set());
   // Tab 0 = Hybrid/Participation Voting (Official governance)
   // Tab 1 = Direct Democracy (Informal polls)
   const [selectedTab, setSelectedTab] = useState(0);
@@ -158,7 +168,39 @@ export function usePollNavigation({
       setIsPollCompleted(isCompleted);
       // ONE detail surface for both ongoing and completed polls.
       onDetailOpen();
+      return;
     }
+
+    // Not in the loaded arrays. That is NOT proof the vote doesn't exist: the
+    // org query caps each proposal list at 50, so any older poll is legitimately
+    // absent. Ask the subgraph for this one id — an authoritative answer, which
+    // also means we never have to guess whether the arrays "finished loading".
+    // A shared shown-set makes this fire once per id, not on every 30s refetch.
+    if (!resolveMissingPoll || notFoundShownRef.current.has(pollId)) return;
+    resolveMissingPoll(pollId).then((outcome) => {
+      // 'found'   → spliced into the raw arrays; this effect re-runs and opens it
+      // 'pending' → a request for this id is already in flight
+      // 'error'   → transient; stay quiet and let a later run retry
+      if (outcome === 'found' || outcome === 'pending' || outcome === 'error') return;
+      // Deliberately NOT guarded by an effect-cleanup flag: this effect re-runs
+      // on every 30s refetch, and cancelling an in-flight verdict would drop the
+      // message for good (the id is already marked attempted, so the next run
+      // gets 'pending'). Check the URL instead — if the user has moved on, the
+      // param is gone and there is nothing to correct.
+      const r = routerRef.current;
+      if (r?.query?.poll !== pollId) return;
+      notFoundShownRef.current.add(pollId);
+      addNotification?.(
+        outcome === 'foreign'
+          ? 'That link is for a vote in a different organization.'
+          : "That vote doesn't exist here — the link may be out of date.",
+        'error'
+      );
+      // Stop the URL claiming to point at something. Keep every OTHER param:
+      // profile links carry `org=`, and dropping it would strand the page.
+      const { poll, ...rest } = r.query;
+      r.replace({ pathname: r.pathname, query: rest }, undefined, { shallow: true });
+    });
   }, [
     router.query.poll,
     democracyVotingOngoing,
@@ -167,6 +209,8 @@ export function usePollNavigation({
     hybridVotingCompleted,
     findPollInProposals,
     onDetailOpen,
+    resolveMissingPoll,
+    addNotification,
   ]);
 
   // Get the correct contract address based on voting type

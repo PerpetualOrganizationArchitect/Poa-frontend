@@ -5,6 +5,7 @@ import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
 import SEOHead from '@/components/common/SEOHead';
 import { usePOContext } from '@/context/POContext';
 import { useOrgName } from '@/hooks/useOrgName';
+import { useOrgGate } from '@/components/shared/OrgDeadEnd';
 import ZkEmailClaimFlow from '@/components/zkEmail/ZkEmailClaimFlow';
 
 /**
@@ -14,14 +15,23 @@ import ZkEmailClaimFlow from '@/components/zkEmail/ZkEmailClaimFlow';
  */
 const ClaimByEmail = () => {
   const router = useRouter();
-  const { poContextLoading, zkEmailInvitesEnabled } = usePOContext();
+  const { poContextLoading, orgStatus, zkEmailInvitesEnabled } = usePOContext();
   const userDAO = useOrgName();
+  const orgGate = useOrgGate();
 
+  // Gated on orgStatus === 'ready', NOT on `userDAO` being truthy: a name that
+  // resolves to nothing is still truthy, so an unknown org would be bounced off
+  // its dead end onto /dashboard — which shows its own. "This org has no
+  // zk-email module" is only a fact once there is an org.
   useEffect(() => {
+    if (orgStatus !== 'ready') return;
     if (!poContextLoading && !zkEmailInvitesEnabled && userDAO) {
       router.replace(`/dashboard/?org=${encodeURIComponent(userDAO)}`);
     }
-  }, [poContextLoading, zkEmailInvitesEnabled, userDAO, router]);
+  }, [orgStatus, poContextLoading, zkEmailInvitesEnabled, userDAO, router]);
+
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
 
   return (
     <>

@@ -37,10 +37,12 @@ import {
   VouchingSection,
   RoleApplicationModal,
 } from '@/components/orgStructure';
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 const OrgStructurePage = () => {
   const router = useRouter();
   const userDAO = useOrgName();
+  const orgGate = useOrgGate();
   const { isConnected, address: wagmiAddress } = useAccount();
   const { isAuthenticated, accountAddress } = useAuth();
 
@@ -135,6 +137,9 @@ const OrgStructurePage = () => {
       noIndex
     />
   );
+
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
 
   // Loading state
   if (loading) {
@@ -336,5 +341,4 @@ const OrgStructurePage = () => {
     </>
   );
 };
-
 export default OrgStructurePage;

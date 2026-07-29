@@ -26,6 +26,7 @@ import { useIsOrgAdmin, useOrgTheme } from '@/hooks';
 import { useOrgName } from '@/hooks/useOrgName';
 import OrgMetadataEditor from '@/components/settings/OrgMetadataEditor';
 import EmailAllowlistEditor from '@/components/settings/EmailAllowlistEditor';
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 const SettingsPage = () => {
   const router = useRouter();
@@ -51,6 +52,7 @@ const SettingsPage = () => {
   // Check if user is an org admin using unified accountAddress
   const { isAdmin, loading: adminLoading, error: adminError } = useIsOrgAdmin(orgId, accountAddress);
   const { pageBackground, onBackground, onBackgroundMuted, onBackgroundSubtle } = useOrgTheme();
+  const orgGate = useOrgGate();
 
   const seoHead = (
     <SEOHead
@@ -60,6 +62,9 @@ const SettingsPage = () => {
       noIndex
     />
   );
+
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
 
   // Loading state
   if (poContextLoading || adminLoading) {

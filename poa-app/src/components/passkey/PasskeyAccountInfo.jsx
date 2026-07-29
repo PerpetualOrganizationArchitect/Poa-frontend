@@ -16,7 +16,7 @@ import { FaFingerprint, FaSignOutAlt } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 
 export default function PasskeyAccountInfo() {
-  const { accountAddress, disconnectPasskey, isPasskeyUser } = useAuth();
+  const { accountAddress, forgetPasskey, isPasskeyUser } = useAuth();
 
   if (!isPasskeyUser || !accountAddress) return null;
 
@@ -42,7 +42,7 @@ export default function PasskeyAccountInfo() {
         bg="white"
       >
         <MenuItem
-          onClick={disconnectPasskey}
+          onClick={forgetPasskey}
           icon={<Icon as={FaSignOutAlt} color="red.400" />}
           borderRadius="md"
           _hover={{ bg: 'red.50' }}

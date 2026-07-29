@@ -18,7 +18,7 @@ import {
   Icon,
   useColorModeValue,
 } from '@chakra-ui/react';
-import { PiGraduationCap, PiHandshake, PiGlobe, PiIdentificationCard, PiVault, PiTarget, PiListChecks } from 'react-icons/pi';
+import { PiGraduationCap, PiHandshake, PiGlobe, PiIdentificationCard, PiVault, PiTarget, PiListChecks, PiEnvelopeSimple } from 'react-icons/pi';
 import { NETWORKS, DEFAULT_DEPLOY_CHAIN_ID } from '../../../config/networks';
 import { useDeployer } from '../context/DeployerContext';
 import { StepHeader, NavigationButtons } from '../components/common';
@@ -109,6 +109,13 @@ export function SettingsStep() {
               description="Run elections for leadership positions within your organization"
               isEnabled={state.features.electionHubEnabled}
               onChange={(value) => actions.toggleFeature('electionHubEnabled', value)}
+            />
+            <FeatureToggle
+              icon={PiEnvelopeSimple}
+              name="Email Invites"
+              description="Let people join roles by proving control of their email — whole domains or specific addresses. Curate the allowlist in Settings after deploy."
+              isEnabled={state.features.zkEmailInvitesEnabled}
+              onChange={(value) => actions.toggleFeature('zkEmailInvitesEnabled', value)}
             />
             <FeatureToggle
               icon={PiVault}

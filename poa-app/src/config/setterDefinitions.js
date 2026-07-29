@@ -69,6 +69,11 @@ export const CONTRACT_MAP = {
     contextKey: 'participationTokenAddress',
     displayName: 'Shares',
     description: 'Organization shares contract'
+  },
+  zkEmailInvites: {
+    contextKey: 'zkEmailInvitesAddress',
+    displayName: 'Email Invites',
+    description: 'ZK email allowlist module (claim roles by proving your email)'
   }
 };
 
@@ -77,6 +82,34 @@ export const CONTRACT_MAP = {
 // ============================================================================
 
 export const SETTER_TEMPLATES = [
+  // ===== EMAIL INVITES =====
+  {
+    id: 'activate-email-allowlist',
+    category: 'permissions',
+    name: 'Activate Email Allowlist',
+    description:
+      'Make the staged email allowlist live so members can claim roles by proving control of their email. Paste the root + CID shown in Settings → Email invites.',
+    contract: 'zkEmailInvites',
+    functionName: 'setActiveAllowlist',
+    inputs: [
+      {
+        name: 'root',
+        label: 'Allowlist Merkle Root',
+        type: 'text',
+        placeholder: '0x…',
+        helpText: 'The merkleRoot of the staged allowlist (Settings → Email invites).'
+      },
+      {
+        name: 'cid',
+        label: 'Allowlist CID (bytes32)',
+        type: 'text',
+        placeholder: '0x…',
+        helpText: 'The bytes32 CID digest of the staged allowlist file.'
+      }
+    ],
+    encode: (values) => [values.root, values.cid],
+    preview: (values) => `Activate email allowlist (root ${String(values.root || '').slice(0, 10)}…)`
+  },
   // ===== VOTING RULES =====
   {
     id: 'change-threshold-hybrid',

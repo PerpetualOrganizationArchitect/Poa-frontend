@@ -293,6 +293,7 @@ export const initialState = {
   features: {
     educationHubEnabled: false,
     electionHubEnabled: false,
+    zkEmailInvitesEnabled: false,
     hideTreasury: false,
   },
 

@@ -223,14 +223,16 @@ const VotingPage = () => {
   // exactly the state SetterActionSelector.handleTemplateSelect sets on click
   // (setterContract/Function + initialized setterValues) so the modal lands on
   // the template's configured step, not the category picker.
-  const handleProposeRuleChange = useCallback((templateId) => {
+  const handleProposeRuleChange = useCallback((templateId, initialValues = null) => {
     const template = getTemplateById(templateId);
     if (!template) return;
     const setterValues = (template.inputs || []).reduce((acc, input) => {
       if (input.type === 'votingClassWeights') {
         acc[input.name] = votingClasses.length > 0 ? votingClasses.map(c => ({ ...c })) : [];
       } else {
-        acc[input.name] = input.default || '';
+        // Deep-link prefill (e.g. Settings staging an allowlist hands the root/cid straight to the
+        // proposal) — falls back to the template default.
+        acc[input.name] = initialValues?.[input.name] ?? (input.default || '');
       }
       return acc;
     }, {});
@@ -254,9 +256,16 @@ const VotingPage = () => {
     const templateId = router.query.propose;
     if (!templateId || typeof templateId !== 'string') return;
     proposeParamHandledRef.current = true;
-    handleProposeRuleChange(templateId);
-    // Strip the param so a refresh / back doesn't reopen the modal.
-    const { propose, ...rest } = router.query;
+    // Collect ?prefill_<inputName>=… params into the template's initial values.
+    const prefill = {};
+    for (const [key, value] of Object.entries(router.query)) {
+      if (key.startsWith('prefill_') && typeof value === 'string') prefill[key.slice(8)] = value;
+    }
+    handleProposeRuleChange(templateId, Object.keys(prefill).length ? prefill : null);
+    // Strip the params so a refresh / back doesn't reopen the modal.
+    const rest = Object.fromEntries(
+      Object.entries(router.query).filter(([key]) => key !== 'propose' && !key.startsWith('prefill_')),
+    );
     router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
   }, [router.isReady, router.query, handleProposeRuleChange, router]);
 

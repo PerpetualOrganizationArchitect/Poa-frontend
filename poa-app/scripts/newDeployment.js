@@ -530,6 +530,7 @@ export function buildDeployCalldata({
   taskManagerPerms = null,
   ddInitialTargets = null,
   bootstrap = null,
+  zkEmailEnabled = false,
 }) {
   const orgDeployerAddress = infrastructureAddresses.orgDeployerAddress;
   const registryAddress = infrastructureAddresses.registryAddress;
@@ -595,7 +596,22 @@ export function buildDeployCalldata({
   };
 
   const iface = new ethers.utils.Interface(OrgDeployer);
-  const calldata = iface.encodeFunctionData('deployFullOrg', [deploymentParams]);
+  let calldata;
+  if (zkEmailEnabled) {
+    // Provision the ZkEmailInvites module DORMANT (root = 0). Genesis hat IDs aren't known before the
+    // org exists, so the allowlist root can't be committed at deploy; instead the org curates the
+    // allowlist in Settings (stages it in metadata) and activates it via a governance vote post-deploy.
+    // If the target chain lacks the ZK Email infra/beacon, ModulesFactory silently skips the module —
+    // so enabling this is always safe.
+    const zkEmailConfig = {
+      enabled: true,
+      initialRoot: ethers.constants.HashZero,
+      initialCid: ethers.constants.HashZero,
+    };
+    calldata = iface.encodeFunctionData('deployFullOrgWithZkEmail', [deploymentParams, zkEmailConfig]);
+  } else {
+    calldata = iface.encodeFunctionData('deployFullOrg', [deploymentParams]);
+  }
 
   return { calldata, orgDeployerAddress, orgId };
 }

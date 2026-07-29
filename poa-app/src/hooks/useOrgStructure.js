@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery } from '@apollo/client';
+import { useRefreshSubscription, RefreshEvent } from '../context/RefreshContext';
 import { FETCH_ORG_STRUCTURE_DATA } from '../util/queries';
 import { useIPFScontext } from '../context/ipfsContext';
 import { usePOContext } from '../context/POContext';
@@ -355,12 +356,16 @@ export function useOrgStructure() {
   const client = useSubgraphClient(subgraphUrl);
 
   // Fetch org structure data from subgraph
-  const { data, loading: queryLoading, error } = useQuery(FETCH_ORG_STRUCTURE_DATA, {
+  const { data, loading: queryLoading, error, refetch } = useQuery(FETCH_ORG_STRUCTURE_DATA, {
     variables: { orgId },
     skip: !orgId,
     fetchPolicy: 'cache-first',
     client,
   });
+
+  // Role member-counts / claimability go stale after someone claims a role — refetch on the same
+  // event the rest of the app uses (cheap: fires once per claim in this tab).
+  useRefreshSubscription(RefreshEvent.ROLE_CLAIMED, () => refetch?.(), [refetch]);
 
   const org = data?.organization;
 

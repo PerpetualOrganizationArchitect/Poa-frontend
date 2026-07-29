@@ -16,6 +16,7 @@ import {
   Input,
   Link as ChakraLink,
   Progress,
+  SlideFade,
   Spinner,
   Text,
   keyframes,
@@ -656,18 +657,21 @@ export default function ZkEmailClaimFlow() {
     <VStack spacing={5} align="stretch">
       <Box>
         <Heading size="md">Claim a role with your email</Heading>
-        <Text mt={1} color="gray.600" fontSize="sm">
-          Prove you control an invited email — entirely in your browser. No password, no seed phrase, no
-          gas.
-        </Text>
+        {phase === 1 && (
+          <Text mt={1} color="gray.600" fontSize="sm">
+            Prove you control an invited email — entirely in your browser. No password, no seed phrase,
+            no gas.
+          </Text>
+        )}
       </Box>
 
-      <InviteSummary summary={summary} />
+      {(phase === 1 || summary.status !== 'active') && <InviteSummary summary={summary} />}
 
       {stepsLive && (
         <Box borderWidth="1px" borderRadius="xl" p={{ base: 4, md: 6 }} boxShadow="sm">
           <StepHeader phase={phase} skipAccount={isAuthenticated} />
 
+          <SlideFade key={phase} in offsetY="10px">
           {/* ── Step 1: Account ── */}
           {phase === 1 && (
             <Box>
@@ -740,25 +744,13 @@ export default function ZkEmailClaimFlow() {
                 </Alert>
               )}
 
-              {!isAuthenticated && pendingAccount && (
-                <HStack justify="space-between" mb={3} fontSize="xs" color="gray.500">
-                  <Text>
-                    Claiming as <b>{pendingAccount.username}</b>
-                  </Text>
-                  <Button size="xs" variant="ghost" onClick={discardPendingPasskey}>
-                    Start over
-                  </Button>
-                </HStack>
-              )}
-
               {INBOX_ENABLED ? (
                 <>
                   <Text fontWeight="bold" fontSize="lg">
-                    Send this email — that’s the whole step
+                    Send this email
                   </Text>
                   <Text fontSize="sm" color="gray.600" mt={1} mb={3}>
-                    Send it <b>from your invited address</b> — the <b>From</b> line is what gets
-                    verified. The body doesn’t matter, and we’ll spot it the moment it arrives.
+                    That’s the whole step — we spot it the moment it arrives.
                   </Text>
                   <Box fontSize="sm" borderWidth="1px" borderRadius="md" p={3} bg="blackAlpha.50">
                     <HStack align="start">
@@ -814,8 +806,8 @@ export default function ZkEmailClaimFlow() {
                     </Button>
                   </HStack>
                   <Text fontSize="xs" color="gray.500" mt={2}>
-                    Gmail opens in whichever account you’re signed in to — make sure the <b>From</b>{' '}
-                    line shows your invited address before you hit send.
+                    Gmail sends from whichever account you’re signed in to — the <b>From</b> line must
+                    be your invited address.
                   </Text>
 
                   <HStack mt={4} spacing={2}>
@@ -847,6 +839,17 @@ export default function ZkEmailClaimFlow() {
                     )}
                   </HStack>
 
+                  {!isAuthenticated && pendingAccount && (
+                    <HStack mt={3} spacing={2} fontSize="xs" color="gray.400">
+                      <Text>
+                        Claiming as <b>{pendingAccount.username}</b>
+                      </Text>
+                      <Text>·</Text>
+                      <Button variant="link" size="xs" color="gray.500" onClick={discardPendingPasskey}>
+                        Start over
+                      </Button>
+                    </HStack>
+                  )}
                   <ManualUpload onPick={() => fileRef.current?.click()} busy={busy} fileName={fileName} isAuthenticated={isAuthenticated} />
                 </>
               ) : (
@@ -886,6 +889,17 @@ export default function ZkEmailClaimFlow() {
                       Other provider…
                     </Button>
                   </HStack>
+                  {!isAuthenticated && pendingAccount && (
+                    <HStack mt={3} spacing={2} fontSize="xs" color="gray.400">
+                      <Text>
+                        Claiming as <b>{pendingAccount.username}</b>
+                      </Text>
+                      <Text>·</Text>
+                      <Button variant="link" size="xs" color="gray.500" onClick={discardPendingPasskey}>
+                        Start over
+                      </Button>
+                    </HStack>
+                  )}
                   <ManualUpload
                     onPick={() => fileRef.current?.click()}
                     busy={busy}
@@ -972,6 +986,7 @@ export default function ZkEmailClaimFlow() {
               />
             </>
           )}
+          </SlideFade>
         </Box>
       )}
 

@@ -757,11 +757,10 @@ export default function ZkEmailClaimFlow() {
                       <Text color="gray.500" w="64px" flexShrink={0}>
                         From:
                       </Text>
-                      <Text fontSize="xs" pt="2px">
-                        <b>your invited address</b>
+                      <Text fontSize="xs" pt="2px" fontWeight="600">
                         {summary.domains?.length
-                          ? ` — e.g. ${summary.domains.map((d) => `@${d.domain}`).join(' or ')}`
-                          : ''}
+                          ? `your ${summary.domains.map((d) => `@${d.domain}`).join(' / ')} address`
+                          : 'your invited email address'}
                       </Text>
                     </HStack>
                     <HStack mt={1}>
@@ -769,45 +768,44 @@ export default function ZkEmailClaimFlow() {
                         To:
                       </Text>
                       <Code fontSize="xs">{CLAIM_INBOX}</Code>
-                      <Button size="xs" variant="ghost" onClick={inboxClip.onCopy}>
+                      <Button size="xs" variant="ghost" onClick={inboxClip.onCopy} aria-label="Copy address">
                         {inboxClip.hasCopied ? <FaCheck /> : <FaCopy />}
                       </Button>
                     </HStack>
-                    <HStack mt={1} align="start">
+                    <HStack mt={1}>
                       <Text color="gray.500" w="64px" flexShrink={0}>
                         Subject:
                       </Text>
-                      <Code fontSize="xs" whiteSpace="pre-wrap" wordBreak="break-all">
-                        {buildCommand(claimerAddress)}
+                      <Code fontSize="xs">
+                        {buildCommand(claimerAddress).replace(/0x[a-fA-F0-9]{40}/, (m) => `${m.slice(0, 6)}…${m.slice(-4)}`)}
                       </Code>
-                      <Button size="xs" variant="ghost" onClick={subjectClip.onCopy}>
+                      <Button size="xs" variant="ghost" onClick={subjectClip.onCopy} aria-label="Copy full subject">
                         {subjectClip.hasCopied ? <FaCheck /> : <FaCopy />}
                       </Button>
                     </HStack>
                   </Box>
-                  <HStack spacing={3} flexWrap="wrap" mt={3}>
-                    <Button
-                      as={ChakraLink}
-                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(CLAIM_INBOX)}&su=${encodeURIComponent(buildCommand(claimerAddress))}`}
-                      isExternal
-                      colorScheme="blue"
-                      size="sm"
-                    >
-                      Open in Gmail
-                    </Button>
+                  <HStack spacing={3} flexWrap="wrap" mt={3} align="center">
                     <Button
                       as={ChakraLink}
                       href={buildMailto({ to: CLAIM_INBOX, claimer: claimerAddress })}
                       isExternal
-                      variant="outline"
+                      colorScheme="teal"
                       size="sm"
                     >
-                      Other mail app
+                      Open my mail app
                     </Button>
+                    <ChakraLink
+                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(CLAIM_INBOX)}&su=${encodeURIComponent(buildCommand(claimerAddress))}`}
+                      isExternal
+                      fontSize="sm"
+                      color="teal.600"
+                    >
+                      or compose in Gmail ↗
+                    </ChakraLink>
                   </HStack>
                   <Text fontSize="xs" color="gray.500" mt={2}>
-                    Gmail sends from whichever account you’re signed in to — the <b>From</b> line must
-                    be your invited address.
+                    We verify the <b>From</b> line — whatever app you use, send it from your invited
+                    address.
                   </Text>
 
                   <HStack mt={4} spacing={2}>
@@ -833,7 +831,7 @@ export default function ZkEmailClaimFlow() {
                       <>
                         <Spinner size="xs" color="teal.500" />
                         <Text fontSize="sm" color="gray.600">
-                          Watching the inbox — once you hit send, everything continues automatically…
+                          Waiting for your email — nothing else to do here.
                         </Text>
                       </>
                     )}

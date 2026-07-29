@@ -34,6 +34,7 @@ import CreateDistributionModal from './CreateDistributionModal';
 import GasPoolSection from './GasPoolSection';
 import GasPoolDepositModal from './GasPoolDepositModal';
 import { useOrgTheme } from '@/hooks';
+import { useOrgGate } from '@/components/shared/OrgDeadEnd';
 
 const glassLayerStyle = {
   position: 'absolute',
@@ -57,6 +58,7 @@ const BALANCE_OF_ABI = [
 const TreasuryPage = () => {
   const router = useRouter();
   const userDAO = useOrgName();
+  const orgGate = useOrgGate();
   const {
     orgId,
     poContextLoading,
@@ -195,6 +197,8 @@ const TreasuryPage = () => {
     refetchGasPool();
   }, [refetchGasPool]);
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
   return (
     <>
       <Navbar />

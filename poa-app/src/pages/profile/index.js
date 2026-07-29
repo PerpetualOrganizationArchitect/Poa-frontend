@@ -53,6 +53,7 @@ import { glassLayerStyle } from '@/components/shared/glassStyles';
 // TIER FEATURE - determineTier, calculateProgress commented out per redesign
 // import { determineTier, calculateProgress, formatDateToAmerican, normalizeHatId } from '@/utils/profileUtils';
 import { formatDateToAmerican, normalizeHatId } from '@/utils/profileUtils';
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 /**
  * Format remaining time from timestamp
@@ -199,6 +200,7 @@ function RecommendedTasksCompact({ tasks, userDAO }) {
 const UserprofileHub = () => {
   const router = useRouter();
   const userDAO = useOrgName();
+  const orgGate = useOrgGate();
   const { accountAddress: userAddress } = useAuth();
   const { pageBackground, onBackground } = useOrgTheme();
 
@@ -292,6 +294,8 @@ const UserprofileHub = () => {
     />
   );
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
   if (!isFullyLoaded) {
     return (
       <>

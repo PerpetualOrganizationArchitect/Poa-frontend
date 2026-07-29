@@ -274,7 +274,7 @@ export const FETCH_ORG_FULL_DATA = gql`
 
 // Fetch voting data (proposals for both hybrid and DD voting)
 export const FETCH_VOTING_DATA_NEW = gql`
-  query FetchVotingDataNew($orgId: Bytes!) {
+  query FetchVotingDataNew($orgId: Bytes!, $first: Int!, $hybridBefore: BigInt!, $ddBefore: BigInt!) {
     organization(id: $orgId) {
       id
       hybridVoting {
@@ -293,7 +293,7 @@ export const FETCH_VOTING_DATA_NEW = gql`
           hatIds
           isActive
         }
-        proposals(orderBy: startTimestamp, orderDirection: desc, first: 50) {
+        proposals(orderBy: startTimestamp, orderDirection: desc, first: $first, where: { proposalId_lt: $hybridBefore }) {
           id
           proposalId
           title
@@ -328,7 +328,7 @@ export const FETCH_VOTING_DATA_NEW = gql`
         id
         thresholdPct
         quorum
-        ddvProposals(orderBy: startTimestamp, orderDirection: desc, first: 50) {
+        ddvProposals(orderBy: startTimestamp, orderDirection: desc, first: $first, where: { proposalId_lt: $ddBefore }) {
           id
           proposalId
           title
@@ -363,7 +363,7 @@ export const FETCH_VOTING_DATA_NEW = gql`
 // once the serving subgraph is confirmed to have Proposal.proposer — an
 // unknown field errors the ENTIRE org query (see subgraphCapabilities.js).
 export const FETCH_VOTING_DATA_WITH_PROPOSER = gql`
-  query FetchVotingDataWithProposer($orgId: Bytes!) {
+  query FetchVotingDataWithProposer($orgId: Bytes!, $first: Int!, $hybridBefore: BigInt!, $ddBefore: BigInt!) {
     organization(id: $orgId) {
       id
       hybridVoting {
@@ -382,7 +382,7 @@ export const FETCH_VOTING_DATA_WITH_PROPOSER = gql`
           hatIds
           isActive
         }
-        proposals(orderBy: startTimestamp, orderDirection: desc, first: 50) {
+        proposals(orderBy: startTimestamp, orderDirection: desc, first: $first, where: { proposalId_lt: $hybridBefore }) {
           id
           proposalId
           proposer
@@ -421,7 +421,7 @@ export const FETCH_VOTING_DATA_WITH_PROPOSER = gql`
         id
         thresholdPct
         quorum
-        ddvProposals(orderBy: startTimestamp, orderDirection: desc, first: 50) {
+        ddvProposals(orderBy: startTimestamp, orderDirection: desc, first: $first, where: { proposalId_lt: $ddBefore }) {
           id
           proposalId
           proposer
@@ -452,6 +452,160 @@ export const FETCH_VOTING_DATA_WITH_PROPOSER = gql`
             optionWeights
           }
         }
+      }
+    }
+  }
+`;
+
+
+/**
+ * Deep-link rescue — fetch ONE proposal by its composite id.
+ *
+ * The org query above caps each proposal list at `first: 50`, so a `?poll=` for
+ * an older proposal is simply absent from the arrays and the modal never opens
+ * (silently). This fetches exactly that one proposal so the deep link works at
+ * any org size, without making every 30s poll carry hundreds of proposals.
+ *
+ * The selection sets are deliberately byte-identical to the list blocks above:
+ * the result is spliced into the RAW array and goes through the same
+ * transformProposal call, so it must not drift. Update both together.
+ *
+ * The top-level singular field is `ddvproposal` — all lowercase after "ddv",
+ * unlike the nested `ddvProposals` list — so it is aliased. One id serves both
+ * fields; proposal ids are contract-prefixed, so the wrong one returns null.
+ */
+export const FETCH_PROPOSAL_BY_ID = gql`
+  query FetchProposalById($proposalId: ID!) {
+    proposal(id: $proposalId) {
+      id
+      proposalId
+      title
+      descriptionHash
+      metadata {
+        id
+        description
+        optionNames
+      }
+      numOptions
+      startTimestamp
+      endTimestamp
+      status
+      winningOption
+      isValid
+      wasExecuted
+      executionFailed
+      executionError
+      isHatRestricted
+      restrictedHatIds
+      votes {
+        voter
+        voterUsername
+        optionIndexes
+        optionWeights
+        classRawPowers
+        votedAt
+      }
+    }
+    ddvProposal: ddvproposal(id: $proposalId) {
+      id
+      proposalId
+      title
+      descriptionHash
+      metadata {
+        id
+        description
+        optionNames
+      }
+      numOptions
+      startTimestamp
+      endTimestamp
+      status
+      winningOption
+      isValid
+      executionFailed
+      executionError
+      isHatRestricted
+      restrictedHatIds
+      votes {
+        voter
+        optionIndexes
+        optionWeights
+      }
+    }
+  }
+`;
+
+/**
+ * Same rescue with the proposer-attribution fields (subgraph-pop #195). Split
+ * for the same reason the org query is: asking for an unknown field errors the
+ * ENTIRE document, so this is only issued once hasProposerField() confirms the
+ * serving subgraph has them.
+ */
+export const FETCH_PROPOSAL_BY_ID_WITH_PROPOSER = gql`
+  query FetchProposalByIdWithProposer($proposalId: ID!) {
+    proposal(id: $proposalId) {
+      id
+      proposalId
+      proposer
+      proposerUsername
+      title
+      descriptionHash
+      metadata {
+        id
+        description
+        optionNames
+        actionSummaries
+        promotedFrom
+      }
+      numOptions
+      startTimestamp
+      endTimestamp
+      status
+      winningOption
+      isValid
+      wasExecuted
+      executionFailed
+      executionError
+      isHatRestricted
+      restrictedHatIds
+      votes {
+        voter
+        voterUsername
+        optionIndexes
+        optionWeights
+        classRawPowers
+        votedAt
+      }
+    }
+    ddvProposal: ddvproposal(id: $proposalId) {
+      id
+      proposalId
+      proposer
+      proposerUsername
+      title
+      descriptionHash
+      metadata {
+        id
+        description
+        optionNames
+        actionSummaries
+        promotedFrom
+      }
+      numOptions
+      startTimestamp
+      endTimestamp
+      status
+      winningOption
+      isValid
+      executionFailed
+      executionError
+      isHatRestricted
+      restrictedHatIds
+      votes {
+        voter
+        voterUsername
+        optionIndexes
+        optionWeights
       }
     }
   }

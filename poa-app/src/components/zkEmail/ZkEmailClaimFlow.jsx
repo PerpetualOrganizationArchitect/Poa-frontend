@@ -655,15 +655,9 @@ export default function ZkEmailClaimFlow() {
 
   return (
     <VStack spacing={5} align="stretch">
-      <Box>
-        <Heading size="md">Claim a role with your email</Heading>
-        {phase === 1 && (
-          <Text mt={1} color="gray.600" fontSize="sm">
-            Prove you control an invited email — entirely in your browser. No password, no seed phrase,
-            no gas.
-          </Text>
-        )}
-      </Box>
+      <Heading size="md">
+        Claim a role with your email{org ? ` for ${org}` : ''}
+      </Heading>
 
       {(phase === 1 || summary.status !== 'active') && <InviteSummary summary={summary} />}
 
@@ -750,7 +744,7 @@ export default function ZkEmailClaimFlow() {
                     Send this email
                   </Text>
                   <Text fontSize="sm" color="gray.600" mt={1} mb={3}>
-                    That’s the whole step — we spot it the moment it arrives.
+                    Privately prove you have an email that’s valid for membership.
                   </Text>
                   <Box fontSize="sm" borderWidth="1px" borderRadius="md" p={3} bg="blackAlpha.50">
                     <HStack align="start">

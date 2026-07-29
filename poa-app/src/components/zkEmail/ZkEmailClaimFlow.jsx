@@ -11,13 +11,12 @@ import {
   Box,
   Button,
   Code,
-  Divider,
-  Flex,
   Heading,
   HStack,
   Input,
   Link as ChakraLink,
   Progress,
+  SlideFade,
   Spinner,
   Text,
   keyframes,
@@ -143,7 +142,7 @@ function ClaimWelcome({ org, username, accountAddress, roleNames, verifiedAs, pr
       <VStack spacing={1} textAlign="center">
         <Heading size="lg">🎉 Welcome to {org}!</Heading>
         <Text fontSize="sm" color="gray.600">
-          {username ? `You’re in, ${username}.` : 'You’re in.'} Your email checked out and your role is on-chain.
+          {username ? `You’re in, ${username}.` : 'You’re in.'}
         </Text>
       </VStack>
 
@@ -300,8 +299,8 @@ function InviteSummary({ summary }) {
       </Wrap>
       {emailCount > 0 && (
         <Text fontSize="xs" color="gray.600" mt={2}>
-          Some people are invited by their personal email address too — those invites aren’t listed. If
-          you were told you’re invited, your email works even if your domain isn’t shown.
+          Some invites go to a specific address and aren’t listed — if you were told you’re invited,
+          your email works.
         </Text>
       )}
     </Box>
@@ -390,7 +389,7 @@ function ManualUpload({ onPick, busy, fileName, expandedByDefault, isAuthenticat
     <Accordion allowToggle mt={2}>
       <AccordionItem border="none">
         <AccordionButton px={0} _hover={{ bg: 'transparent' }}>
-          <Text fontSize="sm" color="gray.500">
+          <Text fontSize="xs" color="gray.500">
             Prefer not to use the claim inbox? Upload the raw email yourself
           </Text>
           <AccordionIcon color="gray.500" />
@@ -428,6 +427,13 @@ export default function ZkEmailClaimFlow() {
     proveProgress,
   } = useClaimZkEmailRole();
   const summary = useZkEmailInviteSummary();
+
+  // A failed claim must be impossible to miss (live feedback: an error went unnoticed).
+  useEffect(() => {
+    if (step === ZK_CLAIM_STEPS.ERROR && errorAlertRef.current) {
+      errorAlertRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [step]);
   const { orgId, subgraphUrl, roleNames: roleNamesMap } = usePOContext();
   const { optimisticJoin } = useUserContext();
   const { emit } = useRefreshEmit();
@@ -440,6 +446,7 @@ export default function ZkEmailClaimFlow() {
   const [pollTick, setPollTick] = useState(0); // bump to restart a timed-out poll window
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const lastInboxEmlRef = useRef(null); // don't re-claim an inbox eml that already failed
+  const errorAlertRef = useRef(null); // scroll failures into view — testers missed the bottom alert
   const signInDisclosure = useDisclosure();
   const subjectClip = useClipboard(claimerAddress ? buildCommand(claimerAddress) : '');
   const inboxClip = useClipboard(CLAIM_INBOX);
@@ -648,27 +655,23 @@ export default function ZkEmailClaimFlow() {
 
   return (
     <VStack spacing={5} align="stretch">
-      <Box>
-        <Heading size="md">Claim a role with your email</Heading>
-        <Text mt={1} color="gray.600" fontSize="sm">
-          Prove you control an invited email — entirely in your browser. No password, no seed phrase, no
-          gas.
-        </Text>
-      </Box>
+      <Heading size="md">
+        Claim a role with your email{org ? ` for ${org}` : ''}
+      </Heading>
 
-      <InviteSummary summary={summary} />
+      {(phase === 1 || summary.status !== 'active') && <InviteSummary summary={summary} />}
 
       {stepsLive && (
         <Box borderWidth="1px" borderRadius="xl" p={{ base: 4, md: 6 }} boxShadow="sm">
           <StepHeader phase={phase} skipAccount={isAuthenticated} />
 
+          <SlideFade key={phase} in offsetY="10px">
           {/* ── Step 1: Account ── */}
           {phase === 1 && (
             <Box>
               <Text fontWeight="semibold">Pick a username</Text>
               <Text fontSize="sm" color="gray.600" mt={1} mb={3}>
-                Your passkey is created with your fingerprint — everything else (account, username, role)
-                lands together in one gasless transaction at the end.
+                Face ID or fingerprint becomes your account — no password needed.
               </Text>
               <HStack spacing={3} align="stretch" flexWrap="wrap">
                 <Input
@@ -688,97 +691,115 @@ export default function ZkEmailClaimFlow() {
                   Create passkey &amp; continue
                 </Button>
               </HStack>
-              <Box mt={4}>
-                <HStack spacing={2} flexWrap="wrap">
-                  <Text fontSize="xs" color="gray.500">
-                    Already have an account?
-                  </Text>
-                  <Button variant="link" size="xs" colorScheme="teal" onClick={signInDisclosure.onOpen}>
-                    Sign in with passkey
-                  </Button>
-                </HStack>
-                <HStack mt={3} spacing={2} align="center" color="gray.400">
-                  <Divider />
-                  <Text fontSize="xs" whiteSpace="nowrap">
-                    or connect a wallet
-                  </Text>
-                  <Divider />
-                </HStack>
-                <Flex justify="center" mt={2}>
-                  <ConnectButton
-                    showBalance={false}
-                    chainStatus="none"
-                    accountStatus="address"
-                    label="Connect Wallet"
-                  />
-                </Flex>
-              </Box>
+              <HStack mt={4} spacing={2} flexWrap="wrap" fontSize="xs" color="gray.500">
+                <Text>Already have an account?</Text>
+                <Button variant="link" size="xs" colorScheme="teal" onClick={signInDisclosure.onOpen}>
+                  Sign in with passkey
+                </Button>
+                <Text>·</Text>
+                <ConnectButton.Custom>
+                  {({ account, openConnectModal, openAccountModal, mounted }) => (
+                    <Button
+                      variant="link"
+                      size="xs"
+                      colorScheme="teal"
+                      onClick={account ? openAccountModal : openConnectModal}
+                      isDisabled={!mounted}
+                    >
+                      {account ? account.displayName : 'Connect a wallet'}
+                    </Button>
+                  )}
+                </ConnectButton.Custom>
+              </HStack>
             </Box>
           )}
 
           {/* ── Step 2: Send the email (auto-pickup) ── */}
           {phase === 2 && (
             <Box>
-              {!isAuthenticated && pendingAccount && (
-                <HStack justify="space-between" mb={3} fontSize="xs" color="gray.500">
-                  <Text>
-                    Claiming as <b>{pendingAccount.username}</b>
-                  </Text>
-                  <Button size="xs" variant="ghost" onClick={discardPendingPasskey}>
-                    Start over
-                  </Button>
-                </HStack>
+              {step === ZK_CLAIM_STEPS.ERROR && error && (
+                <Alert ref={errorAlertRef} status="error" borderRadius="lg" fontSize="sm" mb={4}>
+                  <AlertIcon />
+                  <VStack align="start" spacing={2} w="full">
+                    <Text fontWeight="600">That try didn’t go through</Text>
+                    <Text>{error.message || 'Something went wrong.'}</Text>
+                    {INBOX_ENABLED && lastInboxEmlRef.current && (
+                      <Button
+                        size="xs"
+                        onClick={() => {
+                          lastInboxEmlRef.current = null;
+                          setPollTick((t) => t + 1);
+                        }}
+                      >
+                        Retry with the received email
+                      </Button>
+                    )}
+                  </VStack>
+                </Alert>
               )}
 
               {INBOX_ENABLED ? (
                 <>
-                  <Text fontWeight="semibold">Send the verification email</Text>
-                  <Text fontSize="sm" color="gray.600" mt={1} mb={3}>
-                    From your <b>invited email address</b>, using any mail app — we’ll pick it up
-                    automatically the moment it arrives. The body doesn’t matter.
+                  <Text fontWeight="bold" fontSize="lg">
+                    Send this email
                   </Text>
-                  <HStack spacing={3} flexWrap="wrap" mb={3}>
-                    <Button
-                      as={ChakraLink}
-                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(CLAIM_INBOX)}&su=${encodeURIComponent(buildCommand(claimerAddress))}`}
-                      isExternal
-                      colorScheme="blue"
-                      size="sm"
-                    >
-                      Compose in Gmail
-                    </Button>
-                    <Button
-                      as={ChakraLink}
-                      href={buildMailto({ to: CLAIM_INBOX, claimer: claimerAddress })}
-                      isExternal
-                      variant="outline"
-                      size="sm"
-                    >
-                      Open my mail app
-                    </Button>
-                  </HStack>
+                  <Text fontSize="sm" color="gray.600" mt={1} mb={3}>
+                    Privately prove you have an email that’s valid for membership.
+                  </Text>
                   <Box fontSize="sm" borderWidth="1px" borderRadius="md" p={3} bg="blackAlpha.50">
-                    <HStack>
-                      <Text color="gray.500" w="52px" flexShrink={0}>
+                    <HStack align="start">
+                      <Text color="gray.500" w="64px" flexShrink={0}>
+                        From:
+                      </Text>
+                      <Text fontSize="xs" pt="2px" fontWeight="600">
+                        {summary.domains?.length
+                          ? `your ${summary.domains.map((d) => `@${d.domain}`).join(' / ')} address`
+                          : 'your invited email address'}
+                      </Text>
+                    </HStack>
+                    <HStack mt={1}>
+                      <Text color="gray.500" w="64px" flexShrink={0}>
                         To:
                       </Text>
                       <Code fontSize="xs">{CLAIM_INBOX}</Code>
-                      <Button size="xs" variant="ghost" onClick={inboxClip.onCopy}>
+                      <Button size="xs" variant="ghost" onClick={inboxClip.onCopy} aria-label="Copy address">
                         {inboxClip.hasCopied ? <FaCheck /> : <FaCopy />}
                       </Button>
                     </HStack>
-                    <HStack mt={1} align="start">
-                      <Text color="gray.500" w="52px" flexShrink={0}>
+                    <HStack mt={1}>
+                      <Text color="gray.500" w="64px" flexShrink={0}>
                         Subject:
                       </Text>
-                      <Code fontSize="xs" whiteSpace="pre-wrap" wordBreak="break-all">
-                        {buildCommand(claimerAddress)}
+                      <Code fontSize="xs">
+                        {buildCommand(claimerAddress).replace(/0x[a-fA-F0-9]{40}/, (m) => `${m.slice(0, 6)}…${m.slice(-4)}`)}
                       </Code>
-                      <Button size="xs" variant="ghost" onClick={subjectClip.onCopy}>
+                      <Button size="xs" variant="ghost" onClick={subjectClip.onCopy} aria-label="Copy full subject">
                         {subjectClip.hasCopied ? <FaCheck /> : <FaCopy />}
                       </Button>
                     </HStack>
                   </Box>
+                  <HStack spacing={3} flexWrap="wrap" mt={3} align="center">
+                    <Button
+                      as={ChakraLink}
+                      href={buildMailto({ to: CLAIM_INBOX, claimer: claimerAddress })}
+                      isExternal
+                      colorScheme="teal"
+                      size="sm"
+                    >
+                      Open my mail app
+                    </Button>
+                    <ChakraLink
+                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(CLAIM_INBOX)}&su=${encodeURIComponent(buildCommand(claimerAddress))}`}
+                      isExternal
+                      fontSize="sm"
+                      color="teal.600"
+                    >
+                      or compose in Gmail ↗
+                    </ChakraLink>
+                  </HStack>
+                  <Text fontSize="xs" color="gray.500" mt={2}>
+                    Send from the address you were invited with.
+                  </Text>
 
                   <HStack mt={4} spacing={2}>
                     {pollTimedOut ? (
@@ -803,12 +824,23 @@ export default function ZkEmailClaimFlow() {
                       <>
                         <Spinner size="xs" color="teal.500" />
                         <Text fontSize="sm" color="gray.600">
-                          Watching the inbox — once you hit send, everything continues automatically…
+                          Waiting for your email
                         </Text>
                       </>
                     )}
                   </HStack>
 
+                  {!isAuthenticated && pendingAccount && (
+                    <HStack mt={3} spacing={2} fontSize="xs" color="gray.400">
+                      <Text>
+                        Claiming as <b>{pendingAccount.username}</b>
+                      </Text>
+                      <Text>·</Text>
+                      <Button variant="link" size="xs" color="gray.500" onClick={discardPendingPasskey}>
+                        Start over
+                      </Button>
+                    </HStack>
+                  )}
                   <ManualUpload onPick={() => fileRef.current?.click()} busy={busy} fileName={fileName} isAuthenticated={isAuthenticated} />
                 </>
               ) : (
@@ -848,6 +880,17 @@ export default function ZkEmailClaimFlow() {
                       Other provider…
                     </Button>
                   </HStack>
+                  {!isAuthenticated && pendingAccount && (
+                    <HStack mt={3} spacing={2} fontSize="xs" color="gray.400">
+                      <Text>
+                        Claiming as <b>{pendingAccount.username}</b>
+                      </Text>
+                      <Text>·</Text>
+                      <Button variant="link" size="xs" color="gray.500" onClick={discardPendingPasskey}>
+                        Start over
+                      </Button>
+                    </HStack>
+                  )}
                   <ManualUpload
                     onPick={() => fileRef.current?.click()}
                     busy={busy}
@@ -858,25 +901,6 @@ export default function ZkEmailClaimFlow() {
                 </>
               )}
 
-              {step === ZK_CLAIM_STEPS.ERROR && error && (
-                <Alert status="error" borderRadius="lg" fontSize="sm" mt={4}>
-                  <AlertIcon />
-                  <VStack align="start" spacing={2} w="full">
-                    <Text>{error.message || 'Something went wrong.'}</Text>
-                    {INBOX_ENABLED && lastInboxEmlRef.current && (
-                      <Button
-                        size="xs"
-                        onClick={() => {
-                          lastInboxEmlRef.current = null;
-                          setPollTick((t) => t + 1);
-                        }}
-                      >
-                        Retry with the received email
-                      </Button>
-                    )}
-                  </VStack>
-                </Alert>
-              )}
             </Box>
           )}
 
@@ -886,15 +910,15 @@ export default function ZkEmailClaimFlow() {
               <Spinner size="lg" color="teal.500" />
               <Text fontSize="sm" color="gray.600" textAlign="center" maxW="380px">
                 {step === ZK_CLAIM_STEPS.CHECKING
-                  ? 'Checking the organization’s allowlist…'
+                  ? 'Checking the allowlist…'
                   : step === ZK_CLAIM_STEPS.PROVING
                     ? proveProgress?.phase === 'download'
-                      ? `Downloading the proving key — part ${proveProgress.done} of ${proveProgress.total} (one-time, cached after this)…`
+                      ? `Downloading the proving key — part ${proveProgress.done} of ${proveProgress.total} (one-time)…`
                       : proveProgress?.phase === 'assemble'
                         ? 'Preparing the proving key…'
-                        : 'Computing your proof in your browser — usually 15–40 seconds…'
+                        : 'Computing your proof — about 15–40 seconds…'
                     : step === ZK_CLAIM_STEPS.SIGNING
-                      ? 'Confirm with your passkey — your account, username, and role go on-chain together…'
+                      ? 'Confirm with your passkey…'
                       : 'Submitting your claim…'}
               </Text>
               {step === ZK_CLAIM_STEPS.PROVING && proveProgress?.phase === 'download' && (
@@ -920,8 +944,8 @@ export default function ZkEmailClaimFlow() {
               </Text>
               <Text fontSize="sm" color="teal.800" mt={1} mb={3}>
                 {!isAuthenticated
-                  ? 'Tap below and confirm with your passkey — your account, username, and role are created together in one gasless transaction.'
-                  : 'Tap below and confirm to mint your role.'}
+                  ? 'Your account, username, and role are created in one gasless tap.'
+                  : 'One tap to mint your role.'}
               </Text>
               <Button colorScheme="teal" size="sm" onClick={finishClaim}>
                 {step === ZK_CLAIM_STEPS.ERROR ? 'Retry — confirm with your passkey' : 'Finish & claim my role'}
@@ -953,6 +977,7 @@ export default function ZkEmailClaimFlow() {
               />
             </>
           )}
+          </SlideFade>
         </Box>
       )}
 

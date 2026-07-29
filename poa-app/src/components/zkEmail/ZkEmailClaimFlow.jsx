@@ -389,7 +389,7 @@ function ManualUpload({ onPick, busy, fileName, expandedByDefault, isAuthenticat
     <Accordion allowToggle mt={2}>
       <AccordionItem border="none">
         <AccordionButton px={0} _hover={{ bg: 'transparent' }}>
-          <Text fontSize="sm" color="gray.500">
+          <Text fontSize="xs" color="gray.500">
             Prefer not to use the claim inbox? Upload the raw email yourself
           </Text>
           <AccordionIcon color="gray.500" />
@@ -798,8 +798,7 @@ export default function ZkEmailClaimFlow() {
                     </ChakraLink>
                   </HStack>
                   <Text fontSize="xs" color="gray.500" mt={2}>
-                    We verify the <b>From</b> line — whatever app you use, send it from your invited
-                    address.
+                    Send from the address you were invited with.
                   </Text>
 
                   <HStack mt={4} spacing={2}>
@@ -825,7 +824,7 @@ export default function ZkEmailClaimFlow() {
                       <>
                         <Spinner size="xs" color="teal.500" />
                         <Text fontSize="sm" color="gray.600">
-                          Waiting for your email — nothing else to do here.
+                          Waiting for your email
                         </Text>
                       </>
                     )}

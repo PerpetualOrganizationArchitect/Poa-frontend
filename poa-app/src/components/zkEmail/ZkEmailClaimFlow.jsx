@@ -142,7 +142,7 @@ function ClaimWelcome({ org, username, accountAddress, roleNames, verifiedAs, pr
       <VStack spacing={1} textAlign="center">
         <Heading size="lg">🎉 Welcome to {org}!</Heading>
         <Text fontSize="sm" color="gray.600">
-          {username ? `You’re in, ${username}.` : 'You’re in.'} Your email checked out and your role is on-chain.
+          {username ? `You’re in, ${username}.` : 'You’re in.'}
         </Text>
       </VStack>
 
@@ -299,8 +299,8 @@ function InviteSummary({ summary }) {
       </Wrap>
       {emailCount > 0 && (
         <Text fontSize="xs" color="gray.600" mt={2}>
-          Some people are invited by their personal email address too — those invites aren’t listed. If
-          you were told you’re invited, your email works even if your domain isn’t shown.
+          Some invites go to a specific address and aren’t listed — if you were told you’re invited,
+          your email works.
         </Text>
       )}
     </Box>
@@ -671,7 +671,7 @@ export default function ZkEmailClaimFlow() {
             <Box>
               <Text fontWeight="semibold">Pick a username</Text>
               <Text fontSize="sm" color="gray.600" mt={1} mb={3}>
-                Face ID / fingerprint becomes your account — no password, no wallet, no gas.
+                Face ID or fingerprint becomes your account — no password needed.
               </Text>
               <HStack spacing={3} align="stretch" flexWrap="wrap">
                 <Input
@@ -910,15 +910,15 @@ export default function ZkEmailClaimFlow() {
               <Spinner size="lg" color="teal.500" />
               <Text fontSize="sm" color="gray.600" textAlign="center" maxW="380px">
                 {step === ZK_CLAIM_STEPS.CHECKING
-                  ? 'Checking the organization’s allowlist…'
+                  ? 'Checking the allowlist…'
                   : step === ZK_CLAIM_STEPS.PROVING
                     ? proveProgress?.phase === 'download'
-                      ? `Downloading the proving key — part ${proveProgress.done} of ${proveProgress.total} (one-time, cached after this)…`
+                      ? `Downloading the proving key — part ${proveProgress.done} of ${proveProgress.total} (one-time)…`
                       : proveProgress?.phase === 'assemble'
                         ? 'Preparing the proving key…'
-                        : 'Computing your proof in your browser — usually 15–40 seconds…'
+                        : 'Computing your proof — about 15–40 seconds…'
                     : step === ZK_CLAIM_STEPS.SIGNING
-                      ? 'Confirm with your passkey — your account, username, and role go on-chain together…'
+                      ? 'Confirm with your passkey…'
                       : 'Submitting your claim…'}
               </Text>
               {step === ZK_CLAIM_STEPS.PROVING && proveProgress?.phase === 'download' && (
@@ -944,8 +944,8 @@ export default function ZkEmailClaimFlow() {
               </Text>
               <Text fontSize="sm" color="teal.800" mt={1} mb={3}>
                 {!isAuthenticated
-                  ? 'Tap below and confirm with your passkey — your account, username, and role are created together in one gasless transaction.'
-                  : 'Tap below and confirm to mint your role.'}
+                  ? 'Your account, username, and role are created in one gasless tap.'
+                  : 'One tap to mint your role.'}
               </Text>
               <Button colorScheme="teal" size="sm" onClick={finishClaim}>
                 {step === ZK_CLAIM_STEPS.ERROR ? 'Retry — confirm with your passkey' : 'Finish & claim my role'}

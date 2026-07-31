@@ -246,6 +246,11 @@
         "name": "thresholdPct_",
         "type": "uint8",
         "internalType": "uint8"
+      },
+      {
+        "name": "quorum_",
+        "type": "uint32",
+        "internalType": "uint32"
       }
     ],
     "outputs": [],

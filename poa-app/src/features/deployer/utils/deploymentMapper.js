@@ -12,6 +12,16 @@ import { TaskPermission } from '@/util/permissions';
 import { getTokenByAddress } from '@/util/tokens';
 
 /**
+ * Byte length of a string as Solidity sees it (`bytes(s).length` is UTF-8).
+ * JS `.length` counts UTF-16 units, so it under-counts every non-ASCII character.
+ * @param {string} s
+ * @returns {number}
+ */
+export function utf8Length(s) {
+  return new TextEncoder().encode(String(s ?? '')).length;
+}
+
+/**
  * Generate organization ID from name
  * @param {string} orgName - Organization name
  * @returns {string} bytes32 orgId hash
@@ -85,20 +95,19 @@ export function mapVotingClasses(classes) {
     asset: cls.asset || ethers.constants.AddressZero,
     // ALWAYS empty at deploy time — deliberately, not an oversight.
     //
-    // `cls.hatIds` in wizard state holds ROLE INDICES (VotingClassForm's role
-    // multiselect writes 0,1,2…), but the contract consumes this field as literal
-    // Hats-Protocol hat IDs. The org's hats don't exist until mid-deploy, so the
-    // indices cannot be translated client-side. Passing them through shipped hat
-    // IDs like `1` — ids that belong to no one in the org — and
-    // GovernanceFactory._updateClassesWithTokenAndHats only backfills the real
-    // role hats when the array is EMPTY (GovernanceFactory.sol:353-355). The
-    // result was a voting class with zero eligible voters that reverts nothing
-    // and is only noticed when a proposal scores 0.
+    // `cls.hatIds` in wizard state holds ROLE INDICES, but the contract consumes
+    // this field as literal Hats-Protocol hat IDs. The org's hats don't exist until
+    // mid-deploy, so the indices cannot be translated client-side; passing them
+    // through shipped ids like `1`, which belong to no one in the org, producing a
+    // class with zero eligible voters that reverts nothing.
     //
-    // Sending [] makes the factory enrol every role hat in the class, which is
-    // what all shipped templates already rely on. Narrowing a class to specific
-    // roles is a post-deploy governance action (`setClasses`), where real hat IDs
-    // are available.
+    // Empty is now also the *expressive* choice. GovernanceFactory v17 backfills an
+    // empty class with the hats of `canVote: true` roles ONLY
+    // (`_filterCanVoteHats`), so the wizard's per-role "Can vote" switch decides
+    // hybrid-voting membership at genesis — no post-deploy `setClasses` proposal
+    // needed to exclude bot/agent roles. (Pre-v17 it backfilled every role hat.)
+    // Narrowing a class further than "all voting roles" remains a post-deploy
+    // governance action, once real hat IDs exist.
     hatIds: [],
   }));
 }
@@ -449,11 +458,21 @@ export function mapStateToDeploymentParams(state, deployerAddress, options = {})
     bootstrap: buildBootstrapConfig(state.bootstrap),
     // Paymaster configuration (all-zeros = skip)
     paymasterConfig: mapPaymasterConfig(paymaster),
-    // Org-wide TaskManager ROLE_PERM grants (must be the LAST field — matches the
-    // contract struct order so ethers encodes the tuple positionally correct).
+    // Org-wide TaskManager ROLE_PERM grants.
     // No creator list: the deployed `taskCreatorRolesBitmap` is still name-derived
     // (all roles), so every mask must keep CREATE. See buildTaskManagerPerms.
     taskManagerPerms: buildTaskManagerPerms(state.taskManagerPerms),
+    // Deploy-time governance config (OrgDeployer v17). These four MUST be the LAST
+    // fields, in this order — the struct is encoded positionally.
+    //
+    // The voter-count quorums have been collected by the wizard (and validated as
+    // uint32) since before the contracts could accept them; until v17 they were
+    // setter-only and the deploy silently discarded them. 0 = no minimum.
+    hybridQuorum: Number(voting.hybridVoterQuorum) || 0,
+    ddQuorum: Number(voting.ddVoterQuorum) || 0,
+    // Empty string = contract default ("<orgName> Token" / "PT").
+    tokenName: (organization.tokenName || '').trim(),
+    tokenSymbol: (organization.tokenSymbol || '').trim(),
   };
 }
 
@@ -586,6 +605,48 @@ export function validateDeploymentConfig(state) {
         errors.push(`The "${label}" permission is assigned to a role that no longer exists. Re-check the Permissions step.`);
       }
     });
+  });
+
+  // Participation-token identity. ParticipationToken.initialize does NOT length-check
+  // these, but setName/setSymbol do (64 / 16) — so an over-long value would deploy a
+  // token whose name governance can never edit again.
+  //
+  // The contract measures BYTES (`bytes(newName).length`), not characters, so an
+  // emoji or accented name that looks short in the input can still be over the limit.
+  const tokenName = (state.organization?.tokenName || '').trim();
+  const tokenSymbol = (state.organization?.tokenSymbol || '').trim();
+  if (utf8Length(tokenName) > 64) {
+    errors.push('Token name is too long — it must be 64 bytes or fewer (accents and emoji count as several bytes each).');
+  }
+  if (utf8Length(tokenSymbol) > 16) {
+    errors.push('Token ticker is too long — it must be 16 bytes or fewer (accents and emoji count as several bytes each).');
+  }
+  // Blank name = the contract builds "<orgName> Token", which is bounded by the org
+  // name (up to 100 chars) rather than by the token limits — so it can land above 64
+  // bytes and be permanently unrenameable.
+  if (!tokenName && utf8Length(`${state.organization?.name || ''} Token`) > 64) {
+    errors.push(
+      'Your organization name is too long to build a default token name from. Set a token name under "Contribution Token" on the Identity step.'
+    );
+  }
+
+  // At least one role must be able to vote. GovernanceFactory._filterCanVoteHats
+  // falls back to enrolling EVERY role hat when no role has canVote — the exact
+  // opposite of what turning them all off looks like it should do.
+  if (state.roles.length > 0 && !state.roles.some((r) => r.canVote)) {
+    errors.push(
+      'No role can vote. Turn on "Can participate in governance votes" for at least one role — otherwise every role ends up able to vote, which is probably not what you want.'
+    );
+  }
+
+  // Voter-count quorums are uint32 on the contract (0 = no minimum).
+  [['hybridVoterQuorum', 'Proposal'], ['ddVoterQuorum', 'Poll']].forEach(([key, label]) => {
+    const v = state.voting?.[key];
+    if (v === undefined || v === null || v === '') return;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 0 || n > 4294967295) {
+      errors.push(`${label} voter minimum must be a whole number between 0 and 4294967295.`);
+    }
   });
 
   // Executor.MAX_HATS_PER_MINT caps a single mint batch at 20 hats; quick-join

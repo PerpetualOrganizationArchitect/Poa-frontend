@@ -125,6 +125,26 @@ export function DeploymentPreviewModal({ data, onConfirm, onCancel }) {
               <Row label="Roles"><Text>{roles.length}</Text></Row>
               <Row label="Voting classes"><Text>{(params?.hybridClasses || []).length}</Text></Row>
               <Row label="Metadata admin"><Text>{metaAdminLabel}</Text></Row>
+              {/* Deploy-time governance config (OrgDeployer v17) — only shown when it
+                  differs from the contract defaults, to keep the modal scannable. */}
+              {(toNum(params?.hybridQuorum) > 0 || toNum(params?.ddQuorum) > 0) && (
+                <Row label="Voter minimum">
+                  <Text>
+                    {toNum(params?.hybridQuorum) > 0 ? `${toNum(params.hybridQuorum)} on proposals` : null}
+                    {toNum(params?.hybridQuorum) > 0 && toNum(params?.ddQuorum) > 0 ? ', ' : null}
+                    {toNum(params?.ddQuorum) > 0 ? `${toNum(params.ddQuorum)} on polls` : null}
+                  </Text>
+                </Row>
+              )}
+              {/* Always shown, resolving the blanks the way AccessFactory does — this
+                  is the org's contribution asset and the weighting asset for every
+                  share-based voting class, so "not mentioned" is the wrong default. */}
+              <Row label="Token">
+                <Text>
+                  {params?.tokenName || `${orgName} Token`}
+                  {` (${params?.tokenSymbol || 'PT'})`}
+                </Text>
+              </Row>
               {Number(fundingEth) > 0 && (
                 <Row label="Paymaster funding"><Text>{fundingEth} (native)</Text></Row>
               )}

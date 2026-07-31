@@ -619,6 +619,17 @@ function DeployerPageContent() {
         taskManagerPerms: deployParams.taskManagerPerms,
         ddInitialTargets: deployParams.ddInitialTargets,
         bootstrap: deployParams.bootstrap,
+        // Deploy-time governance config (OrgDeployer v17).
+        hybridVoterQuorum: deployParams.hybridQuorum,
+        ddVoterQuorum: deployParams.ddQuorum,
+        tokenName: deployParams.tokenName,
+        tokenSymbol: deployParams.tokenSymbol,
+        // The user's actual voting classes. Without this, buildDeployCalldata falls
+        // back to a fixed 50/50 DIRECT+ERC20_BAL pair built from the two hardcoded
+        // weights above — so the split, class count, minBalance and quadratic flag
+        // the wizard collected (and that this page previews back to the user) were
+        // all discarded on the way to the chain.
+        hybridClasses: deployParams.hybridClasses,
       };
       const { calldata: deployCalldata, orgDeployerAddress: deployContractAddress } =
         buildDeployCalldata(deployCalldataArgs);

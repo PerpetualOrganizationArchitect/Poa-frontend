@@ -326,6 +326,11 @@
         "internalType": "uint8"
       },
       {
+        "name": "quorum_",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
         "name": "initialClasses",
         "type": "tuple[]",
         "internalType": "struct HybridVoting.ClassConfig[]",

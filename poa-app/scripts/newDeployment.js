@@ -233,8 +233,15 @@ export async function main(
         defaultBudgetCapPerEpoch: 0,
         defaultBudgetEpochLen: 0,
       },
-      // Org-wide TaskManager ROLE_PERM grants — MUST be last (matches contract struct order)
+      // Org-wide TaskManager ROLE_PERM grants
       taskManagerPerms: taskManagerPerms || { roleIndices: [], masks: [] },
+      // Deploy-time governance config (OrgDeployer v17) — MUST stay last, in this
+      // order. Zero/empty reproduces the pre-v17 defaults; this legacy path has no
+      // inputs for them.
+      hybridQuorum: 0,
+      ddQuorum: 0,
+      tokenName: '',
+      tokenSymbol: '',
     };
 
     console.log("Deploying new DAO with the following parameters:", deploymentParams);
@@ -542,6 +549,17 @@ export function buildDeployCalldata({
   bootstrap = null,
   zkEmailEnabled = false,
   roleAssignments: roleAssignmentsOverride = null,
+  // OrgDeployer v17 deploy-time governance config. Zero/empty reproduces v16
+  // behaviour exactly, so omitting these is safe.
+  hybridVoterQuorum = 0,
+  ddVoterQuorum = 0,
+  tokenName = '',
+  tokenSymbol = '',
+  // The wizard's own voting classes, already mapped to contract shape. The
+  // democracyVoteWeight/participationVoteWeight fallback below only knows how to
+  // build a fixed 50/50 DIRECT+ERC20_BAL pair, so anything the user configured —
+  // the split, a third class, minBalance, quadratic — is lost without this.
+  hybridClasses: hybridClassesOverride = null,
 }) {
   const orgDeployerAddress = infrastructureAddresses.orgDeployerAddress;
   const registryAddress = infrastructureAddresses.registryAddress;
@@ -557,12 +575,14 @@ export function buildDeployCalldata({
     ethers.utils.toUtf8Bytes(POname.toLowerCase().replace(/\s+/g, '-'))
   );
 
-  const hybridClasses = buildHybridClasses(
-    hybridVotingEnabled,
-    quadraticVotingEnabled,
-    democracyVoteWeight,
-    participationVoteWeight
-  );
+  const hybridClasses = (hybridClassesOverride && hybridClassesOverride.length > 0)
+    ? hybridClassesOverride
+    : buildHybridClasses(
+        hybridVotingEnabled,
+        quadraticVotingEnabled,
+        democracyVoteWeight,
+        participationVoteWeight
+      );
 
   const roles = customRoles || buildRoles(memberTypeNames, executivePermissionNames);
   // Callers may supply the wizard's own permission matrix; otherwise fall back to
@@ -608,8 +628,19 @@ export function buildDeployCalldata({
       defaultBudgetCapPerEpoch: 0,
       defaultBudgetEpochLen: 0,
     },
-    // Org-wide TaskManager ROLE_PERM grants — MUST be last (matches contract struct order)
+    // Org-wide TaskManager ROLE_PERM grants
     taskManagerPerms: taskManagerPerms || { roleIndices: [], masks: [] },
+    // Deploy-time governance config (OrgDeployer v17). These four MUST stay last and
+    // in this order — the struct is encoded positionally, and appending them is what
+    // changed the deployFullOrg selector from 0x00d18947 to 0x209bcafc.
+    //
+    // The voter-count quorums were previously setter-only, so the wizard collected
+    // them and threw them away; they now take effect at genesis (0 = no minimum).
+    // Empty token name/symbol reproduces the legacy "<orgName> Token" / "PT".
+    hybridQuorum: Number(hybridVoterQuorum) || 0,
+    ddQuorum: Number(ddVoterQuorum) || 0,
+    tokenName: tokenName || '',
+    tokenSymbol: tokenSymbol || '',
   };
 
   const iface = new ethers.utils.Interface(OrgDeployer);

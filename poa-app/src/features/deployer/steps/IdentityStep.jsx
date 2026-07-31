@@ -744,10 +744,42 @@ export function IdentityStep() {
                     </FormControl>
                   </Box>
 
-                  {/* Placeholder for future advanced options */}
-                  <Text fontSize="xs" color="warmGray.400" fontStyle="italic">
-                    More configuration options coming soon...
-                  </Text>
+                  {/* Participation-token identity. Empty = the contract defaults,
+                      "<orgName> Token" / "PT". Limits match ParticipationToken's
+                      setName/setSymbol (64 / 16), so whatever ships here can still
+                      be edited by governance later. */}
+                  <Box>
+                    <Text fontSize="sm" fontWeight="600" color="warmGray.700" mb={1}>
+                      Contribution Token
+                    </Text>
+                    <Text fontSize="xs" color={helperColor} lineHeight="tall" mb={3}>
+                      Members earn this token for contributions. Leave blank to use
+                      &ldquo;{organization.name?.trim() || 'Your organization'} Token&rdquo; and
+                      the ticker PT.
+                    </Text>
+                    <HStack spacing={3} align="flex-start">
+                      <FormControl isInvalid={(organization.tokenName || '').length > 64}>
+                        <FormLabel fontSize="xs" color={helperColor}>Token name</FormLabel>
+                        <Input
+                          size="sm"
+                          value={organization.tokenName || ''}
+                          onChange={(e) => handleInputChange('tokenName', e.target.value)}
+                          placeholder={`${organization.name?.trim() || 'Your organization'} Token`}
+                          maxLength={64}
+                        />
+                      </FormControl>
+                      <FormControl isInvalid={(organization.tokenSymbol || '').length > 16} maxW="140px">
+                        <FormLabel fontSize="xs" color={helperColor}>Ticker</FormLabel>
+                        <Input
+                          size="sm"
+                          value={organization.tokenSymbol || ''}
+                          onChange={(e) => handleInputChange('tokenSymbol', e.target.value.toUpperCase())}
+                          placeholder="PT"
+                          maxLength={16}
+                        />
+                      </FormControl>
+                    </HStack>
+                  </Box>
                 </VStack>
               </Box>
             )}

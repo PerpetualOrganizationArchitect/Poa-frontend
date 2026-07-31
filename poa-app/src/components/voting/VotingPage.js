@@ -204,7 +204,15 @@ const VotingPage = () => {
     return handleSubmit(eligibilityModuleAddress, contractAddresses);
   }, [handleSubmit, eligibilityModuleAddress, contractAddresses]);
 
+  // True only when the modal was opened by a deep link that pre-filled the
+  // proposal (the /rules "Propose a change" rows and ?propose=<template>).
+  // Those land on the step their payload already satisfies. A plain
+  // "Create vote" click must always start at the intent gallery — even when a
+  // previous, abandoned attempt left the form fully configured.
+  const [deepLinkedOpen, setDeepLinkedOpen] = useState(false);
+
   const handleCreatePollClick = useCallback(() => {
+    setDeepLinkedOpen(false);
     setShowCreatePoll(prev => !prev);
   }, []);
 
@@ -245,6 +253,7 @@ const VotingPage = () => {
       setterValues,
       setterParams: [],
     });
+    setDeepLinkedOpen(true);
     setShowCreatePoll(true);
   }, [restoreProposal, votingClasses]);
 
@@ -414,6 +423,7 @@ const VotingPage = () => {
 
           <CreateVoteModal
             isOpen={showCreatePoll}
+            deepLinkedOpen={deepLinkedOpen}
             onClose={handleCreatePollClick}
             proposal={proposal}
             handleInputChange={handleInputChange}

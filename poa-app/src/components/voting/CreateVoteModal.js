@@ -15,6 +15,7 @@ import {
   FormLabel,
   FormErrorMessage,
   Input,
+  Select,
   Textarea,
   Text,
   Box,
@@ -41,8 +42,20 @@ import RoleConfigurator, { parseAutoTitle as parseRoleAutoTitle } from "./RoleCo
 import { inputStyles } from '@/components/shared/glassStyles';
 import IntentGallery, { INTENT_OPTIONS } from "./create/IntentGallery";
 import DurationField from "./create/DurationField";
-import BallotReview from "./create/BallotReview";
+import BallotReview, { BINDING_REVIEW_BADGE } from "./create/BallotReview";
 import useVoteDraft from "@/hooks/useVoteDraft";
+import {
+  STEP_INTENT,
+  STEP_CONFIG,
+  STEP_DETAILS,
+  STEP_REVIEW,
+  CONFIG_TYPES,
+  stepsForType,
+  resolveEntryStep,
+  STEP_ERROR_KEYS,
+} from "./create/wizardSteps";
+import { configError as computeConfigError, isComplete } from "@/lib/voting/proposalChecks";
+import { applyAutoCopy, backfillProvenance } from "./create/autoCopy";
 
 const glassLayerStyle = {
   position: "absolute",
@@ -58,12 +71,27 @@ const glassLayerStyle = {
 // Fields the confirm step + who-can-vote helpers rely on. Types that route
 // through official Blended-voting governance.
 const BINDING_TYPES = new Set(["election", "createRole", "setter"]);
-// Types that get the "Review your ballot" confirm step (the others already
-// render live previews inside their configurators).
-const REVIEW_TYPES = new Set(["normal", "transferFunds"]);
+
+// Per-step heading shown under "Create a vote". The config step's title depends
+// on the intent, since "Choose the rule change" and "Set up the election" are
+// very different screens.
+const CONFIG_STEP_TITLES = {
+  setter: "Choose the rule change",
+  election: "Set up the election",
+  createRole: "Configure the role",
+  transferFunds: "Choose the payment",
+};
+
+function stepTitle(step, type) {
+  if (step === STEP_CONFIG) return CONFIG_STEP_TITLES[type] || "Configure";
+  if (step === STEP_DETAILS) return "Vote details";
+  if (step === STEP_REVIEW) return "Review your ballot";
+  return "";
+}
 
 const CreateVoteModal = ({
   isOpen,
+  deepLinkedOpen = false,
   onClose,
   proposal,
   handleInputChange,
@@ -94,6 +122,13 @@ const CreateVoteModal = ({
   const { projectsData } = useProjectContext() || {};
   const orgNetwork = getNetworkByChainId(orgChainId);
   const nativeCurrencySymbol = orgNetwork?.nativeCurrency?.symbol || 'ETH';
+
+  // Assets a treasury payout can move. Native only for now — see the Asset
+  // field below for why. Adding ERC20s here is the whole change once
+  // PaymentManager.withdraw works for tokens.
+  const transferAssetOptions = useMemo(() => ([
+    { symbol: nativeCurrencySymbol, label: `${nativeCurrencySymbol} — the group's native currency` },
+  ]), [nativeCurrencySymbol]);
   const { currentStepDef, isActive: isTourActive } = useTour();
   const isTourStep = isTourActive && currentStepDef?.id === 'create-vote-preview';
 
@@ -130,18 +165,90 @@ const CreateVoteModal = ({
     setTouched((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
   }, []);
 
-  // ---- Confirm step (normal + transferFunds only) ----
-  const [reviewing, setReviewing] = useState(false);
-  // Reset review state whenever the modal closes or the type changes away from
-  // a reviewable type.
+  // ---- Wizard step machine ----
+  // The gallery renders off `step`, NOT off `!proposal.type`. That is what makes
+  // a fresh open always land on "what do you want to do?" even though
+  // defaultProposal.type is still "normal" — and it keeps `type: ''` unreachable,
+  // so useProposalForm's empty-type branches (buildProposalData's trailing else,
+  // the validator switchboard, VotingPage's DD-vs-hybrid routing) stay dead.
+  const [step, setStep] = useState(STEP_INTENT);
+
+  const steps = useMemo(() => stepsForType(proposal.type), [proposal.type]);
+  const stepIndex = steps.indexOf(step);
+  const nextStep = steps[stepIndex + 1] || null;
+  const prevStep = stepIndex > 0 ? steps[stepIndex - 1] : null;
+
+  // Re-derive the entry step on every open. One walk covers all of it: a
+  // pristine form stops at the gallery, a deep-linked setter payload
+  // (VotingPage.handleProposeRuleChange batches restoreProposal + open in the
+  // same tick) stops at details, a restored draft stops where it left off.
   useEffect(() => {
-    if (!isOpen) setReviewing(false);
-  }, [isOpen]);
+    if (!isOpen) return;
+    // A deep link arrives with its config already satisfied and should land on
+    // the step that payload reaches. Every other open starts at the gallery —
+    // including reopening after abandoning a half-built vote, where resolving
+    // to "first incomplete step" would drop the member back into the middle of
+    // a flow they just left. Draft restore does its own resolve, on click.
+    setStep(deepLinkedOpen ? resolveEntryStep(proposal, { isComplete }) : STEP_INTENT);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, deepLinkedOpen]);
+
+  // Clamp if the type changes out from under the current step.
   useEffect(() => {
-    if (!REVIEW_TYPES.has(proposal.type)) setReviewing(false);
+    setStep((s) => (stepsForType(proposal.type).includes(s) ? s : STEP_INTENT));
   }, [proposal.type]);
 
+  // ---- transferFunds prefill ----
+  // The payout IS the decision, so once recipient + amount are valid the title
+  // and description write themselves. The other four types are prefilled by
+  // their own configurators; this one has no configurator to own it.
+  // applyAutoCopy returns {} once the copy matches what we last wrote (or the
+  // member has edited it), so this settles after one pass instead of looping.
+  useEffect(() => {
+    if (proposal.type !== 'transferFunds') return;
+    const address = proposal.transferAddress || '';
+    const amount = parseFloat(proposal.transferAmount);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address) || isNaN(amount) || amount <= 0) return;
+    const short = `${address.slice(0, 6)}…${address.slice(-4)}`;
+    // Unlike the configurators, this effect refires on every keystroke — so an
+    // empty field here means the member is deleting our suggestion, not that
+    // there is nothing yet. Refilling it would make the box impossible to clear.
+    const clearedTitle = !proposal.name && Boolean(proposal.autoTitle);
+    const clearedDescription = !proposal.description && Boolean(proposal.autoDescription);
+    const patch = applyAutoCopy(proposal, {
+      title: clearedTitle ? null : `Send ${amount} ${nativeCurrencySymbol} to ${short}`,
+      description: clearedDescription
+        ? null
+        : `If this vote passes: send ${amount} ${nativeCurrencySymbol} from the treasury to ${short}.`,
+    });
+    if (Object.keys(patch).length > 0) handleSetterChange(patch);
+  }, [
+    proposal.type, proposal.transferAddress, proposal.transferAmount,
+    proposal.name, proposal.description, proposal.autoTitle, proposal.autoDescription,
+    nativeCurrencySymbol, handleSetterChange, proposal,
+  ]);
+
   const isBinding = BINDING_TYPES.has(proposal.type);
+
+  // The ballot as voters will actually see it. The binding types don't keep
+  // their choices in `proposal.options` — those are synthesized at submit time
+  // — so without this the review screen reads "(no options yet)" for a vote
+  // that is really Apply Changes / Reject. Mirrors the optionNames built in
+  // useProposalForm.buildProposalData for each type.
+  const reviewOptions = useMemo(() => {
+    if (proposal.type === 'setter') return ['Apply Changes', 'Reject'];
+    if (proposal.type === 'createRole') return ['Create role', 'Reject'];
+    if (proposal.type === 'election') {
+      const names = (proposal.electionCandidates || []).map(c => c.name).filter(Boolean);
+      return proposal.electionIncludeNoOneOption ? [...names, 'No One'] : names;
+    }
+    // normal + transferFunds already derive correctly inside BallotReview.
+    return undefined;
+  }, [
+    proposal.type,
+    proposal.electionCandidates,
+    proposal.electionIncludeNoOneOption,
+  ]);
   const selectedIntent = useMemo(
     () => INTENT_OPTIONS.find(o => o.type === proposal.type),
     [proposal.type],
@@ -209,15 +316,28 @@ const CreateVoteModal = ({
     return out;
   }, [fieldErrors, touched]);
 
-  const firstError = useMemo(() => {
-    const order = ['name', 'time', 'options', 'transferAddress', 'transferAmount', 'restrictedHatIds'];
-    for (const k of order) if (fieldErrors[k]) return fieldErrors[k];
-    return null;
-  }, [fieldErrors]);
+  // The config screen's gate is a predicate, not a field-key list — it is the
+  // same expression the submit-time validators use (lifted into
+  // lib/voting/proposalChecks so there is exactly one copy of each message).
+  const configError = useMemo(() => computeConfigError(proposal), [proposal]);
 
-  // Setter/election/createRole have their own deeper validation at submit time;
-  // for the disabled-button gate we only block on the basic inline errors that
-  // apply to the currently-selected type.
+  // Only complain about something the member can actually see. A blank title on
+  // the details step must not disable Next on the config step, and the
+  // disabled-button tooltip can never name a field two screens away.
+  //
+  // `review` is the last gate, so it ORs in configError too: pressing "Create
+  // vote" can never toast about a config problem the user would have to
+  // navigate back to.
+  const firstError = useMemo(() => {
+    if (step === STEP_CONFIG) return configError;
+    for (const k of (STEP_ERROR_KEYS[step] || [])) {
+      if (fieldErrors[k]) return fieldErrors[k];
+    }
+    if (step === STEP_REVIEW) return configError;
+    return null;
+  }, [step, configError, fieldErrors]);
+
+  // Gates leaving the current step (and, on the last step, submitting).
   const canSubmit = !firstError && !isTourStep;
 
   const whoCanVoteLabel = useMemo(() => {
@@ -231,14 +351,20 @@ const CreateVoteModal = ({
 
   // ---- Type selection via the intent gallery / change-chip ----
   const handleSelectIntent = useCallback((type) => {
-    handleProposalTypeChange({ target: { value: type } });
-  }, [handleProposalTypeChange]);
+    // Re-picking the card you already chose must not wipe your work —
+    // handleProposalTypeChange clears options / election fields / roleConfig.
+    if (type !== proposal.type) handleProposalTypeChange({ target: { value: type } });
+    setStep(CONFIG_TYPES.has(type) ? STEP_CONFIG : STEP_DETAILS);
+  }, [proposal.type, handleProposalTypeChange]);
 
-  const handleChangeType = useCallback(() => {
-    // Return to the gallery by clearing the type (synthesize the empty select).
-    handleProposalTypeChange({ target: { value: '' } });
-    setReviewing(false);
-  }, [handleProposalTypeChange]);
+  // Back to the gallery is now pure navigation. It used to synthesize an empty
+  // select, which ran the full clear branch in handleProposalTypeChange and
+  // destroyed everything the member had entered just for looking.
+  const handleChangeType = useCallback(() => setStep(STEP_INTENT), []);
+
+  const goBack = useCallback(() => {
+    if (prevStep) setStep(prevStep);
+  }, [prevStep]);
 
   // ---- Restore draft on open ----
   const handleRestoreDraft = useCallback(() => {
@@ -246,19 +372,29 @@ const CreateVoteModal = ({
     // handleSetterChange is the form's general-purpose merge setter — safe to
     // restore any subset of fields (options, setterValues, roleConfig, election
     // arrays, restrictions, etc.) in one shot.
+    //
+    // backfillProvenance teaches a draft saved before autoTitle/autoDescription
+    // existed which of its copy we generated, so restoring one keeps its
+    // regenerate-on-change behaviour instead of freezing as "user typed this".
+    const restored = backfillProvenance(draft.pendingDraft);
     draft.markRestored();
-    handleSetterChange({ ...draft.pendingDraft });
+    handleSetterChange({ ...restored });
+    setStep(resolveEntryStep(restored, { isComplete }));
   }, [draft, handleSetterChange]);
 
   const handleStartFresh = useCallback(() => {
     draft.startFresh();
-    // Reset back to the intent gallery so "start fresh" is a clean slate.
     handleProposalTypeChange({ target: { value: 'normal' } });
     handleSetterChange({
-      name: '', description: '', time: 72, options: ['', ''],
+      name: '', description: '', autoTitle: '', autoDescription: '',
+      time: 72, options: ['', ''],
       transferAddress: '', transferAmount: '', isRestricted: false, restrictedHatIds: [],
+      // The setter block was never cleared here, so "Start fresh" used to leave
+      // the previous rule change armed behind a blank-looking form.
+      setterMode: 'template', setterTemplate: '', setterCategory: '',
+      setterContract: '', setterFunction: '', setterValues: {}, setterParams: [],
     });
-    setReviewing(false);
+    setStep(STEP_INTENT);
   }, [draft, handleProposalTypeChange, handleSetterChange]);
 
   // ---- Submit ----
@@ -266,27 +402,27 @@ const CreateVoteModal = ({
     const result = await handlePollCreated();
     if (result === true) {
       draft.clear();
-      setReviewing(false);
+      // Leave a clean gallery behind rather than a review screen over a form
+      // that useProposalForm has already reset.
+      setStep(STEP_INTENT);
     }
   }, [handlePollCreated, draft]);
 
   const handleFooterPrimary = useCallback(() => {
     if (isTourStep) return;
-    // For reviewable types, first press goes to the review step.
-    if (REVIEW_TYPES.has(proposal.type) && !reviewing) {
-      setReviewing(true);
+    if (nextStep) {
+      setStep(nextStep);
       return;
     }
     doSubmit();
-  }, [isTourStep, proposal.type, reviewing, doSubmit]);
+  }, [isTourStep, nextStep, doSubmit]);
 
-  const hasChosenType = Boolean(proposal.type);
   const primaryLabel = isTourStep
     ? 'Demo only'
-    : reviewing
-      ? 'Create vote'
-      : REVIEW_TYPES.has(proposal.type)
-        ? 'Review ballot'
+    : nextStep === STEP_REVIEW
+      ? 'Review ballot'
+      : nextStep
+        ? 'Next'
         : 'Create vote';
 
   return (
@@ -311,6 +447,11 @@ const CreateVoteModal = ({
 
         <ModalHeader color="white" fontSize="xl" fontWeight="bold" pb={2}>
           Create a vote
+          {step !== STEP_INTENT && (
+            <Text fontSize="xs" fontWeight="medium" color="gray.400" mt={0.5} noOfLines={1}>
+              Step {stepIndex + 1} of {steps.length} · {stepTitle(step, proposal.type)}
+            </Text>
+          )}
         </ModalHeader>
         <ModalCloseButton color="white" />
 
@@ -334,15 +475,8 @@ const CreateVoteModal = ({
               </Alert>
             )}
 
-            {reviewing ? (
-              /* ---- Review your ballot (normal + transferFunds) ---- */
-              <BallotReview
-                proposal={proposal}
-                whoCanVoteLabel={whoCanVoteLabel}
-                nativeCurrencySymbol={nativeCurrencySymbol}
-              />
-            ) : !hasChosenType ? (
-              /* ---- Intent gallery ---- */
+            {step === STEP_INTENT ? (
+              /* ---- Step 1: intent gallery ---- */
               <Box>
                 <Text
                   fontSize="xs"
@@ -358,18 +492,21 @@ const CreateVoteModal = ({
               </Box>
             ) : (
               <>
-                {/* Selected-type chip + change */}
-                <HStack justify="space-between" flexWrap="wrap" spacing={2}>
-                  <Tag size="md" colorScheme="purple" variant="subtle" borderRadius="full">
-                    <TagLabel>{selectedIntent?.title || proposal.type}</TagLabel>
-                  </Tag>
-                  <Link fontSize="sm" color="purple.200" onClick={handleChangeType}>
-                    change
-                  </Link>
-                </HStack>
+                {/* Selected-type chip + change. Hidden on review, which carries
+                    its own BINDING/POLL badge. */}
+                {step !== STEP_REVIEW && (
+                  <HStack justify="space-between" flexWrap="wrap" spacing={2}>
+                    <Tag size="md" colorScheme="purple" variant="subtle" borderRadius="full">
+                      <TagLabel>{selectedIntent?.title || proposal.type}</TagLabel>
+                    </Tag>
+                    <Link fontSize="sm" color="purple.200" onClick={handleChangeType}>
+                      change
+                    </Link>
+                  </HStack>
+                )}
 
                 {/* Binding-governance banner */}
-                {isBinding && (
+                {isBinding && step !== STEP_REVIEW && (
                   <Alert status="info" borderRadius="md" bg="rgba(66, 153, 225, 0.15)" fontSize="sm">
                     <AlertIcon color="blue.300" />
                     <Text color="gray.200">
@@ -379,7 +516,19 @@ const CreateVoteModal = ({
                   </Alert>
                 )}
 
+                {/* ---- Review your ballot (final step, every type) ---- */}
+                {step === STEP_REVIEW && (
+                  <BallotReview
+                    proposal={proposal}
+                    whoCanVoteLabel={whoCanVoteLabel}
+                    nativeCurrencySymbol={nativeCurrencySymbol}
+                    {...(isBinding ? { badge: BINDING_REVIEW_BADGE } : {})}
+                    {...(reviewOptions ? { options: reviewOptions } : {})}
+                  />
+                )}
+
                 {/* Vote Details Section */}
+                {step === STEP_DETAILS && (
                 <Box>
                   <Text
                     fontSize="xs"
@@ -430,22 +579,10 @@ const CreateVoteModal = ({
                       isInvalid={Boolean(visibleErrors.time)}
                       errorMessage={visibleErrors.time}
                     />
-                  </VStack>
-                </Box>
 
-                {/* Vote Configuration Section */}
-                <Box>
-                  <Text
-                    fontSize="xs"
-                    fontWeight="bold"
-                    color="purple.300"
-                    mb={3}
-                    textTransform="uppercase"
-                    letterSpacing="wide"
-                  >
-                    Vote Configuration
-                  </Text>
-                  <VStack spacing={4} align="stretch">
+                    {/* A basic poll's options are its only decision, so they
+                        stay here beside the title rather than earning a screen
+                        of their own. */}
                     {proposal.type === "normal" && (
                       <FormControl isInvalid={Boolean(visibleErrors.options)}>
                         <FormLabel color="gray.200" fontSize="sm">
@@ -490,7 +627,16 @@ const CreateVoteModal = ({
                         </VStack>
                       </FormControl>
                     )}
+                  </VStack>
+                </Box>
+                )}
 
+                {/* Vote Configuration Section — the type-specific decisions.
+                    On its own screen, before the details, so the title and
+                    description can arrive pre-filled from these answers. */}
+                {step === STEP_CONFIG && (
+                <Box>
+                  <VStack spacing={4} align="stretch">
                     {proposal.type === "election" && (
                       <ElectionConfigurator
                         proposal={proposal}
@@ -513,6 +659,31 @@ const CreateVoteModal = ({
 
                     {proposal.type === "transferFunds" && (
                       <>
+                        {/* Asset. Only the chain's native currency is offered
+                            today: proposal batches execute as the Executor, and
+                            an ERC20 payout has to route through
+                            PaymentManager.withdraw, which reverts
+                            InsufficientFunds on the deployed contract (verified
+                            on a Gnosis fork). Driven off a list so adding tokens
+                            is a data change once contracts support it. */}
+                        <FormControl>
+                          <FormLabel color="gray.200" fontSize="sm">
+                            Asset
+                          </FormLabel>
+                          <Select
+                            value={nativeCurrencySymbol}
+                            isDisabled={transferAssetOptions.length <= 1}
+                            onChange={() => {}}
+                            {...inputStyles}
+                          >
+                            {transferAssetOptions.map((asset) => (
+                              <option key={asset.symbol} value={asset.symbol} style={{ background: '#1a1a2e' }}>
+                                {asset.label}
+                              </option>
+                            ))}
+                          </Select>
+                        </FormControl>
+
                         <FormControl isInvalid={Boolean(visibleErrors.transferAddress)}>
                           <FormLabel color="gray.200" fontSize="sm">
                             Recipient Address
@@ -586,9 +757,10 @@ const CreateVoteModal = ({
                     )}
                   </VStack>
                 </Box>
+                )}
 
                 {/* Voting Restrictions — only for direct-democracy types */}
-                {proposal.type !== "election" && proposal.type !== "setter" && proposal.type !== "createRole" && (
+                {step === STEP_DETAILS && proposal.type !== "election" && proposal.type !== "setter" && proposal.type !== "createRole" && (
                   <Box>
                     <Text
                       fontSize="xs"
@@ -664,10 +836,10 @@ const CreateVoteModal = ({
 
         <ModalFooter borderTop="1px solid" borderColor="whiteAlpha.200" pt={4}>
           <HStack spacing={3} w="100%" justify="flex-end">
-            {reviewing ? (
+            {prevStep ? (
               <Button
                 variant="ghost"
-                onClick={() => setReviewing(false)}
+                onClick={goBack}
                 color="gray.400"
                 _hover={{ bg: "whiteAlpha.100", color: "white" }}
               >
@@ -684,8 +856,10 @@ const CreateVoteModal = ({
               </Button>
             )}
             {/* No primary while the intent gallery is open — a grayed CTA next
-                to "what do you want to do?" reads broken, not disabled. */}
-            {hasChosenType && (
+                to "what do you want to do?" reads broken, not disabled. The
+                tour is the exception: its disabled "Demo only" button is the
+                affordance the create-vote-preview step points at. */}
+            {(step !== STEP_INTENT || isTourStep) && (
               <Tooltip
                 label={isTourStep
                   ? "Demo only — finish the tour to create a real proposal"

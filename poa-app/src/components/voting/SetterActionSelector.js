@@ -4,7 +4,7 @@
  * Supports both template mode (user-friendly) and advanced mode (raw functions)
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   VStack,
   HStack,
@@ -27,7 +27,6 @@ import {
   FiClipboard,
   FiTag,
   FiChevronRight,
-  FiArrowLeft,
   FiChevronDown,
   FiTerminal,
 } from 'react-icons/fi';
@@ -39,7 +38,9 @@ import {
   RAW_FUNCTIONS,
   getTemplatesByCategory,
   getTemplateById,
+  SETTER_TITLE_FALLBACK,
 } from '@/config/setterDefinitions';
+import { applyAutoCopy } from '@/components/voting/create/autoCopy';
 import { inputStyles } from '@/components/shared/glassStyles';
 
 const categoryIcons = {
@@ -210,6 +211,79 @@ const SetterPreview = ({ template, values, roleNames, projectNames, currentValue
 };
 
 /**
+ * Does this param actually hold a value? Empty strings and empty arrays are
+ * "not filled"; `0` and `false` are real answers.
+ */
+const hasValue = (value) => {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'string') return value.trim() !== '';
+  return true;
+};
+
+/**
+ * Has anything at all been entered in the setter block? A
+ * `?propose=…&prefill_root=…&prefill_cid=…` deep link lands here fully
+ * populated, so "empty" has to mean every field, not just the ones the current
+ * mode happens to read.
+ */
+const hasSetterPayload = (proposal) => {
+  const p = proposal || {};
+  return Boolean(p.setterTemplate)
+    || Boolean(p.setterContract)
+    || Boolean(p.setterFunction)
+    || Object.values(p.setterValues || {}).some(hasValue)
+    || (p.setterParams || []).some(hasValue);
+};
+
+/**
+ * The member-facing description for a template, or null when it isn't worth
+ * writing yet. `preview()` is not defensive about partial values — it throws on
+ * some templates and renders half-finished copy ("Change blended voting
+ * threshold to %") on others — so we only generate once every required param
+ * has a value. The edit that completes the set writes the description, and
+ * every edit after that keeps it in sync.
+ */
+function describeTemplate(template, values, roleNames, projectNames) {
+  if (!template || typeof template.preview !== 'function') return null;
+
+  const filled = values || {};
+  const inputs = template.inputs || [];
+  const requiredFilled = inputs.every(input => input.optional || hasValue(filled[input.name]));
+  // Templates whose params are *all* optional (change-token-metadata) preview as
+  // "No changes specified" until one is filled — not worth putting on a ballot.
+  const anyFilled = inputs.length === 0 || inputs.some(input => hasValue(filled[input.name]));
+  if (!requiredFilled || !anyFilled) return null;
+
+  let line;
+  try {
+    line = template.preview(filled, roleNames, projectNames);
+  } catch {
+    return null;
+  }
+  if (typeof line !== 'string' || line.trim() === '') return null;
+  return `If this vote passes: ${line}`;
+}
+
+/**
+ * Drop the copy this flow generated, leaving anything the member typed alone.
+ * Mirrors applyAutoCopy's provenance test in the other direction.
+ */
+function clearAutoCopy(proposal) {
+  const p = proposal || {};
+  const out = {};
+  if (p.autoTitle && p.name === p.autoTitle) {
+    out.name = '';
+    out.autoTitle = '';
+  }
+  if (p.autoDescription && p.description === p.autoDescription) {
+    out.description = '';
+    out.autoDescription = '';
+  }
+  return out;
+}
+
+/**
  * Main SetterActionSelector component
  */
 const SetterActionSelector = ({
@@ -222,11 +296,15 @@ const SetterActionSelector = ({
   votingClasses = [],
   currentValues = null,
 }) => {
-  const [mode, setMode] = useState('template');
-  const [selectedCategory, setSelectedCategory] = useState(null);
+  // Everything this screen shows is derived from the proposal, never from local
+  // state: the wizard's Back/Next remounts this component, and a category (or a
+  // restored `setterMode: 'advanced'`) held locally would desync from the state
+  // the validators read.
+  const mode = proposal.setterMode === 'advanced' ? 'advanced' : 'template';
+  const selectedCategory = proposal.setterCategory || null;
   // "Developer mode" disclosure — the raw-ABI path is a footgun for co-op
   // members, so it stays collapsed until deliberately opened.
-  const [devModeOpen, setDevModeOpen] = useState(false);
+  const devModeOpen = mode === 'advanced';
 
   // Get the selected template if in template mode
   const selectedTemplate = useMemo(() => {
@@ -254,6 +332,16 @@ const SetterActionSelector = ({
     return null;
   }, [mode, proposal.setterContract, proposal.setterFunction]);
 
+  // The title/description this action suggests, as a proposal patch. The title
+  // is the curated per-template string — never `preview({})`, which is empty or
+  // wrong for most templates before their params are filled.
+  const autoCopyFor = (template, values, { withDescription = true } = {}) => applyAutoCopy(proposal, {
+    title: template ? SETTER_TITLE_FALLBACK(template) : null,
+    description: withDescription
+      ? describeTemplate(template, values, roleNames, projectNames)
+      : null,
+  });
+
   // Handle template selection
   const handleTemplateSelect = (templateId) => {
     const template = getTemplateById(templateId);
@@ -268,47 +356,75 @@ const SetterActionSelector = ({
     }, {}) || {};
     onChange({
       setterMode: 'template',
+      // Remember the category so a deep-linked action (which arrives with no
+      // category) can still walk back to its sibling list.
+      setterCategory: template?.category || selectedCategory || '',
       setterTemplate: templateId,
       setterContract: template?.contract || '',
       setterFunction: template?.functionName || '',
       setterValues: initialValues,
       setterParams: [],
+      // A `requiresContext` template (change-voting-split) is seeded with the
+      // CURRENT on-chain values, so describing it before any edit would announce
+      // a change that isn't one. Its description arrives on the first edit.
+      ...autoCopyFor(template, initialValues, { withDescription: !template?.requiresContext }),
     });
   };
 
-  // Handle back navigation
-  const handleBack = () => {
-    if (selectedTemplate) {
-      onChange({
-        setterTemplate: '',
-        setterValues: {},
-      });
-    } else if (selectedCategory) {
-      setSelectedCategory(null);
-    }
-  };
-
-  // Handle mode switch
-  const handleModeSwitch = (newMode) => {
-    setMode(newMode);
-    setSelectedCategory(null);
+  // Step back out of the chosen action to its sibling list. Not a wizard Back —
+  // the footer owns that — but without it a mis-picked action is unreachable,
+  // since the footer's Back leaves the config step entirely.
+  const handleChangeTemplate = () => {
     onChange({
-      setterMode: newMode,
       setterTemplate: '',
-      setterContract: '',
-      setterFunction: '',
       setterValues: {},
-      setterParams: [],
+      // The suggested copy described the action being abandoned.
+      ...clearAutoCopy(proposal),
     });
+  };
+
+  // Handle mode switch.
+  //
+  // This used to blank all six setter fields on every toggle. The disclosure now
+  // sits on a screen of its own where it gets toggled far more often, and a
+  // `?propose=…&prefill_root=…&prefill_cid=…` deep link would be silently
+  // destroyed by a stray click — so the block is only reset while it is still
+  // empty. Submit branches on `setterMode`, so a surviving payload from the
+  // other mode can't leak into the transaction.
+  const handleModeSwitch = (newMode) => {
+    const started = hasSetterPayload(proposal);
+    const update = { setterMode: newMode };
+    if (!started) {
+      // Nothing entered yet, so the browse position is the only thing lost.
+      update.setterCategory = '';
+      update.setterTemplate = '';
+      update.setterContract = '';
+      update.setterFunction = '';
+      update.setterValues = {};
+      update.setterParams = [];
+    }
+
+    // The generated copy describes the template path. Drop it on the way into
+    // Developer mode (which has no auto-copy of its own), and re-derive it on
+    // the way back out if the action survived the trip.
+    const survivingTemplate = newMode === 'template' && started
+      ? getTemplateById(proposal.setterTemplate)
+      : null;
+    Object.assign(
+      update,
+      survivingTemplate
+        ? autoCopyFor(survivingTemplate, proposal.setterValues || {})
+        : clearAutoCopy(proposal),
+    );
+
+    onChange(update);
   };
 
   // Toggle the Developer-mode disclosure. Opening switches the form into
   // advanced (raw-ABI) mode; collapsing returns it to the safe template mode so
   // a stale raw call can't leak into submit.
   const toggleDevMode = () => {
-    const nextOpen = !devModeOpen;
-    setDevModeOpen(nextOpen);
-    handleModeSwitch(nextOpen ? 'advanced' : 'template');
+    handleModeSwitch(devModeOpen ? 'template' : 'advanced');
   };
 
   return (
@@ -328,7 +444,7 @@ const SetterActionSelector = ({
                     categoryKey={key}
                     category={category}
                     isSelected={selectedCategory === key}
-                    onClick={() => setSelectedCategory(key)}
+                    onClick={() => onChange({ setterCategory: key })}
                   />
                 ))}
               </SimpleGrid>
@@ -337,20 +453,20 @@ const SetterActionSelector = ({
 
           {selectedCategory && !proposal.setterTemplate && (
             <>
-              <HStack>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  leftIcon={<FiArrowLeft />}
-                  onClick={handleBack}
-                  color="gray.400"
-                  _hover={{ color: 'white' }}
-                >
-                  Back
-                </Button>
+              <HStack justify="space-between">
                 <Text fontSize="sm" color="gray.300" fontWeight="medium">
                   {SETTER_CATEGORIES[selectedCategory]?.name}
                 </Text>
+                <Button
+                  size="xs"
+                  variant="link"
+                  onClick={() => onChange({ setterCategory: '' })}
+                  color="gray.400"
+                  fontWeight="medium"
+                  _hover={{ color: 'white' }}
+                >
+                  Change category
+                </Button>
               </HStack>
               <VStack spacing={2} align="stretch">
                 {categoryTemplates.map((template) => (
@@ -372,23 +488,25 @@ const SetterActionSelector = ({
 
           {selectedTemplate && (
             <>
-              <HStack>
+              <HStack justify="space-between">
+                <HStack>
+                  <Text fontSize="sm" color="white" fontWeight="bold">
+                    {selectedTemplate.name}
+                  </Text>
+                  {selectedTemplate.dangerLevel === 'critical' && (
+                    <Badge colorScheme="red">Critical Action</Badge>
+                  )}
+                </HStack>
                 <Button
-                  size="sm"
-                  variant="ghost"
-                  leftIcon={<FiArrowLeft />}
-                  onClick={handleBack}
+                  size="xs"
+                  variant="link"
+                  onClick={handleChangeTemplate}
                   color="gray.400"
+                  fontWeight="medium"
                   _hover={{ color: 'white' }}
                 >
-                  Back
+                  Change action
                 </Button>
-                <Text fontSize="sm" color="white" fontWeight="bold">
-                  {selectedTemplate.name}
-                </Text>
-                {selectedTemplate.dangerLevel === 'critical' && (
-                  <Badge colorScheme="red">Critical Action</Badge>
-                )}
               </HStack>
 
               {selectedTemplate.warning && (
@@ -400,17 +518,32 @@ const SetterActionSelector = ({
                 </Alert>
               )}
 
-              <SetterParamInputs
-                inputs={selectedTemplate.inputs.map(input =>
-                  input.type === 'votingClassWeights'
-                    ? { ...input, currentClasses: votingClasses }
-                    : input
-                )}
-                values={proposal.setterValues || {}}
-                onChange={(values) => onChange({ setterValues: values })}
-                allRoles={allRoles}
-                allProjects={allProjects}
-              />
+              {/* The four Emergency Controls templates take no params —
+                  SetterParamInputs would render a "requires no additional
+                  configuration" box, so go straight to the preview instead. */}
+              {selectedTemplate.inputs?.length > 0 && (
+                <SetterParamInputs
+                  inputs={selectedTemplate.inputs.map(input =>
+                    input.type === 'votingClassWeights'
+                      ? { ...input, currentClasses: votingClasses }
+                      : input
+                  )}
+                  values={proposal.setterValues || {}}
+                  onChange={(values) => onChange({
+                    setterValues: values,
+                    // Keep the suggested description tracking the params. The
+                    // title was written when the action was picked and is the
+                    // member's to edit from here on.
+                    ...applyAutoCopy(proposal, {
+                      description: describeTemplate(
+                        selectedTemplate, values, roleNames, projectNames,
+                      ),
+                    }),
+                  })}
+                  allRoles={allRoles}
+                  allProjects={allProjects}
+                />
+              )}
 
               <SetterPreview
                 template={selectedTemplate}
@@ -519,14 +652,21 @@ const SetterActionSelector = ({
         </VStack>
       </Collapse>
 
-      <Divider borderColor="rgba(148, 115, 220, 0.2)" />
-
-      <Alert status="info" borderRadius="md" bg="rgba(66, 153, 225, 0.15)">
-        <AlertIcon color="blue.300" />
-        <Text fontSize="sm" color="gray.300">
-          This creates a Yes/No vote. If "Yes" wins, the settings will be updated automatically.
-        </Text>
-      </Alert>
+      {/* Held back until an action is actually chosen. The first screen of this
+          step is deliberately just "pick a category" + Developer mode — a
+          trailing explainer about a Yes/No vote is noise before there is
+          anything to vote on. */}
+      {(selectedTemplate || selectedRawFunction) && (
+        <>
+          <Divider borderColor="rgba(148, 115, 220, 0.2)" />
+          <Alert status="info" borderRadius="md" bg="rgba(66, 153, 225, 0.15)">
+            <AlertIcon color="blue.300" />
+            <Text fontSize="sm" color="gray.300">
+              This creates a Yes/No vote. If "Yes" wins, the settings will be updated automatically.
+            </Text>
+          </Alert>
+        </>
+      )}
     </VStack>
   );
 };

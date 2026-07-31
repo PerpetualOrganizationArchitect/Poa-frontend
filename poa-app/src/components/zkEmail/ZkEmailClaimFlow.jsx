@@ -41,6 +41,8 @@ import { useOrgName } from '@/hooks/useOrgName';
 import { orgUrl } from '@/util/orgUrl';
 import { buildCommand, buildMailto, prefetchCircuitArtifacts } from '@/lib/zkemail/prover';
 import SignInModal from '@/components/passkey/SignInModal';
+import { decodeContractRevert } from '@/lib/errors/contractErrors';
+import ZkEmailInvitesAbi from '../../../abi/ZkEmailInvites.json';
 
 // Optional claim inbox (a Cloudflare Email Worker — see cloudflare-worker-claim-inbox/). When BOTH
 // the address and the worker URL are set, the user just sends the email — the page picks up the
@@ -54,24 +56,43 @@ const POLL_INTERVAL_MS = 2000;
 const POLL_WINDOW_MS = 600_000; // keep listening for 10 min per step-2 visit
 
 /** Submit-failure copy: bundler/paymaster reverts are hex soup — translate the common ones. The
- *  prove is cached, so every one of these is retryable with a single tap. */
+ *  prove is cached, so every one of these is retryable with a single tap.
+ *
+ *  The bundler nests the real revert bytes in its own AA2x/AA3x envelope, so the
+ *  regexes below never see a contract error NAME — only a raw selector. Decode the
+ *  revert data first (shared with every other tx path via contractErrors.js), and
+ *  fall back to the envelope patterns for genuinely bundler-side failures. */
 function friendlyRetryMessage(error) {
   const raw = String(error?.message || '');
+
+  // Transport/paymaster failures FIRST — they're transient and retryable, and the
+  // retry framing matters more than the underlying selector. This ordering also
+  // dodges a real name collision: `BudgetExceeded` is declared by both
+  // PaymasterHubErrors (gas budget) and BudgetLib (project token budget), so the
+  // shared selector map's copy would be wrong here.
   if (/AA33|paymaster|Ineligible|BudgetExceeded/i.test(raw)) {
     return 'The gas sponsor declined this attempt (it may be briefly out of budget). Your proof is saved — try again in a moment.';
   }
   if (/AA31|prefund|insufficient funds/i.test(raw)) {
     return 'Gas sponsorship hiccup — your proof is saved, just try again.';
   }
+  if (/timeout|timed out|network|fetch/i.test(raw)) {
+    return 'Network hiccup while submitting — your proof is saved, try again.';
+  }
+
+  // Everything else: decode the revert bytes the bundler wrapped. The name-based
+  // regexes below never matched these — a bundler envelope carries a raw selector,
+  // not an error name — which is why an unreadable hex string used to reach the UI.
+  const decoded = decodeContractRevert(error, raw, ZkEmailInvitesAbi);
+  if (decoded?.message) return decoded.message;
+
   if (/EmailAlreadyRegistered/i.test(raw)) {
     return 'This email address has already registered here — ask an org admin to re-open it if you need to register again.';
   }
   if (/nullifier/i.test(raw)) {
     return 'This email was already used for a claim. Send a fresh email to claim again.';
   }
-  if (/timeout|timed out|network|fetch/i.test(raw)) {
-    return 'Network hiccup while submitting — your proof is saved, try again.';
-  }
+  if (decoded?.reason) return decoded.reason;
   return raw.length > 180 ? `${raw.slice(0, 177)}…` : raw;
 }
 

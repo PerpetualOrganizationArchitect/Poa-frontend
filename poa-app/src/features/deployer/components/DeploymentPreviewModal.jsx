@@ -53,6 +53,7 @@ const PREDICTED_MODULES = [
   ['educationHub', 'Education Hub'],
   ['paymentManager', 'Payment Manager'],
   ['eligibilityModule', 'Eligibility'],
+  ['zkEmailInvites', 'Email Invites'],
 ];
 
 const short = (a) => (a && typeof a === 'string' && a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
@@ -77,7 +78,7 @@ export function DeploymentPreviewModal({ data, onConfirm, onCancel }) {
   const isOpen = !!data;
   if (!isOpen) return null;
 
-  const { orgName, isPasskey, deployerAddress, networkName, fundingEth, params, predicted } = data;
+  const { orgName, isPasskey, deployerAddress, networkName, fundingEth, params, predicted, zkEmailInvitesEnabled } = data;
   const roles = params?.roles || [];
   const tmp = params?.taskManagerPerms || { roleIndices: [], masks: [] };
   const tmpEntries = (tmp.roleIndices || []).map((ri, i) => ({
@@ -181,6 +182,13 @@ export function DeploymentPreviewModal({ data, onConfirm, onCancel }) {
                       );
                     })}
                   </SimpleGrid>
+                  {zkEmailInvitesEnabled && !isZeroAddr(predicted.zkEmailInvites) && (
+                    <Text fontSize="xs" color="warmGray.500" mt={2}>
+                      Email Invites will be deployed, but its invite list starts empty — nobody can
+                      claim a role by email until you add domains or addresses in Settings and
+                      activate the list with a governance vote.
+                    </Text>
+                  )}
                 </Box>
               </>
             )}

@@ -51,6 +51,7 @@ import {
   PiGraduationCap,
   PiHandshake,
   PiVault,
+  PiEnvelopeSimple,
   PiImage,
   PiSparkle,
   PiInfo,
@@ -955,6 +956,22 @@ export function ReviewStep({
       });
     }
 
+    // Email invites without gas sponsorship. The deployer seeds a claim budget for
+    // the invites module from this paymaster config; skip it and invitees — who by
+    // definition arrive with no wallet and no gas — have their claim rejected by
+    // the paymaster. It's recoverable later (PaymasterHub.setBudget is callable by
+    // an org operator) but there's no in-app screen for it yet, so flag it now.
+    if (state.features.zkEmailInvitesEnabled) {
+      const capEth = parseFloat(state.paymaster?.budgetCapEth);
+      const hasBudget = state.paymaster?.enabled && !isNaN(capEth) && capEth > 0;
+      if (!hasBudget) {
+        result.push({
+          key: 'zkemail-without-sponsorship',
+          message: 'Email Invites are on but gas sponsorship is off (or has no budget). People you invite arrive with no wallet and no gas, so their claim will be rejected and there is no in-app way to add the budget afterwards. Turn gas sponsorship on with a budget, or turn Email Invites off.',
+        });
+      }
+    }
+
     // Single role note
     if (state.roles.length === 1) {
       result.push({
@@ -972,7 +989,7 @@ export function ReviewStep({
     });
 
     return result;
-  }, [state.voting, state.roles, hierarchyWarnings]);
+  }, [state.voting, state.roles, state.features, state.paymaster, hierarchyWarnings]);
 
   // Summary stats
   const summaryStats = useMemo(() => ({
@@ -1449,12 +1466,22 @@ export function ReviewStep({
                 isEnabled={state.features.electionHubEnabled}
               />
               <FeatureCard
+                name="Email Invites"
+                description="Join a role by proving control of an email address. Ships switched off — curate the list in Settings after launch."
+                icon={PiEnvelopeSimple}
+                isEnabled={state.features.zkEmailInvitesEnabled}
+              />
+              <FeatureCard
                 name="Hide Treasury"
                 description="Treasury page hidden from navigation"
                 icon={PiVault}
                 isEnabled={state.features.hideTreasury}
               />
             </Flex>
+
+            {warnings.find(w => w.key === 'zkemail-without-sponsorship') && (
+              <SmartWarning message={warnings.find(w => w.key === 'zkemail-without-sponsorship').message} />
+            )}
           </VStack>
         </ReviewSectionCard>
 

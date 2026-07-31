@@ -25,7 +25,7 @@ import { getConnectorClient } from "wagmi/actions";
 import { useEthersSigner, clientToSigner } from "@/components/ProviderConverter";
 import { useAuth } from "@/context/AuthContext";
 import { useIPFScontext } from "@/context/ipfsContext";
-import { main, buildDeployCalldata } from "../../../scripts/newDeployment";
+import { buildDeployCalldata, deployWithCalldata } from "../../../scripts/newDeployment";
 import { useRouter } from "next/router";
 import { FETCH_INFRASTRUCTURE_ADDRESSES, FETCH_USERNAME_NEW } from "@/util/queries";
 import { ipfsCidToBytes32 } from "@/services/web3/utils/encoding";
@@ -75,7 +75,27 @@ const SIM_FRIENDLY_ERRORS = {
 };
 const SIM_FRIENDLY_SELECTORS = {
   '0xe3813bd4': 'a bootstrap task has no payout — set a payout greater than 0', // TaskManager InvalidPayout()
+  // POP PR #185 guards. These fire inside EligibilityModule / RoleResolver, whose
+  // error fragments are not in the OrgDeployer ABI, so they can only be matched by
+  // selector here.
+  '0x70414907': 'a role requires vouches while also being "eligible by default" — turn off "Eligible by default" for that role', // DefaultEligibilityConflictsWithVouch()
+  '0x4cd3e2eb': 'a permission points at a role that no longer exists — re-check the Permissions step', // UnregisteredRole(uint256)
+  '0xc07a9fb9': 'too many roles are granted automatically on join (the limit is 20)', // TooManyHats()
+  '0xfea59956': 'the voting-power split does not add up to 100%', // InvalidSliceSum()
+  '0x50d51d8b': 'too many voting classes are configured', // TooManyClasses()
+  '0x1e565eaa': 'the voting classes are misconfigured', // InvalidClassCount()
 };
+// Raw `require(cond, "…")` strings the deploy path can bubble up, mapped to the
+// underlying misconfiguration. The Executor wraps its sub-calls in require(), so
+// the custom error above arrives as an Error(string) with this text instead.
+const SIM_FRIENDLY_REQUIRE_STRINGS = {
+  'batchConfigureVouching failed':
+    'a role requires vouches while also being "eligible by default" — turn off "Eligible by default" for that role',
+  'configureVouching failed':
+    'a role requires vouches while also being "eligible by default" — turn off "Eligible by default" for that role',
+};
+
+const isZeroAddress = (a) => !a || /^0x0+$/i.test(a);
 
 async function simulateDeployCalldata({ rpcUrl, to, from, calldata, valueWei }) {
   const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
@@ -91,8 +111,29 @@ async function simulateDeployCalldata({ rpcUrl, to, from, calldata, valueWei }) 
   // raw selector for known sub-contract errors. Returns null if unrecognizable.
   const friendlyFromData = (data) => {
     if (typeof data !== 'string' || !data.startsWith('0x') || data.length < 10) return null;
+    const selector = data.slice(0, 10).toLowerCase();
+
+    // Error(string) — a plain require() message. Decode it before anything else:
+    // the Executor wraps every sub-call in require(), so the guards that matter
+    // most (e.g. the vouching config) arrive here rather than as a custom error.
+    if (selector === '0x08c379a0') {
+      try {
+        const [reason] = ethers.utils.defaultAbiCoder.decode(['string'], '0x' + data.slice(10));
+        return SIM_FRIENDLY_REQUIRE_STRINGS[reason] || reason;
+      } catch { return 'a require() check failed'; }
+    }
+    // Panic(uint256) — arithmetic/array bug rather than a config problem.
+    if (selector === '0x4e487b71') {
+      try {
+        const [code] = ethers.utils.defaultAbiCoder.decode(['uint256'], '0x' + data.slice(10));
+        return `an internal arithmetic check failed (panic 0x${code.toHexString().slice(2)})`;
+      } catch { return 'an internal arithmetic check failed'; }
+    }
+
+    // A selector we have specific guidance for beats a bare ABI error name.
+    if (SIM_FRIENDLY_SELECTORS[selector]) return SIM_FRIENDLY_SELECTORS[selector];
     try { const name = iface.parseError(data).name; return SIM_FRIENDLY_ERRORS[name] || name; } catch { /* not an OrgDeployer error */ }
-    return SIM_FRIENDLY_SELECTORS[data.slice(0, 10).toLowerCase()] || `error ${data.slice(0, 10)}`;
+    return `error ${selector}`;
   };
 
   let raw;
@@ -397,14 +438,6 @@ function DeployerPageContent() {
 
       console.log('Deployment params:', deployParams);
 
-      // Check if any role has custom distribution settings (additionalWearers or mintToDeployer)
-      const hasCustomDistribution = deployParams.roles.some(
-        role =>
-          (role.distribution.additionalWearers && role.distribution.additionalWearers.length > 0) ||
-          role.distribution.mintToDeployer
-      );
-      console.log('Has custom distribution:', hasCustomDistribution);
-
       console.log('Roles structure:');
       deployParams.roles.forEach((role, idx) => {
         console.log(`  Role [${idx}] ${role.name}:`, {
@@ -529,9 +562,12 @@ function DeployerPageContent() {
       const hasQuadratic = state.voting.classes.some(c => c.quadratic);
       const hybridVotingEnabled = state.voting.classes.length > 1;
 
-      // Pass customRoles if there are any custom distribution settings
-      // This ensures mintToDeployer and additionalWearers settings are respected
-      const customRoles = hasCustomDistribution ? deployParams.roles : null;
+      // Always send the mapped roles. The name-derived fallback inside
+      // buildDeployCalldata fabricates generic roles — it drops vouching, images,
+      // metadata CIDs, hat supply and hierarchy — so falling back to it whenever the
+      // user happened to turn off every distribution option silently deployed a
+      // different org than the one they configured.
+      const customRoles = deployParams.roles;
 
       // Paymaster config
       const paymasterConfig = mapPaymasterConfig(state.paymaster);
@@ -567,6 +603,14 @@ function DeployerPageContent() {
         username: deployerUsername,
         deployerAddress: simDeployerAddress,
         customRoles,
+        // NOTE: roleAssignments are deliberately NOT passed. buildDeployCalldata
+        // derives them from role names, which is what every org on chain was
+        // deployed with — several shipped templates list vouched roles under
+        // `permissions.quickJoinRoles`, and sending that verbatim would put a
+        // vouch-gated hat in `quickJoinRolesBitmap`, making `quickJoinWithUser`
+        // revert NotEligible for every newcomer. Wiring the wizard's permission
+        // matrix through is a separate change that needs those templates fixed
+        // first.
         infrastructureAddresses,
         regSignatureData,
         paymasterConfig,
@@ -605,6 +649,25 @@ function DeployerPageContent() {
         throw simErr;
       }
 
+      // Email Invites can be silently skipped: ModulesFactory only deploys the
+      // ZkEmailInvites proxy when the chain has BOTH the verifier/DKIM infra wired
+      // AND a registered beacon, and it skips rather than reverts so an optional
+      // module can never brick a deploy. The simulation's DeploymentResult is the
+      // authoritative answer — a zero address here means the org would ship with no
+      // invite module, no error, and no in-app way to add one later.
+      if (state.features.zkEmailInvitesEnabled && isZeroAddress(predictedResult?.zkEmailInvites)) {
+        const networkName = getNetworkByChainId(targetChainId)?.name || `chain ${targetChainId}`;
+        toast({
+          title: 'Email Invites are not available on this network',
+          description: `${networkName} doesn't have the email-invite contracts yet, so the module would be skipped and your org would deploy without it. Turn "Email Invites" off in Settings to continue, or deploy on a network that supports it.`,
+          status: 'error',
+          duration: 16000,
+          isClosable: true,
+        });
+        setIsDeploying(false);
+        return { success: false, cancelled: true };
+      }
+
       // Show the preview modal and wait for the user's decision.
       const confirmed = await new Promise((resolve) => {
         deployResolverRef.current = resolve;
@@ -618,6 +681,7 @@ function DeployerPageContent() {
             : '0',
           params: deployParams,
           predicted: predictedResult,
+          zkEmailInvitesEnabled: state.features.zkEmailInvitesEnabled,
         });
       });
       setPreviewData(null);
@@ -860,36 +924,17 @@ function DeployerPageContent() {
         console.log('[DEPLOY] Passkey deployment confirmed:', receipt.receipt.transactionHash);
       } else {
         // === WALLET DEPLOYMENT via ethers signer ===
-        await main(
-          membershipTypeNames,
-          executiveRoleNames,
-          state.organization.name,
-          hasQuadratic,
-          50, // democracyVoteWeight
-          50, // participationVoteWeight
-          hybridVotingEnabled,
-          !hybridVotingEnabled, // participationVotingEnabled
-          state.features.electionHubEnabled,
-          state.features.educationHubEnabled,
-          state.organization.logoURL,
-          infoIPFSHash,
-          'DirectDemocracy', // votingControlType
-          state.voting.ddQuorum,
-          state.voting.hybridQuorum,
-          deployerUsername,
-          deploySigner,
-          customRoles,
-          infrastructureAddresses,
-          regSignatureData,
-          undefined, // overrideDeployerAddress
-          paymasterConfig,
-          paymasterFundingWei,
-          state.metadataAdminRoleIndex,
-          // New deploy-time config (built by mapStateToDeploymentParams above).
-          deployParams.taskManagerPerms,
-          deployParams.ddInitialTargets,
-          deployParams.bootstrap
-        );
+        // Send the EXACT bytes that were simulated and shown in the preview modal,
+        // the same way the passkey path does. The old `main()` helper rebuilt its own
+        // DeploymentParams from role NAMES, which meant the signed transaction could
+        // differ from the previewed one — most visibly it always called
+        // `deployFullOrg`, so wallet deployers silently got no Email Invites module.
+        await deployWithCalldata({
+          wallet: deploySigner,
+          to: deployContractAddress,
+          calldata: deployCalldata,
+          valueWei: paymasterFundingWei,
+        });
       }
 
       // Return success - let DeployerWizard handle the celebration

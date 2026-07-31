@@ -20,11 +20,17 @@ export function indicesToBitmap(indices) {
     return 0;
   }
 
+  // Uses addition of 2**idx rather than `bitmap | (1 << idx)`: JS bitwise operators
+  // coerce to int32, so `1 << 31` is -2147483648 and the bitmap for a 32-role org
+  // (indices 0..31, which the wizard and OrgDeployer._validateRoleConfigs both
+  // allow) would encode as a negative uint256. Summing distinct powers of two is
+  // exact up to 2**53, well past the 32-role cap.
+  const seen = new Set();
   return indices.reduce((bitmap, idx) => {
-    if (typeof idx === 'number' && idx >= 0 && idx < 32) {
-      return bitmap | (1 << idx);
-    }
-    return bitmap;
+    if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0 || idx >= 32) return bitmap;
+    if (seen.has(idx)) return bitmap;
+    seen.add(idx);
+    return bitmap + 2 ** idx;
   }, 0);
 }
 

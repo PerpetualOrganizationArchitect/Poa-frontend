@@ -124,6 +124,31 @@ export const PERMISSION_DESCRIPTIONS = {
   },
 };
 
+/**
+ * A role that requires vouches must NOT be eligible by default.
+ *
+ * A default-eligible hat satisfies eligibility for everyone, so pairing it with a
+ * vouch quorum silently makes the quorum a no-op — and since POP PR #185 the
+ * contracts reject the pair outright: `EligibilityModule` reverts
+ * `DefaultEligibilityConflictsWithVouch` mid-deploy, and `QuickJoin` reverts
+ * `HatOpenlyClaimable` on every claim of an open hat.
+ *
+ * ONE-DIRECTIONAL on purpose. Turning vouching OFF does not force the role open:
+ * "not vouched, not default-eligible" is a legitimate admin-granted-only role
+ * (the deployer still grants per-wearer eligibility to mintToDeployer /
+ * additionalWearers). The only unreachable combination is a JOIN-TIME role with
+ * neither, which `mapStateToDeploymentParams` normalizes and
+ * `validateDeploymentConfig` reports.
+ *
+ * Enforced here rather than in each role editor so simple mode, advanced mode, the
+ * standalone RoleForm, templates and philosophy variations can't drift apart.
+ */
+export const applyVouchEligibilityInvariant = (role) => {
+  if (!role?.vouching || !role?.defaults) return role;
+  if (!role.vouching.enabled || !role.defaults.eligible) return role;
+  return { ...role, defaults: { ...role.defaults, eligible: false } };
+};
+
 // Create a default role object
 export const createDefaultRole = (index = 0, name = 'New Role') => ({
   id: uuidv4(),
@@ -1023,7 +1048,7 @@ export function deployerReducer(state, action) {
       return {
         ...state,
         roles: state.roles.map((role, idx) =>
-          idx === index ? { ...role, ...updates } : role
+          idx === index ? applyVouchEligibilityInvariant({ ...role, ...updates }) : role
         ),
       };
     }
@@ -1125,7 +1150,7 @@ export function deployerReducer(state, action) {
         ...state,
         roles: state.roles.map((role, idx) =>
           idx === roleIndex
-            ? { ...role, vouching: { ...role.vouching, ...vouching } }
+            ? applyVouchEligibilityInvariant({ ...role, vouching: { ...role.vouching, ...vouching } })
             : role
         ),
       };

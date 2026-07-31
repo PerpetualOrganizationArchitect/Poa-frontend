@@ -247,7 +247,43 @@
   },
   {
     "type": "function",
+    "name": "clearEmailVerified",
+    "inputs": [
+      {
+        "name": "wearer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "clearWearerEligibility",
+    "inputs": [
+      {
+        "name": "wearer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "clearWearerVouches",
     "inputs": [
       {
         "name": "wearer",
@@ -513,6 +549,19 @@
   },
   {
     "type": "function",
+    "name": "getMaxDailyVouches",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getRoleApplicants",
     "inputs": [
       {
@@ -701,7 +750,7 @@
         "internalType": "address"
       },
       {
-        "name": "targetHatId",
+        "name": "",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -803,6 +852,30 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "isEmailVerified",
+    "inputs": [
+      {
+        "name": "wearer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -979,6 +1052,37 @@
         "name": "hatId",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setEmailVerified",
+    "inputs": [
+      {
+        "name": "wearer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "hatIds",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setMaxDailyVouches",
+    "inputs": [
+      {
+        "name": "maxVouches",
+        "type": "uint32",
+        "internalType": "uint32"
       }
     ],
     "outputs": [],
@@ -1354,6 +1458,56 @@
   },
   {
     "type": "event",
+    "name": "EmailVerifiedCleared",
+    "inputs": [
+      {
+        "name": "wearer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "admin",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "EmailVerifiedSet",
+    "inputs": [
+      {
+        "name": "wearer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "verifier",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "HatClaimed",
     "inputs": [
       {
@@ -1448,6 +1602,19 @@
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MaxDailyVouchesSet",
+    "inputs": [
+      {
+        "name": "maxDailyVouches",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
       }
     ],
     "anonymous": false
@@ -1723,6 +1890,31 @@
     "anonymous": false
   },
   {
+    "type": "event",
+    "name": "WearerVouchesCleared",
+    "inputs": [
+      {
+        "name": "wearer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "admin",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
     "type": "error",
     "name": "AlreadyVouched",
     "inputs": []
@@ -1740,6 +1932,11 @@
   {
     "type": "error",
     "name": "CannotVouchForSelf",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DefaultEligibilityConflictsWithVouch",
     "inputs": []
   },
   {
@@ -1769,6 +1966,11 @@
   },
   {
     "type": "error",
+    "name": "InvalidMaxDailyVouches",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidMembershipHat",
     "inputs": []
   },
@@ -1794,7 +1996,7 @@
   },
   {
     "type": "error",
-    "name": "NotAuthorizedAdmin",
+    "name": "NotAuthorizedEmailVerifier",
     "inputs": []
   },
   {
@@ -1825,6 +2027,11 @@
   {
     "type": "error",
     "name": "ZeroAddress",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotAuthorizedAdmin",
     "inputs": []
   }
 ]

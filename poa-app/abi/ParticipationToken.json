@@ -699,6 +699,32 @@
   },
   {
     "type": "function",
+    "name": "setName",
+    "inputs": [
+      {
+        "name": "newName",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setSymbol",
+    "inputs": [
+      {
+        "name": "newSymbol",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setTaskManager",
     "inputs": [
       {
@@ -968,6 +994,19 @@
   },
   {
     "type": "event",
+    "name": "NameSet",
+    "inputs": [
+      {
+        "name": "newName",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "RequestApproved",
     "inputs": [
       {
@@ -1028,6 +1067,19 @@
       },
       {
         "name": "ipfsHash",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "SymbolSet",
+    "inputs": [
+      {
+        "name": "newSymbol",
         "type": "string",
         "indexed": false,
         "internalType": "string"
@@ -1213,6 +1265,11 @@
   },
   {
     "type": "error",
+    "name": "EmptyString",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidAccountNonce",
     "inputs": [
       {
@@ -1287,6 +1344,11 @@
         "internalType": "uint256"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "StringTooLong",
+    "inputs": []
   },
   {
     "type": "error",

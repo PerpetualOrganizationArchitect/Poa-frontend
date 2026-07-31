@@ -321,6 +321,16 @@ function OrganizationHero({ organization, templateName, goToStep }) {
             >
               Auto Upgrade: {organization.autoUpgrade ? 'On' : 'Off'}
             </Badge>
+            {/* Only worth a badge when the founder named the shares themselves —
+                otherwise the app just calls them "shares" and there's nothing to say. */}
+            {(organization.tokenName?.trim() || organization.tokenSymbol?.trim()) && (
+              <Badge bg="warmGray.100" color="warmGray.600" borderRadius="full" px={3} py={1}>
+                Shares: {organization.tokenName?.trim() || organization.tokenSymbol?.trim()}
+                {organization.tokenName?.trim() && organization.tokenSymbol?.trim()
+                  ? ` (${organization.tokenSymbol.trim()})`
+                  : ''}
+              </Badge>
+            )}
           </HStack>
         </VStack>
 
@@ -956,6 +966,27 @@ export function ReviewStep({
       });
     }
 
+    // A voter minimum higher than the org can currently muster stalls governance:
+    // no proposal reaches quorum, and changing the quorum is itself executor-only
+    // (HybridVoting.setConfig), i.e. it needs a proposal that passes. It unblocks
+    // itself once enough members join, so this is a warning, not an error — but the
+    // user has to know before they sign, because OrgDeployer v17 ships it at genesis.
+    {
+      const genesisVoters = new Set(['deployer']);
+      state.roles.forEach((r) => {
+        if (!r.canVote) return;
+        (r.distribution?.additionalWearers || []).forEach((a) => a && genesisVoters.add(String(a).toLowerCase()));
+      });
+      const atLaunch = genesisVoters.size;
+      const worst = Math.max(state.voting.hybridVoterQuorum || 0, state.voting.ddVoterQuorum || 0);
+      if (worst > atLaunch) {
+        result.push({
+          key: 'voter-minimum-above-membership',
+          message: `Your voter minimum (${worst}) is higher than the ${atLaunch} member${atLaunch === 1 ? '' : 's'} who will exist at launch, so nothing can pass until at least ${worst} people join and vote. Changing the minimum later needs a proposal that itself reaches it — so if the org never gets that many voters, decisions stay stuck. Lower it, or set it to 0 and add one by vote once you've grown.`,
+        });
+      }
+    }
+
     // Email invites without gas sponsorship. The deployer seeds a claim budget for
     // the invites module from this paymaster config; skip it and invitees — who by
     // definition arrive with no wallet and no gas — have their claim rejected by
@@ -1156,7 +1187,7 @@ export function ReviewStep({
                 </Box>
               )}
               <Tooltip
-                label="Voter count quorum will be configured via governance after deployment"
+                label="A decision needs at least this many voters to count, whatever the split. Applied at launch. Changing it later takes a proposal that itself reaches this minimum — so set it no higher than the turnout you can rely on."
                 placement="top"
                 hasArrow
               >
@@ -1165,6 +1196,12 @@ export function ReviewStep({
                 </Box>
               </Tooltip>
             </HStack>
+          )}
+
+          {warnings.find(w => w.key === 'voter-minimum-above-membership') && (
+            <Box mb={4}>
+              <SmartWarning message={warnings.find(w => w.key === 'voter-minimum-above-membership').message} />
+            </Box>
           )}
 
           {/* Voting Classes */}

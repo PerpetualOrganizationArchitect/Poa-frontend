@@ -267,6 +267,10 @@ export const initialState = {
     autoUpgrade: true,
     username: '',
     template: 'default',
+    // Participation-token identity (OrgDeployer v17). Empty keeps the contract
+    // defaults: "<orgName> Token" / "PT".
+    tokenName: '',
+    tokenSymbol: '',
   },
 
   // Roles configuration
@@ -802,7 +806,17 @@ export function deployerReducer(state, action) {
       const { voting, permissions } = action.payload;
       return {
         ...state,
-        voting: voting || state.voting,
+        voting: voting
+          ? {
+              ...voting,
+              // The philosophy slider only sets the democracy/contribution split;
+              // sliderToVotingConfig hardcodes the voter minimums to 0. Preserve
+              // whatever the user entered — since OrgDeployer v17 these ship at
+              // genesis, so overwriting them here would silently discard real config.
+              hybridVoterQuorum: state.voting.hybridVoterQuorum,
+              ddVoterQuorum: state.voting.ddVoterQuorum,
+            }
+          : state.voting,
         permissions: permissions || state.permissions,
       };
     }
@@ -972,6 +986,13 @@ export function deployerReducer(state, action) {
           ...newVotingConfig,
           hybridQuorum: quorum ?? newVotingConfig.hybridQuorum,
           ddQuorum: quorum ?? newVotingConfig.ddQuorum,
+          // A variation only re-balances the democracy/contribution split; it says
+          // nothing about how many people have to turn out. Carry the voter minimums
+          // over — sliderToVotingConfig hardcodes them to 0, and since OrgDeployer
+          // v17 these ship at genesis, so wiping them here would silently discard
+          // real config the moment someone nudges the philosophy slider.
+          hybridVoterQuorum: state.voting.hybridVoterQuorum,
+          ddVoterQuorum: state.voting.ddVoterQuorum,
         },
         features: newFeatures,
         permissions: newPermissions,

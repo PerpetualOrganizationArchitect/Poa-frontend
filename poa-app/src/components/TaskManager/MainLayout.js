@@ -18,6 +18,7 @@ import { useUserContext } from '../../context/UserContext';
 import { useAuth } from '../../context/AuthContext';
 import { useWeb3, useOrgTheme, useTaskManagerV4State } from '../../hooks';
 import { usePOContext } from '@/context/POContext';
+import { resolveTokenLabel } from '@/util/tokenLabel';
 import { useOrgName } from '@/hooks/useOrgName';
 import { useRouter } from 'next/router';
 import { DndProvider } from 'react-dnd';
@@ -53,7 +54,7 @@ const EXAMPLE_COLUMNS = [
   ]},
 ];
 
-function ExampleTaskCard({ title, desc, difficulty, payout, hours, assignee }) {
+function ExampleTaskCard({ title, desc, difficulty, payout, hours, assignee, tokenLabel }) {
   const color = DIFF_COLORS[difficulty] || '#CBD5E0';
   const dots = DIFF_DOTS[difficulty] || 1;
 
@@ -107,7 +108,7 @@ function ExampleTaskCard({ title, desc, difficulty, payout, hours, assignee }) {
           <HStack spacing={1}>
             <Box bg="purple.50" px={2} py={0.5} borderRadius="full" display="flex" alignItems="center" gap="4px">
               <StarIcon boxSize={3} color="purple.500" />
-              <Text fontWeight="bold" color="purple.700" fontSize="xs">{payout} PT</Text>
+              <Text fontWeight="bold" color="purple.700" fontSize="xs">{payout} {tokenLabel}</Text>
             </Box>
           </HStack>
           {assignee && (
@@ -119,7 +120,7 @@ function ExampleTaskCard({ title, desc, difficulty, payout, hours, assignee }) {
   );
 }
 
-function ExampleTaskBoard() {
+function ExampleTaskBoard({ tokenLabel }) {
   return (
     <Box width="100%" height="100%" pt={3} pb={0} mt={0} overflow="hidden">
       <SimpleGrid
@@ -152,7 +153,7 @@ function ExampleTaskBoard() {
                 sx={{ '&::-webkit-scrollbar': { width: '4px' }, '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.2)', borderRadius: '24px' } }}
               >
                 {col.tasks.length > 0 ? (
-                  col.tasks.map((t, i) => <ExampleTaskCard key={i} {...t} />)
+                  col.tasks.map((t, i) => <ExampleTaskCard key={i} {...t} tokenLabel={tokenLabel} />)
                 ) : (
                   <Flex w="100%" minH="200px" direction="column" align="center" justify="center" p={4} textAlign="center"
                     bg="rgba(255,255,255,0.05)" borderRadius="8px" border="1px dashed rgba(255,255,255,0.2)"
@@ -181,7 +182,7 @@ const modalGlassStyle = {
   backgroundColor: 'rgba(33, 33, 33, 0.97)',
 };
 
-function ExampleTaskModal({ isOpen, onClose }) {
+function ExampleTaskModal({ isOpen, onClose, tokenLabel }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="3xl" isCentered zIndex={10001}>
       <ModalOverlay bg="transparent" />
@@ -209,7 +210,7 @@ function ExampleTaskModal({ isOpen, onClose }) {
         <ModalFooter borderTop="1.5px solid" borderColor="gray.200" py={2}>
           <Box flexGrow={1}>
             <VStack align="start" spacing={0}>
-              <Text fontWeight="bold" fontSize="m">Reward: 10 PT</Text>
+              <Text fontWeight="bold" fontSize="m">Reward: 10 {tokenLabel}</Text>
             </VStack>
           </Box>
           <Box>
@@ -233,7 +234,10 @@ const MainLayout = () => {
 
   const { accountAddress: account } = useAuth();
   const { task: taskService, executeWithNotification } = useWeb3();
-  const { taskManagerContractAddress, roleHatIds, roleNames, creatorHatIds } = usePOContext();
+  const { taskManagerContractAddress, roleHatIds, roleNames, creatorHatIds, useTokenSymbol, participationTokenSymbol } = usePOContext();
+  // The tour's example board is a new member's first impression — it should teach
+  // them this org's word for its shares, not the protocol's ticker.
+  const tokenLabel = resolveTokenLabel({ useTokenSymbol, symbol: participationTokenSymbol });
   const { userData } = useUserContext() || {};
   const { addToIpfs } = useIPFScontext();
   const router = useRouter();
@@ -516,8 +520,9 @@ const MainLayout = () => {
           ) : isTourActive && pendingAction !== 'create-project' && pendingAction !== 'create-task' ? (
             /* Tour is active with no projects — show example board */
             <Box flex="1" width="100%">
-              <ExampleTaskBoard />
+              <ExampleTaskBoard tokenLabel={tokenLabel} />
               <ExampleTaskModal
+                tokenLabel={tokenLabel}
                 isOpen={isTourActive && pendingAction === null && currentStepId === 'task-detail'}
                 onClose={tourNextStep}
               />

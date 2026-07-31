@@ -150,6 +150,20 @@ describe('reducer keeps vouching and default-eligibility mutually exclusive', ()
     expect(next.roles[1].defaults.eligible).toBe(false);
   });
 
+  it('preserves the voter minimums when a philosophy variation is applied', () => {
+    // sliderToVotingConfig hardcodes hybridVoterQuorum/ddVoterQuorum to 0, and the
+    // variation/philosophy paths replace `voting` wholesale. Since v17 these ship at
+    // genesis, so wiping them silently discards real config.
+    const s = base();
+    s.voting = { ...s.voting, hybridVoterQuorum: 5, ddVoterQuorum: 4 };
+    const next = deployerReducer(s, {
+      type: ACTION_TYPES.APPLY_PHILOSOPHY,
+      payload: { voting: { ...s.voting, hybridVoterQuorum: 0, ddVoterQuorum: 0 }, permissions: s.permissions },
+    });
+    expect(next.voting.hybridVoterQuorum).toBe(5);
+    expect(next.voting.ddVoterQuorum).toBe(4);
+  });
+
   it('applies to whole-role updates too (advanced-mode path)', () => {
     const s = base();
     const next = deployerReducer(s, {
@@ -295,6 +309,87 @@ describe('task-manager permission masks track the deployed CREATE grant', () => 
   });
 });
 
+describe('participation-token identity (v17)', () => {
+  const withToken = (name, symbol) => {
+    const s = stateWith();
+    s.organization.tokenName = name;
+    s.organization.tokenSymbol = symbol;
+    return s;
+  };
+
+  it('accepts values at the contract limits', () => {
+    const { errors } = validateDeploymentConfig(withToken('N'.repeat(64), 'S'.repeat(16)));
+    expect(errors.join(' ')).not.toMatch(/token/i);
+  });
+
+  it('measures BYTES, not characters — setName/setSymbol bound bytes()', () => {
+    // 33 emoji = 132 UTF-8 bytes but only 66 UTF-16 units; a .length check passes it.
+    const { errors } = validateDeploymentConfig(withToken('🚀'.repeat(33), 'PT'));
+    expect(errors.join(' ')).toMatch(/Token name is too long/i);
+
+    const sym = validateDeploymentConfig(withToken('', '🚀'.repeat(5)));
+    expect(sym.errors.join(' ')).toMatch(/Token ticker is too long/i);
+  });
+
+  it('flags an org name too long to build the default token name from', () => {
+    const s = stateWith({ name: 'A'.repeat(60) });
+    const { errors } = validateDeploymentConfig(s);
+    expect(errors.join(' ')).toMatch(/too long to build a default token name/i);
+  });
+
+  it('does not flag a normal org name', () => {
+    const { errors } = validateDeploymentConfig(stateWith({ name: 'Sunrise Bakery Collective' }));
+    expect(errors.join(' ')).not.toMatch(/default token name/i);
+  });
+});
+
+describe('at least one role must be able to vote', () => {
+  it('rejects an all-canVote-off config (the contract would enrol everyone)', () => {
+    const s = stateWith();
+    s.roles = s.roles.map((r) => ({ ...r, canVote: false }));
+    const { errors } = validateDeploymentConfig(s);
+    expect(errors.join(' ')).toMatch(/No role can vote/i);
+  });
+
+  it('accepts a mixed config with one non-voting agent role', () => {
+    const s = stateWith();
+    s.roles = [
+      { ...createDefaultRole(0, 'Member'), hierarchy: { adminRoleIndex: 2 } },
+      { ...createDefaultRole(1, 'Agent'), canVote: false, hierarchy: { adminRoleIndex: 2 } },
+      { ...createDefaultRole(2, 'Exec'), hierarchy: { adminRoleIndex: null } },
+    ];
+    const { errors } = validateDeploymentConfig(s);
+    expect(errors.join(' ')).not.toMatch(/No role can vote/i);
+  });
+});
+
+describe('canVote gates proposals, not polls', () => {
+  it('a canVote:false role is still granted poll rights by the deployed bitmaps', () => {
+    // GovernanceFactory._filterCanVoteHats only filters the HYBRID voting classes.
+    // Poll eligibility comes from `ddVotingRolesBitmap`, which the deploy derives
+    // from role NAMES (all roles). Anything claiming "this role doesn't vote" is
+    // therefore only true of proposals — the launch modal states the two separately
+    // for exactly this reason.
+    const state = stateWith();
+    state.roles = [
+      { ...createDefaultRole(0, 'Member'), hierarchy: { adminRoleIndex: 2 } },
+      { ...createDefaultRole(1, 'Agent'), canVote: false, hierarchy: { adminRoleIndex: 2 } },
+      { ...createDefaultRole(2, 'Exec'), hierarchy: { adminRoleIndex: null } },
+    ];
+    const { calldata } = encodeCase(
+      { name: 'canvote-vs-polls', state },
+      { registryAddress: REGISTRY, orgDeployerAddress: '0x1Ad59E785E3aec1c53069f78bEcC24EcFE6a5d1c', deployerAddress: DEPLOYER }
+    );
+    const iface = new ethers.utils.Interface(OrgDeployerNewABI);
+    const [sent] = iface.decodeFunctionData(iface.getFunction(calldata.slice(0, 10)), calldata);
+
+    expect(sent.roles[1].canVote).toBe(false);
+    // …yet bit 1 IS set in the poll-voting bitmap.
+    const ddBitmap = sent.roleAssignments.ddVotingRolesBitmap.toNumber();
+    expect(ddBitmap & (2 ** 1)).toBe(2 ** 1);
+  });
+});
+
 describe('voting classes', () => {
   it('never ships role indices as literal hat IDs', () => {
     // VotingClassForm writes ROLE INDICES into `hatIds`; the contract reads them as
@@ -412,6 +507,33 @@ function buildCases() {
     s.ddInitialTargets = ['0x2222222222222222222222222222222222222222'];
   });
 
+  // ── OrgDeployer v17 deploy-time governance config ────────────────────────
+  add('voter-quorum-at-genesis', (s) => {
+    s.voting.hybridVoterQuorum = 3;
+    s.voting.ddVoterQuorum = 2;
+  });
+
+  add('custom-token-identity', (s) => {
+    s.organization.tokenName = 'Comfiest House Contribution';
+    s.organization.tokenSymbol = 'COMFY';
+  });
+
+  add('token-identity-max-length', (s) => {
+    s.organization.tokenName = 'N'.repeat(64);
+    s.organization.tokenSymbol = 'S'.repeat(16);
+  });
+
+  add('non-voting-role-excluded-from-classes', (s) => {
+    // GovernanceFactory v17 backfills empty class hatIds with canVote=true role hats
+    // ONLY, so an agent/bot role marked canVote:false is excluded at genesis.
+    s.roles = [
+      { ...createDefaultRole(0, 'Member'), hierarchy: { adminRoleIndex: 2 } },
+      { ...createDefaultRole(1, 'Agent'), canVote: false, hierarchy: { adminRoleIndex: 2 } },
+      { ...createDefaultRole(2, 'Exec'), hierarchy: { adminRoleIndex: null } },
+    ];
+    s.permissions = { ...s.permissions, quickJoinRoles: [0] };
+  });
+
   add('six-roles-deep-hierarchy', (s) => {
     s.roles = Array.from({ length: 6 }, (_, i) => ({
       ...createDefaultRole(i, `Role${i}`),
@@ -518,7 +640,8 @@ function encodeCase(c, { registryAddress, orgDeployerAddress, deployerAddress })
     username: '',
     deployerAddress,
     customRoles: params.roles,
-    roleAssignments: params.roleAssignments,
+    // NOTE: no `roleAssignments` override — /create doesn't pass one either, so the
+    // name-derived fallback is what actually ships. Keep this mirroring production.
     infrastructureAddresses: { orgDeployerAddress, registryAddress },
     regSignatureData: null,
     paymasterConfig: mapPaymasterConfig(c.state.paymaster),
@@ -526,6 +649,11 @@ function encodeCase(c, { registryAddress, orgDeployerAddress, deployerAddress })
     taskManagerPerms: params.taskManagerPerms,
     ddInitialTargets: params.ddInitialTargets,
     bootstrap: params.bootstrap,
+    hybridClasses: params.hybridClasses,
+    hybridVoterQuorum: params.hybridQuorum,
+    ddVoterQuorum: params.ddQuorum,
+    tokenName: params.tokenName,
+    tokenSymbol: params.tokenSymbol,
   });
   return { params, calldata, valueWei: getPaymasterFundingValue(c.state.paymaster) };
 }
@@ -552,14 +680,33 @@ describe('deploy calldata matrix', () => {
     expect(sent.orgName).toBe(c.state.organization.name);
     expect(sent.roles.length).toBe(params.roles.length);
 
+    // OrgDeployer v17 deploy-time governance config. These are the last four fields
+    // of the tuple; if they drift out of order the whole struct decodes garbage, so
+    // assert the values actually round-trip.
+    expect(sent.hybridQuorum).toBe(Number(c.state.voting.hybridVoterQuorum) || 0);
+    expect(sent.ddQuorum).toBe(Number(c.state.voting.ddVoterQuorum) || 0);
+    expect(sent.tokenName).toBe((c.state.organization.tokenName || '').trim());
+    expect(sent.tokenSymbol).toBe((c.state.organization.tokenSymbol || '').trim());
+
     // M-03 / H-03: no vouched role may be default-eligible — in the ENCODED tuple.
     sent.roles.forEach((r) => {
       if (r.vouching.enabled) expect(r.defaults.eligible).toBe(false);
     });
 
     // The voting-class hatIds must be empty on the wire so GovernanceFactory
-    // backfills the org's real role hats.
+    // backfills the org's canVote role hats.
     sent.hybridClasses.forEach((cl) => expect(cl.hatIds.length).toBe(0));
+
+    // The user's classes must survive to the wire — count, split, strategy and
+    // minBalance. buildDeployCalldata used to regenerate a fixed 50/50 pair from two
+    // hardcoded weights, so the preview showed one thing and the chain got another.
+    expect(sent.hybridClasses.length).toBe(params.hybridClasses.length);
+    sent.hybridClasses.forEach((cl, k) => {
+      expect(cl.slicePct).toBe(params.hybridClasses[k].slicePct);
+      expect(cl.strategy).toBe(params.hybridClasses[k].strategy);
+      expect(cl.quadratic).toBe(params.hybridClasses[k].quadratic);
+      expect(cl.minBalance.toString()).toBe(params.hybridClasses[k].minBalance.toString());
+    });
 
     // Every permission bitmap bit must map to a role that exists.
     if (params.roles.length < 32) {

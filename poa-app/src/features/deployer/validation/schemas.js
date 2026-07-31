@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { utf8Length } from '../utils/deploymentMapper';
 
 // ============================================
 // Basic Schemas
@@ -53,6 +54,17 @@ export const organizationSchema = z.object({
   infoIPFSHash: z.string().optional(),
   autoUpgrade: z.boolean(),
   username: z.string().max(32, 'Username must be less than 32 characters').optional(),
+  // Participation-token identity (OrgDeployer v17). Empty = contract defaults.
+  // Limits mirror ParticipationToken.setName/setSymbol so a deployed token stays
+  // editable by governance. The contract bounds BYTES, not characters.
+  tokenName: z
+    .string()
+    .refine((v) => utf8Length(v) <= 64, 'Token name must be 64 bytes or fewer')
+    .optional(),
+  tokenSymbol: z
+    .string()
+    .refine((v) => utf8Length(v) <= 16, 'Token ticker must be 16 bytes or fewer')
+    .optional(),
 });
 
 // ============================================

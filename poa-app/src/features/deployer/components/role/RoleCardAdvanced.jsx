@@ -473,8 +473,12 @@ function AdvancedSettings({ role, roleIndex, roles, onUpdate }) {
               <Text fontSize="sm" color="warmGray.700">
                 Can participate in governance votes
               </Text>
+              {/* Only gates weighted PROPOSAL voting: GovernanceFactory backfills the
+                  hybrid voting classes with canVote roles. Poll (direct-democracy)
+                  eligibility comes from a separate role bitmap, which the deploy
+                  currently grants to every role — so don't promise it here. */}
               <Tooltip
-                label="Members with this role can vote on proposals and polls"
+                label="Members with this role count in proposal votes. Turn it off for bot or service roles that shouldn't carry voting weight."
                 hasArrow
                 placement="top"
                 fontSize="xs"

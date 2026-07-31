@@ -38,6 +38,7 @@ import { useQuery } from '@apollo/client';
 import { useIPFScontext } from '@/context/ipfsContext';
 import { useWeb3Services, useTransactionWithNotification } from '@/hooks/useWeb3Services';
 import { usePOContext } from '@/context/POContext';
+import { useOrgStructure } from '@/hooks/useOrgStructure';
 import { useAuth } from '@/context/AuthContext';
 import { ipfsCidToBytes32, stringToBytes } from '@/services/web3/utils/encoding';
 import { RefreshEvent } from '@/context/RefreshContext';
@@ -65,14 +66,24 @@ export default function EmailAllowlistEditor({ orgId, orgChainId, currentName })
   const { chain: connectedChain } = useAccount();
   const { switchChainAsync } = useSwitchChain();
 
+  // `defaultEligible` roles are open to everyone. QuickJoin rejects claiming an open
+  // hat (POP #185, H-03), so an invite pointing at one can never be redeemed — surface
+  // that here rather than letting invitees discover it after a 30-second proof.
+  const { roles: structureRoles } = useOrgStructure();
+  const openHatIds = useMemo(
+    () => new Set((structureRoles || []).filter((r) => r.defaultEligible).map((r) => String(r.hatId))),
+    [structureRoles],
+  );
+
   const roles = useMemo(
     () =>
       (roleHatIds || []).map((hatId, index) => ({
         hatId: String(hatId),
         index,
         name: roleNames?.[hatId] || roleNames?.[String(hatId)] || `Role ${index + 1}`,
+        isOpen: openHatIds.has(String(hatId)),
       })),
-    [roleHatIds, roleNames],
+    [roleHatIds, roleNames, openHatIds],
   );
 
   const orgSubgraphUrl = orgChainId ? getSubgraphUrl(orgChainId) : null;
@@ -312,10 +323,24 @@ export default function EmailAllowlistEditor({ orgId, orgChainId, currentName })
             {roles.map((r) => (
               <Checkbox key={r.hatId} value={r.hatId}>
                 {r.name}
+                {r.isOpen && (
+                  <Text as="span" fontSize="xs" color="orange.500" ml={1}>
+                    (open to everyone)
+                  </Text>
+                )}
               </Checkbox>
             ))}
           </Wrap>
         </CheckboxGroup>
+        {[...draftHats, ...entries.flatMap((e) => e.hatIds || [])].some((h) => openHatIds.has(String(h))) && (
+          <Alert status="warning" mt={3} borderRadius="md" fontSize="sm">
+            <AlertIcon />
+            One of the roles here is marked “open to everyone”, so anyone can already claim it
+            without an invite — and once the invite contracts are updated, email claims for an open
+            role will be rejected outright. Gate the role first (require vouches, or turn off
+            default eligibility), or invite people into a gated role instead.
+          </Alert>
+        )}
         <Button mt={3} size="sm" onClick={addEntry}>
           Add
         </Button>

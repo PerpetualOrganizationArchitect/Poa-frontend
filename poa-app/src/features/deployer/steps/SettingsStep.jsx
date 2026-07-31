@@ -113,7 +113,7 @@ export function SettingsStep() {
             <FeatureToggle
               icon={PiEnvelopeSimple}
               name="Email Invites"
-              description="Let people join roles by proving control of their email — whole domains or specific addresses. Curate the allowlist in Settings after deploy."
+              description="Let people join roles by proving control of their email — whole domains or specific addresses. Ships switched off: after launch, add domains in Settings and activate them with one governance vote. Needs gas sponsorship, because invitees arrive with no wallet."
               isEnabled={state.features.zkEmailInvitesEnabled}
               onChange={(value) => actions.toggleFeature('zkEmailInvitesEnabled', value)}
             />

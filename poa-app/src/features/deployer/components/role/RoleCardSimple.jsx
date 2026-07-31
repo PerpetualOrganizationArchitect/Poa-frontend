@@ -365,13 +365,21 @@ export function RoleCardSimple({
   };
 
   const handleJoinMethodChange = (method) => {
+    const enabling = method === 'vouching';
     onUpdate(roleIndex, {
       ...role,
       vouching: {
         ...role.vouching,
-        enabled: method === 'vouching',
-        quorum: method === 'vouching' ? (role.vouching?.quorum || 1) : 0,
+        enabled: enabling,
+        quorum: enabling ? (role.vouching?.quorum || 1) : 0,
       },
+      // This selector IS the open-vs-gated decision, so it owns default
+      // eligibility. "Needs vouches" must not be default-eligible — that makes
+      // the quorum a no-op and the contracts reject the pair (EligibilityModule
+      // M-03 at deploy, QuickJoin H-03 at claim). Simple mode has no separate
+      // eligibility switch, so switching back to "Anyone can join" has to reopen
+      // the role here or it would be stranded closed with no control to fix it.
+      defaults: { ...role.defaults, eligible: !enabling },
     });
   };
 

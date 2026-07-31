@@ -45,6 +45,19 @@
   },
   {
     "type": "function",
+    "name": "MAX_POLL_HATS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MIN_DURATION_MIN",
     "inputs": [],
     "outputs": [
@@ -316,6 +329,25 @@
         "name": "",
         "type": "bool",
         "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "proposalEndTimestamp",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
     "stateMutability": "view"
@@ -635,6 +667,31 @@
   },
   {
     "type": "event",
+    "name": "ProposalExecutionFailed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "winningIdx",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "reason",
+        "type": "bytes",
+        "indexed": false,
+        "internalType": "bytes"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "QuorumSet",
     "inputs": [
       {
@@ -791,11 +848,6 @@
   },
   {
     "type": "error",
-    "name": "LengthMismatch",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "NotInitializing",
     "inputs": []
   },
@@ -811,11 +863,6 @@
   },
   {
     "type": "error",
-    "name": "TargetSelf",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "TitleTooLong",
     "inputs": []
   },
@@ -827,6 +874,11 @@
   {
     "type": "error",
     "name": "TooManyOptions",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TooManyPollHats",
     "inputs": []
   },
   {
@@ -858,6 +910,11 @@
   {
     "type": "error",
     "name": "ZeroAddress",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TargetSelf",
     "inputs": []
   }
 ]

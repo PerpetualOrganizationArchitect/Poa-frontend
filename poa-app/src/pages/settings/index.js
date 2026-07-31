@@ -45,6 +45,7 @@ const SettingsPage = () => {
     participationTokenSymbol,
     taskPayoutHoursOnly,
     taskPayoutHourlyRate,
+    zkEmailInvitesEnabled,
     poContextLoading,
     error: contextError,
   } = usePOContext();
@@ -180,7 +181,12 @@ const SettingsPage = () => {
             currentTaskPayoutHourlyRate={taskPayoutHourlyRate}
           />
 
-          <EmailAllowlistEditor orgId={orgId} orgChainId={orgChainId} currentName={userDAO} />
+          {/* Only orgs that deployed the ZkEmailInvites module can do anything with an
+              allowlist. Without this gate the editor let admins pay for an on-chain
+              metadata write that could never be activated. */}
+          {zkEmailInvitesEnabled && (
+            <EmailAllowlistEditor orgId={orgId} orgChainId={orgChainId} currentName={userDAO} />
+          )}
         </VStack>
       </Box>
     </Box>

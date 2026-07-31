@@ -30,7 +30,7 @@ import {
   Collapse,
   useDisclosure,
 } from '@chakra-ui/react';
-import { PiCheckCircle, PiCaretDown, PiCaretUp } from 'react-icons/pi';
+import { PiCaretDown, PiCaretUp } from 'react-icons/pi';
 import { TaskPermission, hasPermission } from '@/util/permissions';
 import { DEFAULT_TOKEN_LABEL } from '@/util/tokenLabel';
 
@@ -114,7 +114,7 @@ export function DeploymentPreviewModal({ data, onConfirm, onCancel }) {
   const isOpen = !!data;
   if (!isOpen) return null;
 
-  const { orgName, isPasskey, deployerAddress, networkName, nativeSymbol, fundingEth, params, predicted } = data;
+  const { orgName, deployerAddress, networkName, nativeSymbol, fundingEth, params, predicted } = data;
   const roles = params?.roles || [];
   const tmp = params?.taskManagerPerms || { roleIndices: [], masks: [] };
   const tmpEntries = (tmp.roleIndices || []).map((ri, i) => ({
@@ -158,27 +158,11 @@ export function DeploymentPreviewModal({ data, onConfirm, onCancel }) {
         <ModalCloseButton />
         <ModalBody>
           <VStack align="stretch" spacing={5}>
-            <HStack
-              spacing={3}
-              align="start"
-              bg="green.50"
-              borderRadius="lg"
-              p={3}
-              border="1px solid"
-              borderColor="green.100"
-            >
-              <Icon as={PiCheckCircle} color="green.500" boxSize={5} mt="1px" />
-              <Text fontSize="sm" color="green.900">
-                We ran your whole setup against {networkName} first, and it worked. Nothing has been
-                created yet — that happens when you confirm.
-              </Text>
-            </HStack>
-
+            {/* No "simulated successfully" banner: the dry run is how we make sure the
+                Create button works, not something the founder should have to think
+                about. The footer already says nothing has happened yet. */}
             <Section title="Your organization">
               <Line label="Lives on">{networkName}</Line>
-              <Line label="Founded by">
-                you, with {isPasskey ? 'your passkey' : 'your wallet'}
-              </Line>
               <Line label="Contributions earn">{tokenWord}</Line>
               {fundsGas && (
                 <Line label="Gas">

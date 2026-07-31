@@ -363,6 +363,33 @@ describe('at least one role must be able to vote', () => {
   });
 });
 
+describe('canVote gates proposals, not polls', () => {
+  it('a canVote:false role is still granted poll rights by the deployed bitmaps', () => {
+    // GovernanceFactory._filterCanVoteHats only filters the HYBRID voting classes.
+    // Poll eligibility comes from `ddVotingRolesBitmap`, which the deploy derives
+    // from role NAMES (all roles). Anything claiming "this role doesn't vote" is
+    // therefore only true of proposals — the launch modal states the two separately
+    // for exactly this reason.
+    const state = stateWith();
+    state.roles = [
+      { ...createDefaultRole(0, 'Member'), hierarchy: { adminRoleIndex: 2 } },
+      { ...createDefaultRole(1, 'Agent'), canVote: false, hierarchy: { adminRoleIndex: 2 } },
+      { ...createDefaultRole(2, 'Exec'), hierarchy: { adminRoleIndex: null } },
+    ];
+    const { calldata } = encodeCase(
+      { name: 'canvote-vs-polls', state },
+      { registryAddress: REGISTRY, orgDeployerAddress: '0x1Ad59E785E3aec1c53069f78bEcC24EcFE6a5d1c', deployerAddress: DEPLOYER }
+    );
+    const iface = new ethers.utils.Interface(OrgDeployerNewABI);
+    const [sent] = iface.decodeFunctionData(iface.getFunction(calldata.slice(0, 10)), calldata);
+
+    expect(sent.roles[1].canVote).toBe(false);
+    // …yet bit 1 IS set in the poll-voting bitmap.
+    const ddBitmap = sent.roleAssignments.ddVotingRolesBitmap.toNumber();
+    expect(ddBitmap & (2 ** 1)).toBe(2 ** 1);
+  });
+});
+
 describe('voting classes', () => {
   it('never ships role indices as literal hat IDs', () => {
     // VotingClassForm writes ROLE INDICES into `hatIds`; the contract reads them as

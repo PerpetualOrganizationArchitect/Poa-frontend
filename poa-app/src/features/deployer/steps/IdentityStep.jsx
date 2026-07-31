@@ -36,6 +36,7 @@ import { useDropzone } from 'react-dropzone';
 import { useDeployer, UI_MODES } from '../context/DeployerContext';
 import { StepHeader, NavigationButtons, ValidationSummary } from '../components/common';
 import { validateOrganizationStep } from '../validation/schemas';
+import { buildOrgMetadata } from '../utils/orgMetadata';
 import { useIPFScontext } from '@/context/ipfsContext';
 import {
   validateImageFile,
@@ -503,15 +504,10 @@ export function IdentityStep() {
   };
 
   const uploadToIPFS = async () => {
-    const jsonData = {
-      description: organization.description,
-      links: (organization.links || []).map((link) => ({
-        name: link.name,
-        url: link.url,
-      })),
-      template: state.ui.selectedTemplate || 'default',
-      logo: organization.logoURL || null,
-    };
+    // Shared builder — see utils/orgMetadata. This upload is only a head start;
+    // the deploy page rebuilds and re-pins the final version, because settings
+    // chosen on later steps (Hide Treasury, share ticker) aren't decided yet here.
+    const jsonData = buildOrgMetadata(state);
 
     try {
       const result = await addToIpfs(JSON.stringify(jsonData));

@@ -67,6 +67,12 @@ const toNum = (v) => {
 };
 const isZeroAddr = (a) => !a || /^0x0+$/.test(a);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+/** "A", "A and B", "A, B and C" */
+const joinList = (names) => {
+  if (!names || names.length === 0) return '';
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+};
 
 /** A labelled line in the plain-language summary. */
 function Line({ label, children }) {
@@ -141,8 +147,23 @@ export function DeploymentPreviewModal({ data, onConfirm, onCancel }) {
   // answer to "will this module actually exist?" — better than the wizard's toggle.
   const hasEducation = !isZeroAddr(predicted?.educationHub);
   const hasEmailInvites = !isZeroAddr(predicted?.zkEmailInvites);
-  const vouchedRoles = roles.filter((r) => r.vouching?.enabled).map((r) => r.name);
   const fundsGas = Number(fundingEth) > 0;
+
+  // How someone gets a role. Three distinct outcomes, and "not vouched" does NOT
+  // mean "open": a role with vouching off and defaults.eligible off is granted by
+  // an admin, which the deployer deliberately preserves.
+  const vouchedRoles = roles.filter((r) => r.vouching?.enabled).map((r) => r.name);
+  const openRoles = roles.filter((r) => !r.vouching?.enabled && r.defaults?.eligible).map((r) => r.name);
+  const grantedRoles = roles.filter((r) => !r.vouching?.enabled && !r.defaults?.eligible).map((r) => r.name);
+
+  // Who actually votes, read off the encoded payload rather than assumed.
+  // `canVote` decides the hybrid voting classes (GovernanceFactory._filterCanVoteHats);
+  // poll eligibility is a separate bitmap, so the two can legitimately differ.
+  const proposalVoters = roles.filter((r) => r.canVote).map((r) => r.name);
+  const ddBitmap = toNum(params?.roleAssignments?.ddVotingRolesBitmap) || 0;
+  const pollVoters = roles.filter((_, i) => (ddBitmap & (2 ** i)) !== 0).map((r) => r.name);
+  const sameVoters =
+    pollVoters.length === proposalVoters.length && proposalVoters.every((n) => pollVoters.includes(n));
 
   return (
     // zIndex must clear the ReviewStep DeploymentOverlay (zIndex 9999), which is
@@ -182,14 +203,25 @@ export function DeploymentPreviewModal({ data, onConfirm, onCancel }) {
                   </Tag>
                 ))}
               </HStack>
-              <Text fontSize="xs" color="warmGray.500" pt={1}>
-                {plural(roles.filter((r) => r.canVote).length, 'role votes', 'roles vote')} on decisions.
-                {vouchedRoles.length === 0
-                  ? ' Anyone can join.'
-                  : vouchedRoles.length === roles.length
-                    ? ' Every role needs existing members to vouch for a newcomer before they can join.'
-                    : ` ${vouchedRoles.join(' and ')} ${vouchedRoles.length === 1 ? 'needs' : 'need'} a vouch from existing members; the rest are open to anyone.`}
-              </Text>
+              <VStack align="stretch" spacing={1} pt={1}>
+                {openRoles.length > 0 && (
+                  <Text fontSize="xs" color="warmGray.500">
+                    Anyone can join {joinList(openRoles)}.
+                  </Text>
+                )}
+                {vouchedRoles.length > 0 && (
+                  <Text fontSize="xs" color="warmGray.500">
+                    {joinList(vouchedRoles)} {vouchedRoles.length === 1 ? 'needs' : 'need'} a vouch from
+                    existing members first.
+                  </Text>
+                )}
+                {grantedRoles.length > 0 && (
+                  <Text fontSize="xs" color="warmGray.500">
+                    {joinList(grantedRoles)} {grantedRoles.length === 1 ? 'is' : 'are'} handed out by an
+                    admin — nobody can claim {grantedRoles.length === 1 ? 'it' : 'them'} directly.
+                  </Text>
+                )}
+              </VStack>
             </Section>
 
             <Divider />
@@ -199,6 +231,16 @@ export function DeploymentPreviewModal({ data, onConfirm, onCancel }) {
                 {Number.isFinite(threshold) ? `${threshold}% of the vote` : 'a majority'}
               </Line>
               <Line label="Voting power">{describeVoting(params?.hybridClasses, tokenWord)}</Line>
+              {/* Proposals and polls draw on different role sets, so only collapse
+                  them into one line when they genuinely match. */}
+              {sameVoters ? (
+                <Line label="Who votes">{joinList(proposalVoters) || 'nobody yet'}</Line>
+              ) : (
+                <>
+                  <Line label="On proposals">{joinList(proposalVoters) || 'nobody yet'}</Line>
+                  <Line label="On polls">{joinList(pollVoters) || 'nobody yet'}</Line>
+                </>
+              )}
               {(hybridQuorum > 0 || ddQuorum > 0) && (
                 <Line label="Turnout needed">
                   at least {plural(Math.max(hybridQuorum, ddQuorum), 'person', 'people')} must vote

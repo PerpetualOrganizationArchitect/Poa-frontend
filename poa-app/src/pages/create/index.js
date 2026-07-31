@@ -29,6 +29,7 @@ import { buildDeployCalldata, deployWithCalldata } from "../../../scripts/newDep
 import { useRouter } from "next/router";
 import { FETCH_INFRASTRUCTURE_ADDRESSES, FETCH_USERNAME_NEW } from "@/util/queries";
 import { ipfsCidToBytes32 } from "@/services/web3/utils/encoding";
+import { buildOrgMetadata } from "@/features/deployer/utils/orgMetadata";
 import { signRegistration, getSkipRegistrationDefaults } from "@/services/web3/utils/registrySigner";
 import { ethers } from 'ethers';
 
@@ -331,39 +332,22 @@ function DeployerPageContent() {
       // Resolve all usernames to addresses before deployment
       const rolesWithResolvedAddresses = await resolveRoleUsernames(state.roles);
 
-      // Upload description and links to IPFS first
-      const links = state.organization.links || [];
-      const jsonData = {
-        description: state.organization.description || '',
-        links: links.map((link) => ({
-          name: link.name,
-          url: link.url,
-        })),
-        template: state.organization.template || 'default',
-        logo: state.organization.logoURL || null,
-        hideTreasury: state.features.hideTreasury || false,
-        // The app shows "Shares" unless an org opts into its token's real ticker
-        // (util/tokenLabel). Someone who bothered to pick a ticker at launch meant
-        // to see it, so opt in for them — otherwise they'd name it COMFY and still
-        // read "Shares" everywhere until they found the toggle in Settings.
-        useTokenSymbol: Boolean(state.organization.tokenSymbol?.trim()),
-      };
+      // Pin the org metadata. ALWAYS rebuild and re-upload rather than reusing the
+      // CID the Identity step produced: that upload happens on step 2, before the
+      // user has chosen Hide Treasury or a share ticker, so reusing it silently
+      // dropped both. IPFS is content-addressed, so when nothing changed since the
+      // Identity upload this returns the identical CID and costs nothing.
+      const jsonData = buildOrgMetadata(state);
 
       console.log('[DEPLOY] Preparing IPFS metadata:', jsonData);
 
-      let infoIPFSHash = state.organization.infoIPFSHash;
-      if (!infoIPFSHash) {
-        console.log('[DEPLOY] No existing IPFS hash, uploading new metadata...');
-        const result = await addToIpfs(JSON.stringify(jsonData));
-        infoIPFSHash = result.path;
-        console.log('[DEPLOY] IPFS upload complete. CID:', infoIPFSHash);
-        console.log('[DEPLOY] Verify content at: https://api.thegraph.com/ipfs/api/v0/cat?arg=' + infoIPFSHash);
+      const result = await addToIpfs(JSON.stringify(jsonData));
+      const infoIPFSHash = result.path;
+      if (infoIPFSHash !== state.organization.infoIPFSHash) {
         actions.setIPFSHash(infoIPFSHash);
-      } else {
-        console.log('[DEPLOY] Using existing IPFS hash:', infoIPFSHash);
       }
-
       console.log('[DEPLOY] Final infoIPFSHash for deployment:', infoIPFSHash);
+      console.log('[DEPLOY] Verify content at: https://api.thegraph.com/ipfs/api/v0/cat?arg=' + infoIPFSHash);
 
       // Upload role metadata to IPFS for roles with descriptions
       // Note: Role names are stored on-chain and indexed directly, not via IPFS

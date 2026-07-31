@@ -321,12 +321,16 @@ function OrganizationHero({ organization, templateName, goToStep }) {
             >
               Auto Upgrade: {organization.autoUpgrade ? 'On' : 'Off'}
             </Badge>
-            {/* Resolve the blanks the way AccessFactory does, so the review shows the
-                token the org will actually get rather than "unset". */}
-            <Badge bg="warmGray.100" color="warmGray.600" borderRadius="full" px={3} py={1}>
-              Token: {organization.tokenName?.trim() || `${organization.name || 'Organization'} Token`}
-              {` (${organization.tokenSymbol?.trim() || 'PT'})`}
-            </Badge>
+            {/* Only worth a badge when the founder named the shares themselves —
+                otherwise the app just calls them "shares" and there's nothing to say. */}
+            {(organization.tokenName?.trim() || organization.tokenSymbol?.trim()) && (
+              <Badge bg="warmGray.100" color="warmGray.600" borderRadius="full" px={3} py={1}>
+                Shares: {organization.tokenName?.trim() || organization.tokenSymbol?.trim()}
+                {organization.tokenName?.trim() && organization.tokenSymbol?.trim()
+                  ? ` (${organization.tokenSymbol.trim()})`
+                  : ''}
+              </Badge>
+            )}
           </HStack>
         </VStack>
 

@@ -342,6 +342,11 @@ function DeployerPageContent() {
         template: state.organization.template || 'default',
         logo: state.organization.logoURL || null,
         hideTreasury: state.features.hideTreasury || false,
+        // The app shows "Shares" unless an org opts into its token's real ticker
+        // (util/tokenLabel). Someone who bothered to pick a ticker at launch meant
+        // to see it, so opt in for them — otherwise they'd name it COMFY and still
+        // read "Shares" everywhere until they found the toggle in Settings.
+        useTokenSymbol: Boolean(state.organization.tokenSymbol?.trim()),
       };
 
       console.log('[DEPLOY] Preparing IPFS metadata:', jsonData);
@@ -687,12 +692,12 @@ function DeployerPageContent() {
           isPasskey: isPasskeyDeployer,
           deployerAddress: simDeployerAddress,
           networkName: getNetworkByChainId(targetChainId)?.name || `Chain ${targetChainId}`,
+          nativeSymbol: getNetworkByChainId(targetChainId)?.nativeCurrency?.symbol || '',
           fundingEth: paymasterFundingWei && paymasterFundingWei.gt(0)
             ? ethers.utils.formatEther(paymasterFundingWei)
             : '0',
           params: deployParams,
           predicted: predictedResult,
-          zkEmailInvitesEnabled: state.features.zkEmailInvitesEnabled,
         });
       });
       setPreviewData(null);

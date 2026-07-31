@@ -744,37 +744,37 @@ export function IdentityStep() {
                     </FormControl>
                   </Box>
 
-                  {/* Participation-token identity. Empty = the contract defaults,
-                      "<orgName> Token" / "PT". Limits match ParticipationToken's
-                      setName/setSymbol (64 / 16), so whatever ships here can still
-                      be edited by governance later. */}
+                  {/* Names the participation token. The rest of the app calls it
+                      "Shares" (util/tokenLabel) unless an org opts into its ticker,
+                      so keep that vocabulary here — the deploy sets `useTokenSymbol`
+                      when a ticker is given. Blank = the contract defaults,
+                      "<orgName> Token" / "PT". */}
                   <Box>
                     <Text fontSize="sm" fontWeight="600" color="warmGray.700" mb={1}>
-                      Contribution Token
+                      Name your shares
                     </Text>
                     <Text fontSize="xs" color={helperColor} lineHeight="tall" mb={3}>
-                      Members earn this token for contributions. Leave blank to use
-                      &ldquo;{organization.name?.trim() || 'Your organization'} Token&rdquo; and
-                      the ticker PT.
+                      Members earn shares for the work they do. Give them a name of your own, or
+                      leave this blank and they&apos;ll just be called shares.
                     </Text>
                     <HStack spacing={3} align="flex-start">
-                      <FormControl isInvalid={(organization.tokenName || '').length > 64}>
-                        <FormLabel fontSize="xs" color={helperColor}>Token name</FormLabel>
+                      <FormControl>
+                        <FormLabel fontSize="xs" color={helperColor}>Name</FormLabel>
                         <Input
                           size="sm"
                           value={organization.tokenName || ''}
                           onChange={(e) => handleInputChange('tokenName', e.target.value)}
-                          placeholder={`${organization.name?.trim() || 'Your organization'} Token`}
+                          placeholder={`${organization.name?.trim() || 'Your organization'} Shares`}
                           maxLength={64}
                         />
                       </FormControl>
-                      <FormControl isInvalid={(organization.tokenSymbol || '').length > 16} maxW="140px">
-                        <FormLabel fontSize="xs" color={helperColor}>Ticker</FormLabel>
+                      <FormControl maxW="140px">
+                        <FormLabel fontSize="xs" color={helperColor}>Short name</FormLabel>
                         <Input
                           size="sm"
                           value={organization.tokenSymbol || ''}
                           onChange={(e) => handleInputChange('tokenSymbol', e.target.value.toUpperCase())}
-                          placeholder="PT"
+                          placeholder="SHARES"
                           maxLength={16}
                         />
                       </FormControl>

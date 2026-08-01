@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery } from '@apollo/client';
-import { FETCH_PROJECTS_DATA_NEW } from '../util/queries';
+import { FETCH_PROJECTS_DATA_NEW, FETCH_PROJECTS_DATA_WITH_RELEASES } from '../util/queries';
 import { usePOContext } from './POContext';
 import { useRefreshSubscription, RefreshEvent } from './RefreshContext';
 import { formatTokenAmount } from '../util/formatToken';
 import { getTokenByAddress } from '../util/tokens';
 import { useUserActive } from '../hooks/useUserActive';
 import { useSubgraphClient } from '../util/apolloClient';
+import { hasCapability, CAPABILITY } from '../util/subgraphCapabilities';
 
 const ProjectContext = createContext();
 
@@ -32,10 +33,29 @@ export const ProjectProvider = ({ children }) => {
     const client = useSubgraphClient(subgraphUrl);
     const isActive = useUserActive();
 
+    // TaskManager v7 claim-release fields (subgraph-pop #201) only exist on newer
+    // deployments, and one unknown field fails the WHOLE query — which here would
+    // blank the entire task board. So probe first and upgrade the document only
+    // once the serving endpoint is known to have them. Both gateway defaults are
+    // currently behind Studio, so this reads false until they are republished.
+    const [releasesSupported, setReleasesSupported] = useState(false);
+    useEffect(() => {
+        let cancelled = false;
+        // Reset on endpoint change: a different chain may serve an older schema.
+        setReleasesSupported(false);
+        if (!subgraphUrl) return undefined;
+        hasCapability(subgraphUrl, CAPABILITY.TASK_RELEASES).then((has) => {
+            if (!cancelled) setReleasesSupported(!!has);
+        });
+        return () => { cancelled = true; };
+    }, [subgraphUrl]);
+
+    const projectsQuery = releasesSupported ? FETCH_PROJECTS_DATA_WITH_RELEASES : FETCH_PROJECTS_DATA_NEW;
+
     // pollInterval keeps task data fresh. cache-and-network shows cached data instantly.
     // 40s balances liveness against The Graph Studio rate limits.
     // Polling pauses when the tab is hidden or the user is idle (useUserActive).
-    const { data, refetch } = useQuery(FETCH_PROJECTS_DATA_NEW, {
+    const { data, refetch } = useQuery(projectsQuery, {
         variables: { orgId: orgId },
         skip: !orgId,
         fetchPolicy: 'cache-and-network',
@@ -78,6 +98,7 @@ export const ProjectProvider = ({ children }) => {
             RefreshEvent.TASK_CANCELLED,
             RefreshEvent.TASK_REJECTED,
             RefreshEvent.TASK_ASSIGNED,
+            RefreshEvent.TASK_UNCLAIMED,
             RefreshEvent.TASK_APPLICATION_SUBMITTED,
             RefreshEvent.TASK_APPLICATION_APPROVED,
         ],
@@ -185,6 +206,13 @@ export const ProjectProvider = ({ children }) => {
                         claimDeadline: task.claimDeadline ?? null,
                         reclaimCount: task.reclaimCount || 0,
                         claimExpiries: task.claimExpiries || [],
+                        // v7 claim release. Absent whenever the endpoint predates
+                        // subgraph-pop #201 (or Apollo replays a cache entry that
+                        // was normalized before the capability probe flipped), so
+                        // these must default rather than assume the richer query ran.
+                        releaseCount: task.releaseCount || 0,
+                        lastReleasedAt: task.lastReleasedAt ?? null,
+                        releases: task.releases || [],
                         // Soft due date lives in the IPFS metadata (unix seconds).
                         dueDate: task.metadata?.dueDate != null ? Number(task.metadata.dueDate) : null,
                     };
@@ -241,7 +269,13 @@ export const ProjectProvider = ({ children }) => {
         recommendedTasks,
         nextTaskId,
         globalRolePermissions,
-    }), [projectsData, taskCount, recommendedTasks, nextTaskId, globalRolePermissions]);
+        // Exposed so the release ACTION can be gated on the same probe as the
+        // release FIELDS. The TaskUnclaimed mapping handler ships in the same
+        // subgraph release as these fields, so an endpoint that fails the probe
+        // also cannot index a release — the board would show the task as still
+        // claimed forever, and the next click would revert BadStatus.
+        releasesSupported,
+    }), [projectsData, taskCount, recommendedTasks, nextTaskId, globalRolePermissions, releasesSupported]);
 
     return (
         <ProjectContext.Provider value={contextValue}>

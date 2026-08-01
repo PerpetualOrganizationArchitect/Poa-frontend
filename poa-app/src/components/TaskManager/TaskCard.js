@@ -4,7 +4,7 @@ import UserIdentity from '@/components/common/UserIdentity';
 import { useDrag } from 'react-dnd';
 import TaskCardModal from './TaskCardModal';
 import { useRouter } from 'next/router';
-import { TimeIcon, StarIcon, CheckIcon, InfoIcon, WarningIcon } from '@chakra-ui/icons';
+import { TimeIcon, StarIcon, CheckIcon, InfoIcon, WarningIcon, RepeatIcon } from '@chakra-ui/icons';
 import { hasBounty as checkHasBounty, getTokenByAddress } from '../../util/tokens';
 import { usePOContext } from '../../context/POContext';
 import { useOrgName } from '../../hooks/useOrgName';
@@ -32,7 +32,7 @@ import { darkCardStyle } from '@/components/shared/glassStyles';
 const TaskCard = ({ task, columnId, onEditTask, onEditTaskMetadata, isMobile, isTakeoverGhost = false }) => {
   const poContext = usePOContext();
   const tokenLabel = poContext?.tokenLabel || 'Shares';
-  const { id, name, description, difficulty, estHours, claimedBy, claimerUsername, projectId, Payout, bountyToken, bountyPayout, bountyPayoutRaw, rejectionCount, requiresApplication, applicants } = task;
+  const { id, name, description, difficulty, estHours, claimedBy, claimerUsername, projectId, Payout, bountyToken, bountyPayout, bountyPayoutRaw, rejectionCount, releaseCount, requiresApplication, applicants } = task;
   // Orgs that pay by hours only enter/track time in 15-min steps, so show a
   // "1h 30m" duration instead of decimal "1.5 hrs".
   const estLabel = poContext?.taskPayoutHoursOnly
@@ -296,6 +296,21 @@ const TaskCard = ({ task, columnId, onEditTask, onEditTaskMetadata, isMobile, is
                   <Badge colorScheme="red" {...badgeStyle}>
                     <WarningIcon mr={1} boxSize={2} />
                     Rejected
+                  </Badge>
+                </Tooltip>
+              )}
+
+              {/* Churn signal: a task that keeps coming back to the pool is
+                  usually mis-scoped or under-paid. Stays 0 (badge dark) on any
+                  endpoint that predates subgraph-pop #201. */}
+              {releaseCount > 0 && columnId !== 'completed' && (
+                <Tooltip
+                  label={`Returned to Open ${releaseCount} time${releaseCount > 1 ? 's' : ''}`}
+                  placement="top"
+                >
+                  <Badge colorScheme="orange" {...badgeStyle}>
+                    <RepeatIcon mr={1} boxSize={2} />
+                    Dropped
                   </Badge>
                 </Tooltip>
               )}

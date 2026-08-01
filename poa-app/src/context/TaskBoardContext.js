@@ -1085,6 +1085,86 @@ export const TaskBoardProvider = ({
   }, [taskService, taskManagerContractAddress, isReady, addNotification, updateNotification, emit, onUpdateColumns, scheduleLockClear, selectedProject?.id]);
 
   /**
+   * Release a claimed task back to the pool (TaskManager v7 `unclaimTask`).
+   *
+   * Unlike takeOverTask there is no replacement claimer, so the card MOVES
+   * inProgress -> open and every claim-derived field has to be cleared with it:
+   * a card left holding `claimDeadline` renders a countdown chip (and, once
+   * past, an "expired" banner) while sitting in the Open column. `status` is
+   * set to 'Open' too — mergeColumnsPreservingMetadata and the STATUS_TO_COLUMN
+   * consumers would otherwise see a stale 'Assigned' and bounce it back.
+   *
+   * The expired-claim "ghost" that the boards mirror into Open for takeover is
+   * derived from the inProgress column (TaskBoardDesktop/Mobile filter it by
+   * isClaimExpired), so removing the task from inProgress is what retires the
+   * ghost — not the field clearing. Both still have to happen: splice the task
+   * out of inProgress AND clear the fields, or Open shows the ghost and the
+   * released card side by side under the same task id.
+   *
+   * Permission is the caller's problem (see util/releaseGate): the claimer may
+   * always release, anyone else needs ASSIGN plus an expired claim.
+   */
+  const releaseTask = useCallback(async (task) => {
+    if (!isReady || !taskService) {
+      addNotification(getNotReadyMessageRef.current(), 'error');
+      return { success: false };
+    }
+
+    const previousTaskColumns = JSON.parse(JSON.stringify(taskColumnsRef.current));
+    optimisticLockRef.current = Date.now();
+
+    setTaskColumns(cols => {
+      const released = cols
+        .find(c => c.id === 'inProgress')?.tasks
+        ?.find(t => t.id === task.id);
+      if (!released) return cols;
+      const reopened = {
+        ...released,
+        status: 'Open',
+        claimedBy: null,
+        claimerUsername: '',
+        assignedAt: null,
+        claimDeadline: null,
+      };
+      return cols.map(col => {
+        if (col.id === 'inProgress') {
+          return { ...col, tasks: col.tasks.filter(t => t.id !== task.id) };
+        }
+        if (col.id === 'open') {
+          // Filter first: the same id must never end up twice in one column.
+          return { ...col, tasks: [reopened, ...col.tasks.filter(t => t.id !== task.id)] };
+        }
+        return col;
+      });
+    });
+
+    const notifId = addNotification('Releasing task...', 'loading');
+
+    try {
+      const result = await taskService.unclaimTask(taskManagerContractAddress, task.id);
+      if (result.success) {
+        updateNotification(notifId, 'Task released — it is open for anyone to claim.', 'success');
+        emit(RefreshEvent.TASK_UNCLAIMED, { taskId: task.id });
+
+        let confirmedColumns;
+        setTaskColumns(prev => { confirmedColumns = prev; return prev; });
+        if (onUpdateColumns && confirmedColumns) {
+          onUpdateColumns(confirmedColumns, selectedProject?.id);
+        }
+        scheduleLockClear();
+        return { success: true };
+      }
+      throw new Error(result.error?.userMessage || 'Failed to release task');
+    } catch (error) {
+      console.error('Error releasing task:', error);
+      updateNotification(notifId, error.message || 'Error releasing task', 'error');
+      optimisticLockRef.current = null;
+      setTaskColumns(previousTaskColumns);
+      return { success: false, error };
+    }
+  }, [taskService, taskManagerContractAddress, isReady, addNotification, updateNotification, emit, onUpdateColumns, scheduleLockClear, selectedProject?.id]);
+
+  /**
    * Reject a submitted task, moving it back to inProgress
    */
   const rejectTask = useCallback(async (task, rejectionReason) => {
@@ -1176,8 +1256,9 @@ export const TaskBoardProvider = ({
     approveApplication,
     assignTask,
     takeOverTask,
+    releaseTask,
     rejectTask,
-  }), [taskColumns, moveTask, addTask, addTaskBatch, editTask, editTaskMetadata, deleteTask, applyForTask, approveApplication, assignTask, takeOverTask, rejectTask]);
+  }), [taskColumns, moveTask, addTask, addTaskBatch, editTask, editTaskMetadata, deleteTask, applyForTask, approveApplication, assignTask, takeOverTask, releaseTask, rejectTask]);
 
   return (
     <TaskBoardContext.Provider value={value}>

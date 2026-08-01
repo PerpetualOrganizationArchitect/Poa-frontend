@@ -1,11 +1,10 @@
 export { default as TreasuryPage } from './TreasuryPage';
 export { default as TreasuryHeader } from './TreasuryHeader';
-export { default as TokenBalanceCard } from './TokenBalanceCard';
 export { default as TokenBalancesGrid } from './TokenBalancesGrid';
 export { default as CurrentDistributions } from './CurrentDistributions';
 export { default as DistributionCard } from './DistributionCard';
-export { default as DistributionHistory } from './DistributionHistory';
 export { default as HistoricalOverview } from './HistoricalOverview';
+export { default as ActivityFeed } from './ActivityFeed';
 export { default as ParticipationTokenModal } from './ParticipationTokenModal';
 export { default as GasPoolSection } from './GasPoolSection';
 export { default as GasPoolDepositModal } from './GasPoolDepositModal';

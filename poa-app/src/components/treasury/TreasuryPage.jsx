@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState, useCallback } from 'react';
+import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { useTour } from '@/features/tour';
 import {
   Box,
@@ -7,8 +7,8 @@ import {
   GridItem,
   Text,
   Center,
-  useBreakpointValue,
   useDisclosure,
+  usePrefersReducedMotion,
 } from '@chakra-ui/react';
 import PulseLoader from "@/components/shared/PulseLoader";
 import { useRouter } from 'next/router';
@@ -22,26 +22,30 @@ import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
 import { FETCH_TREASURY_DATA, FETCH_INFRASTRUCTURE_ADDRESSES } from '@/util/queries';
 import { FETCH_GAS_POOL_DATA } from '@/util/passkeyQueries';
 import { getBountyTokenOptions } from '@/util/tokens';
+import { formatTokenAmount } from '@/util/formatToken';
 import { createChainClients } from '@/services/web3/utils/chainClients';
 import TreasuryHeader from './TreasuryHeader';
 import TokenBalancesGrid from './TokenBalancesGrid';
 import CurrentDistributions from './CurrentDistributions';
-import DistributionHistory from './DistributionHistory';
 import HistoricalOverview from './HistoricalOverview';
+import ActivityFeed from './ActivityFeed';
 import ParticipationTokenModal from './ParticipationTokenModal';
 import DepositModal from './DepositModal';
 import CreateDistributionModal from './CreateDistributionModal';
 import GasPoolSection from './GasPoolSection';
 import GasPoolDepositModal from './GasPoolDepositModal';
+import { SectionHeader, LEDGER_GLASS, Rise, flashRing } from './treasuryStyles';
 import { useOrgTheme } from '@/hooks';
 
+// The ledger's glass surface — the accent palette in treasuryStyles.js was
+// validated against this exact opacity over the mint page.
 const glassLayerStyle = {
   position: 'absolute',
   height: '100%',
   width: '100%',
   zIndex: -1,
   borderRadius: 'inherit',
-  backgroundColor: 'rgba(0, 0, 0, .79)',
+  backgroundColor: LEDGER_GLASS,
 };
 
 const BALANCE_OF_ABI = [
@@ -86,9 +90,6 @@ const TreasuryPage = () => {
   const { isOpen: isCreateDistOpen, onOpen: onCreateDistOpen, onClose: onCreateDistClose } = useDisclosure();
   const { isOpen: isGasPoolDepositOpen, onOpen: onGasPoolDepositOpen, onClose: onGasPoolDepositClose } = useDisclosure();
 
-  // Responsive design
-  const sectionHeadingSize = useBreakpointValue({ base: 'lg', md: 'xl' });
-
   const client = useSubgraphClient(subgraphUrl);
 
   // Fetch treasury data from subgraph
@@ -124,24 +125,56 @@ const TreasuryPage = () => {
   const payments = paymentManager?.payments || [];
   const totalSupply = treasuryData?.organization?.participationToken?.totalSupply;
 
+  // Gas pool events for the unified activity feed
+  const gasConfig = gasPoolData?.paymasterOrgConfigs?.[0];
+  const gasDepositEvents = gasConfig?.depositEvents || [];
+  const gasUsageEvents = gasConfig?.usageEvents || [];
+
   // Extract completed tasks from all projects (flattened)
   const completedTasks = useMemo(() => {
     const projects = treasuryData?.organization?.taskManager?.projects || [];
     return projects.flatMap(p => p.tasks || []);
   }, [treasuryData]);
 
-  // Memoize filtered distributions to avoid recalculation on every render
-  const { activeDistributions, completedDistributions, totalDistributed } = useMemo(() => {
-    const active = distributions.filter(d => d.status === 'Active');
-    const completed = distributions.filter(d => d.status === 'Finalized');
-    const total = distributions.reduce((sum, d) =>
-      sum + BigInt(d.totalAmount || 0), BigInt(0));
-    return { activeDistributions: active, completedDistributions: completed, totalDistributed: total };
-  }, [distributions]);
+  // Active distributions drive Zone 2 (the member's claimable payouts).
+  // "Open" for the header count means genuinely claimable — an Active payout
+  // whose pool is fully claimed must not be advertised as open.
+  const activeDistributions = useMemo(
+    () => distributions.filter(d => d.status === 'Active'),
+    [distributions]
+  );
+  const openDistributionCount = useMemo(
+    () => activeDistributions.filter(d =>
+      !d.totalAmount || d.totalAmount === '0' ||
+      BigInt(d.totalClaimed || '0') < BigInt(d.totalAmount)
+    ).length,
+    [activeDistributions]
+  );
+
+  // Claim CTA in the hero scrolls to the payouts zone, which answers with a
+  // brief ring so the eye knows where it landed.
+  const payoutsRef = useRef(null);
+  const [payoutsFlash, setPayoutsFlash] = useState(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const scrollToPayouts = useCallback(() => {
+    payoutsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setPayoutsFlash(true);
+    setTimeout(() => setPayoutsFlash(false), 1600);
+  }, []);
 
   // ERC20 treasury balance fetching
   const [erc20Balances, setErc20Balances] = useState([]);
   const [balancesLoading, setBalancesLoading] = useState(false);
+
+  // Non-stable holdings the hero must disclose beside the $ figure ("the group
+  // also holds X — no reliable dollar price"). Display-zero balances excluded.
+  const otherHoldings = useMemo(
+    () => erc20Balances
+      .filter(t => !t.isStable)
+      .map(t => ({ symbol: t.symbol, amount: formatTokenAmount(t.balance || '0', t.decimals, 4) }))
+      .filter(t => parseFloat(t.amount) > 0),
+    [erc20Balances]
+  );
 
   const fetchErc20Balances = useCallback(async () => {
     if (!paymentManager?.id || !orgChainId) return;
@@ -195,6 +228,14 @@ const TreasuryPage = () => {
     refetchGasPool();
   }, [refetchGasPool]);
 
+  const zoneBox = {
+    borderRadius: '2xl',
+    bg: 'transparent',
+    boxShadow: 'lg',
+    position: 'relative',
+    zIndex: 2,
+  };
+
   return (
     <>
       <Navbar />
@@ -211,66 +252,38 @@ const TreasuryPage = () => {
             color="whitesmoke"
             templateAreas={{
               base: `
-                'header'
-                'balances'
-                'distributions'
-                'history'
-                'charts'
-                'gaspool'
+                'hero'
+                'payouts'
+                'insights'
+                'gas'
+                'feed'
               `,
               md: `
-                'header header'
-                'balances distributions'
-                'history history'
-                'charts charts'
-                'gaspool gaspool'
+                'hero hero hero'
+                'payouts payouts payouts'
+                'insights insights gas'
+                'feed feed feed'
               `,
             }}
-            templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }}
+            templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }}
             gap={{ base: 3, md: 4 }}
           >
-            {/* Treasury Header */}
-            <GridItem area="header">
-              <Box
-                w="100%"
-                borderRadius="2xl"
-                bg="transparent"
-                boxShadow="lg"
-                position="relative"
-                zIndex={2}
-              >
+            {/* Zone 1 — Hero: what we hold + what's yours (+ the holdings ledger) */}
+            <GridItem area="hero">
+              <Rise delay={0} w="100%" {...zoneBox}>
                 <div style={glassLayerStyle} />
                 <TreasuryHeader
                   memberCount={poMembers}
-                  totalDistributed={totalDistributed.toString()}
-                  distributionCount={distributions.length}
+                  activeDistributionCount={openDistributionCount}
                   isAdmin={hasExecRole}
                   onCreateDistribution={onCreateDistOpen}
                   onDeposit={onDepositOpen}
                   onFundBounties={taskManagerAddress ? onBountyDepositOpen : undefined}
-                  refetch={refetch}
+                  onClaimScroll={scrollToPayouts}
+                  otherHoldings={otherHoldings}
                 />
-              </Box>
-            </GridItem>
-
-            {/* Token Balances */}
-            <GridItem area="balances">
-              <Box
-                h="100%"
-                borderRadius="2xl"
-                bg="transparent"
-                boxShadow="lg"
-                position="relative"
-                zIndex={2}
-              >
-                <div style={glassLayerStyle} />
-                <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassLayerStyle} />
-                  <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
-                    Treasury Balances
-                  </Text>
-                </VStack>
-                <Box p={{ base: 2, md: 4 }}>
+                <Box px={{ base: 4, md: 8 }} pb={{ base: 5, md: 7 }} pt={{ base: 4, md: 6 }}>
+                  <SectionHeader mb={1}>What we hold</SectionHeader>
                   <TokenBalancesGrid
                     totalSupply={totalSupply}
                     onPTClick={onPTModalOpen}
@@ -278,27 +291,26 @@ const TreasuryPage = () => {
                     erc20Balances={erc20Balances}
                   />
                 </Box>
-              </Box>
+              </Rise>
             </GridItem>
 
-            {/* Current Distributions */}
-            <GridItem area="distributions">
-              <Box
+            {/* Zone 2 — Payouts you can claim */}
+            <GridItem area="payouts" ref={payoutsRef}>
+              <Rise
+                delay={0.07}
                 h="100%"
-                borderRadius="2xl"
-                bg="transparent"
-                boxShadow="lg"
-                position="relative"
-                zIndex={2}
+                {...zoneBox}
+                animation={flashRing(payoutsFlash, prefersReducedMotion)}
               >
                 <div style={glassLayerStyle} />
-                <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassLayerStyle} />
-                  <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
-                    Active Profit Shares
-                  </Text>
-                </VStack>
-                <Box p={{ base: 2, md: 4 }}>
+                <Box px={{ base: 4, md: 8 }} py={{ base: 4, md: 6 }}>
+                  <SectionHeader
+                    meta={openDistributionCount > 0
+                      ? `${openDistributionCount} open to claim`
+                      : undefined}
+                  >
+                    Payouts
+                  </SectionHeader>
                   <CurrentDistributions
                     distributions={activeDistributions}
                     paymentManagerAddress={paymentManager?.id}
@@ -307,83 +319,56 @@ const TreasuryPage = () => {
                     refetch={refetch}
                   />
                 </Box>
-              </Box>
+              </Rise>
             </GridItem>
 
-            {/* Distribution History */}
-            <GridItem area="history">
-              <Box
-                borderRadius="2xl"
-                bg="transparent"
-                boxShadow="lg"
-                position="relative"
-                zIndex={2}
-              >
+            {/* Zone 3a — Money in & out (insight strip + chart) */}
+            <GridItem area="insights">
+              <Rise delay={0.14} h="100%" {...zoneBox}>
                 <div style={glassLayerStyle} />
-                <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassLayerStyle} />
-                  <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
-                    Distribution History
-                  </Text>
-                </VStack>
-                <Box p={{ base: 2, md: 4 }}>
-                  <DistributionHistory
-                    distributions={distributions}
-                    payments={payments}
-                  />
-                </Box>
-              </Box>
-            </GridItem>
-
-            {/* Historical Charts */}
-            <GridItem area="charts">
-              <Box
-                borderRadius="2xl"
-                bg="transparent"
-                boxShadow="lg"
-                position="relative"
-                zIndex={2}
-              >
-                <div style={glassLayerStyle} />
-                <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassLayerStyle} />
-                  <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
-                    Financial Overview
-                  </Text>
-                </VStack>
-                <Box p={{ base: 2, md: 4 }}>
+                <Box px={{ base: 4, md: 8 }} py={{ base: 4, md: 6 }}>
+                  <SectionHeader>Money in &amp; out</SectionHeader>
                   <HistoricalOverview
                     distributions={distributions}
                     payments={payments}
                   />
                 </Box>
-              </Box>
+              </Rise>
             </GridItem>
 
-            {/* Gas Pool */}
-            <GridItem area="gaspool">
-              <Box
-                borderRadius="2xl"
-                bg="transparent"
-                boxShadow="lg"
-                position="relative"
-                zIndex={2}
-              >
+            {/* Zone 3c — Compact network-fees card (hugs its content) */}
+            <GridItem area="gas" alignSelf="start">
+              <Rise delay={0.18} {...zoneBox}>
                 <div style={glassLayerStyle} />
-                <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
-                  <div style={glassLayerStyle} />
-                  <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
-                    Gas Pool
-                  </Text>
-                </VStack>
-                <Box p={{ base: 2, md: 4 }}>
+                <Box px={{ base: 4, md: 6 }} py={{ base: 4, md: 6 }}>
                   <GasPoolSection
                     gasPoolData={gasPoolData}
                     isLoading={gasPoolLoading}
                     onDeposit={onGasPoolDepositOpen}
+                    paymasterHubAddress={paymasterHubAddress}
                   />
                 </Box>
-              </Box>
+              </Rise>
+            </GridItem>
+
+            {/* Zone 3b — Recent activity (unified feed) */}
+            <GridItem area="feed">
+              <Rise delay={0.22} {...zoneBox}>
+                <div style={glassLayerStyle} />
+                <Box px={{ base: 4, md: 8 }} py={{ base: 4, md: 6 }}>
+                  <SectionHeader
+                    meta={`${payments.length + distributions.length + gasDepositEvents.length + gasUsageEvents.length} entries`}
+                  >
+                    Recent activity
+                  </SectionHeader>
+                  <ActivityFeed
+                    distributions={distributions}
+                    payments={payments}
+                    gasDepositEvents={gasDepositEvents}
+                    gasUsageEvents={gasUsageEvents}
+                  />
+                </Box>
+              </Rise>
             </GridItem>
           </Grid>
         </Box>

@@ -138,12 +138,30 @@ const ringPulse = keyframes`
 `;
 
 /** Staggered entrance wrapper for the page zones. A caller-supplied
- *  `animation` (e.g. the flash ring) takes over once it's active. */
+ *  `animation` (e.g. the flash ring) takes over once it's active. The
+ *  entrance is one-shot: once it has played (or been superseded), clearing
+ *  the caller animation must not replay it. */
 export const Rise = ({ delay = 0, animation, children, ...rest }) => {
   const reduced = usePrefersReducedMotion();
-  const rise = reduced ? undefined : `${riseIn} 0.55s ${RISE_CURVE} ${delay}s both`;
+  const [entered, setEntered] = useState(false);
+
+  useEffect(() => {
+    if (animation) setEntered(true);
+  }, [animation]);
+
+  const rise = reduced || entered
+    ? undefined
+    : `${riseIn} 0.55s ${RISE_CURVE} ${delay}s both`;
+
   return (
-    <Box {...rest} animation={animation ?? rise}>
+    <Box
+      {...rest}
+      animation={animation ?? rise}
+      onAnimationEnd={(e) => {
+        if (e.animationName === riseIn.name) setEntered(true);
+        rest.onAnimationEnd?.(e);
+      }}
+    >
       {children}
     </Box>
   );

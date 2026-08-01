@@ -181,12 +181,12 @@ const HistoricalOverview = ({ distributions = [], payments = [] }) => {
                 <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
                 <XAxis
                   dataKey="label"
-                  tick={{ fill: 'rgba(255,255,255,0.40)', fontSize: 11 }}
+                  tick={{ fill: INK.muted, fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fill: 'rgba(255,255,255,0.40)', fontSize: 11 }}
+                  tick={{ fill: INK.muted, fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
                   width={45}
@@ -205,7 +205,7 @@ const HistoricalOverview = ({ distributions = [], payments = [] }) => {
               </BarChart>
             </ResponsiveContainer>
           </Box>
-          <Text fontSize="xs" color={INK.faint} mt={2}>
+          <Text fontSize="xs" color={INK.muted} mt={2}>
             Amounts shown in the org&apos;s main payout token.
           </Text>
         </Box>

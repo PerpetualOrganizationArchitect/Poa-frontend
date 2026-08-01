@@ -324,6 +324,17 @@ const ActivityFeed = ({
                   py={3}
                   onClick={isGroup ? () => toggleGroup(r.id) : undefined}
                   cursor={isGroup ? 'pointer' : 'default'}
+                  role={isGroup ? 'button' : undefined}
+                  tabIndex={isGroup ? 0 : undefined}
+                  aria-expanded={isGroup ? isOpen : undefined}
+                  aria-label={isGroup ? `${r.detail}, ${isOpen ? 'collapse' : 'expand'}` : undefined}
+                  onKeyDown={isGroup ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggleGroup(r.id);
+                    }
+                  } : undefined}
+                  _focusVisible={{ bg: ROW_HOVER, outline: '1px solid rgba(144,85,232,0.6)', outlineOffset: '-1px' }}
                 >
                   <HStack justify="space-between" mb={1}>
                     <HStack spacing={1.5}>
@@ -409,6 +420,16 @@ const ActivityFeed = ({
               _hover={{ bg: ROW_HOVER }}
               onClick={isGroup ? () => toggleGroup(r.id) : undefined}
               cursor={isGroup ? 'pointer' : 'default'}
+              tabIndex={isGroup ? 0 : undefined}
+              aria-expanded={isGroup ? isOpen : undefined}
+              aria-label={isGroup ? `${r.detail}, ${isOpen ? 'collapse' : 'expand'}` : undefined}
+              onKeyDown={isGroup ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleGroup(r.id);
+                }
+              } : undefined}
+              _focusVisible={{ bg: ROW_HOVER, outline: '1px solid rgba(144,85,232,0.6)', outlineOffset: '-1px' }}
             >
               <Text role="cell" w="110px" flexShrink={0} fontSize="xs" color={showDate ? INK.muted : 'transparent'} sx={TABULAR}>
                 {dateStr}
@@ -432,7 +453,7 @@ const ActivityFeed = ({
                     as={FiChevronRight}
                     boxSize={3.5}
                     color={INK.muted}
-                    aria-label={isOpen ? 'Collapse fees' : 'Expand fees'}
+                    aria-hidden="true"
                     transform={isOpen ? 'rotate(90deg)' : 'none'}
                     transition="transform 0.2s ease"
                   />

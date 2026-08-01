@@ -72,6 +72,12 @@ function isMeaningful(proposal) {
   if (proposal.setterTemplate) return true;
   if ((proposal.electionCandidates || []).length > 0) return true;
   if (proposal.roleConfig?.name && proposal.roleConfig.name.trim() !== '') return true;
+  // The stepped wizard makes "decision made, nothing typed yet" a normal place
+  // to sit — a category picked, the role being elected chosen, a parent role
+  // selected. That is real work, and it used to persist as nothing.
+  if (proposal.setterCategory) return true;
+  if (proposal.electionRoleId) return true;
+  if (proposal.roleConfig?.parentHatId) return true;
   return false;
 }
 

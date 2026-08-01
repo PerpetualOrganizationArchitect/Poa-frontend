@@ -11,16 +11,19 @@ import {
   RAW_FUNCTIONS,
   CONTRACT_MAP,
   getTemplateById,
+  buildSetterCopy,
   isContractAvailable,
   isBytes32,
   normalizeBytes32,
 } from '@/config/setterDefinitions';
 import { usePOContext } from '@/context/POContext';
+import { useProjectContext } from '@/context/ProjectContext';
 import { useIPFScontext } from '@/context/ipfsContext';
 import { getNetworkByChainId } from '../config/networks';
 import { getInfrastructureAddress, CONTRACT_NAMES } from '@/config/contracts';
 import { createHatsService } from '@/services/web3/domain/HatsService';
 import { ipfsCidToBytes32 } from '@/services/web3/utils/encoding';
+import { getTokenByAddress } from '@/util/tokens';
 import {
   TITLE_PREFIX as ELECTION_TITLE_PREFIX,
   DESCRIPTION_PREFIX as ELECTION_DESCRIPTION_PREFIX,
@@ -34,12 +37,21 @@ import {
 const defaultProposal = {
   name: "",
   description: "",
+  // Provenance twins for the wizard's auto-copy (UI only — never submitted).
+  // applyAutoCopy rewrites name/description only while they still equal these,
+  // so wording the member typed survives Back → reconfigure. See
+  // components/voting/create/autoCopy.js.
+  autoTitle: "",          // last title this flow generated
+  autoDescription: "",    // last description this flow generated
   execution: "",
   time: 72,
   options: ["", ""],
   type: "normal",
   transferAddress: "",
   transferAmount: "",
+  // Asset to pay out. "" = the chain's native currency (xDAI on Gnosis); any
+  // other value is an ERC20 contract address from getBountyTokenOptions.
+  transferToken: "",
   // Election fields
   electionCandidates: [],           // Array of { name, address }
   electionRoleId: "",               // Hat ID for the role being elected
@@ -54,6 +66,8 @@ const defaultProposal = {
   // Setter fields (for contract settings changes)
   setterMode: "template", // "template" or "advanced"
   setterTemplate: "",     // Template ID if using template mode
+  setterCategory: "",     // Category card picked in SetterActionSelector (UI only;
+                          // lifted out of its local state so it survives Back/Next)
   setterContract: "",     // Contract key (e.g., "hybridVoting")
   setterFunction: "",     // Function name (e.g., "setConfig")
   setterValues: {},       // Template input values
@@ -72,7 +86,8 @@ const defaultProposal = {
 
 export function useProposalForm({ onSubmit }) {
   const toast = useToast();
-  const { orgChainId } = usePOContext();
+  const { orgChainId, roleNames } = usePOContext();
+  const { projectsData } = useProjectContext() || {};
   const { addToIpfs } = useIPFScontext();
   const orgNetwork = getNetworkByChainId(orgChainId);
   const nativeCurrencySymbol = orgNetwork?.nativeCurrency?.symbol || 'ETH';
@@ -109,13 +124,19 @@ export function useProposalForm({ onSubmit }) {
     // so a stale toggle doesn't leak into submit.
     const isHybrid = newType === 'election' || newType === 'setter' || newType === 'createRole';
     setProposal(prev => {
-      // When switching away from election/createRole, drop auto-generated
-      // title/description (matches the sentinel-prefix convention each
-      // configurator owns). Preserve anything the user typed themselves.
-      const leavingElection = prev.type === 'election' && newType !== 'election';
-      const leavingCreateRole = prev.type === 'createRole' && newType !== 'createRole';
+      // Auto-generated copy describes the OLD intent, so it can't survive a type
+      // switch. autoTitle/autoDescription are the provenance twins applyAutoCopy
+      // writes: a field still equal to its twin is ours to drop, anything else
+      // the member typed themselves and we keep.
       let clearedName = prev.name;
       let clearedDescription = prev.description;
+      if (clearedName && clearedName === prev.autoTitle) clearedName = '';
+      if (clearedDescription && clearedDescription === prev.autoDescription) clearedDescription = '';
+
+      // Belt and braces for drafts written before provenance existed: they only
+      // carry the sentinel prefixes each configurator used to own.
+      const leavingElection = prev.type === 'election' && newType !== 'election';
+      const leavingCreateRole = prev.type === 'createRole' && newType !== 'createRole';
       if (leavingElection && clearedName?.startsWith(ELECTION_TITLE_PREFIX)) clearedName = '';
       if (leavingElection && clearedDescription?.startsWith(ELECTION_DESCRIPTION_PREFIX)) clearedDescription = '';
       if (leavingCreateRole && clearedName?.startsWith(CREATE_ROLE_TITLE_PREFIX)) clearedName = '';
@@ -126,6 +147,11 @@ export function useProposalForm({ onSubmit }) {
         type: newType,
         name: clearedName,
         description: clearedDescription,
+        // The new intent hasn't generated any copy yet — leaving stale
+        // provenance behind would let the next suggestion clobber a title the
+        // member had typed for the previous one.
+        autoTitle: '',
+        autoDescription: '',
         options: newType === 'normal' ? ["", ""] : [],
         ...(isHybrid ? {
           isRestricted: false,
@@ -142,6 +168,22 @@ export function useProposalForm({ onSubmit }) {
         } : {}),
         ...(newType !== 'createRole' ? {
           roleConfig: { ...defaultRoleConfig },
+        } : {}),
+        // Without this, setter → election → setter resurrected the old template
+        // and the config step silently skipped the category picker.
+        ...(newType !== 'setter' ? {
+          setterMode: 'template',
+          setterTemplate: '',
+          setterCategory: '',
+          setterContract: '',
+          setterFunction: '',
+          setterValues: {},
+          setterParams: [],
+        } : {}),
+        ...(newType !== 'transferFunds' ? {
+          transferAddress: '',
+          transferAmount: '',
+          transferToken: '',
         } : {}),
       };
     });
@@ -615,6 +657,18 @@ export function useProposalForm({ onSubmit }) {
     return true;
   }, [proposal.setterMode, proposal.setterTemplate, proposal.setterContract, proposal.setterFunction, proposal.setterValues, proposal.setterParams, toast]);
 
+  // Project id → name map, derived exactly like CreateVoteModal's so the setter
+  // description the member reads on the details step and the actionSummary
+  // written into metadata resolve the same names. roleNames comes from
+  // POContext, which this hook already consumes — no new props.
+  const projectNames = useMemo(() => {
+    const map = {};
+    for (const p of (projectsData || [])) {
+      if (p?.id) map[p.id] = p.name || p.title || p.id;
+    }
+    return map;
+  }, [projectsData]);
+
   // Human-readable preview lines for the confirm step AND the forward-compatible
   // actionSummaries metadata (task 9). These mirror the exact strings the create
   // flow already computes (setter preview, transfer sentence, election / role
@@ -627,13 +681,20 @@ export function useProposalForm({ onSubmit }) {
       const amt = proposal.transferAmount || '?';
       const addr = proposal.transferAddress || '';
       const short = addr.length > 10 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
-      summaries.push(`If "Yes" wins, send ${amt} ${nativeCurrencySymbol} from the treasury to ${short}.`);
+      const sym = proposal.transferToken
+        ? getTokenByAddress(proposal.transferToken).symbol
+        : nativeCurrencySymbol;
+      summaries.push(`If "Yes" wins, send ${amt} ${sym} from the treasury to ${short}.`);
     } else if (proposal.type === 'setter') {
       if (proposal.setterMode === 'template' && proposal.setterTemplate) {
         const tmpl = getTemplateById(proposal.setterTemplate);
         if (tmpl?.preview) {
           try {
-            const line = tmpl.preview(proposal.setterValues || {});
+            // Same (values, roleNames, projectNames) call the details-step copy
+            // makes — 5 templates resolve a role/project name from these, and
+            // passing values alone left the summary quoting a raw uint256 hat id
+            // while the description said "Contributor".
+            const line = tmpl.preview(proposal.setterValues || {}, roleNames, projectNames);
             if (line) summaries.push(line);
           } catch { /* preview is best-effort */ }
         }
@@ -656,7 +717,7 @@ export function useProposalForm({ onSubmit }) {
       }
     }
     return summaries;
-  }, [proposal, nativeCurrencySymbol]);
+  }, [proposal, nativeCurrencySymbol, roleNames, projectNames]);
 
   const buildProposalData = useCallback((eligibilityModuleAddress, contractAddresses, freshHoldersOverride = null, hatsProtocolAddress = null, predictedRoleHatId = null, metadataCIDBytes32 = null) => {
     let numOptions;
@@ -664,11 +725,30 @@ export function useProposalForm({ onSubmit }) {
     let optionNames = [];
 
     if (proposal.type === "transferFunds") {
-      const transferCall = {
-        target: proposal.transferAddress,
-        value: utils.parseEther(proposal.transferAmount).toString(),
-        data: "0x",
-      };
+      // Batches execute with the Executor as msg.sender, and the Executor is the
+      // org's treasury (POContext aliases treasuryContractAddress to it). So a
+      // native payout is a plain value-send, and an ERC20 payout is a transfer()
+      // on the token contract moving the Executor's own balance. Amounts use the
+      // token's own decimals — parseEther would be 10^12 off for USDC.
+      const payoutToken = proposal.transferToken
+        ? getTokenByAddress(proposal.transferToken)
+        : null;
+      const transferCall = payoutToken
+        ? {
+            target: payoutToken.address,
+            value: "0",
+            data: new utils.Interface([
+              "function transfer(address to, uint256 amount)",
+            ]).encodeFunctionData("transfer", [
+              proposal.transferAddress,
+              utils.parseUnits(String(proposal.transferAmount), payoutToken.decimals),
+            ]),
+          }
+        : {
+            target: proposal.transferAddress,
+            value: utils.parseEther(proposal.transferAmount).toString(),
+            data: "0x",
+          };
 
       batches = [
         [transferCall], // Yes wins: execute transfer
@@ -1408,31 +1488,14 @@ export function useProposalForm({ onSubmit }) {
         && proposal.setterMode === 'template'
         && proposal.setterTemplate
       ) {
+        // Last-resort backstop only: the wizard writes title + description when
+        // the action is picked and keeps the description in sync as params change
+        // (SetterActionSelector -> applyAutoCopy), so these are normally already
+        // set. This catches a draft restored without them.
         const tmpl = getTemplateById(proposal.setterTemplate);
-        // A template can write its own title + description when it has richer
-        // material than a one-line preview — e.g. the invite list, which can name
-        // who is joining and who is losing their invite. Falls back to the preview.
-        let auto = null;
-        try {
-          auto = tmpl?.autoFill?.(proposal.setterValues || {}) || null;
-        } catch (e) {
-          console.warn('[useProposalForm] template.autoFill() threw:', e);
-        }
-
-        let previewText = '';
-        if (tmpl?.preview) {
-          try {
-            previewText = tmpl.preview(proposal.setterValues || {});
-          } catch (e) {
-            console.warn('[useProposalForm] template.preview() threw:', e);
-          }
-        }
-
-        if (!finalName) finalName = (auto?.title || previewText || '').trim();
-        if (!finalDescription) {
-          finalDescription = (auto?.description || '').trim()
-            || (previewText ? `If this vote passes: ${previewText}` : '');
-        }
+        const copy = buildSetterCopy(tmpl, proposal.setterValues || {}, {}, {});
+        if (!finalName && copy.title) finalName = copy.title.trim();
+        if (!finalDescription && copy.description) finalDescription = copy.description.trim();
       }
 
       // Forward-compatible: human-readable action previews for the uploaded
@@ -1470,7 +1533,10 @@ export function useProposalForm({ onSubmit }) {
 
       let successDescription;
       if (proposal.type === "transferFunds") {
-        successDescription = `Transfer proposal created. If "Yes" wins, ${proposal.transferAmount} ${nativeCurrencySymbol} will be sent to ${proposal.transferAddress.slice(0, 6)}...${proposal.transferAddress.slice(-4)}`;
+        const payoutSymbol = proposal.transferToken
+          ? getTokenByAddress(proposal.transferToken).symbol
+          : nativeCurrencySymbol;
+        successDescription = `Transfer proposal created. If "Yes" wins, ${proposal.transferAmount} ${payoutSymbol} will be sent to ${proposal.transferAddress.slice(0, 6)}...${proposal.transferAddress.slice(-4)}`;
       } else if (proposal.type === "election") {
         successDescription = `Election created with ${proposal.electionCandidates.length} candidates. The winner will receive the role automatically.`;
       } else if (proposal.type === "setter") {

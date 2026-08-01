@@ -12,8 +12,99 @@ import {
   isContractAvailable,
   isBytes32,
   normalizeBytes32,
+  SETTER_TITLE_FALLBACK,
+  buildSetterCopy,
 } from './setterDefinitions';
 
+// ── Title copy members read (from #465) ──────────────────────────────────
+/** Every id the create-a-vote wizard can reach today. */
+const TEMPLATE_IDS = [
+  'email-invites',
+  'change-threshold-hybrid',
+  'change-threshold-dd',
+  'change-quorum-hybrid',
+  'change-voting-split',
+  'change-quorum-dd',
+  'allow-proposal-creator-hybrid',
+  'allow-voter-dd',
+  'pause-hybrid-voting',
+  'unpause-hybrid-voting',
+  'pause-dd-voting',
+  'unpause-dd-voting',
+  'set-project-permissions',
+  'allow-task-creator',
+  'allow-organizer-hat',
+  'change-token-metadata',
+];
+
+describe('SETTER_TEMPLATES autoTitle', () => {
+  it('covers every template', () => {
+    expect(SETTER_TEMPLATES.map(t => t.id)).toEqual(TEMPLATE_IDS);
+    for (const t of SETTER_TEMPLATES) {
+      expect(typeof t.autoTitle, t.id).toBe('string');
+      expect(t.autoTitle.trim().length, t.id).toBeGreaterThan(0);
+    }
+  });
+
+  it('stays short enough to sit in the title input', () => {
+    for (const t of SETTER_TEMPLATES) {
+      expect(t.autoTitle.length, `${t.id}: ${t.autoTitle}`).toBeLessThanOrEqual(60);
+    }
+  });
+
+  it('never says "Hybrid" to a member — the system is called Blended voting', () => {
+    for (const t of SETTER_TEMPLATES) {
+      expect(t.autoTitle, t.id).not.toMatch(/hybrid/i);
+    }
+  });
+
+  it('reads as a proposal, not a UI label — no "Rule change:" prefix, no contract names', () => {
+    for (const t of SETTER_TEMPLATES) {
+      expect(t.autoTitle, t.id).not.toMatch(/^Rule change/i);
+      expect(t.autoTitle, t.id).not.toMatch(/setConfig|setClasses|hatId|bytes32|uint/i);
+    }
+  });
+
+  it('gives each template a distinct title', () => {
+    const titles = SETTER_TEMPLATES.map(t => t.autoTitle);
+    expect(new Set(titles).size).toBe(titles.length);
+  });
+
+  it('keeps the on-chain encoding fields untouched', () => {
+    for (const t of SETTER_TEMPLATES) {
+      expect(typeof t.contract, t.id).toBe('string');
+      expect(Array.isArray(t.inputs), t.id).toBe(true);
+      expect(typeof t.preview, t.id).toBe('function');
+    }
+  });
+});
+
+describe('SETTER_TITLE_FALLBACK', () => {
+  it('prefers the curated autoTitle', () => {
+    expect(SETTER_TITLE_FALLBACK({ autoTitle: 'Pause Blended voting', name: 'Pause Blended Voting' }))
+      .toBe('Pause Blended voting');
+  });
+
+  it('falls back to name for a template added later without one', () => {
+    expect(SETTER_TITLE_FALLBACK({ name: 'Some New Action' })).toBe('Some New Action');
+    expect(SETTER_TITLE_FALLBACK({ autoTitle: '', name: 'Some New Action' })).toBe('Some New Action');
+  });
+
+  it('never calls preview() — it is empty or wrong before params are filled', () => {
+    let called = false;
+    const template = { name: 'Some New Action', preview: () => { called = true; return ''; } };
+    expect(SETTER_TITLE_FALLBACK(template)).toBe('Some New Action');
+    expect(called).toBe(false);
+  });
+
+  it('resolves a real title for all 16 templates', () => {
+    for (const t of SETTER_TEMPLATES) {
+      expect(SETTER_TITLE_FALLBACK(t), t.id).toBe(t.autoTitle);
+    }
+  });
+});
+
+// ── Wiring, encoding and vocabulary guards ───────────────────────────────
 // A rule-change proposal that carries no calls still costs the org a full vote
 // and then executes nothing — the failure is silent on-chain. These tests lock
 // the wiring that makes an empty batch impossible: every template must resolve
@@ -383,5 +474,44 @@ describe('template-only raw functions', () => {
     // Only the email one is restricted today; a new restriction should be deliberate.
     const restricted = Object.values(RAW_FUNCTIONS).flat().filter(f => f.templateOnly);
     expect(restricted.map(f => f.name)).toEqual(['setActiveAllowlist']);
+  });
+});
+
+// The wizard (#465) writes the title when the action is picked and refreshes the
+// description on every param change, via buildSetterCopy -> applyAutoCopy. The
+// invite field reports its summary/details INTO setterValues, so the copy members
+// read has to come out of that same pipe — not a separate submit-time path.
+describe('email-invites copy flows through the wizard pipeline', () => {
+  const CID = `0x${'22'.repeat(32)}`;
+  const base = { cid: CID, root: `0x${'11'.repeat(32)}` };
+
+  it('shows the placeholder title before the list has loaded', () => {
+    const { title, description } = buildSetterCopy(getTemplateById('email-invites'), base, {}, {});
+    expect(title).toBe('Change who can join by email');
+    // preview() stands in until the field reports
+    expect(description).toContain('If this vote passes:');
+  });
+
+  it('uses the real prose once the field reports it', () => {
+    const details = 'Newly invited (1): alice@beta.org (Member)\n\nApproving this replaces the whole list.';
+    const { description } = buildSetterCopy(
+      getTemplateById('email-invites'), { ...base, summary: 'Email invites: 1 added', details }, {}, {},
+    );
+    expect(description).toBe(details);          // prose wins over the one-liner
+    expect(description).not.toContain('If this vote passes:');
+  });
+
+  it('falls back to the preview line when describe() has nothing yet', () => {
+    const { description } = buildSetterCopy(
+      getTemplateById('email-invites'), { ...base, summary: 'Email invites: 1 added' }, {}, {},
+    );
+    expect(description).toBe('If this vote passes: Email invites: 1 added');
+  });
+
+  it('leaves templates without describe() on the preview line', () => {
+    const t = getTemplateById('change-threshold-hybrid');
+    expect(t.describe).toBeUndefined();
+    const { description } = buildSetterCopy(t, { threshold: '60' }, {}, {});
+    expect(description).toContain('If this vote passes:');
   });
 });

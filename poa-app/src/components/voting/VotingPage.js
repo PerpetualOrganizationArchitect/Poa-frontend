@@ -19,7 +19,9 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { useRouter } from "next/router";
 import { Box, Container, Center, Flex, Heading, Button, Icon, Link, useToast } from "@chakra-ui/react";
 import { PiPlusCircle, PiScales } from "react-icons/pi";
-import { getTemplateById, isContractAvailable, CONTRACT_MAP } from "@/config/setterDefinitions";
+import {
+  getTemplateById, isContractAvailable, CONTRACT_MAP, buildSetterCopy,
+} from "@/config/setterDefinitions";
 import PulseLoader from "@/components/shared/PulseLoader";
 import GlassBack from "./GlassBack";
 import { useOrgGate } from "@/components/shared/OrgDeadEnd";
@@ -210,7 +212,15 @@ const VotingPage = () => {
     return handleSubmit(eligibilityModuleAddress, contractAddresses);
   }, [handleSubmit, eligibilityModuleAddress, contractAddresses]);
 
+  // True only when the modal was opened by a deep link that pre-filled the
+  // proposal (the /rules "Propose a change" rows and ?propose=<template>).
+  // Those land on the step their payload already satisfies. A plain
+  // "Create vote" click must always start at the intent gallery — even when a
+  // previous, abandoned attempt left the form fully configured.
+  const [deepLinkedOpen, setDeepLinkedOpen] = useState(false);
+
   const handleCreatePollClick = useCallback(() => {
+    setDeepLinkedOpen(false);
     setShowCreatePoll(prev => !prev);
   }, []);
 
@@ -256,6 +266,12 @@ const VotingPage = () => {
       }
       return acc;
     }, {});
+    // Write the SAME title/description the picker would have written. Without
+    // this the deep link lands with an empty title, the review screen shows
+    // "(no title)" — setter proposals are exempt from the title gate — and
+    // submit then quietly synthesises one from the template preview. The
+    // reviewed ballot would not be the proposal that got created.
+    const copy = buildSetterCopy(template, setterValues, roleNames, {});
     restoreProposal({
       type: 'setter',
       setterMode: 'template',
@@ -264,9 +280,14 @@ const VotingPage = () => {
       setterFunction: template.functionName || '',
       setterValues,
       setterParams: [],
+      ...(copy.title ? { name: copy.title, autoTitle: copy.title } : {}),
+      ...(copy.description
+        ? { description: copy.description, autoDescription: copy.description }
+        : {}),
     });
+    setDeepLinkedOpen(true);
     setShowCreatePoll(true);
-  }, [restoreProposal, votingClasses, contractAddresses, toast]);
+  }, [restoreProposal, votingClasses, contractAddresses, toast, roleNames]);
 
   // Deep link support: /voting?propose=<templateId> (from the /rules page)
   // opens the create modal with that rule template preselected, once.
@@ -438,6 +459,7 @@ const VotingPage = () => {
 
           <CreateVoteModal
             isOpen={showCreatePoll}
+            deepLinkedOpen={deepLinkedOpen}
             onClose={handleCreatePollClick}
             proposal={proposal}
             handleInputChange={handleInputChange}

@@ -278,7 +278,7 @@ const CreateDistributionModal = ({
                 >
                   {tokens.map(t => (
                     <option key={t.address} value={t.address} style={{ background: '#1a1a2e' }}>
-                      {t.symbol} — {t.name}
+                      {t.symbol} · {t.name}
                     </option>
                   ))}
                 </Select>

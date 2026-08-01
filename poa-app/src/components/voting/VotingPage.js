@@ -17,9 +17,9 @@
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/router";
-import { Box, Container, Center, Flex, Heading, Button, Icon, Link } from "@chakra-ui/react";
+import { Box, Container, Center, Flex, Heading, Button, Icon, Link, useToast } from "@chakra-ui/react";
 import { PiPlusCircle, PiScales } from "react-icons/pi";
-import { getTemplateById } from "@/config/setterDefinitions";
+import { getTemplateById, isContractAvailable, CONTRACT_MAP } from "@/config/setterDefinitions";
 import PulseLoader from "@/components/shared/PulseLoader";
 import GlassBack from "./GlassBack";
 import { useOrgGate } from "@/components/shared/OrgDeadEnd";
@@ -67,6 +67,7 @@ const VotingPage = () => {
   const { pageBackground } = useOrgTheme();
   const userDAO = useOrgName();
   const orgGate = useOrgGate();
+  const toast = useToast();
 
   const {
     directDemocracyVotingContractAddress,
@@ -75,6 +76,7 @@ const VotingPage = () => {
     executorContractAddress,
     eligibilityModuleAddress,
     participationTokenAddress,
+    zkEmailInvitesAddress,
     poContextLoading,
     roleNames,
     leaderboardData,
@@ -192,13 +194,17 @@ const VotingPage = () => {
     onSubmit: handleProposalSubmit,
   });
 
+  // Keys here must cover every CONTRACT_MAP contextKey a setter template can
+  // target — a missing key makes buildProposalData skip the encode step, and
+  // the proposal would go on-chain carrying an empty batch.
   const contractAddresses = useMemo(() => ({
     votingContractAddress,
     directDemocracyVotingContractAddress,
     taskManagerContractAddress,
     executorContractAddress,
     participationTokenAddress,
-  }), [votingContractAddress, directDemocracyVotingContractAddress, taskManagerContractAddress, executorContractAddress, participationTokenAddress]);
+    zkEmailInvitesAddress,
+  }), [votingContractAddress, directDemocracyVotingContractAddress, taskManagerContractAddress, executorContractAddress, participationTokenAddress, zkEmailInvitesAddress]);
 
   const handlePollCreated = useCallback(() => {
     return handleSubmit(eligibilityModuleAddress, contractAddresses);
@@ -226,6 +232,20 @@ const VotingPage = () => {
   const handleProposeRuleChange = useCallback((templateId, initialValues = null) => {
     const template = getTemplateById(templateId);
     if (!template) return;
+    // A ?propose= link can outlive the org it was copied from. Opening the form
+    // for a contract this org never deployed would only build an empty proposal
+    // — say so instead of dropping the click on the floor.
+    if (!isContractAvailable(template.contract, contractAddresses)) {
+      toast({
+        title: "Not available here",
+        description: `"${template.name}" needs ${CONTRACT_MAP[template.contract]?.displayName || template.contract}, `
+          + 'which this group doesn\'t have set up.',
+        status: "info",
+        duration: 6000,
+        isClosable: true,
+      });
+      return;
+    }
     const setterValues = (template.inputs || []).reduce((acc, input) => {
       if (input.type === 'votingClassWeights') {
         acc[input.name] = votingClasses.length > 0 ? votingClasses.map(c => ({ ...c })) : [];
@@ -246,13 +266,17 @@ const VotingPage = () => {
       setterParams: [],
     });
     setShowCreatePoll(true);
-  }, [restoreProposal, votingClasses]);
+  }, [restoreProposal, votingClasses, contractAddresses, toast]);
 
   // Deep link support: /voting?propose=<templateId> (from the /rules page)
   // opens the create modal with that rule template preselected, once.
   const proposeParamHandledRef = useRef(false);
   useEffect(() => {
     if (!router.isReady || proposeParamHandledRef.current) return;
+    // Wait for POContext to resolve the org's contract addresses. Firing on
+    // router.isReady alone races the subgraph fetch, and handleProposeRuleChange
+    // would reject the template as "not deployed here" before we know better.
+    if (poContextLoading) return;
     const templateId = router.query.propose;
     if (!templateId || typeof templateId !== 'string') return;
     proposeParamHandledRef.current = true;
@@ -267,7 +291,7 @@ const VotingPage = () => {
       Object.entries(router.query).filter(([key]) => key !== 'propose' && !key.startsWith('prefill_')),
     );
     router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
-  }, [router.isReady, router.query, handleProposeRuleChange, router]);
+  }, [router.isReady, router.query, handleProposeRuleChange, router, poContextLoading]);
 
   // Finalize ("Count the votes") — routed through PollDetail's AlertDialog.
   // RETURNS the result so the confirm dialog can await it.
@@ -433,6 +457,7 @@ const VotingPage = () => {
             currentValues={currentRuleValues}
             leaderboardData={leaderboardData}
             ongoingProposals={hybridVotingOngoing}
+            contractAddresses={contractAddresses}
           />
 
           {/* ONE detail surface for ongoing AND completed polls. */}

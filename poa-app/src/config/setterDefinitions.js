@@ -9,6 +9,49 @@
 import { utils } from 'ethers';
 
 // ============================================================================
+// VALUE HELPERS
+// ============================================================================
+
+/**
+ * True when `value` is a 0x-prefixed 32-byte hex string.
+ *
+ * Deliberately strict — the lowercase `0x` is literal, because that is exactly
+ * what ethers accepts. Always call it on the output of normalizeBytes32, never
+ * on raw input: the pair is what keeps validation and encoding in agreement.
+ */
+export function isBytes32(value) {
+  return /^0x[0-9a-fA-F]{64}$/.test(String(value ?? '').trim());
+}
+
+/**
+ * Repair the ways a pasted bytes32 arrives slightly wrong, so validation and
+ * ethers agree on what counts as valid. Handles surrounding whitespace, a
+ * missing prefix, and an uppercase `0X` prefix — block explorers and terminals
+ * produce all three, and ethers rejects the last two outright.
+ *
+ * Hex digit case is preserved: it is meaningless to the encoder, and keeping it
+ * lets someone eyeball the value against wherever they copied it from.
+ * Input that is not recoverable comes back untouched, so the validation message
+ * quotes what the user actually typed.
+ */
+export function normalizeBytes32(value) {
+  const trimmed = String(value ?? '').trim();
+  const body = /^0[xX]/.test(trimmed) ? trimmed.slice(2) : trimmed;
+  if (/^[0-9a-fA-F]{64}$/.test(body)) return `0x${body}`;
+  return trimmed;
+}
+
+/**
+ * Shorten a hash for display while keeping both ends, so a reader can check it
+ * against the source they copied it from. Short values are returned untouched.
+ */
+export function abbreviateHash(value) {
+  const s = String(value ?? '').trim();
+  if (s.length <= 8 + 6 + 1) return s || '(not set)';
+  return `${s.slice(0, 8)}…${s.slice(-6)}`;
+}
+
+// ============================================================================
 // CATEGORIES - For UI grouping
 // ============================================================================
 
@@ -84,31 +127,51 @@ export const CONTRACT_MAP = {
 export const SETTER_TEMPLATES = [
   // ===== EMAIL INVITES =====
   {
-    id: 'activate-email-allowlist',
+    id: 'email-invites',
     category: 'permissions',
-    name: 'Activate Email Allowlist',
+    name: 'Change who can join by email',
     description:
-      'Make the staged email allowlist live so members can claim roles by proving control of their email. Paste the root + CID shown in Settings → Email invites.',
+      'Approve the invite list saved in Settings, so the people on it can join by proving they own their email address.',
     contract: 'zkEmailInvites',
     functionName: 'setActiveAllowlist',
     inputs: [
-      {
-        name: 'root',
-        label: 'Allowlist Merkle Root',
-        type: 'text',
-        placeholder: '0x…',
-        helpText: 'The merkleRoot of the staged allowlist (Settings → Email invites).'
-      },
+      // The only visible field. It reads the saved list and shows the people it lets
+      // in — nobody votes on a hash. It also fills `summary` for the proposal title.
       {
         name: 'cid',
-        label: 'Allowlist CID (bytes32)',
-        type: 'text',
-        placeholder: '0x…',
-        helpText: 'The bytes32 CID digest of the staged allowlist file.'
-      }
+        label: 'The list',
+        type: 'emailInviteList',
+        validateAs: 'bytes32',
+        rootField: 'root',
+        summaryField: 'summary',
+        readableField: 'listReadable'
+      },
+      // Derived from the saved list, never typed. Kept in form state so it is encoded
+      // and submitted with the vote.
+      { name: 'root', type: 'hidden', validateAs: 'bytes32' },
+      { name: 'summary', type: 'hidden', optional: true },
+      { name: 'details', type: 'hidden', optional: true },
+      { name: 'listReadable', type: 'hidden', optional: true }
     ],
-    encode: (values) => [values.root, values.cid],
-    preview: (values) => `Activate email allowlist (root ${String(values.root || '').slice(0, 10)}…)`
+    encode: (values) => [normalizeBytes32(values.root), normalizeBytes32(values.cid)],
+    // A member should never be asked to approve something they could not read. The
+    // field reports whether the list loaded; if it did not, block the proposal.
+    validate: (values) => (
+      values.listReadable
+        ? null
+        : 'We couldn’t load the invite list, so this vote can’t be created yet. Try again in a moment.'
+    ),
+    // Filled in by the field once it has read the list, so the board shows the change
+    // in words. The fingerprint fallback only appears if the list never loaded.
+    preview: (values) => (
+      values.summary || `Change who can join by email (list ${abbreviateHash(normalizeBytes32(values.cid))})`
+    ),
+    // Title and description a member reads on the board, written from the real list.
+    // Both are only defaults — anything the author typed wins.
+    autoFill: (values) => ({
+      title: values.summary || 'Change who can join by email',
+      description: values.details || '',
+    })
   },
   // ===== VOTING RULES =====
   {
@@ -696,19 +759,29 @@ export const RAW_FUNCTIONS = {
       ],
       description: 'Change the share symbol'
     }
+  ],
+  zkEmailInvites: [
+    {
+      name: 'setActiveAllowlist',
+      // TEMPLATE-ONLY. The signature lives here because buildProposalData encodes
+      // from RAW_FUNCTIONS, but this must never be offered as a raw call: the
+      // Developer-mode path takes free-text root/cid, skips the invite-list field
+      // and template.validate entirely, and shows voters nothing but a generic raw
+      // call — the exact "approve a hash you can't read" hole this feature closes.
+      templateOnly: true,
+      signature: 'function setActiveAllowlist(bytes32 root, bytes32 cid)',
+      params: [
+        { name: 'root', type: 'bytes32', label: 'Allowlist Merkle Root' },
+        { name: 'cid', type: 'bytes32', label: 'Allowlist CID (bytes32)' }
+      ],
+      description: 'Make a staged email allowlist live'
+    }
   ]
 };
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-/**
- * Get templates filtered by category
- */
-export function getTemplatesByCategory(category) {
-  return SETTER_TEMPLATES.filter(t => t.category === category);
-}
 
 /**
  * Get a template by ID
@@ -729,5 +802,10 @@ export function getRawFunctions(contractKey) {
  */
 export function isContractAvailable(contractKey, contractAddresses) {
   const contextKey = CONTRACT_MAP[contractKey]?.contextKey;
-  return contextKey && contractAddresses?.[contextKey];
+  if (!contextKey) return false;
+  const address = contractAddresses?.[contextKey];
+  // The zero address means "module not deployed" — POContext derives
+  // zkEmailInvitesEnabled the same way. Treating it as available would send a
+  // governance proposal's call to address(0), which is the silent no-op again.
+  return Boolean(address) && !/^0x0{40}$/i.test(address);
 }

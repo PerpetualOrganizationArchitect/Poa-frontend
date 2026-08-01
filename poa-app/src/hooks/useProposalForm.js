@@ -11,6 +11,9 @@ import {
   RAW_FUNCTIONS,
   CONTRACT_MAP,
   getTemplateById,
+  isContractAvailable,
+  isBytes32,
+  normalizeBytes32,
 } from '@/config/setterDefinitions';
 import { usePOContext } from '@/context/POContext';
 import { useIPFScontext } from '@/context/ipfsContext';
@@ -489,6 +492,37 @@ export function useProposalForm({ onSubmit }) {
             return false;
           }
         }
+
+        // Hash-shaped inputs must be well-formed before they reach ethers,
+        // which otherwise throws an opaque "invalid arrayify value" at submit.
+        // Checked post-normalization so validation accepts exactly what encode
+        // accepts (stray whitespace / a missing 0x prefix are both recoverable).
+        // `validateAs` lets a field render as something friendlier than a hex box
+        // while still being checked as one.
+        if ((input.validateAs || input.type) === 'bytes32' && !isBytes32(normalizeBytes32(value))) {
+          toast({
+            title: "Invalid Value",
+            description: `${input.label || input.name} must be a 0x-prefixed 32-byte hex value (66 characters).`,
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+          });
+          return false;
+        }
+      }
+
+      // Whole-template check, for rules that span more than one field (e.g. the
+      // invite list refusing to be proposed while it can't be read).
+      const templateError = template.validate?.(proposal.setterValues || {});
+      if (templateError) {
+        toast({
+          title: "Can't create this vote yet",
+          description: templateError,
+          status: "error",
+          duration: 6000,
+          isClosable: true,
+        });
+        return false;
       }
 
       // For templates where all inputs are optional, ensure at least one has a value
@@ -556,6 +590,19 @@ export function useProposalForm({ onSubmit }) {
           toast({
             title: "Missing Parameter",
             description: `Please provide a value for "${param.label || param.name}".`,
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+          });
+          return false;
+        }
+
+        // Same hash check the template path does — otherwise a mistyped raw
+        // param reaches ethers as an opaque "invalid arrayify value" throw.
+        if (param.type === 'bytes32' && !isBytes32(normalizeBytes32(value))) {
+          toast({
+            title: "Invalid Value",
+            description: `${param.label || param.name} must be a 0x-prefixed 32-byte hex value (66 characters).`,
             status: "error",
             duration: 5000,
             isClosable: true,
@@ -1000,30 +1047,41 @@ export function useProposalForm({ onSubmit }) {
       if (proposal.setterMode === 'template' && proposal.setterTemplate) {
         // Template mode
         const template = getTemplateById(proposal.setterTemplate);
-        if (template) {
-          const contractKey = template.contract;
-          const contextKey = CONTRACT_MAP[contractKey]?.contextKey;
-          const contractAddress = contractAddresses?.[contextKey];
+        if (!template) {
+          throw new Error('That rule change is no longer available. Please choose an action again.');
+        }
 
-          if (contractAddress) {
-            if (template.buildCalls) {
-              // Multi-call template (e.g. token name + symbol in one proposal)
-              setterCalls = template.buildCalls(proposal.setterValues, contractAddress);
-            } else {
-              // Single-call template: use functionName + encode
-              const funcDef = RAW_FUNCTIONS[contractKey]?.find(f => f.name === template.functionName);
-              if (funcDef) {
-                const iface = new utils.Interface([funcDef.signature]);
-                const encodedArgs = template.encode(proposal.setterValues);
+        const contractKey = template.contract;
+        const contextKey = CONTRACT_MAP[contractKey]?.contextKey;
+        const contractAddress = contractAddresses?.[contextKey];
 
-                setterCalls = [{
-                  target: contractAddress,
-                  value: "0",
-                  data: iface.encodeFunctionData(template.functionName, encodedArgs),
-                }];
-              }
-            }
+        if (!isContractAvailable(contractKey, contractAddresses)) {
+          throw new Error(
+            `This group doesn't have ${CONTRACT_MAP[contractKey]?.displayName || contractKey} set up, `
+            + 'so this change can\'t be applied here.',
+          );
+        }
+
+        if (template.buildCalls) {
+          // Multi-call template (e.g. token name + symbol in one proposal)
+          setterCalls = template.buildCalls(proposal.setterValues, contractAddress);
+        } else {
+          // Single-call template: use functionName + encode
+          const funcDef = RAW_FUNCTIONS[contractKey]?.find(f => f.name === template.functionName);
+          if (!funcDef) {
+            throw new Error(
+              `"${template.name}" can't be turned into a vote right now. `
+              + 'Nothing was submitted — please pick a different action.',
+            );
           }
+          const iface = new utils.Interface([funcDef.signature]);
+          const encodedArgs = template.encode(proposal.setterValues);
+
+          setterCalls = [{
+            target: contractAddress,
+            value: "0",
+            data: iface.encodeFunctionData(template.functionName, encodedArgs),
+          }];
         }
       } else {
         // Advanced mode: raw function call
@@ -1033,25 +1091,47 @@ export function useProposalForm({ onSubmit }) {
         const contextKey = CONTRACT_MAP[proposal.setterContract]?.contextKey;
         const contractAddress = contractAddresses?.[contextKey];
 
-        if (funcDef && contractAddress) {
-          const iface = new utils.Interface([funcDef.signature]);
-
-          setterCalls = [{
-            target: contractAddress,
-            value: "0",
-            data: iface.encodeFunctionData(proposal.setterFunction, proposal.setterParams),
-          }];
+        if (!funcDef) {
+          throw new Error('Choose a contract and a function before submitting.');
         }
+        // Some calls are only safe through their template, which shows voters what
+        // they are approving and verifies it. A raw version would bypass both.
+        if (funcDef.templateOnly) {
+          throw new Error(
+            'That change has to be made through its own action, not a direct contract call, '
+            + 'so members can see what they are approving.',
+          );
+        }
+        if (!isContractAvailable(proposal.setterContract, contractAddresses)) {
+          throw new Error(
+            `This group doesn't have ${CONTRACT_MAP[proposal.setterContract]?.displayName || proposal.setterContract} set up.`,
+          );
+        }
+
+        const iface = new utils.Interface([funcDef.signature]);
+        // Normalize the same params validateSetterProposal normalized, so the
+        // two agree on what a valid paste is.
+        const rawArgs = (proposal.setterParams || []).map((arg, i) => (
+          funcDef.params[i]?.type === 'bytes32' ? normalizeBytes32(arg) : arg
+        ));
+
+        setterCalls = [{
+          target: contractAddress,
+          value: "0",
+          data: iface.encodeFunctionData(proposal.setterFunction, rawArgs),
+        }];
       }
 
-      if (setterCalls.length > 0) {
-        batches = [
-          setterCalls, // Yes wins: execute setter(s)
-          [],          // No wins: do nothing
-        ];
-      } else {
-        batches = [[], []];
+      // A setter proposal with no calls is a no-op that still costs a vote —
+      // refuse to build one rather than letting members ratify nothing.
+      if (setterCalls.length === 0) {
+        throw new Error('This rule change wouldn\'t actually do anything if it passed, so it wasn\'t submitted.');
       }
+
+      batches = [
+        setterCalls, // Yes wins: execute setter(s)
+        [],          // No wins: do nothing
+      ];
 
       numOptions = 2;
       optionNames = ["Apply Changes", "Reject"];
@@ -1329,17 +1409,29 @@ export function useProposalForm({ onSubmit }) {
         && proposal.setterTemplate
       ) {
         const tmpl = getTemplateById(proposal.setterTemplate);
+        // A template can write its own title + description when it has richer
+        // material than a one-line preview — e.g. the invite list, which can name
+        // who is joining and who is losing their invite. Falls back to the preview.
+        let auto = null;
+        try {
+          auto = tmpl?.autoFill?.(proposal.setterValues || {}) || null;
+        } catch (e) {
+          console.warn('[useProposalForm] template.autoFill() threw:', e);
+        }
+
+        let previewText = '';
         if (tmpl?.preview) {
-          let previewText = '';
           try {
             previewText = tmpl.preview(proposal.setterValues || {});
           } catch (e) {
             console.warn('[useProposalForm] template.preview() threw:', e);
           }
-          if (previewText) {
-            if (!finalName) finalName = previewText;
-            if (!finalDescription) finalDescription = `If this vote passes: ${previewText}`;
-          }
+        }
+
+        if (!finalName) finalName = (auto?.title || previewText || '').trim();
+        if (!finalDescription) {
+          finalDescription = (auto?.description || '').trim()
+            || (previewText ? `If this vote passes: ${previewText}` : '');
         }
       }
 

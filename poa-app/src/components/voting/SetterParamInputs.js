@@ -22,17 +22,35 @@ import {
   Badge,
 } from '@chakra-ui/react';
 import VotingClassWeightsInput from './VotingClassWeightsInput';
+import EmailInviteListField from './EmailInviteListField';
 import { inputStyles } from '@/components/shared/glassStyles';
 
 /**
  * Render a single parameter input based on its type
  */
-const ParameterInput = ({ param, value, onChange, allRoles, allProjects }) => {
+const ParameterInput = ({ param, value, onChange, onChangeMany, allRoles, allProjects, values = {} }) => {
   const handleChange = (newValue) => {
     onChange(param.name, newValue);
   };
 
   switch (param.type) {
+    // Reads the saved invite list and shows the people it would let in, instead of
+    // asking anyone to read the hash that commits to it.
+    case 'emailInviteList':
+      return (
+        <EmailInviteListField
+          cid={value}
+          root={values[param.rootField || 'root']}
+          // All three land in ONE update: sequential onChange calls each spread the
+          // same stale `values`, so later writes silently erase earlier ones.
+          onReport={({ readable, summary, details }) => onChangeMany({
+            [param.readableField || 'listReadable']: readable ? 'yes' : '',
+            [param.summaryField || 'summary']: summary,
+            [param.detailsField || 'details']: details,
+          })}
+        />
+      );
+
     case 'number':
       return (
         <Input
@@ -175,12 +193,15 @@ const ParameterInput = ({ param, value, onChange, allRoles, allProjects }) => {
 
     case 'bytes':
     case 'bytes32':
+      // size="sm" matches the deployer's pasted-hex inputs — a 66-char bytes32
+      // overflows the default size inside the create-vote modal.
       return (
         <Input
           value={value || ''}
           onChange={(e) => handleChange(e.target.value)}
-          placeholder="0x..."
+          placeholder={param.placeholder || '0x...'}
           fontFamily="mono"
+          size="sm"
           {...inputStyles}
         />
       );
@@ -239,32 +260,64 @@ const SetterParamInputs = ({
     onChange({ ...values, [name]: value });
   };
 
+  // Set several params in one update. Needed by fields that derive more than one
+  // value at once — chaining single-key writes loses all but the last.
+  const handleParamsChange = (partial) => {
+    onChange({ ...values, ...partial });
+  };
+
   return (
     <VStack spacing={4} align="stretch">
-      {inputs.map((param) => (
-        <FormControl key={param.name}>
-          <FormLabel color="gray.200" fontSize="sm">
-            {param.label || param.name}
-            {param.type === 'permissionMask' && (
-              <Badge ml={2} colorScheme="purple" fontSize="xs">
-                Multi-select
-              </Badge>
+      {inputs.map((param) => {
+        // Values the form carries but nobody should see or type. Used for hashes that
+        // are derived from a saved document rather than entered by a person.
+        if (param.type === 'hidden') return null;
+
+        // A rich field renders its own heading and help — wrapping it in a FormLabel
+        // would put a second, redundant title above it.
+        if (param.type === 'emailInviteList') {
+          return (
+            <Box key={param.name}>
+              <ParameterInput
+                param={param}
+                value={values[param.name]}
+                onChange={handleParamChange}
+                onChangeMany={handleParamsChange}
+                allRoles={allRoles}
+                allProjects={allProjects}
+                values={values}
+              />
+            </Box>
+          );
+        }
+
+        return (
+          <FormControl key={param.name}>
+            <FormLabel color="gray.200" fontSize="sm">
+              {param.label || param.name}
+              {param.type === 'permissionMask' && (
+                <Badge ml={2} colorScheme="purple" fontSize="xs">
+                  Multi-select
+                </Badge>
+              )}
+            </FormLabel>
+            <ParameterInput
+              param={param}
+              value={values[param.name]}
+              onChange={handleParamChange}
+              onChangeMany={handleParamsChange}
+              allRoles={allRoles}
+              allProjects={allProjects}
+              values={values}
+            />
+            {param.helpText && (
+              <FormHelperText color="gray.400" fontSize="xs">
+                {param.helpText}
+              </FormHelperText>
             )}
-          </FormLabel>
-          <ParameterInput
-            param={param}
-            value={values[param.name]}
-            onChange={handleParamChange}
-            allRoles={allRoles}
-            allProjects={allProjects}
-          />
-          {param.helpText && (
-            <FormHelperText color="gray.400" fontSize="xs">
-              {param.helpText}
-            </FormHelperText>
-          )}
-        </FormControl>
-      ))}
+          </FormControl>
+        );
+      })}
     </VStack>
   );
 };

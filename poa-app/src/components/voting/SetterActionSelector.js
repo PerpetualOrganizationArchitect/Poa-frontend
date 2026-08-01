@@ -39,6 +39,7 @@ import {
   getTemplatesByCategory,
   getTemplateById,
   SETTER_TITLE_FALLBACK,
+  buildSetterCopy,
 } from '@/config/setterDefinitions';
 import { applyAutoCopy } from '@/components/voting/create/autoCopy';
 import { inputStyles } from '@/components/shared/glassStyles';
@@ -245,24 +246,7 @@ const hasSetterPayload = (proposal) => {
  * every edit after that keeps it in sync.
  */
 function describeTemplate(template, values, roleNames, projectNames) {
-  if (!template || typeof template.preview !== 'function') return null;
-
-  const filled = values || {};
-  const inputs = template.inputs || [];
-  const requiredFilled = inputs.every(input => input.optional || hasValue(filled[input.name]));
-  // Templates whose params are *all* optional (change-token-metadata) preview as
-  // "No changes specified" until one is filled — not worth putting on a ballot.
-  const anyFilled = inputs.length === 0 || inputs.some(input => hasValue(filled[input.name]));
-  if (!requiredFilled || !anyFilled) return null;
-
-  let line;
-  try {
-    line = template.preview(filled, roleNames, projectNames);
-  } catch {
-    return null;
-  }
-  if (typeof line !== 'string' || line.trim() === '') return null;
-  return `If this vote passes: ${line}`;
+  return buildSetterCopy(template, values, roleNames, projectNames).description;
 }
 
 /**
@@ -378,6 +362,15 @@ const SetterActionSelector = ({
     onChange({
       setterTemplate: '',
       setterValues: {},
+      // handleTemplateSelect also wrote the template's contract + function.
+      // Leaving those behind made an abandoned action look like a started raw
+      // payload: hasSetterPayload() saw them, so opening Developer mode kept
+      // them, and configError's advanced branch only needs a contract and a
+      // function — so a zero-arg template like "Pause Blended Voting" became a
+      // ready-to-submit hybridVoting.pause() the member never chose.
+      setterContract: '',
+      setterFunction: '',
+      setterParams: [],
       // The suggested copy described the action being abandoned.
       ...clearAutoCopy(proposal),
     });

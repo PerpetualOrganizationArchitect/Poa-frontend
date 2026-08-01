@@ -28,13 +28,22 @@
 export function applyAutoCopy(proposal, { title, description } = {}) {
   const p = proposal || {};
   const out = {};
+  // Idempotent by contract: a field is only emitted when writing it would
+  // actually change something. Callers merge the result into state, so
+  // re-emitting an identical value produces a new proposal object, and any
+  // caller that watches `proposal` re-runs and emits it again — a render loop
+  // that burns the main thread while changing nothing.
   if (title != null && (!p.name || p.name === p.autoTitle)) {
-    out.name = title;
-    out.autoTitle = title;
+    if (p.name !== title || p.autoTitle !== title) {
+      out.name = title;
+      out.autoTitle = title;
+    }
   }
   if (description != null && (!p.description || p.description === p.autoDescription)) {
-    out.description = description;
-    out.autoDescription = description;
+    if (p.description !== description || p.autoDescription !== description) {
+      out.description = description;
+      out.autoDescription = description;
+    }
   }
   return out;
 }

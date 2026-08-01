@@ -92,17 +92,31 @@ describe('resolveEntryStep', () => {
     expect(entry({})).toBe(STEP_INTENT);
   });
 
-  it('carries a deep-linked setter payload past config', () => {
-    const step = entry(proposal({ type: 'setter', setterTemplate: 'change-threshold-hybrid' }));
-    expect(step).not.toBe(STEP_INTENT);
-    expect(step).not.toBe(STEP_CONFIG);
+  it('stops a bare ?propose= deep link ON config, where its params are entered', () => {
+    // change-threshold-hybrid needs a threshold. Landing past this screen would
+    // hide the only field the link left blank.
+    const step = entry(proposal({
+      type: 'setter', setterMode: 'template', setterTemplate: 'change-threshold-hybrid',
+    }));
+    expect(step).toBe(STEP_CONFIG);
+  });
+
+  it('carries a fully-specified deep link past config to details', () => {
+    const step = entry(proposal({
+      type: 'setter',
+      setterMode: 'template',
+      setterTemplate: 'change-threshold-hybrid',
+      setterValues: { threshold: '60' },
+    }));
     expect(step).toBe(STEP_DETAILS);
   });
 
   it('carries a setter whose copy is already prefilled all the way to review', () => {
     const p = proposal({
       type: 'setter',
+      setterMode: 'template',
       setterTemplate: 'change-threshold-hybrid',
+      setterValues: { threshold: '60' },
       name: 'Change support threshold (Blended voting)',
       autoTitle: 'Change support threshold (Blended voting)',
     });

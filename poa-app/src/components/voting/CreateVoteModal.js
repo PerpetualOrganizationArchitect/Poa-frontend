@@ -202,7 +202,15 @@ const CreateVoteModal = ({
     // including reopening after abandoning a half-built vote, where resolving
     // to "first incomplete step" would drop the member back into the middle of
     // a flow they just left. Draft restore does its own resolve, on click.
-    setStep(deepLinkedOpen ? resolveEntryStep(proposal, { isComplete }) : STEP_INTENT);
+    if (!deepLinkedOpen) {
+      setStep(STEP_INTENT);
+      return;
+    }
+    // A fully-specified deep link resolves to `review`. Stop one short: the
+    // member should always get to see and edit the title, description and
+    // duration before confirming a ballot they did not assemble themselves.
+    const entry = resolveEntryStep(proposal, { isComplete });
+    setStep(entry === STEP_REVIEW ? STEP_DETAILS : entry);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, deepLinkedOpen]);
 

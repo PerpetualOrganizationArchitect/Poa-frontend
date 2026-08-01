@@ -751,6 +751,59 @@ export function getTemplateById(id) {
  */
 export const SETTER_TITLE_FALLBACK = (template) => template.autoTitle || template.name;
 
+/** A param counts as answered when it has content. `0` and `false` are answers. */
+function hasParamValue(value) {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'string') return value.trim() !== '';
+  return true;
+}
+
+/**
+ * Are a template's parameters answered well enough to describe or submit it?
+ *
+ * `preview()` is not defensive about partial values — it throws on some
+ * templates and renders half-finished copy ("Change blended voting threshold
+ * to %") on others — so every non-optional input must have a value. Templates
+ * whose inputs are ALL optional still need one answer, or they preview as
+ * "No changes specified".
+ */
+export function templateParamsReady(template, values) {
+  if (!template) return false;
+  const filled = values || {};
+  const inputs = template.inputs || [];
+  if (inputs.length === 0) return true;
+  const requiredFilled = inputs.every(i => i.optional || hasParamValue(filled[i.name]));
+  const anyFilled = inputs.some(i => hasParamValue(filled[i.name]));
+  return requiredFilled && anyFilled;
+}
+
+/**
+ * The member-facing title + description for a setter template.
+ *
+ * Single source of truth so every entry point agrees: the picker writes this
+ * as you choose an action, and the `?propose=<template>` deep links write the
+ * same strings into their restored payload. When those two disagree, the
+ * ballot a member reviews is not the proposal that gets created.
+ *
+ * `description` is null until the params are ready; `title` never is.
+ */
+export function buildSetterCopy(template, values, roleNames, projectNames) {
+  if (!template) return { title: null, description: null };
+  const title = SETTER_TITLE_FALLBACK(template);
+  if (typeof template.preview !== 'function' || !templateParamsReady(template, values)) {
+    return { title, description: null };
+  }
+  let line;
+  try {
+    line = template.preview(values || {}, roleNames, projectNames);
+  } catch {
+    return { title, description: null };
+  }
+  if (typeof line !== 'string' || line.trim() === '') return { title, description: null };
+  return { title, description: `If this vote passes: ${line}` };
+}
+
 /**
  * Get raw functions for a contract
  */

@@ -19,7 +19,14 @@ const BAD_CHECKSUM = '0x' + RECIPIENT.slice(2).replace(
 const validConfig = {
   normal: {},
   transferFunds: { transferAddress: RECIPIENT, transferAmount: '250' },
-  setter: { setterMode: 'template', setterTemplate: 'change-threshold-hybrid' },
+  setter: {
+    setterMode: 'template',
+    setterTemplate: 'change-threshold-hybrid',
+    // A template is not configured until its params are answered — submit
+    // rejects an unfilled one, so the config gate matches submit rather than
+    // waving it past and toasting a screen later.
+    setterValues: { threshold: '60' },
+  },
   election: {
     electionRoleId: '0x01',
     electionCandidates: [
@@ -100,10 +107,20 @@ describe('configError — setter', () => {
       .toBe('Please select a target contract.');
   });
 
-  // Per-input ranges and voting-class weights stay submit-side on purpose —
-  // blocking a wizard step on them is follow-up work, not this gate's job.
-  it('does not gate on unfilled template inputs', () => {
-    expect(configError(withType('setter', { setterValues: {} }))).toBeNull();
+  it('gates on unfilled template inputs, naming the missing one', () => {
+    expect(configError(withType('setter', { setterValues: {} })))
+      .toBe('Please provide a value for "Threshold Percentage".');
+  });
+
+  it('lets a zero-parameter template straight through', () => {
+    // The Emergency Controls templates take no inputs; there is nothing to fill.
+    expect(configError({
+      type: 'setter', setterMode: 'template', setterTemplate: 'pause-hybrid-voting',
+    })).toBeNull();
+  });
+
+  it('treats 0 as an answer, not an empty field', () => {
+    expect(configError(withType('setter', { setterValues: { threshold: 0 } }))).toBeNull();
   });
 });
 

@@ -11,6 +11,35 @@ const GENERATED = {
   description: 'Election between alice, bob, and carol',
 };
 
+describe('applyAutoCopy idempotency (render-loop guard)', () => {
+  it('returns {} when the generated copy is already in place', () => {
+    const title = 'Send 250 xDAI to 0x71C7…976F';
+    const description = 'If this vote passes: send 250 xDAI from the treasury to 0x71C7…976F.';
+    const settled = {
+      name: title, autoTitle: title,
+      description, autoDescription: description,
+    };
+    expect(applyAutoCopy(settled, { title, description })).toEqual({});
+  });
+
+  it('is a fixed point — applying twice changes nothing the second time', () => {
+    const title = 'Change support threshold (Blended voting)';
+    let proposal = { name: '', autoTitle: '', description: '', autoDescription: '' };
+    proposal = { ...proposal, ...applyAutoCopy(proposal, { title }) };
+    expect(proposal.name).toBe(title);
+    // The second pass is what an effect watching `proposal` would do. If it
+    // emits a patch here, that effect never settles.
+    expect(applyAutoCopy(proposal, { title })).toEqual({});
+  });
+
+  it('still emits when only the description changed', () => {
+    const title = 'Change support threshold (Blended voting)';
+    const settled = { name: title, autoTitle: title, description: 'old', autoDescription: 'old' };
+    expect(applyAutoCopy(settled, { title, description: 'new' }))
+      .toEqual({ description: 'new', autoDescription: 'new' });
+  });
+});
+
 describe('applyAutoCopy', () => {
   it('fills an empty title and description, recording what it wrote', () => {
     expect(applyAutoCopy({ name: '', description: '' }, GENERATED)).toEqual({

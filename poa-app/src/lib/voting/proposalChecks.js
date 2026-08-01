@@ -19,6 +19,7 @@
  */
 
 import { utils, constants as ethersConstants } from 'ethers';
+import { getTemplateById, templateParamsReady } from '@/config/setterDefinitions';
 
 const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
 
@@ -39,6 +40,16 @@ export function configError(proposal) {
       return null;
     }
     if (!p.setterTemplate) return 'Please select an action from the templates.';
+    // Params belong to the config screen, so they gate it. Without this a bare
+    // ?propose=<template> deep link counts as configured and skips straight
+    // past the screen where its values are entered.
+    const tmpl = getTemplateById(p.setterTemplate);
+    if (tmpl && !templateParamsReady(tmpl, p.setterValues)) {
+      const missing = (tmpl.inputs || []).find(
+        i => !i.optional && !nonEmpty(String(p.setterValues?.[i.name] ?? '')),
+      );
+      return `Please provide a value for "${missing?.label || missing?.name || 'this action'}".`;
+    }
     return null;
   }
 

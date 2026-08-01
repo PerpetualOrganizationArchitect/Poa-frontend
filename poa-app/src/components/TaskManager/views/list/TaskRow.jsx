@@ -13,6 +13,7 @@ import {
   SEVERITY_SCHEME,
 } from '@/util/deadlineUtils';
 import { useNow } from '@/hooks/useNow';
+import { useTaskIndicators } from '@/hooks/useTaskIndicators';
 import { useRouter } from 'next/router';
 import UserIdentity from '@/components/common/UserIdentity';
 import { usePOContext } from '@/context/POContext';
@@ -39,6 +40,10 @@ const TaskRow = ({ task, isMobile = false, showProject = false }) => {
   const userDAO = useOrgName();
   const poContext = usePOContext();
   const tokenLabel = poContext?.tokenLabel || 'Shares';
+  // "Mine" / "needs my review" accents (same logic as the card + chips).
+  const { isMine, needsMyReview } = useTaskIndicators(task);
+  // needs-review amber ring takes precedence over the teal mine ring.
+  const ringColor = needsMyReview ? 'orange.300' : isMine ? 'teal.300' : null;
 
   const {
     id,
@@ -152,6 +157,9 @@ const TaskRow = ({ task, isMobile = false, showProject = false }) => {
       }}
       sx={{
         ...containerSx,
+        // Ring first, difficulty stripe after — border-left keeps the stripe on
+        // the left edge while the ring paints the other three sides.
+        ...(ringColor ? { border: '1.5px solid', borderColor: ringColor } : {}),
         borderLeft: `3px solid ${diffColor}`,
         transition: 'box-shadow 0.15s ease, transform 0.15s ease',
         _hover: { boxShadow: 'md' },
@@ -174,6 +182,11 @@ const TaskRow = ({ task, isMobile = false, showProject = false }) => {
             >
               {name || id}
             </Text>
+            {needsMyReview && (
+              <Badge colorScheme="orange" fontSize="0.65rem" textTransform="none" borderRadius="full" px={2}>
+                Review
+              </Badge>
+            )}
             <Badge
               colorScheme={statusScheme}
               fontSize="0.65rem"
@@ -302,6 +315,21 @@ const TaskRow = ({ task, isMobile = false, showProject = false }) => {
           >
             {statusLabel}
           </Badge>
+
+          {/* Needs-my-review accent chip */}
+          {needsMyReview && (
+            <Badge
+              colorScheme="orange"
+              fontSize="0.65rem"
+              textTransform="none"
+              borderRadius="full"
+              px={2}
+              flexShrink={0}
+              display={{ base: 'none', md: 'inline-flex' }}
+            >
+              Review
+            </Badge>
+          )}
 
           {/* Difficulty pill */}
           {difficulty && (

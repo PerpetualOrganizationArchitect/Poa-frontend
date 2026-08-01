@@ -78,6 +78,17 @@ export function RoleForm({
       }
 
       current[keys[keys.length - 1]] = value;
+
+      // Turning vouching on forces the role closed by default: a default-eligible
+      // hat satisfies eligibility for everyone, so the vouch quorum would be a
+      // no-op — and the contracts now reject the pair outright (EligibilityModule
+      // M-03 at deploy, QuickJoin H-03 at claim). Turning it back OFF leaves the
+      // eligibility switch where it is; "closed, admin-granted only" is a valid
+      // role and this control shouldn't silently reopen it.
+      if (path === 'vouching.enabled' && value) {
+        newData.defaults = { ...newData.defaults, eligible: false };
+      }
+
       return newData;
     });
 
@@ -316,13 +327,22 @@ export function RoleForm({
               <Heading size="xs" color="warmGray.600">Member Defaults</Heading>
 
               <HStack spacing={8}>
+                {/* A vouched role must not be eligible by default — that makes the
+                    vouch quorum a no-op and the contracts reject the combination
+                    (EligibilityModule M-03 at deploy, QuickJoin H-03 at claim). */}
                 <FormControl display="flex" alignItems="center">
                   <FormLabel mb={0} fontSize="sm">Eligible by Default</FormLabel>
                   <Switch
-                    isChecked={formData.defaults.eligible}
+                    isChecked={formData.vouching.enabled ? false : formData.defaults.eligible}
+                    isDisabled={formData.vouching.enabled}
                     onChange={(e) => updateField('defaults.eligible', e.target.checked)}
                     size="sm"
                   />
+                  {formData.vouching.enabled && (
+                    <Tooltip label="Off because this role requires vouches — an open role can't also be gated.">
+                      <Icon as={InfoIcon} ml={2} color="warmGray.400" />
+                    </Tooltip>
+                  )}
                 </FormControl>
 
                 <FormControl display="flex" alignItems="center">

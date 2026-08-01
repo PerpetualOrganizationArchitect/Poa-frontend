@@ -26,6 +26,7 @@ import {
   getLastUsedCredential,
   hasStoredCredentials,
   savePasskeyCredential,
+  clearAllCredentials,
 } from '../services/web3/passkey/passkeyStorage';
 import { discoverPasskeyCredential } from '../services/web3/passkey/passkeyDiscover';
 import { E2E_ENABLED, E2E_AS } from '../services/e2e/e2eMode';
@@ -209,6 +210,19 @@ export const AuthProvider = ({ children }) => {
     setPasskeyState(null);
   }, []);
 
+  /**
+   * Forget the passkey on this device: clears the cached credential(s) AND suppresses auto-restore,
+   * so the app returns to a genuinely signed-out state (survives reload) and a NEW account can be
+   * created. Unlike disconnectPasskey()/signOut(), which leave the stored credential and let the
+   * auto-restore effects silently re-attach it. Non-destructive to the authenticator — the user can
+   * re-attach via "Sign in with passkey" (discoverable WebAuthn).
+   */
+  const forgetPasskey = useCallback(() => {
+    explicitSignOutRef.current = true;
+    clearAllCredentials();
+    setPasskeyState(null);
+  }, []);
+
   const hasStoredPasskey = typeof window !== 'undefined' ? hasStoredCredentials() : false;
 
   const value = useMemo(() => ({
@@ -226,12 +240,13 @@ export const AuthProvider = ({ children }) => {
     activatePasskey,
     disconnectPasskey,
     signOut,
+    forgetPasskey,
     hasStoredPasskey,
 
     // Shared infrastructure
     publicClient,
     bundlerClient,
-  }), [authType, accountAddress, isAuthenticated, passkeyState, passkeyConnecting, connectPasskey, activatePasskey, disconnectPasskey, signOut, hasStoredPasskey, publicClient, bundlerClient]);
+  }), [authType, accountAddress, isAuthenticated, passkeyState, passkeyConnecting, connectPasskey, activatePasskey, disconnectPasskey, signOut, forgetPasskey, hasStoredPasskey, publicClient, bundlerClient]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

@@ -36,6 +36,7 @@ import GasPoolSection from './GasPoolSection';
 import GasPoolDepositModal from './GasPoolDepositModal';
 import { SectionHeader, LEDGER_GLASS, Rise, flashRing } from './treasuryStyles';
 import { useOrgTheme } from '@/hooks';
+import { useOrgGate } from '@/components/shared/OrgDeadEnd';
 
 // The ledger's glass surface — the accent palette in treasuryStyles.js was
 // validated against this exact opacity over the mint page.
@@ -61,6 +62,7 @@ const BALANCE_OF_ABI = [
 const TreasuryPage = () => {
   const router = useRouter();
   const userDAO = useOrgName();
+  const orgGate = useOrgGate();
   const {
     orgId,
     poContextLoading,
@@ -236,6 +238,8 @@ const TreasuryPage = () => {
     zIndex: 2,
   };
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
   return (
     <>
       <Navbar />

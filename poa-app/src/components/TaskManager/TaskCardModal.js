@@ -112,6 +112,13 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const { isOpen, onOpen, onClose} = useDisclosure();
   const { isOpen: isApplicationModalOpen, onOpen: onOpenApplicationModal, onClose: onCloseApplicationModal } = useDisclosure();
   const [showAssignSection, setShowAssignSection] = useState(false);
+  // After ~30s of the modal sitting in the indexing state, soften the copy so a
+  // slow subgraph doesn't read as "stuck".
+  const [indexingTimedOut, setIndexingTimedOut] = useState(false);
+
+  // Org display name for the ownership tooltip. POContext resolves the org by
+  // this name (useOrgName); fall back to a generic phrase when unset.
+  const orgDisplayName = userDAO || 'this org';
 
   // IPFS metadata state
   const [taskMetadata, setTaskMetadata] = useState(null);
@@ -191,6 +198,16 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const taskAbs = toSec(task?.absoluteDeadline);
   const taskWindow = toSec(task?.completionWindow);
   const hasApplied = !!userApplication;
+
+  // Swap in the "taking longer than usual" copy after 30s of indexing.
+  useEffect(() => {
+    if (!isOpen || !task?.isIndexing) {
+      setIndexingTimedOut(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setIndexingTimedOut(true), 30000);
+    return () => clearTimeout(timer);
+  }, [isOpen, task?.isIndexing]);
 
   // Ref to prevent re-opening modal during intentional close
   const isClosingRef = useRef(false);
@@ -777,7 +794,7 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
         >
           <Box style={glassLayerStyle} />
           <ModalHeader color="white" fontSize="xl" fontWeight="bold" pb={2}>
-            {task.isIndexing ? 'Indexing Task Data...' : task.name}
+            {task.isIndexing ? 'Almost ready' : task.name}
           </ModalHeader>
           <ModalCloseButton color="white" />
           <ModalBody pb={6}>
@@ -785,11 +802,12 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
               {task.isIndexing ? (
                 <Box w="100%" p={4} bg="whiteAlpha.50" borderRadius="lg" border="1px solid" borderColor="whiteAlpha.100">
                   <Text color="gray.300" fontWeight="bold">
-                    Task information is being indexed from IPFS
+                    Almost ready
                   </Text>
                   <Text color="gray.400" fontSize="sm" mt={2}>
-                    This task was recently created and its data is still being indexed.
-                    Please check back in a few moments.
+                    {indexingTimedOut
+                      ? 'Taking longer than usual. It will show up as soon as it finishes saving.'
+                      : 'This task is still saving. It will appear in a few seconds.'}
                   </Text>
                 </Box>
               ) : (
@@ -1169,7 +1187,7 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                     </Text>
                     <Text fontSize="sm" color="gray.300">{tokenLabel}</Text>
                     <Tooltip
-                      label={`${tokenLabel} are earned through work and contributions. Non-transferable — no speculation, just ownership proportional to what you put in.`}
+                      label={`${tokenLabel} are your credit for work in ${orgDisplayName} — counts toward your ownership here, earned not bought.`}
                       placement="top"
                       maxW="250px"
                       fontSize="xs"

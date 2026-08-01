@@ -16,10 +16,16 @@ import { getDefaultOrgForHost } from '@/config/hostDefaultOrg';
  * effect, avoiding hydration mismatches in every consumer that builds a link
  * with this value.
  */
-export function useOrgName() {
+export function useOrgNameState() {
   const router = useRouter();
   const fromRouter = router.query.org || router.query.userDAO || '';
-  const [fromBrowser, setFromBrowser] = useState('');
+  // `checked` flips once the window.location / host-default fallback has
+  // actually run. Without it, "no org selected" is indistinguishable from "not
+  // resolved yet": on a hard load `router.query` is empty and the host default
+  // only lands inside the effect, so the FIRST client render of every page has
+  // no name. A consumer that reads that as "no org" flashes a dead end on every
+  // page load. Stays false on the server render, so hydration is unaffected.
+  const [browser, setBrowser] = useState({ name: '', checked: false });
 
   useEffect(() => {
     if (fromRouter) return;
@@ -29,8 +35,17 @@ export function useOrgName() {
       next = params.get('org') || params.get('userDAO') || '';
     } catch {}
     if (!next) next = getDefaultOrgForHost() || '';
-    if (next) setFromBrowser(next);
+    setBrowser({ name: next, checked: true });
   }, [fromRouter]);
 
-  return fromRouter || fromBrowser || '';
+  return {
+    orgName: fromRouter || browser.name || '',
+    // True once we know WHETHER a name exists, whatever the answer.
+    resolved: !!fromRouter || browser.checked,
+  };
+}
+
+/** The common case: just the name. */
+export function useOrgName() {
+  return useOrgNameState().orgName;
 }

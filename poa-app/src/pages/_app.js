@@ -111,10 +111,6 @@ const theme = extendTheme({
     heading: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     body: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     mono: "'Roboto Mono', monospace",
-    // Landing (charter) faces — self-hosted in public/fonts, @font-face in
-    // globals.css. Referenced only by src/components/landing/charter/*.
-    charter: "'Newsreader', Georgia, 'Times New Roman', serif",
-    ledger: "'IBM Plex Mono', 'SFMono-Regular', Menlo, monospace",
   },
   colors: {
     // Primary - Warm Coral (action, warmth)
@@ -155,33 +151,6 @@ const theme = extendTheme({
       700: '#5A2FA8',
       800: '#452485',
       900: '#331A66',
-    },
-    // Landing (charter) palette — paper, ink, one accent. Used only by the
-    // landing page (src/components/landing/charter/*); the app keeps the
-    // palettes above. Contrast on paper.100: ink.900 15.0:1, ink.500 7.2:1,
-    // meadow.600 7.8:1 — all pass AA (and AAA) at any size.
-    paper: {
-      50: '#FCFAF4',   // lifted panel
-      100: '#F7F2E8',  // page background
-      200: '#EFE7D7',  // alternate band
-      300: '#E3D9C4',  // panel borders
-    },
-    ink: {
-      300: '#C9C0AF',  // hairline rules
-      500: '#57503F',  // secondary text
-      900: '#211D15',  // primary text
-    },
-    meadow: {
-      600: '#33523B',  // accent: links, labels, primary button
-      700: '#2A4431',  // hover / active, the ethos plate
-    },
-    oxblood: {
-      600: '#76322B',  // text accent on paper (8.3:1)
-      700: '#5E2722',  // color plate (paper text on it: 10.5:1)
-    },
-    ochre: {
-      400: '#D9A84E',  // gold on dark plates (4.9:1 on meadow.700)
-      600: '#A8741F',  // large/decorative only on paper (3.6:1)
     },
     // Neutral - Warm Gray (not blue-gray)
     warmGray: {

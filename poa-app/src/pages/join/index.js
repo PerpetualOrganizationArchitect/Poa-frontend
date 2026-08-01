@@ -54,9 +54,13 @@ import PasskeyOnboardingModal from '@/components/passkey/PasskeyOnboardingModal'
 import SignInModal from '@/components/passkey/SignInModal';
 import { BsFillLightningChargeFill } from 'react-icons/bs';
 import { RoleApplicationForm, VouchLinkHandler, VouchProgressBar } from '@/components/orgStructure';
+import EmailInviteCard from '@/components/zkEmail/EmailInviteCard';
+import { useZkEmailInviteSummary } from '@/hooks/useZkEmailInviteSummary';
+import { orgUrl } from '@/util/orgUrl';
 import ConnectedAccountBadge from '@/components/common/ConnectedAccountBadge';
 import { VouchFirstPhase } from '@/hooks/useVouchFirstOnboarding';
 import { getAllCredentials } from '@/services/web3/passkey/passkeyStorage';
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 // Subtle pulse animation for CTA buttons when form is ready
 const pulse = keyframes`
@@ -74,6 +78,13 @@ const User = () => {
   const router = useRouter();
   const { vouch: vouchAddress, hatId: vouchHatId } = router.query;
   const userDAO = useOrgName();
+  // Invite-link wording: people reach /join from a shared link, so name the
+  // thing that's actually broken rather than talking about "organizations".
+  const orgGate = useOrgGate({
+    notFoundTitle: (name) => `That invite points to an organization we can’t find`,
+    notFoundBody:
+      'Names are case-sensitive, and a brand-new org can take a minute to appear. Ask whoever shared the link to check it, or browse the organizations that are live now.',
+  });
   const usernameInputRef = useRef(null);
   const toast = useToast();
 
@@ -106,6 +117,13 @@ const User = () => {
       .map(r => { try { return BigInt(r.hatId); } catch { return null; } })
       .filter(Boolean);
   }, [quickJoinEligibleRoles]);
+  // Email-invite fast path: which roles are instantly claimable via the org's ACTIVE allowlist.
+  // Threaded into every RoleApplicationForm so picking a claimable role surfaces the shortcut inline.
+  const inviteSummary = useZkEmailInviteSummary();
+  const emailClaimProp = useMemo(() => ({
+    infoFor: inviteSummary.claimableInfoFor,
+    onClaim: () => router.push(orgUrl(userDAO, 'claim')),
+  }), [inviteSummary.claimableInfoFor, router, userDAO]);
   // Org has both a quick-join path AND a vouch-gated path (e.g. Decentral Park:
   // Neighbor via quickJoin + Delegate via apply/vouch). Surface both in the UI.
   const hasBothPaths = hasQuickJoinRoles && hasVouchGatedRoles;
@@ -346,7 +364,7 @@ const User = () => {
       joinFn,
       {
         pendingMessage: 'Joining organization...',
-        successMessage: 'Successfully joined! Redirecting...',
+        successMessage: 'Successfully joined! Taking you to your profile…',
         refreshEvent: 'member:joined',
       }
     );
@@ -455,7 +473,7 @@ const User = () => {
       joinFn,
       {
         pendingMessage: 'Registering username and joining organization...',
-        successMessage: 'Account created! Redirecting...',
+        successMessage: 'Account created! Taking you to your profile…',
         refreshEvent: 'user:created',
       }
     );
@@ -590,6 +608,8 @@ const User = () => {
     return seoHead;
   }
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
   return (
     <>
       {seoHead}
@@ -730,6 +750,15 @@ const User = () => {
                         ))}
                       </VStack>
 
+                      {/* Email-invite fast path — self-hides unless the org's allowlist is live. */}
+                      <EmailInviteCard
+                        bg={inputBg}
+                        textColor={textColor}
+                        subtextColor={subtextColor}
+                        accentColor={accentColor}
+                        summary={inviteSummary}
+                      />
+
                       {!isAuthenticated && (
                         <>
                           <Divider borderColor="whiteAlpha.200" />
@@ -764,6 +793,11 @@ const User = () => {
 
           {/* Join form (primary, left side) */}
           <GridItem order={{ base: 1, lg: 1 }} mb={{ base: 4, lg: 0 }} overflow="hidden">
+            {/* Mobile-only fast path: the full email-invite card lives in the other column, which
+                renders BELOW the form at base — surface a one-line banner above the fold instead. */}
+            <Box display={{ base: 'block', lg: 'none' }} mb={3}>
+              <EmailInviteCard variant="banner" summary={inviteSummary} />
+            </Box>
             <ScaleFade in={animateForm} initialScale={0.95} delay={0.05} transition={{ enter: { duration: 0.3 } }}>
               <Card
                 bg={cardBg}
@@ -1234,6 +1268,7 @@ const User = () => {
                                 onSelectRole={setSelectedHatId}
                                 notes={applicationNotes}
                                 onNotesChange={(e) => setApplicationNotes(e.target.value)}
+                                emailClaim={emailClaimProp}
                               />
 
                               <Button
@@ -1313,6 +1348,7 @@ const User = () => {
                             onSelectRole={setSelectedHatId}
                             notes={applicationNotes}
                             onNotesChange={(e) => setApplicationNotes(e.target.value)}
+                            emailClaim={emailClaimProp}
                           />
 
                           <Button
@@ -1591,6 +1627,7 @@ const User = () => {
                             onSelectRole={setSelectedHatId}
                             notes={applicationNotes}
                             onNotesChange={(e) => setApplicationNotes(e.target.value)}
+                            emailClaim={emailClaimProp}
                           />
 
                           {vouchFirstHook.error && (
@@ -1665,6 +1702,7 @@ const User = () => {
                         onSelectRole={setSelectedHatId}
                         notes={applicationNotes}
                         onNotesChange={(e) => setApplicationNotes(e.target.value)}
+                        emailClaim={emailClaimProp}
                       />
 
                       {/* Error display */}

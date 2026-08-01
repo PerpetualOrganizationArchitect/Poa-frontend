@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { usePOContext } from "@/context/POContext";
 import { useIsOrgAdmin } from "@/hooks/useIsOrgAdmin";
 import { useOrgName } from "@/hooks/useOrgName";
+import { useVoteLanes } from "@/hooks/useVoteLanes";
 import { useTaskDrafts } from "@/hooks/useTaskDrafts";
 import { orgUrl } from "@/util/orgUrl";
 import DraftsReviewModal from "@/components/TaskManager/DraftsReviewModal";
@@ -28,7 +29,7 @@ const Navbar = React.memo(() => {
   const { isPasskeyUser, accountAddress, isAuthenticated } = useAuth();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
-  const { educationHubEnabled, hideTreasury, orgId } = usePOContext();
+  const { educationHubEnabled, zkEmailInvitesEnabled, hideTreasury, orgId } = usePOContext();
   const { drafts, count: draftCount, projectsWithDrafts, removeDraft, clearProjectDrafts } = useTaskDrafts();
   const [isDraftsModalOpen, setIsDraftsModalOpen] = useState(false);
   const showDraftsChip = !!orgId && draftCount > 0;
@@ -49,6 +50,12 @@ const Navbar = React.memo(() => {
   // Use AuthContext's unified address so passkey users get admin check too
   const { isAdmin } = useIsOrgAdmin(orgId, accountAddress);
 
+  // "Needs your vote" nudge on the Voting nav item — the strongest cheap
+  // turnout signal a small org has. Lanes come from the same shared selector
+  // the board uses, so the numbers can never disagree.
+  const { lanes: voteLanes } = useVoteLanes();
+  const needsVoteCount = voteLanes?.needsVote?.length || 0;
+
   // Navigation items - conditionally include Learn & Earn based on educationHubEnabled
   const navItems = useMemo(() => [
     { name: 'Dashboard', path: orgUrl(org, 'dashboard') },
@@ -56,8 +63,9 @@ const Navbar = React.memo(() => {
     { name: 'Voting', path: orgUrl(org, 'voting') },
     ...(!hideTreasury ? [{ name: 'Treasury', path: orgUrl(org, 'treasury') }] : []),
     ...(educationHubEnabled ? [{ name: 'Learn & Earn', path: orgUrl(org, 'learn') }] : []),
+    ...(zkEmailInvitesEnabled ? [{ name: 'Claim by Email', path: orgUrl(org, 'claim') }] : []),
     ...(isAdmin ? [{ name: 'Settings', path: orgUrl(org, 'settings') }] : []),
-  ], [org, hideTreasury, educationHubEnabled, isAdmin]);
+  ], [org, hideTreasury, educationHubEnabled, zkEmailInvitesEnabled, isAdmin]);
 
   // Sections shown in the mobile swipe-wheel: the content sections only.
   // Settings stays as the gear (desktop) / drawer row — it's a config surface,
@@ -156,8 +164,25 @@ const Navbar = React.memo(() => {
             fontWeight="extrabold"
             fontSize="xl"
             mx={"2%"}
+            position="relative"
           >
             Voting
+            {needsVoteCount > 0 && (
+              <Badge
+                aria-label={`${needsVoteCount} ${needsVoteCount === 1 ? 'vote needs' : 'votes need'} you`}
+                position="absolute"
+                top="-6px"
+                right="-16px"
+                borderRadius="full"
+                px={1.5}
+                fontSize="2xs"
+                fontWeight="800"
+                bg="#F2836B"
+                color="white"
+              >
+                {needsVoteCount}
+              </Badge>
+            )}
           </Link>
           {!hideTreasury && (
             <Link

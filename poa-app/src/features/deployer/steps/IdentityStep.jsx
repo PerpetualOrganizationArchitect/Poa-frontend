@@ -36,6 +36,7 @@ import { useDropzone } from 'react-dropzone';
 import { useDeployer, UI_MODES } from '../context/DeployerContext';
 import { StepHeader, NavigationButtons, ValidationSummary } from '../components/common';
 import { validateOrganizationStep } from '../validation/schemas';
+import { buildOrgMetadata } from '../utils/orgMetadata';
 import { useIPFScontext } from '@/context/ipfsContext';
 import {
   validateImageFile,
@@ -503,15 +504,10 @@ export function IdentityStep() {
   };
 
   const uploadToIPFS = async () => {
-    const jsonData = {
-      description: organization.description,
-      links: (organization.links || []).map((link) => ({
-        name: link.name,
-        url: link.url,
-      })),
-      template: state.ui.selectedTemplate || 'default',
-      logo: organization.logoURL || null,
-    };
+    // Shared builder — see utils/orgMetadata. This upload is only a head start;
+    // the deploy page rebuilds and re-pins the final version, because settings
+    // chosen on later steps (Hide Treasury, share ticker) aren't decided yet here.
+    const jsonData = buildOrgMetadata(state);
 
     try {
       const result = await addToIpfs(JSON.stringify(jsonData));
@@ -744,10 +740,42 @@ export function IdentityStep() {
                     </FormControl>
                   </Box>
 
-                  {/* Placeholder for future advanced options */}
-                  <Text fontSize="xs" color="warmGray.400" fontStyle="italic">
-                    More configuration options coming soon...
-                  </Text>
+                  {/* Names the participation token. The rest of the app calls it
+                      "Shares" (util/tokenLabel) unless an org opts into its ticker,
+                      so keep that vocabulary here — the deploy sets `useTokenSymbol`
+                      when a ticker is given. Blank = the contract defaults,
+                      "<orgName> Token" / "PT". */}
+                  <Box>
+                    <Text fontSize="sm" fontWeight="600" color="warmGray.700" mb={1}>
+                      Name your shares
+                    </Text>
+                    <Text fontSize="xs" color={helperColor} lineHeight="tall" mb={3}>
+                      Members earn shares for the work they do. Give them a name of your own, or
+                      leave this blank and they&apos;ll just be called shares.
+                    </Text>
+                    <HStack spacing={3} align="flex-start">
+                      <FormControl>
+                        <FormLabel fontSize="xs" color={helperColor}>Name</FormLabel>
+                        <Input
+                          size="sm"
+                          value={organization.tokenName || ''}
+                          onChange={(e) => handleInputChange('tokenName', e.target.value)}
+                          placeholder={`${organization.name?.trim() || 'Your organization'} Shares`}
+                          maxLength={64}
+                        />
+                      </FormControl>
+                      <FormControl maxW="140px">
+                        <FormLabel fontSize="xs" color={helperColor}>Short name</FormLabel>
+                        <Input
+                          size="sm"
+                          value={organization.tokenSymbol || ''}
+                          onChange={(e) => handleInputChange('tokenSymbol', e.target.value.toUpperCase())}
+                          placeholder="SHARES"
+                          maxLength={16}
+                        />
+                      </FormControl>
+                    </HStack>
+                  </Box>
                 </VStack>
               </Box>
             )}

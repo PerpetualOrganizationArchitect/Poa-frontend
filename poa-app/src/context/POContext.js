@@ -12,7 +12,7 @@ import { useIdentityContext } from './IdentityContext';
 import { getSubgraphUrl, getAllSubgraphUrls } from '../config/networks';
 import { useSubgraphClient } from '../util/apolloClient';
 import { getDefaultOrgForHost, getVisitUrlForOrg } from '../config/hostDefaultOrg';
-import { useOrgName } from '@/hooks/useOrgName';
+import { useOrgNameState } from '@/hooks/useOrgName';
 
 // Re-export for back-compat with callers that imported these from POContext.
 export { getDefaultOrgForHost, getVisitUrlForOrg };
@@ -127,6 +127,7 @@ const initialState = {
     nftMembershipContractAddress: '',
     votingContractAddress: '',
     educationHubAddress: '',
+    zkEmailInvitesAddress: '',
     executorContractAddress: '',
     eligibilityModuleAddress: '',
     eligibilityModuleAdminHat: null,
@@ -142,6 +143,7 @@ const initialState = {
     topHatId: null,
     creatorHatIds: [],
     educationHubEnabled: false,
+    zkEmailInvitesEnabled: false,
     hideTreasury: false,
     useTokenSymbol: false,
     // Org-level "Pay by hours only" task-payout setting (ignores difficulty).
@@ -184,7 +186,7 @@ export const POProvider = ({ children }) => {
     const router = useRouter();
     // useOrgName covers query-param + window.location.search fallback +
     // host-default in one place; POProvider used to inline the same logic.
-    const poName = useOrgName();
+    const { orgName: poName, resolved: orgNameResolved } = useOrgNameState();
     const { safeFetchFromIpfs } = useIPFScontext();
     const { seedIdentities } = useIdentityContext();
 
@@ -224,10 +226,22 @@ export const POProvider = ({ children }) => {
     // Step 1: Look up org by name across all chains via parallel fetch
     const [orgLookupLoading, setOrgLookupLoading] = useState(!!poName);
     const [orgLookupError, setOrgLookupError] = useState(null);
+    // The name we searched everywhere for and did NOT find. A positive verdict,
+    // not the absence of one: `orgLookupLoading` starts false (poName is '' on
+    // the first render, before useOrgName's fallback runs), so deriving
+    // "not found" from `!orgLookupLoading` flashes the dead end for one commit
+    // on every page load — between the name landing and the lookup effect
+    // starting.
+    const [orgNotFoundName, setOrgNotFoundName] = useState(null);
     const isNewOrg = router.query.newOrg === 'true';
 
     useEffect(() => {
         if (!poName) {
+            // Nothing to look up. `poContextLoading` deliberately stays true:
+            // eleven surfaces read it as "org data is still arriving" and would
+            // otherwise render a fabricated empty organisation. Pages tell this
+            // terminal state apart via `orgStatus === 'missing'` and must check
+            // that BEFORE the loading flag (see VotingPage / pages/votes).
             setOrgLookupLoading(false);
             return;
         }
@@ -237,6 +251,7 @@ export const POProvider = ({ children }) => {
         const RETRY_INTERVAL = 3000;
         setOrgLookupLoading(true);
         setOrgLookupError(null);
+        setOrgNotFoundName(null);
 
         async function findOrg() {
             const sources = getAllSubgraphUrls();
@@ -256,6 +271,16 @@ export const POProvider = ({ children }) => {
                             }),
                         });
                         const json = await res.json();
+                        // A 200 carrying GraphQL `errors` (auth, schema drift, a
+                        // rate-limited gateway) has no `data` — reading that as
+                        // "no such org" turns a transient fault into a permanent
+                        // not-found. Treat it as a source failure so the retry
+                        // loop handles it.
+                        if (json?.errors?.length) {
+                            anySourceFailed = true;
+                            console.warn(`[POContext] ${source.name} returned GraphQL errors:`, json.errors[0]?.message);
+                            return null;
+                        }
                         const org = json?.data?.organizations?.[0];
                         return org ? { ...org, chainId: source.chainId } : null;
                     } catch (err) {
@@ -286,6 +311,7 @@ export const POProvider = ({ children }) => {
                 } else {
                     console.warn(`[POContext] Organization "${poName}" not found on any chain`);
                     setOrgLookupLoading(false);
+                    setOrgNotFoundName(poName);
                     dispatch({ type: 'SET_LOADING', payload: false });
                 }
             } catch (err) {
@@ -376,6 +402,9 @@ export const POProvider = ({ children }) => {
 
             // Build metadata fields
             const eduHubId = org.educationHub?.id || '';
+            // ZkEmailInvites is an OPTIONAL per-org module (like EducationHub) — present only when
+            // the org opted in and the chain has ZK Email infra wired. Empty/absent otherwise.
+            const zkEmailInvitesId = org.zkEmailInvites?.id || '';
             const adminHat = org.metadataAdminHatId;
 
             // The subgraph keeps `eligibilityModuleAdminHat` in
@@ -451,6 +480,8 @@ export const POProvider = ({ children }) => {
                     directDemocracyVotingContractAddress: org.directDemocracyVoting?.id || '',
                     educationHubAddress: eduHubId,
                     educationHubEnabled: !!(eduHubId && eduHubId !== ZERO_ADDRESS),
+                    zkEmailInvitesAddress: zkEmailInvitesId,
+                    zkEmailInvitesEnabled: !!(zkEmailInvitesId && zkEmailInvitesId !== ZERO_ADDRESS),
                     executorContractAddress: org.executorContract?.id || '',
                     eligibilityModuleAddress: org.eligibilityModule?.id || '',
                     participationTokenAddress: org.participationToken?.id || '',
@@ -595,9 +626,42 @@ export const POProvider = ({ children }) => {
 
     // Note: "org not found" is handled inline in the parallel fetch above
 
+    /**
+     * Why the org did or didn't resolve — orthogonal to poContextLoading, which
+     * only says "org DATA is still arriving". Pages need both: a spinner while
+     * data loads, but an honest dead end when there is no org to load data for.
+     * Without this they render a convincing empty organisation (a dashboard
+     * titled "NoSuchOrg's Dashboard", a treasury of 0, a board inviting you to
+     * join a group that does not exist) — or, with no name at all, a spinner
+     * that never stops, because nothing is ever going to resolve.
+     *
+     *   'loading'  — still resolving (name not determined yet, or lookup in
+     *                flight including the retry loop)
+     *   'ready'    — resolved to an orgId
+     *   'missing'  — no ?org/?userDAO and no host default; nothing to look up
+     *   'notFound' — looked everywhere, no org by that name
+     *
+     * Both dead ends need a POSITIVE signal, never the absence of a loading
+     * flag: `orgNameResolved` gates 'missing' (the first client render has no
+     * name yet), and `orgNotFoundName` gates 'notFound' (the lookup effect
+     * hasn't started on the commit where the name first lands). Deriving either
+     * from `!loading` flashes a dead end on every page load.
+     */
+    const orgStatus = state.orgId
+        ? 'ready'
+        : !orgNameResolved
+            ? 'loading'
+            : !poName
+                ? 'missing'
+                : orgNotFoundName === poName
+                    ? 'notFound'
+                    : 'loading';
+
     const contextValue = useMemo(() => ({
         // Organization info
         orgId: state.orgId,
+        orgName: poName,
+        orgStatus,
         orgChainId: state.orgChainId,
         subgraphUrl,
         poDescription: state.poDescription,
@@ -622,6 +686,7 @@ export const POProvider = ({ children }) => {
         nftMembershipContractAddress: state.nftMembershipContractAddress,
         votingContractAddress: state.votingContractAddress,
         educationHubAddress: state.educationHubAddress,
+        zkEmailInvitesAddress: state.zkEmailInvitesAddress,
         executorContractAddress: state.executorContractAddress,
         eligibilityModuleAddress: state.eligibilityModuleAddress,
         eligibilityModuleAdminHat: state.eligibilityModuleAdminHat,
@@ -645,6 +710,7 @@ export const POProvider = ({ children }) => {
         organizerHatIds: state.organizerHatIds,
         foldersRoot: state.foldersRoot,
         educationHubEnabled: state.educationHubEnabled,
+        zkEmailInvitesEnabled: state.zkEmailInvitesEnabled,
         hideTreasury: state.hideTreasury,
         useTokenSymbol: state.useTokenSymbol,
         // Hours-only task payout: raw fields (for the settings editor) plus a
@@ -659,7 +725,7 @@ export const POProvider = ({ children }) => {
         tokenLabel: state.tokenLabel,
         roleNames: state.roleNames,
         roleCanVoteMap: state.roleCanVoteMap,
-    }), [state, loading, errorMessage, leaderboardDisplayData, avatarMap, subgraphUrl]);
+    }), [state, loading, errorMessage, leaderboardDisplayData, avatarMap, subgraphUrl, poName, orgStatus]);
 
     return (
         <POContext.Provider value={contextValue}>

@@ -1,6 +1,8 @@
 import OrgDeployer from "../abi/OrgDeployerNew.json";
 import { ethers } from "ethers";
 import bs58 from "bs58";
+// Single source of truth for role bitmaps — see the note on buildRoleAssignments.
+import { indicesToBitmap } from "../src/features/deployer/utils/bitmapUtils";
 
 /**
  * Convert IPFS CIDv0 to bytes32 sha256 digest
@@ -75,6 +77,11 @@ function cidToBytes32(cid) {
  * @param {Object} infrastructureAddresses - Addresses fetched from subgraph (required)
  * @param {string} infrastructureAddresses.orgDeployerAddress - OrgDeployer contract address
  * @param {string} infrastructureAddresses.registryAddress - Universal Registry address
+ *
+ * @deprecated for the wizard path — it rebuilds DeploymentParams from role NAMES, so it
+ * silently drops the wizard's permission matrix and never selects the ZK-Email entrypoint.
+ * The /create page now sends the exact calldata it simulated via `deployWithCalldata`.
+ * Kept only for the legacy Architect/TempDeployer screen.
  */
 export async function main(
     memberTypeNames,
@@ -226,8 +233,15 @@ export async function main(
         defaultBudgetCapPerEpoch: 0,
         defaultBudgetEpochLen: 0,
       },
-      // Org-wide TaskManager ROLE_PERM grants — MUST be last (matches contract struct order)
+      // Org-wide TaskManager ROLE_PERM grants
       taskManagerPerms: taskManagerPerms || { roleIndices: [], masks: [] },
+      // Deploy-time governance config (OrgDeployer v17) — MUST stay last, in this
+      // order. Zero/empty reproduces the pre-v17 defaults; this legacy path has no
+      // inputs for them.
+      hybridQuorum: 0,
+      ddQuorum: 0,
+      tokenName: '',
+      tokenSymbol: '',
     };
 
     console.log("Deploying new DAO with the following parameters:", deploymentParams);
@@ -468,24 +482,27 @@ function buildRoles(memberTypes, executiveRoles) {
 }
 
 // Helper: Build role assignment bitmaps
+//
+// Uses `indicesToBitmap` rather than `1 << idx` arithmetic. JS bitwise operators
+// coerce to int32, and the wizard allows exactly 32 roles (indices 0..31), so the
+// obvious formulations break at the top of the supported range:
+//   - `(1 << 31) - 1` is -2147483649 → ethers rejects the uint256 at encode time
+//   - `(1 << 32) - 1` is 0           → every "all roles" bitmap silently empties,
+//     deploying an org where nobody can hold tokens, create tasks, or vote in DD
+// `indicesToBitmap` sums 2**idx instead, which is exact past the 32-role cap.
 function buildRoleAssignments(memberTypes, executiveRoles) {
-  // Use regular numbers instead of BigInt - safe for small role counts (< 32 roles)
-  // BigInt literals (1n, 0n) cannot be JSON-serialized for RPC calls
-  const allRolesBitmap = (1 << memberTypes.length) - 1;
+  const allRoleIndices = memberTypes.map((_, i) => i);
+  const allRolesBitmap = indicesToBitmap(allRoleIndices);
 
   // Find executive role indexes
-  let executiveBitmap = 0;
-  executiveRoles.forEach(execRole => {
-    const idx = memberTypes.indexOf(execRole);
-    if (idx !== -1) {
-      executiveBitmap |= (1 << idx);
-    }
-  });
+  const executiveIndices = executiveRoles
+    .map((execRole) => memberTypes.indexOf(execRole))
+    .filter((idx) => idx !== -1);
 
   // If no executives specified, use first role
-  if (executiveBitmap === 0) {
-    executiveBitmap = 1;
-  }
+  const executiveBitmap = executiveIndices.length > 0
+    ? indicesToBitmap(executiveIndices)
+    : indicesToBitmap([0]);
 
   return {
     quickJoinRolesBitmap: 1, // Only first role (MEMBER) can quick join
@@ -530,6 +547,19 @@ export function buildDeployCalldata({
   taskManagerPerms = null,
   ddInitialTargets = null,
   bootstrap = null,
+  zkEmailEnabled = false,
+  roleAssignments: roleAssignmentsOverride = null,
+  // OrgDeployer v17 deploy-time governance config. Zero/empty reproduces v16
+  // behaviour exactly, so omitting these is safe.
+  hybridVoterQuorum = 0,
+  ddVoterQuorum = 0,
+  tokenName = '',
+  tokenSymbol = '',
+  // The wizard's own voting classes, already mapped to contract shape. The
+  // democracyVoteWeight/participationVoteWeight fallback below only knows how to
+  // build a fixed 50/50 DIRECT+ERC20_BAL pair, so anything the user configured —
+  // the split, a third class, minBalance, quadratic — is lost without this.
+  hybridClasses: hybridClassesOverride = null,
 }) {
   const orgDeployerAddress = infrastructureAddresses.orgDeployerAddress;
   const registryAddress = infrastructureAddresses.registryAddress;
@@ -545,15 +575,23 @@ export function buildDeployCalldata({
     ethers.utils.toUtf8Bytes(POname.toLowerCase().replace(/\s+/g, '-'))
   );
 
-  const hybridClasses = buildHybridClasses(
-    hybridVotingEnabled,
-    quadraticVotingEnabled,
-    democracyVoteWeight,
-    participationVoteWeight
-  );
+  const hybridClasses = (hybridClassesOverride && hybridClassesOverride.length > 0)
+    ? hybridClassesOverride
+    : buildHybridClasses(
+        hybridVotingEnabled,
+        quadraticVotingEnabled,
+        democracyVoteWeight,
+        participationVoteWeight
+      );
 
   const roles = customRoles || buildRoles(memberTypeNames, executivePermissionNames);
-  const roleAssignments = buildRoleAssignments(memberTypeNames, executivePermissionNames);
+  // Callers may supply the wizard's own permission matrix; otherwise fall back to
+  // the name-derived approximation every org on chain was deployed with. The
+  // /create page deliberately does NOT override yet — several shipped templates
+  // list vouch-gated roles under `permissions.quickJoinRoles`, and sending that
+  // verbatim would make `quickJoinWithUser` revert NotEligible for newcomers.
+  const roleAssignments =
+    roleAssignmentsOverride || buildRoleAssignments(memberTypeNames, executivePermissionNames);
   const metadataHash = cidToBytes32(infoIPFSHash);
 
   const deploymentParams = {
@@ -590,12 +628,78 @@ export function buildDeployCalldata({
       defaultBudgetCapPerEpoch: 0,
       defaultBudgetEpochLen: 0,
     },
-    // Org-wide TaskManager ROLE_PERM grants — MUST be last (matches contract struct order)
+    // Org-wide TaskManager ROLE_PERM grants
     taskManagerPerms: taskManagerPerms || { roleIndices: [], masks: [] },
+    // Deploy-time governance config (OrgDeployer v17). These four MUST stay last and
+    // in this order — the struct is encoded positionally, and appending them is what
+    // changed the deployFullOrg selector from 0x00d18947 to 0x209bcafc.
+    //
+    // The voter-count quorums were previously setter-only, so the wizard collected
+    // them and threw them away; they now take effect at genesis (0 = no minimum).
+    // Empty token name/symbol reproduces the legacy "<orgName> Token" / "PT".
+    hybridQuorum: Number(hybridVoterQuorum) || 0,
+    ddQuorum: Number(ddVoterQuorum) || 0,
+    tokenName: tokenName || '',
+    tokenSymbol: tokenSymbol || '',
   };
 
   const iface = new ethers.utils.Interface(OrgDeployer);
-  const calldata = iface.encodeFunctionData('deployFullOrg', [deploymentParams]);
+  let calldata;
+  if (zkEmailEnabled) {
+    // Provision the ZkEmailInvites module DORMANT (root = 0). Genesis hat IDs aren't known before the
+    // org exists, so the allowlist root can't be committed at deploy; instead the org curates the
+    // allowlist in Settings (stages it in metadata) and activates it via a governance vote post-deploy.
+    // If the target chain lacks the ZK Email infra/beacon, ModulesFactory SILENTLY SKIPS the module
+    // and the deploy still succeeds — which is why the /create page checks the simulated
+    // DeploymentResult for a zero `zkEmailInvites` and blocks rather than shipping an org whose
+    // Email Invites toggle does nothing.
+    const zkEmailConfig = {
+      enabled: true,
+      initialRoot: ethers.constants.HashZero,
+      initialCid: ethers.constants.HashZero,
+    };
+    calldata = iface.encodeFunctionData('deployFullOrgWithZkEmail', [deploymentParams, zkEmailConfig]);
+  } else {
+    calldata = iface.encodeFunctionData('deployFullOrg', [deploymentParams]);
+  }
 
   return { calldata, orgDeployerAddress, orgId };
+}
+
+/**
+ * Send a pre-built deploy calldata blob with an ethers signer.
+ *
+ * This is the EOA counterpart to the passkey UserOp path: both now broadcast the
+ * EXACT bytes that were simulated and shown in the preview modal. Previously the
+ * wallet path re-derived its own DeploymentParams inside `main()`, which meant the
+ * transaction that got signed could differ from the one that was simulated — most
+ * visibly, `main()` always called `deployFullOrg`, so wallet deployers silently got
+ * no ZkEmailInvites module no matter what the "Email Invites" toggle said.
+ *
+ * @param {Object} args
+ * @param {Object} args.wallet - ethers signer
+ * @param {string} args.to - OrgDeployer proxy address
+ * @param {string} args.calldata - ABI-encoded deployFullOrg / deployFullOrgWithZkEmail call
+ * @param {ethers.BigNumber|null} [args.valueWei] - msg.value for paymaster funding
+ * @returns {Promise<{ receipt: Object }>}
+ */
+export async function deployWithCalldata({ wallet, to, calldata, valueWei = null }) {
+  const value = valueWei || ethers.BigNumber.from(0);
+
+  // The read-only simulation in /create already proved this reverts nowhere, so a
+  // failed estimate here is a node quirk rather than a bad config — fall back to a
+  // high ceiling rather than aborting a deploy the user already confirmed.
+  let gasLimit;
+  try {
+    gasLimit = (await wallet.estimateGas({ to, data: calldata, value })).mul(120).div(100);
+  } catch (estimateError) {
+    console.warn('[DEPLOY] Gas estimation failed after a successful simulation; using fallback limit.', estimateError);
+    gasLimit = ethers.BigNumber.from(25000000);
+  }
+
+  const tx = await wallet.sendTransaction({ to, data: calldata, value, gasLimit });
+  console.log('[DEPLOY] Transaction sent:', tx.hash);
+  const receipt = await tx.wait();
+  console.log('[DEPLOY] Deployment confirmed:', receipt.transactionHash);
+  return { receipt };
 }

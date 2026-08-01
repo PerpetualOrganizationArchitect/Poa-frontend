@@ -473,8 +473,12 @@ function AdvancedSettings({ role, roleIndex, roles, onUpdate }) {
               <Text fontSize="sm" color="warmGray.700">
                 Can participate in governance votes
               </Text>
+              {/* Only gates weighted PROPOSAL voting: GovernanceFactory backfills the
+                  hybrid voting classes with canVote roles. Poll (direct-democracy)
+                  eligibility comes from a separate role bitmap, which the deploy
+                  currently grants to every role — so don't promise it here. */}
               <Tooltip
-                label="Members with this role can vote on proposals and polls"
+                label="Members with this role count in proposal votes. Turn it off for bot or service roles that shouldn't carry voting weight."
                 hasArrow
                 placement="top"
                 fontSize="xs"
@@ -500,13 +504,21 @@ function AdvancedSettings({ role, roleIndex, roles, onUpdate }) {
               Member Defaults
             </Text>
             <VStack spacing={2} align="stretch">
-              <HStack justify="space-between">
-                <Text fontSize="sm" color="warmGray.600">
-                  Eligible by default
-                </Text>
+              <HStack justify="space-between" align="start">
+                <Box>
+                  <Text fontSize="sm" color="warmGray.600">
+                    Eligible by default
+                  </Text>
+                  {role.vouching?.enabled && (
+                    <Text fontSize="xs" color="warmGray.500" maxW="240px">
+                      Off because this role requires vouches — an open role can&apos;t also be gated.
+                    </Text>
+                  )}
+                </Box>
                 <Switch
                   size="sm"
-                  isChecked={role.defaults?.eligible ?? true}
+                  isChecked={role.vouching?.enabled ? false : (role.defaults?.eligible ?? true)}
+                  isDisabled={role.vouching?.enabled}
                   onChange={(e) => updateField('defaults.eligible', e.target.checked)}
                 />
               </HStack>
@@ -717,14 +729,21 @@ export function RoleCardAdvanced({
       }
     }
 
+    const enabling = method === 'vouching';
     onUpdate(roleIndex, {
       ...role,
       vouching: {
         ...role.vouching,
-        enabled: method === 'vouching',
-        quorum: method === 'vouching' ? (role.vouching?.quorum || 1) : 0,
+        enabled: enabling,
+        quorum: enabling ? (role.vouching?.quorum || 1) : 0,
         voucherRoleIndex,
       },
+      // A vouched role must not be eligible by default — that would make the vouch
+      // quorum a no-op, and the contracts now reject the combination outright
+      // (EligibilityModule M-03 at deploy, QuickJoin H-03 at claim). Switching
+      // vouching back off restores the open default, which is what "Anyone can
+      // join" means.
+      defaults: { ...role.defaults, eligible: !enabling },
     });
   };
 

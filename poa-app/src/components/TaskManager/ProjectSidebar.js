@@ -23,9 +23,11 @@ import TrashBin from './TrashBin';
 import { usePOContext } from '@/context/POContext';
 import { useUserContext } from '@/context/UserContext';
 import { useProjectContext } from '@/context/ProjectContext';
+import { useAuth } from '@/context/AuthContext';
 import { AddIcon, SearchIcon, ChevronLeftIcon, EditIcon } from '@chakra-ui/icons';
-import { FiLayers } from 'react-icons/fi';
+import { FiLayers, FiBriefcase } from 'react-icons/fi';
 import { PERMISSION_MESSAGES, ROLE_INDICES } from '../../util/permissions';
+import { isTaskMine, taskNeedsReview } from '@/util/taskIndicators';
 
 const glassLayerStyle = {
   position: 'absolute',
@@ -50,6 +52,8 @@ const ProjectSidebar = ({
   onEditFolders,
   onSelectAllTasks,
   allTasksSelected = false,
+  onSelectMyWork,
+  myWorkSelected = false,
 }) => {
   // Aggregate count is cheap — sidebar already imports ProjectContext.
   // Used to surface a "N tasks" hint on the All Tasks card so it doesn't
@@ -64,8 +68,9 @@ const ProjectSidebar = ({
   }, [projects]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const { userData } = useUserContext();
+  const { userData, graphUsername, hasExecRole } = useUserContext();
   const { projectsData } = useProjectContext();
+  const { accountAddress } = useAuth() || {};
   const { task: taskService, executeWithNotification } = useWeb3();
   const toast = useToast();
 
@@ -73,6 +78,37 @@ const ProjectSidebar = ({
 
   // Get user's current hat IDs for permission checking
   const userHatIds = userData?.hatIds || [];
+
+  // "My Work" hint counts: tasks assigned to me (in progress) + In Review tasks
+  // I can review. Cheap — projectsData already carries columns + tasks.
+  const { myWorkActive, myWorkNeedsYou } = useMemo(() => {
+    const address = accountAddress || userData?.address || '';
+    let active = 0;
+    let needsYou = 0;
+    for (const p of projectsData || []) {
+      for (const c of p.columns || []) {
+        for (const t of c.tasks || []) {
+          if (c.id === 'inProgress' && isTaskMine(t, address, graphUsername)) {
+            active += 1;
+          } else if (
+            c.id === 'inReview' &&
+            !isTaskMine(t, address, graphUsername) &&
+            taskNeedsReview(c.id, p, userHatIds, hasExecRole)
+          ) {
+            needsYou += 1;
+          }
+        }
+      }
+    }
+    return { myWorkActive: active, myWorkNeedsYou: needsYou };
+  }, [projectsData, accountAddress, userData, graphUsername, userHatIds, hasExecRole]);
+
+  const myWorkSubtitle =
+    myWorkActive > 0 || myWorkNeedsYou > 0
+      ? [`${myWorkActive} active`, myWorkNeedsYou > 0 ? `${myWorkNeedsYou} needs you` : null]
+          .filter(Boolean)
+          .join(' · ')
+      : 'Nothing assigned yet';
 
   // Normalize hat IDs for comparison
   const normalizeHatId = (id) => String(id).trim();
@@ -267,6 +303,63 @@ const ProjectSidebar = ({
       </Flex>
       
       <Divider borderColor="whiteAlpha.200" />
+
+      {/* "My Work" personal shortcut. Sits directly above All Tasks with the
+          same system-view treatment. Clicking it pushes ?projectId=__mine__
+          which MainLayout reads to swap in <MyWorkView />. */}
+      {onSelectMyWork && (
+        <Box px={3} pt={3} pb={0}>
+          <Flex
+            role="button"
+            tabIndex={0}
+            aria-pressed={myWorkSelected}
+            onClick={onSelectMyWork}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelectMyWork();
+              }
+            }}
+            align="center"
+            gap={3}
+            p={2.5}
+            borderRadius="md"
+            cursor="pointer"
+            bg={
+              myWorkSelected
+                ? 'linear-gradient(135deg, rgba(56,178,172,0.35) 0%, rgba(159,122,234,0.22) 100%)'
+                : 'linear-gradient(135deg, rgba(56,178,172,0.12) 0%, rgba(159,122,234,0.06) 100%)'
+            }
+            border="1px solid"
+            borderColor={myWorkSelected ? 'teal.300' : 'whiteAlpha.200'}
+            boxShadow={myWorkSelected ? '0 0 0 1px rgba(56,178,172,0.5)' : 'none'}
+            transition="background 0.15s ease, border-color 0.15s ease, transform 0.15s ease"
+            _hover={{ borderColor: 'teal.300', transform: 'translateY(-1px)' }}
+            _focusVisible={{ outline: 'none', boxShadow: '0 0 0 2px rgba(56,178,172,0.7)' }}
+          >
+            <Flex
+              w="32px"
+              h="32px"
+              align="center"
+              justify="center"
+              borderRadius="md"
+              bg="rgba(56,178,172,0.22)"
+              color="teal.100"
+              flexShrink={0}
+            >
+              <FiBriefcase size={16} />
+            </Flex>
+            <Box minW={0} flex="1">
+              <Text fontSize="sm" fontWeight="700" color="white" noOfLines={1}>
+                My Work
+              </Text>
+              <Text fontSize="2xs" color="whiteAlpha.700" noOfLines={1}>
+                {myWorkSubtitle}
+              </Text>
+            </Box>
+          </Flex>
+        </Box>
+      )}
 
       {/* "All Tasks" cross-project shortcut. Sits above the per-project
           list with its own visual treatment so it reads as a system view,

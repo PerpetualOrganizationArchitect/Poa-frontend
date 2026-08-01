@@ -17,10 +17,12 @@ import { glassLayerStyle } from '@/components/shared/glassStyles';
 import LeaderboardCard from '@/components/leaderboard/LeaderboardCard';
 import LeaderboardUserModal from '@/components/leaderboard/LeaderboardUserModal';
 import TopThreePodium from '@/components/leaderboard/TopThreePodium';
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 const Leaderboard = () => {
   const router = useRouter();
   const userDAO = useOrgName();
+  const orgGate = useOrgGate();
 
   const { leaderboardDisplayData, roleNames } = usePOContext();
   const { pageBackground } = useOrgTheme();
@@ -51,6 +53,8 @@ const Leaderboard = () => {
   const topThree = data.slice(0, 3);
   const remaining = data.slice(3);
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
   return (
     <>
       <SEOHead

@@ -80,13 +80,70 @@ function normalizeToIpfsCid(hash) {
 }
 
 /**
- * Simple retry utility with exponential backoff
+ * The Graph's free IPFS endpoint sits behind Cloudflare, which returns a 1015 ("rate limited" /
+ * "access denied") WAF page under rapid back-to-back uploads. That needs a far longer cooldown than a
+ * normal transient error (a ~45s wait was observed to be borderline), so we detect it and back off hard.
+ */
+function isRateLimited(error) {
+    return /\b1015\b|\b429\b|rate.?limit|too many requests|access denied/i.test(String(error?.message || ''));
+}
+
+/**
+ * Read-back-after-write: confirm a freshly-added CID is actually retrievable from the cat endpoint and
+ * that its byte length matches what we uploaded. Closes the propagation-lag window where a member claims
+ * right after an admin stages and gets a null allowlist. A short timeout keeps a stalled cat from hanging
+ * the upload. Retried by `verifyRetrievable` with a RE-CAT only — it never re-runs the (already-successful)
+ * upload, so a flaky read-back can't trigger duplicate re-uploads.
+ */
+async function assertCatchable(cid, content, isBinary) {
+    const res = await fetch(`https://api.thegraph.com/ipfs/api/v0/cat?arg=${cid}`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) {
+        throw new Error(`IPFS content not yet retrievable (cat ${cid} -> HTTP ${res.status})`);
+    }
+    const back = new Uint8Array(await res.arrayBuffer());
+    const expectedLen = isBinary
+        ? (typeof content.size === 'number' ? content.size : null)
+        : new TextEncoder().encode(content).length;
+    if (expectedLen != null && back.length !== expectedLen) {
+        throw new Error(`IPFS read-back size mismatch for ${cid}: got ${back.length}, expected ${expectedLen}`);
+    }
+}
+
+/**
+ * Verify a freshly-added CID is retrievable, retrying the READ-BACK ONLY (re-cat, never re-upload) so a
+ * transient cat 504/1015 can't re-fire the expensive add() across every upload flow in the app. Throws
+ * once read-back attempts are exhausted — fail closed rather than hand back a CID a member can't load.
+ */
+async function verifyRetrievable(cid, content, isBinary, attempts = 4) {
+    let lastError;
+    for (let i = 0; i < attempts; i++) {
+        try {
+            await assertCatchable(cid, content, isBinary);
+            return;
+        } catch (error) {
+            lastError = error;
+            if (i < attempts - 1) {
+                const base = isRateLimited(error) ? 15000 : 1500;
+                const delay = base * Math.pow(2, i) + Math.floor(Math.random() * 1000);
+                console.log(`IPFS read-back not ready, re-checking in ${delay}ms...`, error.message);
+                await new Promise((resolve) => setTimeout(resolve, delay));
+            }
+        }
+    }
+    throw lastError;
+}
+
+/**
+ * Simple retry utility with exponential backoff (+ jitter), with a longer cooldown for rate-limits.
  * @param {Function} fn - Async function to retry
  * @param {number} maxRetries - Maximum number of retries
  * @param {number} baseDelay - Base delay in ms
  * @returns {Promise} Result of the function
  */
-async function withRetry(fn, maxRetries = 3, baseDelay = 1000) {
+async function withRetry(fn, maxRetries = 4, baseDelay = 1500) {
     let lastError;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -102,7 +159,9 @@ async function withRetry(fn, maxRetries = 3, baseDelay = 1000) {
 
             // Don't retry on the last attempt
             if (attempt < maxRetries - 1) {
-                const delay = baseDelay * Math.pow(2, attempt);
+                // Cloudflare 1015 needs a much longer cooldown than a normal transient blip.
+                const base = isRateLimited(error) ? Math.max(baseDelay, 15000) : baseDelay;
+                const delay = base * Math.pow(2, attempt) + Math.floor(Math.random() * 1000);
                 console.log(`IPFS operation failed, retrying in ${delay}ms...`, error.message);
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
@@ -147,10 +206,11 @@ export const IPFSprovider = ({ children }) => {
         const isBinary = content instanceof Blob;
 
         try {
-            let addedData;
-            if (isBinary) {
-                console.log("[IPFS] Binary file detected — using direct FormData upload...");
-                addedData = await withRetry(async () => {
+            const addedData = await withRetry(async () => {
+                let cid;
+                let size;
+                if (isBinary) {
+                    console.log("[IPFS] Binary file detected — using direct FormData upload...");
                     const formData = new FormData();
                     formData.append('file', content);
                     const response = await fetch('https://api.thegraph.com/ipfs/api/v0/add', {
@@ -158,23 +218,34 @@ export const IPFSprovider = ({ children }) => {
                         body: formData,
                     });
                     if (!response.ok) {
-                        throw new Error(`IPFS upload failed: ${response.status} ${response.statusText}`);
+                        // Read the body so a Cloudflare 1015 WAF page (often served as 403/503) is visible
+                        // to isRateLimited and gets the long cooldown instead of the short transient backoff.
+                        const body = await response.text().catch(() => '');
+                        throw new Error(`IPFS upload failed: ${response.status} ${response.statusText} ${body}`.trim());
                     }
                     const result = await response.json();
-                    console.log("[IPFS] Direct upload successful!");
-                    console.log("[IPFS] Result:", JSON.stringify(result, null, 2));
-                    return { path: result.Hash, size: result.Size };
-                });
-            } else {
-                addedData = await withRetry(async () => {
+                    cid = result.Hash;
+                    size = result.Size;
+                } else {
                     console.log("[IPFS] Attempting add to api.thegraph.com/ipfs...");
                     const ipfsClient = await getIpfsClient();
                     const result = await ipfsClient.add(content);
-                    console.log("[IPFS] Add successful!");
-                    console.log("[IPFS] Result:", JSON.stringify(result, null, 2));
-                    return result;
-                });
-            }
+                    cid = (result.cid || result.path).toString();
+                    size = result.size;
+                }
+                // The on-chain bytes32 <-> CID encoding round-trips ONLY for CIDv0 ("Qm..."); a CIDv1 would
+                // silently produce a non-decodable hash and brick claims. Fail loudly if the endpoint ever
+                // returns one (it returns CIDv0 today).
+                if (!cid || !cid.startsWith('Qm')) {
+                    throw new Error(`IPFS returned a non-CIDv0 hash (${cid}); expected a 'Qm...' CID.`);
+                }
+                return { path: cid, size };
+            });
+
+            // Verify retrievability SEPARATELY (re-cat only, never re-upload) so a flaky read-back can't
+            // re-fire the upload across every caller. Fails closed if the CID never becomes catchable.
+            await verifyRetrievable(addedData.path, content, isBinary);
+            console.log("[IPFS] Upload verified retrievable, CID:", addedData.path);
 
             console.log("[IPFS] Final CID (path):", addedData.path);
             console.log("[IPFS] CID format check - starts with 'Qm':", addedData.path?.startsWith('Qm'));

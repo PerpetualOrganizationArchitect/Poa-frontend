@@ -100,7 +100,9 @@ export function useVouchFirstOnboarding({
   useEffect(() => {
     if (!orgName) return;
     const stored = getPendingCredentialForOrg(orgName);
-    if (stored) {
+    // A pending saved by the zk-email one-step claim flow is NOT a vouch application — adopting it
+    // here would build a vouch link with hatId=undefined and crash completion. Leave it alone.
+    if (stored && stored.flow !== 'zkemail') {
       setPendingCredential(stored);
       setPhase(VouchFirstPhase.AWAITING_VOUCHES);
       setVouchLink(buildVouchLink(orgName, stored.accountAddress, stored.selectedHatId));

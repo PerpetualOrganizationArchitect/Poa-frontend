@@ -48,6 +48,7 @@ import {
 import { AddIcon, DeleteIcon, InfoOutlineIcon } from '@chakra-ui/icons';
 import { utils } from 'ethers';
 import { inputStyles } from '@/components/shared/glassStyles';
+import { applyAutoCopy } from '@/components/voting/create/autoCopy';
 
 export const TITLE_PREFIX = 'Create role: ';
 export const DESCRIPTION_PREFIX = 'New role ';
@@ -112,9 +113,33 @@ export const defaultRoleConfig = {
 };
 
 /**
+ * Build the auto-generated proposal title from the role config.
+ * Format: "Create role: <name> (under <parentName>)". The "(under …)" tail is
+ * load-bearing: CreateVoteModal's parseAutoTitle reads it back out of OTHER
+ * members' titles to spot two createRole proposals racing on Hats.getNextId.
+ * Returns '' until the role has a name, and drops the tail while the parent is
+ * unpicked (or names haven't loaded yet).
+ */
+function buildRoleTitle(rc, allRoles) {
+  if (!rc?.name) return '';
+  const parent = rc.parentHatId
+    ? (allRoles || []).find(x => String(x.hatId) === String(rc.parentHatId))
+    : null;
+  const parentName = parent?.name || '';
+  return parentName
+    ? `${TITLE_PREFIX}${rc.name} (under ${parentName})`
+    : `${TITLE_PREFIX}${rc.name}`;
+}
+
+/**
  * Build the auto-generated proposal description from the role config.
  * Auto-detection in useProposalForm clears this when the user switches type
- * away from createRole; preserved if the user edited it manually.
+ * away from createRole (that still matches on DESCRIPTION_PREFIX). Keeping a
+ * member's own wording is applyAutoCopy's job, not this string's.
+ *
+ * Reaching the details screen after only sub-step 1 is legitimate — permissions
+ * and wearers are genuinely optional — so `New role "Treasurer" — no vouching.`
+ * is a correct result, not a half-written one.
  */
 function buildRoleDescription(rc) {
   if (!rc?.name) return '';
@@ -134,14 +159,6 @@ function buildRoleDescription(rc) {
     bits.push(`${wearerCount} initial wearer${wearerCount > 1 ? 's' : ''}`);
   }
   return `${DESCRIPTION_PREFIX}"${rc.name}" — ${bits.join(', ')}.`;
-}
-
-/**
- * True if the current description is empty or matches our auto-generated
- * prefix. Used to avoid clobbering user-edited descriptions.
- */
-function isAutoDescription(description) {
-  return !description || description.startsWith(DESCRIPTION_PREFIX);
 }
 
 /**
@@ -235,36 +252,27 @@ const RoleConfigurator = ({
   const [manualAddress, setManualAddress] = useState('');
   const [showManualEntry, setShowManualEntry] = useState(false);
 
-  // Merge updates into proposal.roleConfig via the shared setter handler.
+  // Merge updates into proposal.roleConfig via the shared setter handler, and
+  // re-suggest the proposal title/description off the new config.
+  //
+  // applyAutoCopy decides whether the suggestion is ours to rewrite by comparing
+  // against the provenance twins (autoTitle/autoDescription) rather than the old
+  // `name.startsWith(TITLE_PREFIX)` test — which let "Create role: Treasurer —
+  // please approve by Friday" pass and got clobbered by the next permission
+  // toggle. With the wizard's Back button, edit → Back → reconfigure is everyday
+  // navigation, so the member's wording has to survive it.
   const update = useCallback(
     (changes) => {
       const nextRc = { ...rc, ...changes };
-      const updates = { roleConfig: nextRc };
-
-      // Auto-title format: "Create role: <name> (under <parentName>)".
-      // The "(under …)" tail is load-bearing: CreateVoteModal parses it to
-      // detect concurrent createRole proposals targeting the same parent.
-      // Never overwrite a custom-named title (user edits win).
-      const parentForTitle = (() => {
-        if (!nextRc.parentHatId) return '';
-        const r = allRoles.find(x => String(x.hatId) === String(nextRc.parentHatId));
-        return r?.name || '';
-      })();
-      const autoTitle = nextRc.name
-        ? (parentForTitle
-            ? `${TITLE_PREFIX}${nextRc.name} (under ${parentForTitle})`
-            : `${TITLE_PREFIX}${nextRc.name}`)
-        : '';
-      if (!proposal.name || proposal.name.startsWith(TITLE_PREFIX)) {
-        updates.name = autoTitle;
-      }
-      // Auto-description: same rule.
-      if (isAutoDescription(proposal.description)) {
-        updates.description = buildRoleDescription(nextRc);
-      }
-      onChange(updates);
+      onChange({
+        roleConfig: nextRc,
+        ...applyAutoCopy(proposal, {
+          title: buildRoleTitle(nextRc, allRoles),
+          description: buildRoleDescription(nextRc),
+        }),
+      });
     },
-    [rc, proposal.name, proposal.description, onChange, allRoles]
+    [rc, proposal, onChange, allRoles]
   );
 
   const updateVouching = useCallback(
@@ -784,10 +792,11 @@ const RoleConfigurator = ({
         </VStack>
       </Box>
 
-      <HStack justify="space-between">
-        <Button size="sm" variant="ghost" color="gray.300" onClick={() => setStep(1)}>
-          Back
-        </Button>
+      {/* Sub-step move only — named after where it lands so it never reads as
+          the wizard's Next in the modal footer just below. Going back up a
+          sub-step is the header's Back; a second plain "Back" down here sat
+          directly on top of the wizard's own. */}
+      <HStack justify="flex-end">
         <Button
           rightIcon={<FiChevronRight />}
           colorScheme="purple"
@@ -953,11 +962,12 @@ const RoleConfigurator = ({
         )}
       </Box>
 
-      <HStack justify="space-between">
-        <Button size="sm" variant="ghost" color="gray.300" onClick={() => setStep(2)}>
-          Back
-        </Button>
-      </HStack>
+      {/* Last sub-step, so deliberately no button here: the wizard footer's
+          Next carries on to the vote details. This used to be a lone Back,
+          which made the sub-step look like a dead end. */}
+      <Text fontSize="xs" color="gray.500" textAlign="right">
+        Initial wearers are optional — use Next below when you're done.
+      </Text>
     </VStack>
   );
 

@@ -1,54 +1,26 @@
-import { useEffect, useState } from 'react';
+import Head from 'next/head';
 import { getPostData, getAllPostIds, getRelatedPosts } from '../../util/posts';
 import SEOHead from '@/components/common/SEOHead';
-import { 
-  Box, 
-  Text, 
-  Flex, 
-  VStack,
-  Heading,
-  Container,
-  Icon,
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  useBreakpointValue,
-  useColorModeValue,
-  Button,
-  Divider,
-  HStack,
-  useDisclosure,
-  Drawer,
-  DrawerBody,
-  DrawerHeader,
-  DrawerOverlay,
-  DrawerContent,
-  DrawerCloseButton,
-  IconButton,
-  Tag,
-  SimpleGrid,
-} from '@chakra-ui/react';
-import Layout from '../../components/Layout';
-import SideBar from '../../components/docs/SideBar';
-import { FaHome, FaChevronRight, FaBars, FaArrowLeft, FaArrowRight, FaBook, FaUser } from 'react-icons/fa';
-import { motion } from 'framer-motion';
-import Link from 'next/link';
-import { useRouter } from 'next/router';
 
-// Motion components
-const MotionBox = motion(Box);
-// Markdown content is dropped here via dangerouslySetInnerHTML and can include
-// block-level tags (h2, ul, p, etc.) — render into a div, not a <p>.
-const MotionContent = motion(Box);
+// Marketing /docs/[id] article template, direction A ("public works"), rebuilt
+// on the same marketing chrome + primitives as the landing (P2) and /about (P3).
+// A typographic pass only: the content is sourced and rendered EXACTLY as before
+// (same getStaticProps/getStaticPaths, same markdown pipeline, same
+// dangerouslySetInnerHTML), so the article BODY is byte-identical and every
+// in-article anchor/id the pipeline produced still resolves. DocsArticle only
+// re-dresses the shell around it. No motion library; entrances are pure CSS.
+//
+// The article BODY is EXEMPT vocabulary (BRIEF §7): posts/*.md are untouched.
+// Thin page per repo convention: chrome + the reader shell, no logic here.
+import { MarketingRoot } from '@/components/marketing/primitives';
+import MarketingNav from '@/components/marketing/chrome/MarketingNav';
+import MarketingFooter from '@/components/marketing/chrome/MarketingFooter';
+import { DocsArticle } from '@/components/marketing/docs';
 
-export default function Post({ postData, navigationData, relatedPosts }) {
-  const router = useRouter();
-  const [isClient, setIsClient] = useState(false);
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  const showSidebar = useBreakpointValue({ base: false, md: true });
-
-  // TechArticle JSON-LD for /docs/* pages. Mirrors the Article schema on /blog/[id]
-  // but uses TechArticle since these pages are technical documentation, not editorial.
+export default function DocsPost({ postData, navigationData, relatedPosts }) {
+  // TechArticle JSON-LD for /docs/* pages. Unchanged from the old template: the
+  // fields derive from the post's own front-matter title/description, which the
+  // vocab gate treats as article-body-derived content under the §7 exemption.
   const techArticleLD = {
     "@context": "https://schema.org",
     "@type": "TechArticle",
@@ -66,314 +38,63 @@ export default function Post({ postData, navigationData, relatedPosts }) {
     "mainEntityOfPage": { "@type": "WebPage", "@id": `https://poa.box/docs/${postData.id}/` },
   };
 
-  const isoDate = postData.date ? new Date(postData.date).toISOString() : null;
-  const humanDate = postData.date ? new Date(postData.date).toLocaleDateString() : null;
-  
-  // Design tokens
-  const contentBg = useColorModeValue('white', 'gray.800');
-  const contentBorder = useColorModeValue('gray.200', 'gray.700');
-  const headingColor = useColorModeValue('blue.600', 'blue.300');
-  const textColor = useColorModeValue('gray.700', 'gray.300');
-  const breadcrumbColor = useColorModeValue('gray.500', 'gray.400');
-  
-  // Extract navigation links
-  const { prev, next } = navigationData || { prev: null, next: null };
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  // Functions to determine category for current post
-  const getCategory = (id) => {
-    if (['create', 'perpetualOrganization', 'join'].includes(id)) return 'Get Started';
-    if (['hybridVoting', 'contributionVoting', 'directDemocracy'].includes(id)) return 'Voting';
-    if (['AlphaV1', 'TheGraph'].includes(id)) return 'Features';
-    return 'Documentation';
-  };
-
-  const getCategoryColor = (category) => {
-    const categoryColors = {
-      'Get Started': 'green',
-      'Voting': 'purple',
-      'Features': 'blue'
-    };
-    return categoryColors[category] || 'blue';
-  };
-
-  const currentCategory = getCategory(postData.id);
-  const categoryColor = getCategoryColor(currentCategory);
-
-  // Animation variants
-  const contentVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { 
-      opacity: 1, 
-      y: 0,
-      transition: { duration: 0.5 }
-    }
-  };
-
   return (
     <>
-    <SEOHead
-      title={`${postData.title} | Poa Docs (poa.box)`}
-      description={postData.description}
-      path={`/docs/${postData.id}`}
-      ogType="article"
-      jsonLd={techArticleLD}
-    />
-    <Layout>
-      <Box>
-        {isClient && (
-          <Flex direction={{ base: 'column', md: 'row' }} maxWidth="1400px" mx="auto">
-            {/* Mobile Sidebar Drawer */}
-            {!showSidebar && (
-              <>
-                <IconButton
-                  aria-label="Open navigation"
-                  icon={<FaBars />}
-                  position="fixed"
-                  top="80px"
-                  left="20px"
-                  zIndex={20}
-                  onClick={onOpen}
-                  colorScheme="blue"
-                  variant="outline"
-                />
-                
-                <Drawer isOpen={isOpen} placement="left" onClose={onClose}>
-                  <DrawerOverlay />
-                  <DrawerContent>
-                    <DrawerCloseButton />
-                    <DrawerHeader borderBottomWidth="1px">
-                      Documentation
-                    </DrawerHeader>
-                    <DrawerBody>
-                      <SideBar />
-                    </DrawerBody>
-                  </DrawerContent>
-                </Drawer>
-              </>
-            )}
-            
-            {/* Desktop Sidebar */}
-            {showSidebar && (
-              <Box display={{ base: 'none', md: 'block' }}>
-                <SideBar />
-              </Box>
-            )}
-            
-            {/* Main Content */}
-            <Box flex="1" px={{ base: 2, md: 8 }} pt={{ base: 16, md: 6 }} pb={10}>
-              <Container maxW="container.md" px={{ base: 1, sm: 4 }}>
-                {/* Breadcrumb Navigation */}
-                <Breadcrumb 
-                  separator={<Icon as={FaChevronRight} color={breadcrumbColor} fontSize="xs" />}
-                  mb={6}
-                  color={breadcrumbColor}
-                  fontSize="sm"
-                  display={{ base: 'none', sm: 'flex' }}
-                >
-                  <BreadcrumbItem>
-                    <BreadcrumbLink as={Link} href="/" passHref>
-                      <Flex align="center">
-                        <Icon as={FaHome} mr={1} />
-                        Home
-                      </Flex>
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  
-                  <BreadcrumbItem>
-                    <BreadcrumbLink as={Link} href="/docs" passHref>
-                      Documentation
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  
-                  <BreadcrumbItem isCurrentPage>
-                    <BreadcrumbLink>{postData.title || postData.id}</BreadcrumbLink>
-                  </BreadcrumbItem>
-                </Breadcrumb>
-                
-                {/* Mobile Back Button - REMOVED */}
-                
-                {/* Document Header */}
-                <MotionBox
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5 }}
-                  mb={6}
-                >
-                  <Flex
-                    direction="row"
-                    alignItems="center"
-                    justifyContent="flex-start"
-                    flexWrap="wrap"
-                    gap={3}
-                  >
-                    <Tag
-                      size="md"
-                      colorScheme={categoryColor}
-                      borderRadius="full"
-                    >
-                      {currentCategory}
-                    </Tag>
+      <SEOHead
+        title={`${postData.title} | Poa docs`}
+        description={postData.description}
+        path={`/docs/${postData.id}`}
+        ogType="article"
+        jsonLd={techArticleLD}
+      />
 
-                    {isoDate && (
-                      <Text
-                        as="time"
-                        dateTime={isoDate}
-                        color={breadcrumbColor}
-                        fontSize="sm"
-                      >
-                        Last updated {humanDate}
-                      </Text>
-                    )}
+      {/* Preload the two marketing display/body faces the first paint needs; the
+          mono arrives with the same priority for the article code + labels. */}
+      <Head>
+        <link rel="preload" href="/fonts/archivo-vf.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/public-sans-vf.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/plex-mono-500-latin.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+      </Head>
 
-                    <HStack spacing={1} color={breadcrumbColor} fontSize="sm">
-                      <Icon as={FaUser} boxSize="0.7em" />
-                      <Text>By Poa Team</Text>
-                    </HStack>
-                  </Flex>
+      <MarketingRoot>
+        <a href="#docs-article-main" className="pa-skip">
+          Skip to content
+        </a>
 
-                  <Heading
-                    as="h1"
-                    size={{ base: "xl", md: "2xl" }}
-                    color={headingColor}
-                    fontWeight="bold"
-                    lineHeight="1.2"
-                    mb={3}
-                    mt={3}
-                  >
-                    {postData.title || postData.id}
-                  </Heading>
-                </MotionBox>
-                
-                {/* Table of Contents for Desktop - Removed */}
-                
-                {/* Main Content */}
-                <MotionBox
-                  variants={contentVariants}
-                  initial="hidden"
-                  animate="visible"
-                  p={{ base: 1, sm: 3, md: 6 }}
-                  borderRadius="xl"
-                  bg={contentBg}
-                  borderWidth="1px"
-                  borderColor={contentBorder}
-                  boxShadow="md"
-                  mb={8}
-                >
-                  <MotionContent
-                    className="markdown-content article-content"
-                    color={textColor}
-                    fontSize={{ base: "md", md: "lg" }}
-                    lineHeight="1.8"
-                    dangerouslySetInnerHTML={{ __html: postData.contentHtml }}
-                  />
-                </MotionBox>
+        <MarketingNav />
 
-                {/* Related Reading — strengthens internal linking for SEO topic clusters */}
-                {relatedPosts && relatedPosts.length > 0 && (
-                  <Box mb={8}>
-                    <Heading as="h2" size="md" mb={4} color={textColor}>
-                      Related reading
-                    </Heading>
-                    <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
-                      {relatedPosts.map((rp) => (
-                        <Link key={rp.id} href={`/docs/${rp.id}`} passHref>
-                          <Box
-                            as="a"
-                            display="block"
-                            p={4}
-                            borderWidth="1px"
-                            borderColor={contentBorder}
-                            borderRadius="lg"
-                            bg={contentBg}
-                            transition="border-color 0.2s, box-shadow 0.2s"
-                            _hover={{ borderColor: `${categoryColor}.300`, boxShadow: 'sm' }}
-                          >
-                            <Tag size="sm" colorScheme={getCategoryColor(rp.category)} borderRadius="full" mb={2}>
-                              {rp.category}
-                            </Tag>
-                            <Heading as="h3" size="sm" mb={1} color={textColor} noOfLines={2}>
-                              {rp.title}
-                            </Heading>
-                            {rp.description && (
-                              <Text fontSize="sm" color={breadcrumbColor} noOfLines={2}>
-                                {rp.description}
-                              </Text>
-                            )}
-                          </Box>
-                        </Link>
-                      ))}
-                    </SimpleGrid>
-                  </Box>
-                )}
+        <main id="docs-article-main">
+          <DocsArticle
+            postData={postData}
+            navigationData={navigationData}
+            relatedPosts={relatedPosts}
+          />
+        </main>
 
-                {/* Next/Previous Navigation */}
-                <Flex 
-                  justifyContent="space-between" 
-                  alignItems="center" 
-                  mt={8}
-                  flexWrap={{ base: "wrap", md: "nowrap" }}
-                  gap={4}
-                >
-                  {prev ? (
-                    <Link href={`/docs/${prev.id}`} passHref>
-                      <Button 
-                        as="a"
-                        leftIcon={<FaArrowLeft />}
-                        variant="outline"
-                        colorScheme={categoryColor}
-                        size={{ base: "sm", md: "md" }}
-                        w={{ base: "full", md: "auto" }}
-                      >
-                        <Text noOfLines={1}>
-                          Previous: {prev.title || prev.id}
-                        </Text>
-                      </Button>
-                    </Link>
-                  ) : (
-                    <Box />
-                  )}
-                  
-                  <Link href="/docs" passHref>
-                    <Button 
-                      as="a"
-                      leftIcon={<FaBook />}
-                      colorScheme="gray"
-                      size={{ base: "sm", md: "md" }}
-                      variant="outline"
-                      display={{ base: "none", md: "flex" }}
-                    >
-                      All Documentation
-                    </Button>
-                  </Link>
-                  
-                  {next ? (
-                    <Link href={`/docs/${next.id}`} passHref>
-                      <Button 
-                        as="a"
-                        rightIcon={<FaArrowRight />}
-                        colorScheme={categoryColor}
-                        size={{ base: "sm", md: "md" }}
-                        w={{ base: "full", md: "auto" }}
-                      >
-                        <Text noOfLines={1}>
-                          Next: {next.title || next.id}
-                        </Text>
-                      </Button>
-                    </Link>
-                  ) : (
-                    <Box />
-                  )}
-                </Flex>
-              </Container>
-            </Box>
-          </Flex>
-        )}
-      </Box>
-    </Layout>
+        <MarketingFooter />
+
+        <style jsx>{`
+          .pa-skip {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            z-index: 100;
+            background: var(--paper);
+            color: var(--ink);
+            font-family: var(--mono);
+            font-size: 0.875rem;
+            padding: 12px 16px;
+            border: 2px solid var(--signal);
+            text-decoration: none;
+          }
+          .pa-skip:focus {
+            left: 8px;
+            top: 8px;
+            outline: none;
+            box-shadow: none;
+          }
+        `}</style>
+      </MarketingRoot>
     </>
   );
 }
@@ -398,7 +119,7 @@ export async function getStaticProps({ params }) {
     next: currentIndex < allPostIds.length - 1 ? { id: allPostIds[currentIndex + 1] } : null,
   };
 
-  // Related posts — same category first, then fall back to others. Strips
+  // Related posts, same category first, then fall back to others. Strips
   // any fields Next.js can't serialize and excludes the current post.
   const relatedPosts = getRelatedPosts(params.id, 3)
     .map((p) => ({

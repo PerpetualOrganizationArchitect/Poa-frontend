@@ -690,7 +690,7 @@ function AdvancedGovernanceUI({ state, actions }) {
             <Heading size="xs" mb={3}>
               <HStack>
                 <Text>Minimum Voter Count (Optional)</Text>
-                <Tooltip label="Minimum number of voters required for a proposal to be valid. Set to 0 for no minimum. Configured via governance after deployment.">
+                <Tooltip label="Minimum number of voters required for a proposal to be valid. Set to 0 for no minimum. Applied at launch — change it later with a governance vote.">
                   <Icon as={InfoIcon} color="warmGray.400" />
                 </Tooltip>
               </HStack>

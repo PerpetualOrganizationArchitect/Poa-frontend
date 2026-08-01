@@ -51,6 +51,7 @@ import {
   PiGraduationCap,
   PiHandshake,
   PiVault,
+  PiEnvelopeSimple,
   PiImage,
   PiSparkle,
   PiInfo,
@@ -320,6 +321,16 @@ function OrganizationHero({ organization, templateName, goToStep }) {
             >
               Auto Upgrade: {organization.autoUpgrade ? 'On' : 'Off'}
             </Badge>
+            {/* Only worth a badge when the founder named the shares themselves —
+                otherwise the app just calls them "shares" and there's nothing to say. */}
+            {(organization.tokenName?.trim() || organization.tokenSymbol?.trim()) && (
+              <Badge bg="warmGray.100" color="warmGray.600" borderRadius="full" px={3} py={1}>
+                Shares: {organization.tokenName?.trim() || organization.tokenSymbol?.trim()}
+                {organization.tokenName?.trim() && organization.tokenSymbol?.trim()
+                  ? ` (${organization.tokenSymbol.trim()})`
+                  : ''}
+              </Badge>
+            )}
           </HStack>
         </VStack>
 
@@ -955,6 +966,43 @@ export function ReviewStep({
       });
     }
 
+    // A voter minimum higher than the org can currently muster stalls governance:
+    // no proposal reaches quorum, and changing the quorum is itself executor-only
+    // (HybridVoting.setConfig), i.e. it needs a proposal that passes. It unblocks
+    // itself once enough members join, so this is a warning, not an error — but the
+    // user has to know before they sign, because OrgDeployer v17 ships it at genesis.
+    {
+      const genesisVoters = new Set(['deployer']);
+      state.roles.forEach((r) => {
+        if (!r.canVote) return;
+        (r.distribution?.additionalWearers || []).forEach((a) => a && genesisVoters.add(String(a).toLowerCase()));
+      });
+      const atLaunch = genesisVoters.size;
+      const worst = Math.max(state.voting.hybridVoterQuorum || 0, state.voting.ddVoterQuorum || 0);
+      if (worst > atLaunch) {
+        result.push({
+          key: 'voter-minimum-above-membership',
+          message: `Your voter minimum (${worst}) is higher than the ${atLaunch} member${atLaunch === 1 ? '' : 's'} who will exist at launch, so nothing can pass until at least ${worst} people join and vote. Changing the minimum later needs a proposal that itself reaches it — so if the org never gets that many voters, decisions stay stuck. Lower it, or set it to 0 and add one by vote once you've grown.`,
+        });
+      }
+    }
+
+    // Email invites without gas sponsorship. The deployer seeds a claim budget for
+    // the invites module from this paymaster config; skip it and invitees — who by
+    // definition arrive with no wallet and no gas — have their claim rejected by
+    // the paymaster. It's recoverable later (PaymasterHub.setBudget is callable by
+    // an org operator) but there's no in-app screen for it yet, so flag it now.
+    if (state.features.zkEmailInvitesEnabled) {
+      const capEth = parseFloat(state.paymaster?.budgetCapEth);
+      const hasBudget = state.paymaster?.enabled && !isNaN(capEth) && capEth > 0;
+      if (!hasBudget) {
+        result.push({
+          key: 'zkemail-without-sponsorship',
+          message: 'Email Invites are on but gas sponsorship is off (or has no budget). People you invite arrive with no wallet and no gas, so their claim will be rejected and there is no in-app way to add the budget afterwards. Turn gas sponsorship on with a budget, or turn Email Invites off.',
+        });
+      }
+    }
+
     // Single role note
     if (state.roles.length === 1) {
       result.push({
@@ -972,7 +1020,7 @@ export function ReviewStep({
     });
 
     return result;
-  }, [state.voting, state.roles, hierarchyWarnings]);
+  }, [state.voting, state.roles, state.features, state.paymaster, hierarchyWarnings]);
 
   // Summary stats
   const summaryStats = useMemo(() => ({
@@ -1139,7 +1187,7 @@ export function ReviewStep({
                 </Box>
               )}
               <Tooltip
-                label="Voter count quorum will be configured via governance after deployment"
+                label="A decision needs at least this many voters to count, whatever the split. Applied at launch. Changing it later takes a proposal that itself reaches this minimum — so set it no higher than the turnout you can rely on."
                 placement="top"
                 hasArrow
               >
@@ -1148,6 +1196,12 @@ export function ReviewStep({
                 </Box>
               </Tooltip>
             </HStack>
+          )}
+
+          {warnings.find(w => w.key === 'voter-minimum-above-membership') && (
+            <Box mb={4}>
+              <SmartWarning message={warnings.find(w => w.key === 'voter-minimum-above-membership').message} />
+            </Box>
           )}
 
           {/* Voting Classes */}
@@ -1449,12 +1503,22 @@ export function ReviewStep({
                 isEnabled={state.features.electionHubEnabled}
               />
               <FeatureCard
+                name="Email Invites"
+                description="Join a role by proving control of an email address. Ships switched off — curate the list in Settings after launch."
+                icon={PiEnvelopeSimple}
+                isEnabled={state.features.zkEmailInvitesEnabled}
+              />
+              <FeatureCard
                 name="Hide Treasury"
                 description="Treasury page hidden from navigation"
                 icon={PiVault}
                 isEnabled={state.features.hideTreasury}
               />
             </Flex>
+
+            {warnings.find(w => w.key === 'zkemail-without-sponsorship') && (
+              <SmartWarning message={warnings.find(w => w.key === 'zkemail-without-sponsorship').message} />
+            )}
           </VStack>
         </ReviewSectionCard>
 

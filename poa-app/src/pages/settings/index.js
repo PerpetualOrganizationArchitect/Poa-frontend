@@ -25,6 +25,8 @@ import { usePOContext } from '@/context/POContext';
 import { useIsOrgAdmin, useOrgTheme } from '@/hooks';
 import { useOrgName } from '@/hooks/useOrgName';
 import OrgMetadataEditor from '@/components/settings/OrgMetadataEditor';
+import EmailAllowlistEditor from '@/components/settings/EmailAllowlistEditor';
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 const SettingsPage = () => {
   const router = useRouter();
@@ -43,6 +45,7 @@ const SettingsPage = () => {
     participationTokenSymbol,
     taskPayoutHoursOnly,
     taskPayoutHourlyRate,
+    zkEmailInvitesEnabled,
     poContextLoading,
     error: contextError,
   } = usePOContext();
@@ -50,6 +53,7 @@ const SettingsPage = () => {
   // Check if user is an org admin using unified accountAddress
   const { isAdmin, loading: adminLoading, error: adminError } = useIsOrgAdmin(orgId, accountAddress);
   const { pageBackground, onBackground, onBackgroundMuted, onBackgroundSubtle } = useOrgTheme();
+  const orgGate = useOrgGate();
 
   const seoHead = (
     <SEOHead
@@ -59,6 +63,9 @@ const SettingsPage = () => {
       noIndex
     />
   );
+
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
 
   // Loading state
   if (poContextLoading || adminLoading) {
@@ -173,6 +180,13 @@ const SettingsPage = () => {
             currentTaskPayoutHoursOnly={taskPayoutHoursOnly}
             currentTaskPayoutHourlyRate={taskPayoutHourlyRate}
           />
+
+          {/* Only orgs that deployed the ZkEmailInvites module can do anything with an
+              allowlist. Without this gate the editor let admins pay for an on-chain
+              metadata write that could never be activated. */}
+          {zkEmailInvitesEnabled && (
+            <EmailAllowlistEditor orgId={orgId} orgChainId={orgChainId} currentName={userDAO} />
+          )}
         </VStack>
       </Box>
     </Box>

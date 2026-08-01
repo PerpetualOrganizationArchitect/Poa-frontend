@@ -8,6 +8,7 @@ export default function SEOHead({
   description,
   path,
   ogImage = DEFAULT_OG_IMAGE,
+  ogImageAlt,
   ogType = "website",
   noIndex = false,
   jsonLd,
@@ -51,6 +52,7 @@ export default function SEOHead({
       <meta property="og:description" content={truncatedDescription} />
       <meta property="og:url" content={canonicalUrl} />
       <meta property="og:image" content={ogImage} />
+      {ogImageAlt && <meta property="og:image:alt" content={ogImageAlt} />}
       <meta property="og:type" content={ogType} />
       <meta property="og:site_name" content="Poa" />
 
@@ -61,6 +63,7 @@ export default function SEOHead({
       <meta name="twitter:title" content={fullTitle} />
       <meta name="twitter:description" content={truncatedDescription} />
       <meta name="twitter:image" content={ogImage} />
+      {ogImageAlt && <meta name="twitter:image:alt" content={ogImageAlt} />}
 
       {/* Robots */}
       {noIndex && <meta name="robots" content="noindex, nofollow" />}

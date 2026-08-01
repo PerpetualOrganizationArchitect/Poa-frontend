@@ -52,7 +52,7 @@ export const SETTER_CATEGORIES = {
 export const CONTRACT_MAP = {
   hybridVoting: {
     contextKey: 'votingContractAddress',
-    displayName: 'Hybrid Voting',
+    displayName: 'Blended Voting',
     description: 'Main voting contract for proposals'
   },
   directDemocracyVoting: {
@@ -69,6 +69,11 @@ export const CONTRACT_MAP = {
     contextKey: 'participationTokenAddress',
     displayName: 'Shares',
     description: 'Organization shares contract'
+  },
+  zkEmailInvites: {
+    contextKey: 'zkEmailInvitesAddress',
+    displayName: 'Email Invites',
+    description: 'ZK email allowlist module (claim roles by proving your email)'
   }
 };
 
@@ -76,13 +81,51 @@ export const CONTRACT_MAP = {
 // USER-FRIENDLY TEMPLATES
 // ============================================================================
 
+/**
+ * `name` is the picker label (title case, sorted next to its siblings).
+ * `autoTitle` is the pre-filled *proposal title* a member votes on, so it is
+ * written in the member-facing voice from `src/config/votingVocabulary.js`:
+ * the weighted system is "Blended voting", never "Hybrid". Curated by hand
+ * rather than derived from `preview({})`, which is empty or wrong for most
+ * templates until their params are filled. See SETTER_TITLE_FALLBACK below.
+ */
 export const SETTER_TEMPLATES = [
+  // ===== EMAIL INVITES =====
+  {
+    id: 'activate-email-allowlist',
+    category: 'permissions',
+    name: 'Activate Email Allowlist',
+    autoTitle: 'Publish the email invite list',
+    description:
+      'Make the staged email allowlist live so members can claim roles by proving control of their email. Paste the root + CID shown in Settings → Email invites.',
+    contract: 'zkEmailInvites',
+    functionName: 'setActiveAllowlist',
+    inputs: [
+      {
+        name: 'root',
+        label: 'Allowlist Merkle Root',
+        type: 'text',
+        placeholder: '0x…',
+        helpText: 'The merkleRoot of the staged allowlist (Settings → Email invites).'
+      },
+      {
+        name: 'cid',
+        label: 'Allowlist CID (bytes32)',
+        type: 'text',
+        placeholder: '0x…',
+        helpText: 'The bytes32 CID digest of the staged allowlist file.'
+      }
+    ],
+    encode: (values) => [values.root, values.cid],
+    preview: (values) => `Activate email allowlist (root ${String(values.root || '').slice(0, 10)}…)`
+  },
   // ===== VOTING RULES =====
   {
     id: 'change-threshold-hybrid',
     category: 'voting',
-    name: 'Change Hybrid Voting Threshold',
-    description: 'Set the minimum support percentage required for hybrid votes to pass',
+    name: 'Change Blended Voting Threshold',
+    autoTitle: 'Change support threshold (Blended voting)',
+    description: 'Set the minimum support percentage required for blended votes to pass',
     contract: 'hybridVoting',
     functionName: 'setConfig',
     inputs: [
@@ -101,12 +144,13 @@ export const SETTER_TEMPLATES = [
       const encodedValue = utils.hexZeroPad(utils.hexlify(Number(values.threshold)), 32);
       return [configKey, encodedValue];
     },
-    preview: (values) => `Change hybrid voting threshold to ${values.threshold}%`
+    preview: (values) => `Change blended voting threshold to ${values.threshold}%`
   },
   {
     id: 'change-threshold-dd',
     category: 'voting',
     name: 'Change Direct Democracy Threshold',
+    autoTitle: 'Change support threshold (Direct democracy)',
     description: 'Set the minimum support percentage required for direct democracy votes to pass',
     contract: 'directDemocracyVoting',
     functionName: 'setConfig',
@@ -131,8 +175,9 @@ export const SETTER_TEMPLATES = [
   {
     id: 'change-quorum-hybrid',
     category: 'voting',
-    name: 'Change Hybrid Voting Quorum',
-    description: 'Set the minimum number of voters required for hybrid votes to be valid',
+    name: 'Change Blended Voting Quorum',
+    autoTitle: 'Change the minimum number of voters (Blended voting)',
+    description: 'Set the minimum number of voters required for blended votes to be valid',
     contract: 'hybridVoting',
     functionName: 'setConfig',
     inputs: [
@@ -151,12 +196,13 @@ export const SETTER_TEMPLATES = [
       const encodedValue = utils.hexZeroPad(utils.hexlify(Number(values.quorum)), 32);
       return [configKey, encodedValue];
     },
-    preview: (values) => `Change hybrid voting quorum to ${values.quorum} voters`
+    preview: (values) => `Change blended voting quorum to ${values.quorum} voters`
   },
   {
     id: 'change-voting-split',
     category: 'voting',
     name: 'Change Voting Class Weights',
+    autoTitle: 'Change how voting power is split',
     description: 'Adjust the voting power split between democracy and share-based classes',
     contract: 'hybridVoting',
     functionName: 'setClasses',
@@ -196,6 +242,7 @@ export const SETTER_TEMPLATES = [
     id: 'change-quorum-dd',
     category: 'voting',
     name: 'Change Direct Democracy Quorum',
+    autoTitle: 'Change the minimum number of voters (Direct democracy)',
     description: 'Set the minimum number of voters required for direct democracy votes to be valid',
     contract: 'directDemocracyVoting',
     functionName: 'setConfig',
@@ -222,8 +269,9 @@ export const SETTER_TEMPLATES = [
   {
     id: 'allow-proposal-creator-hybrid',
     category: 'permissions',
-    name: 'Allow Role to Create Hybrid Proposals',
-    description: 'Grant or revoke a role\'s permission to create new hybrid voting proposals',
+    name: 'Allow Role to Create Blended Proposals',
+    autoTitle: 'Change who can create Blended votes',
+    description: 'Grant or revoke a role\'s permission to create new blended voting proposals',
     contract: 'hybridVoting',
     functionName: 'setCreatorHatAllowed',
     inputs: [
@@ -248,13 +296,14 @@ export const SETTER_TEMPLATES = [
     preview: (values, roleNames) => {
       const roleName = roleNames?.[values.role] || `Role ${values.role}`;
       const action = values.allowed === 'Grant' ? 'Allow' : 'Revoke';
-      return `${action} "${roleName}" to create hybrid voting proposals`;
+      return `${action} "${roleName}" to create blended voting proposals`;
     }
   },
   {
     id: 'allow-voter-dd',
     category: 'permissions',
     name: 'Allow Role to Vote (Direct Democracy)',
+    autoTitle: 'Change who can take part in Direct democracy',
     description: 'Grant or revoke a role\'s permission to vote in direct democracy',
     contract: 'directDemocracyVoting',
     functionName: 'setConfig',
@@ -304,31 +353,34 @@ export const SETTER_TEMPLATES = [
   {
     id: 'pause-hybrid-voting',
     category: 'emergency',
-    name: 'Pause Hybrid Voting',
-    description: 'Temporarily disable all hybrid voting activity (emergency use only)',
+    name: 'Pause Blended Voting',
+    autoTitle: 'Pause Blended voting',
+    description: 'Temporarily disable all blended voting activity (emergency use only)',
     contract: 'hybridVoting',
     functionName: 'pause',
     inputs: [],
     dangerLevel: 'critical',
-    warning: 'This will prevent ALL hybrid voting proposals and votes until unpaused',
+    warning: 'This will prevent ALL blended voting proposals and votes until unpaused',
     encode: () => [],
-    preview: () => 'Pause hybrid voting - no proposals or votes will be allowed'
+    preview: () => 'Pause blended voting - no proposals or votes will be allowed'
   },
   {
     id: 'unpause-hybrid-voting',
     category: 'emergency',
-    name: 'Resume Hybrid Voting',
-    description: 'Re-enable hybrid voting after an emergency pause',
+    name: 'Resume Blended Voting',
+    autoTitle: 'Resume Blended voting',
+    description: 'Re-enable blended voting after an emergency pause',
     contract: 'hybridVoting',
     functionName: 'unpause',
     inputs: [],
     encode: () => [],
-    preview: () => 'Resume hybrid voting - proposals and votes will be allowed again'
+    preview: () => 'Resume blended voting - proposals and votes will be allowed again'
   },
   {
     id: 'pause-dd-voting',
     category: 'emergency',
     name: 'Pause Direct Democracy Voting',
+    autoTitle: 'Pause Direct democracy voting',
     description: 'Temporarily disable all direct democracy voting activity',
     contract: 'directDemocracyVoting',
     functionName: 'pause',
@@ -342,6 +394,7 @@ export const SETTER_TEMPLATES = [
     id: 'unpause-dd-voting',
     category: 'emergency',
     name: 'Resume Direct Democracy Voting',
+    autoTitle: 'Resume Direct democracy voting',
     description: 'Re-enable direct democracy voting after an emergency pause',
     contract: 'directDemocracyVoting',
     functionName: 'unpause',
@@ -355,6 +408,7 @@ export const SETTER_TEMPLATES = [
     id: 'set-project-permissions',
     category: 'tasks',
     name: 'Set Project Role Permissions',
+    autoTitle: 'Change what a role can do in a project',
     description: 'Configure what a role can do within a specific project',
     contract: 'taskManager',
     functionName: 'setProjectRolePerm',
@@ -415,6 +469,7 @@ export const SETTER_TEMPLATES = [
     id: 'allow-task-creator',
     category: 'tasks',
     name: 'Allow Role to Create Tasks',
+    autoTitle: 'Change who can create tasks',
     description: 'Grant or revoke a role\'s permission to create tasks globally',
     contract: 'taskManager',
     functionName: 'setConfig',
@@ -451,6 +506,7 @@ export const SETTER_TEMPLATES = [
     id: 'allow-organizer-hat',
     category: 'tasks',
     name: 'Allow Role to Organize Folders',
+    autoTitle: 'Change who can organize task folders',
     description: 'Grant or revoke a role\'s permission to publish folder-tree updates via setFolders',
     contract: 'taskManager',
     functionName: 'setConfig',
@@ -489,6 +545,7 @@ export const SETTER_TEMPLATES = [
     id: 'change-token-metadata',
     category: 'tokenSettings',
     name: 'Change Token Name & Symbol',
+    autoTitle: 'Change the share name and symbol',
     description: 'Update the share name, symbol, or both via governance vote',
     contract: 'participationToken',
     inputs: [
@@ -682,6 +739,69 @@ export function getTemplatesByCategory(category) {
  */
 export function getTemplateById(id) {
   return SETTER_TEMPLATES.find(t => t.id === id);
+}
+
+/**
+ * Proposal title for a setter template.
+ *
+ * Prefers the curated member-facing `autoTitle`; falls back to the picker
+ * `name` so a template added later without one still gets a readable title.
+ * Never derive the title from `preview({})` — it renders empty or wrong
+ * (e.g. "Change blended voting threshold to %") before params are filled.
+ */
+export const SETTER_TITLE_FALLBACK = (template) => template.autoTitle || template.name;
+
+/** A param counts as answered when it has content. `0` and `false` are answers. */
+function hasParamValue(value) {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'string') return value.trim() !== '';
+  return true;
+}
+
+/**
+ * Are a template's parameters answered well enough to describe or submit it?
+ *
+ * `preview()` is not defensive about partial values — it throws on some
+ * templates and renders half-finished copy ("Change blended voting threshold
+ * to %") on others — so every non-optional input must have a value. Templates
+ * whose inputs are ALL optional still need one answer, or they preview as
+ * "No changes specified".
+ */
+export function templateParamsReady(template, values) {
+  if (!template) return false;
+  const filled = values || {};
+  const inputs = template.inputs || [];
+  if (inputs.length === 0) return true;
+  const requiredFilled = inputs.every(i => i.optional || hasParamValue(filled[i.name]));
+  const anyFilled = inputs.some(i => hasParamValue(filled[i.name]));
+  return requiredFilled && anyFilled;
+}
+
+/**
+ * The member-facing title + description for a setter template.
+ *
+ * Single source of truth so every entry point agrees: the picker writes this
+ * as you choose an action, and the `?propose=<template>` deep links write the
+ * same strings into their restored payload. When those two disagree, the
+ * ballot a member reviews is not the proposal that gets created.
+ *
+ * `description` is null until the params are ready; `title` never is.
+ */
+export function buildSetterCopy(template, values, roleNames, projectNames) {
+  if (!template) return { title: null, description: null };
+  const title = SETTER_TITLE_FALLBACK(template);
+  if (typeof template.preview !== 'function' || !templateParamsReady(template, values)) {
+    return { title, description: null };
+  }
+  let line;
+  try {
+    line = template.preview(values || {}, roleNames, projectNames);
+  } catch {
+    return { title, description: null };
+  }
+  if (typeof line !== 'string' || line.trim() === '') return { title, description: null };
+  return { title, description: `If this vote passes: ${line}` };
 }
 
 /**

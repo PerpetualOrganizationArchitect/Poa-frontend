@@ -10,6 +10,7 @@ import { usePOContext } from '@/context/POContext';
 import { useOrgTheme } from '@/hooks';
 import { useOrgName } from '@/hooks/useOrgName';
 import { orgUrl } from '@/util/orgUrl';
+import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 const Tasks = () => {
   const router = useRouter();
@@ -17,6 +18,7 @@ const Tasks = () => {
   const { setSelectedProjectId, projects } = useDataBaseContext();
   const { poContextLoading } = usePOContext();
   const { pageBackground } = useOrgTheme();
+  const orgGate = useOrgGate();
   const containerRef = useRef();
 
   // Resolve viewport client-side only — window.matchMedia is unavailable during
@@ -50,6 +52,8 @@ const Tasks = () => {
     }
   }, [router.query.projectId, projects, viewport, userDAO]);
 
+  // No org to render: a dead end, not a pending state. After every hook.
+  if (orgGate) return orgGate;
   return (
     <>
       <SEOHead

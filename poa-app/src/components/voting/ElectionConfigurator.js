@@ -9,7 +9,7 @@
  * holders automatically.
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   VStack,
   HStack,
@@ -27,16 +27,19 @@ import {
   InputLeftElement,
   Checkbox,
   Select,
+  Spinner,
 } from '@chakra-ui/react';
 import {
   FiChevronRight,
-  FiArrowLeft,
+  FiRepeat,
   FiSearch,
   FiUserPlus,
 } from 'react-icons/fi';
 import { AddIcon, DeleteIcon } from '@chakra-ui/icons';
 import { utils, constants as ethersConstants } from 'ethers';
 import { inputStyles } from '@/components/shared/glassStyles';
+import { applyAutoCopy } from '@/components/voting/create/autoCopy';
+import { usePOContext } from '@/context/POContext';
 
 /**
  * Derive current holders of a hat from leaderboard data
@@ -68,17 +71,20 @@ function buildElectionDescription(candidates) {
 }
 
 /**
- * True if the description is empty or matches our auto-generated prefix.
- * Used to avoid clobbering user-edited descriptions.
+ * Stable identity for a holder list, so we can tell a real membership change
+ * from a fresh array carrying the same people.
  */
-function isAutoDescription(description) {
-  return !description || description.startsWith(DESCRIPTION_PREFIX);
+function holderAddressKey(holders) {
+  return (holders || [])
+    .map(h => String(h.address).toLowerCase())
+    .sort()
+    .join(',');
 }
 
 /**
  * Role card for step 1 selection
  */
-const RoleCard = ({ role, holderCount, holderNames, onClick }) => (
+const RoleCard = ({ role, holderCount, holderNames, holdersKnown = true, onClick }) => (
   <Box
     p={4}
     borderRadius="md"
@@ -98,7 +104,9 @@ const RoleCard = ({ role, holderCount, holderNames, onClick }) => (
           {role.name}
         </Text>
         <Text fontSize="xs" color="gray.400">
-          {holderCount === 0
+          {!holdersKnown
+            ? 'Current holders unavailable'
+            : holderCount === 0
             ? 'No current holder'
             : holderCount === 1
             ? `Held by ${holderNames[0]}`
@@ -124,12 +132,71 @@ const ElectionConfigurator = ({
   const [manualName, setManualName] = useState('');
   const [manualAddress, setManualAddress] = useState('');
   const [showManualEntry, setShowManualEntry] = useState(false);
+  const [confirmRoleChange, setConfirmRoleChange] = useState(false);
+  // Org data arrives from POContext a beat after the modal opens. Ask POContext
+  // directly rather than inferring from "still empty" on a timer: an empty org
+  // is genuinely indistinguishable from a slow one, and a timer shows the
+  // failure alert to anyone on a slow subgraph while data is still in flight.
+  const { poContextLoading } = usePOContext();
+  const rolesResolved = allRoles.length > 0;
+  const holdersResolved = leaderboardData.length > 0;
+  const orgDataLoading = poContextLoading && (!rolesResolved || !holdersResolved);
 
-  // All holders of the selected hat (for display / selection)
-  const allHolders = proposal.electionCurrentHolders || [];
+  // Holders of the selected hat, re-derived from LIVE leaderboardData rather
+  // than trusted from the one-shot snapshot handleRoleSelect took: that click
+  // can happen before the org resolves, and a snapshot taken then is empty
+  // forever — the incumbent picker would never render and the UI would claim
+  // "no one holds this role" while the election revokes nothing.
+  const liveHolders = useMemo(
+    () => getCurrentHolders(proposal.electionRoleId, leaderboardData),
+    [proposal.electionRoleId, leaderboardData]
+  );
+
+  // All holders of the selected hat (for display / selection). The persisted
+  // snapshot only covers the window before leaderboardData arrives (e.g. a
+  // draft restored straight into step 2).
+  const allHolders = holdersResolved ? liveHolders : (proposal.electionCurrentHolders || []);
+
+  // Write the live holders back through so the draft, the incumbent picker and
+  // the submit-time fall-through all agree with what is on screen.
+  useEffect(() => {
+    if (!proposal.electionRoleId || !holdersResolved) return;
+    if (holderAddressKey(liveHolders) === holderAddressKey(proposal.electionCurrentHolders)) return;
+    onChange({ electionCurrentHolders: liveHolders });
+  }, [
+    proposal.electionRoleId,
+    proposal.electionCurrentHolders,
+    liveHolders,
+    holdersResolved,
+    onChange,
+  ]);
 
   // Only the incumbents the user selected to be at stake
   const selectedIncumbents = proposal.electionSelectedIncumbents || [];
+
+  // Drop selected incumbents who are no longer holders. The checkbox list is
+  // rendered from the live holders, so someone who leaves the role mid-session
+  // would otherwise stay selected while being invisible — unremovable, and
+  // still landing in the revoke batch at submit. Unlike electionCurrentHolders,
+  // this array gets no fresh on-chain override before it is encoded.
+  useEffect(() => {
+    if (!proposal.electionRoleId || !holdersResolved || selectedIncumbents.length === 0) return;
+    const holderSet = new Set(liveHolders.map(h => String(h.address).toLowerCase()));
+    const stillHolding = selectedIncumbents.filter(
+      h => holderSet.has(String(h.address).toLowerCase())
+    );
+    if (stillHolding.length !== selectedIncumbents.length) {
+      onChange({ electionSelectedIncumbents: stillHolding });
+    }
+  }, [
+    proposal.electionRoleId,
+    holdersResolved,
+    liveHolders,
+    selectedIncumbents,
+    onChange,
+  ]);
+
+  const candidates = proposal.electionCandidates || [];
 
   // Selected role name
   const selectedRoleName = useMemo(() => {
@@ -226,21 +293,31 @@ const ElectionConfigurator = ({
         electionFallbackHolders: [],
       };
 
-      // Auto-populate title if it's empty or was auto-generated from a previous role
-      if (!proposal.name || proposal.name.startsWith(TITLE_PREFIX)) {
-        updates.name = `${TITLE_PREFIX}${role.name}`;
-      }
-
-      // Candidates reset — clear the auto-generated description too (but preserve a custom one)
-      if (isAutoDescription(proposal.description)) {
-        updates.description = '';
-      }
+      // Suggest a title for the new role, and reset the description because the
+      // candidate list just reset. applyAutoCopy only touches a field that is
+      // empty or still exactly the copy we last generated, so anything the
+      // member typed on the details step survives coming Back here.
+      Object.assign(
+        updates,
+        applyAutoCopy(proposal, {
+          title: `${TITLE_PREFIX}${role.name}`,
+          description: '',
+        })
+      );
 
       onChange(updates);
       setStep(2);
       setSearchQuery('');
+      setConfirmRoleChange(false);
     },
-    [onChange, leaderboardData, proposal.name, proposal.description]
+    [
+      onChange,
+      leaderboardData,
+      proposal.name,
+      proposal.autoTitle,
+      proposal.description,
+      proposal.autoDescription,
+    ]
   );
 
   // Toggle an incumbent's selection (whose hat is at stake)
@@ -272,14 +349,16 @@ const ElectionConfigurator = ({
         ...(proposal.electionCandidates || []),
         { name: member.name, address: member.address },
       ];
-      const update = { electionCandidates: nextCandidates };
-      if (isAutoDescription(proposal.description)) {
-        update.description = buildElectionDescription(nextCandidates);
-      }
+      const update = {
+        electionCandidates: nextCandidates,
+        ...applyAutoCopy(proposal, {
+          description: buildElectionDescription(nextCandidates),
+        }),
+      };
       onChange(update);
       setSearchQuery('');
     },
-    [onChange, proposal.electionCandidates, proposal.description]
+    [onChange, proposal.electionCandidates, proposal.description, proposal.autoDescription]
   );
 
   // Handle manual candidate entry
@@ -300,14 +379,23 @@ const ElectionConfigurator = ({
       ...(proposal.electionCandidates || []),
       { name: manualName.trim(), address: manualAddress.trim() },
     ];
-    const update = { electionCandidates: nextCandidates };
-    if (isAutoDescription(proposal.description)) {
-      update.description = buildElectionDescription(nextCandidates);
-    }
+    const update = {
+      electionCandidates: nextCandidates,
+      ...applyAutoCopy(proposal, {
+        description: buildElectionDescription(nextCandidates),
+      }),
+    };
     onChange(update);
     setManualName('');
     setManualAddress('');
-  }, [manualName, manualAddress, onChange, proposal.electionCandidates, proposal.description]);
+  }, [
+    manualName,
+    manualAddress,
+    onChange,
+    proposal.electionCandidates,
+    proposal.description,
+    proposal.autoDescription,
+  ]);
 
   // Handle removing a candidate
   const handleRemoveCandidate = useCallback(
@@ -315,40 +403,69 @@ const ElectionConfigurator = ({
       const nextCandidates = (proposal.electionCandidates || []).filter(
         (_, i) => i !== index
       );
-      const update = { electionCandidates: nextCandidates };
-      if (isAutoDescription(proposal.description)) {
-        update.description = buildElectionDescription(nextCandidates);
-      }
+      const update = {
+        electionCandidates: nextCandidates,
+        ...applyAutoCopy(proposal, {
+          description: buildElectionDescription(nextCandidates),
+        }),
+      };
       onChange(update);
     },
-    [onChange, proposal.electionCandidates, proposal.description]
+    [onChange, proposal.electionCandidates, proposal.description, proposal.autoDescription]
   );
 
-  // Handle back navigation
-  const handleBack = useCallback(() => {
-    if (step === 2) {
-      setStep(1);
-      const updates = {
-        electionRoleId: '',
-        electionCandidates: [],
-        electionCurrentHolders: [],
-        electionSelectedIncumbents: [],
-        electionFallbackRoleId: '',
-        electionFallbackHolders: [],
-        electionIncludeNoOneOption: false,
-      };
-      // Clear auto-generated title / description; preserve custom ones
-      if (proposal.name && proposal.name.startsWith(TITLE_PREFIX)) {
-        updates.name = '';
-      }
-      if (isAutoDescription(proposal.description)) {
-        updates.description = '';
-      }
-      onChange(updates);
+  // Everything the member has configured under the current role, in the order
+  // it reads on screen. Used to spell out what "Change role" destroys.
+  const workAtRisk = useMemo(() => {
+    const bits = [];
+    if (candidates.length > 0) {
+      bits.push(`${candidates.length} candidate${candidates.length === 1 ? '' : 's'}`);
     }
-  }, [step, onChange, proposal.name, proposal.description]);
+    if (selectedIncumbents.length > 0) {
+      bits.push(
+        `${selectedIncumbents.length} incumbent${selectedIncumbents.length === 1 ? '' : 's'} at stake`
+      );
+    }
+    if (proposal.electionFallbackRoleId) bits.push('the fallback role');
+    return bits;
+  }, [candidates.length, selectedIncumbents.length, proposal.electionFallbackRoleId]);
 
-  const candidates = proposal.electionCandidates || [];
+  // Start over with a different role. This is NOT the wizard's Back — it wipes
+  // the whole election config, so it is labelled "Change role" and asks first
+  // whenever there is anything to lose.
+  const handleChangeRole = useCallback(() => {
+    if (step !== 2) return;
+    setStep(1);
+    setConfirmRoleChange(false);
+    const updates = {
+      electionRoleId: '',
+      electionCandidates: [],
+      electionCurrentHolders: [],
+      electionSelectedIncumbents: [],
+      electionFallbackRoleId: '',
+      electionFallbackHolders: [],
+      electionIncludeNoOneOption: false,
+      // Clear the copy this flow generated; anything the member typed stays.
+      ...applyAutoCopy(proposal, { title: '', description: '' }),
+    };
+    onChange(updates);
+  }, [
+    step,
+    onChange,
+    proposal.name,
+    proposal.autoTitle,
+    proposal.description,
+    proposal.autoDescription,
+  ]);
+
+  // First press arms the confirmation when there is configuration to discard.
+  const handleChangeRoleClick = useCallback(() => {
+    if (workAtRisk.length === 0) {
+      handleChangeRole();
+      return;
+    }
+    setConfirmRoleChange(true);
+  }, [workAtRisk.length, handleChangeRole]);
 
   return (
     <VStack spacing={4} align="stretch">
@@ -358,24 +475,58 @@ const ElectionConfigurator = ({
           <Text fontSize="sm" color="gray.300" fontWeight="medium">
             Select the role you are holding an election for.
           </Text>
-          <SimpleGrid columns={2} spacing={3}>
-            {allRoles.map((role) => {
-              const holders = getCurrentHolders(role.hatId, leaderboardData);
-              return (
-                <RoleCard
-                  key={role.hatId}
-                  role={role}
-                  holderCount={holders.length}
-                  holderNames={holders.map(h => h.name)}
-                  onClick={() => handleRoleSelect(role)}
-                />
-              );
-            })}
-          </SimpleGrid>
-          {allRoles.length === 0 && (
+
+          {/* Don't offer a role grid built from half-loaded org data — picking
+              a role then reads back zero holders and the election silently
+              revokes nothing. */}
+          {orgDataLoading && (
+            <HStack spacing={3} py={8} justify="center">
+              <Spinner size="sm" color="purple.300" />
+              <Text fontSize="sm" color="gray.400">
+                Loading this organization&apos;s roles and members...
+              </Text>
+            </HStack>
+          )}
+
+          {!orgDataLoading && rolesResolved && (
+            <SimpleGrid columns={2} spacing={3}>
+              {allRoles.map((role) => {
+                const holders = getCurrentHolders(role.hatId, leaderboardData);
+                return (
+                  <RoleCard
+                    key={role.hatId}
+                    role={role}
+                    holderCount={holders.length}
+                    holderNames={holders.map(h => h.name)}
+                    holdersKnown={holdersResolved}
+                    onClick={() => handleRoleSelect(role)}
+                  />
+                );
+              })}
+            </SimpleGrid>
+          )}
+
+          {!orgDataLoading && !rolesResolved && (
             <Text fontSize="sm" color="gray.500">
               No roles available in this organization.
             </Text>
+          )}
+
+          {/* Roles loaded but the member list never did: the election can still
+              be built, but nobody can be put at stake, so say so up front. */}
+          {!orgDataLoading && rolesResolved && !holdersResolved && (
+            <Alert
+              status="warning"
+              borderRadius="md"
+              bg="rgba(236, 201, 75, 0.15)"
+            >
+              <AlertIcon color="yellow.300" />
+              <Text fontSize="sm" color="yellow.200">
+                Could not load this organization&apos;s members, so current role
+                holders are unknown. You can still add candidates by wallet
+                address, but no incumbent can be put at stake.
+              </Text>
+            </Alert>
           )}
         </>
       )}
@@ -383,24 +534,100 @@ const ElectionConfigurator = ({
       {/* Step 2: Configure Incumbents & Candidates */}
       {step === 2 && (
         <>
-          <HStack>
-            <Button
-              size="sm"
-              variant="ghost"
-              leftIcon={<FiArrowLeft />}
-              onClick={handleBack}
-              color="gray.400"
-              _hover={{ color: 'white' }}
-            >
-              Back
-            </Button>
-            <Text fontSize="sm" color="white" fontWeight="bold">
-              {selectedRoleName}
-            </Text>
+          {/* Role header. The control on the right restarts the whole election
+              config — it is NOT the wizard's Back (which only navigates), so it
+              is labelled, iconed and confirmed differently. */}
+          <HStack justify="space-between" align="center">
+            <HStack spacing={2}>
+              <Text fontSize="xs" color="gray.500" textTransform="uppercase" letterSpacing="wide">
+                Role
+              </Text>
+              <Text fontSize="sm" color="white" fontWeight="bold">
+                {/* A restored draft can land here before allRoles resolves —
+                    don't imply the role vanished. */}
+                {selectedRoleName || (rolesResolved ? 'Unknown role' : 'Loading...')}
+              </Text>
+            </HStack>
+            {!confirmRoleChange && (
+              <Button
+                size="xs"
+                variant="ghost"
+                leftIcon={<FiRepeat />}
+                onClick={handleChangeRoleClick}
+                color="gray.400"
+                _hover={{ color: 'white' }}
+              >
+                Change role
+              </Button>
+            )}
           </HStack>
 
+          {confirmRoleChange && (
+            <Alert
+              status="warning"
+              borderRadius="md"
+              bg="rgba(236, 201, 75, 0.15)"
+            >
+              <AlertIcon color="yellow.300" />
+              <VStack align="stretch" spacing={2} flex="1">
+                <Text fontSize="sm" color="yellow.200">
+                  Changing the role starts this election over and discards{' '}
+                  {workAtRisk.join(', ')}. Your title and description stay if you
+                  wrote them yourself.
+                </Text>
+                <HStack spacing={2}>
+                  <Button size="xs" colorScheme="red" onClick={handleChangeRole}>
+                    Discard and change role
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    color="gray.300"
+                    onClick={() => setConfirmRoleChange(false)}
+                  >
+                    Keep this role
+                  </Button>
+                </HStack>
+              </VStack>
+            </Alert>
+          )}
+
+          {/* Current holders are still loading. Showing the "no one holds this
+              role" alert here would be a confident lie — the org just hasn't
+              resolved yet. */}
+          {!holdersResolved && orgDataLoading && (
+            <HStack
+              spacing={3}
+              p={3}
+              bg="whiteAlpha.50"
+              borderRadius="md"
+              border="1px solid rgba(148, 115, 220, 0.2)"
+            >
+              <Spinner size="sm" color="purple.300" />
+              <Text fontSize="sm" color="gray.400">
+                Loading who currently holds {selectedRoleName || 'this role'}...
+              </Text>
+            </HStack>
+          )}
+
+          {/* Members never loaded. Honest dead end rather than a wrong claim. */}
+          {!holdersResolved && !orgDataLoading && (
+            <Alert
+              status="warning"
+              borderRadius="md"
+              bg="rgba(236, 201, 75, 0.15)"
+            >
+              <AlertIcon color="yellow.300" />
+              <Text fontSize="sm" color="yellow.200">
+                Could not load current holders of {selectedRoleName || 'this role'}.
+                No incumbent can be put at stake — the winner will simply be
+                granted the hat. Close and reopen this modal to try again.
+              </Text>
+            </Alert>
+          )}
+
           {/* Incumbent Selection — pick which holders' hats are at stake */}
-          {allHolders.length > 0 && (
+          {holdersResolved && allHolders.length > 0 && (
             <Box
               p={3}
               bg="whiteAlpha.50"
@@ -453,8 +680,8 @@ const ElectionConfigurator = ({
             </Box>
           )}
 
-          {/* Info when no holders exist */}
-          {allHolders.length === 0 && (
+          {/* Info when no holders exist — only once we actually know that */}
+          {holdersResolved && allHolders.length === 0 && (
             <Alert
               status="info"
               borderRadius="md"

@@ -1,0 +1,43 @@
+name: Deploy claim-inbox worker
+
+# The ZK Email claim inbox (Cloudflare Email Worker) — receives POP role-claim verification
+# emails at claim@poa.box and serves the raw DKIM-signed message to the claim page.
+# One-time setup (already done manually; documented in cloudflare-worker-claim-inbox/README.md):
+# KV namespace + the Email Routing route claim@poa.box -> this worker.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'cloudflare-worker-claim-inbox/**'
+      - '.github/workflows/deploy-claim-inbox.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Deploy claim-inbox worker
+        working-directory: cloudflare-worker-claim-inbox
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: wrangler deploy
+
+      - name: Smoke test
+        working-directory: cloudflare-worker-claim-inbox
+        run: |
+          URL=$(grep -oE 'name = "[^"]+"' wrangler.toml | head -1 | cut -d'"' -f2)
+          echo "Deployed worker: $URL (smoke-test /health via the dashboard URL after first deploy)"

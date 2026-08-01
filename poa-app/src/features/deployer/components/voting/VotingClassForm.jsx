@@ -30,8 +30,6 @@ import {
   SliderFilledTrack,
   SliderThumb,
   Text,
-  Checkbox,
-  CheckboxGroup,
   Stack,
   Divider,
   Alert,
@@ -100,9 +98,10 @@ export function VotingClassForm({
     // ERC20_BAL strategy uses the organization's participation token automatically
     // No validation needed for asset field
 
-    if (formData.strategy === VOTING_STRATEGY.DIRECT && (!formData.hatIds || formData.hatIds.length === 0)) {
-      newErrors.hatIds = 'Select at least one role for direct voting';
-    }
+    // No per-class role requirement: a deploy can't restrict a class to specific
+    // roles, because the org's hat IDs don't exist until mid-deploy (see the note
+    // on the Eligible Roles field below). Every voting role votes in every class at
+    // launch; narrowing happens post-deploy via governance.
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -197,8 +196,14 @@ export function VotingClassForm({
         {/* Strategy-specific fields */}
         {formData.strategy === VOTING_STRATEGY.DIRECT ? (
           <>
-            {/* Role selection for direct voting */}
-            <FormControl isInvalid={!!errors.hatIds}>
+            {/* Who votes in this class.
+                At deploy time this is NOT configurable: the contract wants
+                Hats-Protocol hat IDs, and the org's hats don't exist until
+                mid-deployment, so every role with voting enabled is enrolled in
+                every class. Restricting a class to specific roles is a post-deploy
+                governance action (`setClasses`), once real hat IDs exist. Showing
+                a picker here would be a lie — the value can't be sent. */}
+            <FormControl>
               <FormLabel>Eligible Roles</FormLabel>
               {votingRoles.length === 0 ? (
                 <Alert status="warning" borderRadius="md">
@@ -208,25 +213,18 @@ export function VotingClassForm({
                   </Text>
                 </Alert>
               ) : (
-                <CheckboxGroup
-                  value={formData.hatIds?.map(String) || []}
-                  onChange={(values) =>
-                    updateField('hatIds', values.map((v) => parseInt(v, 10)))
-                  }
-                >
-                  <Stack spacing={2}>
-                    {votingRoles.map((role) => (
-                      <Checkbox key={role.index} value={String(role.index)}>
-                        {role.name}
-                      </Checkbox>
-                    ))}
-                  </Stack>
-                </CheckboxGroup>
+                <Stack spacing={1}>
+                  {votingRoles.map((role) => (
+                    <Text key={role.index} fontSize="sm" color="warmGray.700">
+                      {role.name}
+                    </Text>
+                  ))}
+                </Stack>
               )}
               <FormHelperText>
-                Select which roles can vote in this class
+                Every role with voting enabled votes in this class. You can narrow a
+                class to specific roles after launch, with a governance vote.
               </FormHelperText>
-              <FormErrorMessage>{errors.hatIds}</FormErrorMessage>
             </FormControl>
           </>
         ) : (

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import Head from "next/head";
-import { Box, useDisclosure } from "@chakra-ui/react";
+import { useDisclosure } from "@chakra-ui/react";
 import { useRouter } from "next/router";
 import { useAccount } from "wagmi";
 import { useQuery } from "@apollo/client";
@@ -17,20 +17,24 @@ const SignupModal = dynamic(() => import("@/components/account/SignupModal"), { 
 const SolidarityOnboardingModal = dynamic(() => import("@/components/passkey/SolidarityOnboardingModal"), { ssr: false });
 const SignInModal = dynamic(() => import("@/components/passkey/SignInModal"), { ssr: false });
 
-// Landing page sections — all part of the single scrollable page, so bundling
-// them into the page chunk is cheaper than separate HTTP requests with
-// duplicated Chakra imports.
-import CharterNav from "@/components/landing/charter/CharterNav";
-import CharterHero from "@/components/landing/charter/CharterHero";
-import ProblemSection from "@/components/landing/charter/ProblemSection";
-import HowItWorks from "@/components/landing/charter/HowItWorks";
-import WhatsInside from "@/components/landing/charter/WhatsInside";
-import MoneyPlain from "@/components/landing/charter/MoneyPlain";
-import Pillars from "@/components/landing/charter/Pillars";
-import WhoItsFor from "@/components/landing/charter/WhoItsFor";
-import Ethos from "@/components/landing/charter/Ethos";
-import ClosingInvite from "@/components/landing/charter/ClosingInvite";
-import CharterFooter from "@/components/landing/charter/CharterFooter";
+// Marketing landing — direction A ("public works"). All sections share the
+// single scrollable page, so bundling them into the page chunk is cheaper than
+// separate HTTP requests with duplicated imports.
+import { MarketingRoot } from "@/components/marketing/primitives";
+import MarketingNav from "@/components/marketing/chrome/MarketingNav";
+import MarketingFooter from "@/components/marketing/chrome/MarketingFooter";
+import {
+  Hero,
+  LedgerStrip,
+  Problem,
+  TheWork,
+  TheSay,
+  TheMoney,
+  ThePeople,
+  ProofBand,
+  Ethos,
+  StartClose,
+} from "@/components/marketing/landing";
 
 export default function Home() {
   const router = useRouter();
@@ -90,7 +94,7 @@ export default function Home() {
   const accountMenuItem = getAccountMenuItem();
 
   if (isWhiteLabelHost) {
-    return <Box minH="100vh" bg="white" />;
+    return <div style={{ minHeight: "100vh", background: "#ffffff" }} />;
   }
 
   const webSite = {
@@ -100,7 +104,7 @@ export default function Home() {
     "alternateName": ["poa", "poa.box", "poa box", "Poa.box"],
     "url": "https://poa.box",
     "description":
-      "Poa (poa.box) turns a group into an organization the members own together: rules they choose, membership built on vouching, and a shared treasury that pays people in dollars, in one place.",
+      "Poa (poa.box) turns your group into an organization you own together. Finished work earns ownership: a share of the revenue and a real say in the decisions.",
     "potentialAction": {
       "@type": "SearchAction",
       "target": {
@@ -133,18 +137,16 @@ export default function Home() {
       ],
     },
     "knowsAbout": [
-      "Member owned organizations",
-      "Worker cooperatives",
-      "Student organizations",
-      "Community organizations",
-      "Direct democracy",
-      "Participation based voting",
-      "Vouch based membership",
-      "Shared treasuries",
-      "Open-source governance tools",
+      "Worker owned organization",
+      "Community ownership",
+      "Cooperative software",
+      "Revenue sharing",
+      "Group governance",
+      "Task management for communities",
+      "Start a cooperative",
     ],
     "description":
-      "Poa (poa.box) lets a group become an organization it owns together: rules chosen and rewritten by members, membership built on vouching, and a treasury that pays people in dollars. Open-source, decentralized, and free.",
+      "Poa (poa.box) turns your group into an organization you own together. Finished work earns ownership: revenue share and voting power for the tasks you complete. Open-source and free.",
   };
 
   const softwareLD = {
@@ -153,11 +155,11 @@ export default function Home() {
     "name": "Poa",
     "alternateName": ["poa", "poa.box", "Poa Perpetual Organization Architect"],
     "applicationCategory": "BusinessApplication",
-    "applicationSubCategory": "Member owned organization platform",
+    "applicationSubCategory": "Worker owned organization platform",
     "operatingSystem": "Web",
     "url": "https://poa.box",
     "description":
-      "Start an organization your group owns: voting, membership, tasks, and a shared treasury in one place. Voting power is earned by participating. Open-source and free to use on poa.box.",
+      "Start an organization your group owns together: tasks, voting, membership, and a shared treasury in one place. Finished work earns ownership, and voting power is earned by participating. Open-source and free to use on poa.box.",
     "offers": {
       "@type": "Offer",
       "price": "0",
@@ -178,56 +180,42 @@ export default function Home() {
   return (
     <>
       <SEOHead
-        title="Poa: start an organization your group owns"
-        description="An organization your group owns together: the rules you make, the votes you run, the money you share, paid in dollars. Open and free."
+        title="Poa: organizations that pay you with ownership"
+        description="Turn your group into an organization you own together. Finished work earns ownership: revenue share and voting power for the tasks you complete. Free and open."
         path="/"
-        ogImage="/images/poa-og-charter.png"
+        ogImage="/images/poa-og-landing.png"
+        ogImageAlt="Poa"
         keywords={[
-          "member owned organization",
-          "community owned organization",
-          "start an organization",
-          "worker cooperative software",
-          "student organization governance",
-          "creative collective",
-          "club treasury",
+          "worker owned organization",
+          "community ownership",
+          "cooperative software",
+          "revenue sharing",
+          "group governance",
+          "task management for communities",
+          "start a cooperative",
           "vouch based membership",
           "participation based voting",
-          "organization templates",
           "poa.box",
         ]}
         jsonLd={[webSite, organizationLD, softwareLD, breadcrumb]}
       />
 
-      {/* Preload only the two faces the first paint needs; italic and the
-          500 mono arrive on demand. */}
+      {/* Preload the two marketing display/body faces the first paint needs;
+          the mono arrives with the same priority for the data chips/rails. */}
       <Head>
-        <link rel="preload" href="/fonts/newsreader-var-latin.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/archivo-vf.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/public-sans-vf.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         <link rel="preload" href="/fonts/plex-mono-500-latin.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
       </Head>
 
-      <Box
-        as="a"
-        href="#main-content"
-        position="absolute"
-        left="-9999px"
-        top="0"
-        zIndex="100"
-        bg="paper.50"
-        color="ink.900"
-        fontFamily="ledger"
-        fontSize="0.875rem"
-        px={4}
-        py={3}
-        border="2px solid"
-        borderColor="meadow.600"
-        _focus={{ left: "8px", top: "8px" }}
-        _focusVisible={{ outline: "none", boxShadow: "none" }}
-      >
-        Skip to content
-      </Box>
+      <MarketingRoot>
+        {/* Skip link — off-screen until focused, then pinned top-left. Same
+            anchor semantics + focus behavior as before, plain <a> + styled-jsx. */}
+        <a href="#main-content" className="pa-skip">
+          Skip to content
+        </a>
 
-      <Box minH="100vh" overflowX="hidden" bg="paper.100" sx={{ colorScheme: "light" }}>
-        <CharterNav
+        <MarketingNav
           mounted={mounted}
           isPasskeyUser={isPasskeyUser}
           isConnected={isConnected}
@@ -236,20 +224,43 @@ export default function Home() {
           onSignInOpen={onSignInOpen}
         />
 
-        <Box as="main" id="main-content">
-          <CharterHero />
-          <ProblemSection />
-          <HowItWorks />
-          <WhatsInside />
-          <MoneyPlain />
-          <Pillars />
-          <WhoItsFor />
+        <main id="main-content">
+          <Hero />
+          <LedgerStrip />
+          <Problem />
+          <TheWork />
+          <TheSay />
+          <TheMoney />
+          <ThePeople />
+          <ProofBand />
           <Ethos />
-          <ClosingInvite />
-        </Box>
+          <StartClose />
+        </main>
 
-        <CharterFooter />
-      </Box>
+        <MarketingFooter />
+
+        <style jsx>{`
+          .pa-skip {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            z-index: 100;
+            background: var(--paper);
+            color: var(--ink);
+            font-family: var(--mono);
+            font-size: 0.875rem;
+            padding: 12px 16px;
+            border: 2px solid var(--signal);
+            text-decoration: none;
+          }
+          .pa-skip:focus {
+            left: 8px;
+            top: 8px;
+            outline: none;
+            box-shadow: none;
+          }
+        `}</style>
+      </MarketingRoot>
 
       {/* Auth Modals — mount only after first open so dynamic() chunks
           stay deferred for visitors who never click sign-in. */}

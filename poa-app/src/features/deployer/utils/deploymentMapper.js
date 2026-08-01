@@ -7,9 +7,19 @@
 
 import { ethers } from 'ethers';
 import { indicesToBitmap } from './bitmapUtils';
-import { VOTING_STRATEGY } from '../context/deployerReducer';
+import { VOTING_STRATEGY, PERMISSION_KEYS, PERMISSION_DESCRIPTIONS } from '../context/deployerReducer';
 import { TaskPermission } from '@/util/permissions';
 import { getTokenByAddress } from '@/util/tokens';
+
+/**
+ * Byte length of a string as Solidity sees it (`bytes(s).length` is UTF-8).
+ * JS `.length` counts UTF-16 units, so it under-counts every non-ASCII character.
+ * @param {string} s
+ * @returns {number}
+ */
+export function utf8Length(s) {
+  return new TextEncoder().encode(String(s ?? '')).length;
+}
 
 /**
  * Generate organization ID from name
@@ -83,26 +93,57 @@ export function mapVotingClasses(classes) {
       ? ethers.utils.parseEther(cls.minBalance.toString())
       : ethers.BigNumber.from(0),
     asset: cls.asset || ethers.constants.AddressZero,
-    hatIds: cls.hatIds || [],
+    // ALWAYS empty at deploy time — deliberately, not an oversight.
+    //
+    // `cls.hatIds` in wizard state holds ROLE INDICES, but the contract consumes
+    // this field as literal Hats-Protocol hat IDs. The org's hats don't exist until
+    // mid-deploy, so the indices cannot be translated client-side; passing them
+    // through shipped ids like `1`, which belong to no one in the org, producing a
+    // class with zero eligible voters that reverts nothing.
+    //
+    // Empty is now also the *expressive* choice. GovernanceFactory v17 backfills an
+    // empty class with the hats of `canVote: true` roles ONLY
+    // (`_filterCanVoteHats`), so the wizard's per-role "Can vote" switch decides
+    // hybrid-voting membership at genesis — no post-deploy `setClasses` proposal
+    // needed to exclude bot/agent roles. (Pre-v17 it backfilled every role hat.)
+    // Narrowing a class further than "all voting roles" remains a post-deploy
+    // governance action, once real hat IDs exist.
+    hatIds: [],
   }));
 }
 
 /**
- * Build role assignment bitmaps from permissions object
+ * Build role assignment bitmaps from permissions object.
+ *
+ * `roleCount` is not optional in spirit: POP PR #185 (M-09) made
+ * `RoleResolver.resolveRoleBitmap` revert `UnregisteredRole(idx)` when a set bit
+ * maps to a role that was never registered, instead of silently resolving to hat
+ * 0. An out-of-range index therefore reverts the WHOLE deploy post-upgrade
+ * (before it just wired a dead permission). Filter those bits out here so a stale
+ * permission left behind by a template variation or a role removal can't brick
+ * the deployment.
+ *
  * @param {Object} permissions - Permissions object with role index arrays
+ * @param {number} [roleCount] - Number of roles; indices >= this are dropped
  * @returns {Object} RoleAssignments for contract
  */
-export function buildRoleAssignments(permissions) {
+export function buildRoleAssignments(permissions, roleCount) {
+  const inRange = (arr) => {
+    const list = Array.isArray(arr) ? arr : [];
+    if (!Number.isInteger(roleCount)) return list;
+    return list.filter((i) => Number.isInteger(Number(i)) && Number(i) >= 0 && Number(i) < roleCount);
+  };
+
   return {
-    quickJoinRolesBitmap: indicesToBitmap(permissions.quickJoinRoles || []),
-    tokenMemberRolesBitmap: indicesToBitmap(permissions.tokenMemberRoles || []),
-    tokenApproverRolesBitmap: indicesToBitmap(permissions.tokenApproverRoles || []),
-    taskCreatorRolesBitmap: indicesToBitmap(permissions.taskCreatorRoles || []),
-    educationCreatorRolesBitmap: indicesToBitmap(permissions.educationCreatorRoles || []),
-    educationMemberRolesBitmap: indicesToBitmap(permissions.educationMemberRoles || []),
-    hybridProposalCreatorRolesBitmap: indicesToBitmap(permissions.hybridProposalCreatorRoles || []),
-    ddVotingRolesBitmap: indicesToBitmap(permissions.ddVotingRoles || []),
-    ddCreatorRolesBitmap: indicesToBitmap(permissions.ddCreatorRoles || []),
+    quickJoinRolesBitmap: indicesToBitmap(inRange(permissions.quickJoinRoles)),
+    tokenMemberRolesBitmap: indicesToBitmap(inRange(permissions.tokenMemberRoles)),
+    tokenApproverRolesBitmap: indicesToBitmap(inRange(permissions.tokenApproverRoles)),
+    taskCreatorRolesBitmap: indicesToBitmap(inRange(permissions.taskCreatorRoles)),
+    educationCreatorRolesBitmap: indicesToBitmap(inRange(permissions.educationCreatorRoles)),
+    educationMemberRolesBitmap: indicesToBitmap(inRange(permissions.educationMemberRoles)),
+    hybridProposalCreatorRolesBitmap: indicesToBitmap(inRange(permissions.hybridProposalCreatorRoles)),
+    ddVotingRolesBitmap: indicesToBitmap(inRange(permissions.ddVotingRoles)),
+    ddCreatorRolesBitmap: indicesToBitmap(inRange(permissions.ddCreatorRoles)),
   };
 }
 
@@ -173,29 +214,33 @@ export function mapPaymasterConfig(paymasterState) {
  *
  * CREATE reconciliation (critical): the deployer applies these via
  * `TaskManager.bootstrapGlobalPerms`, which OVERWRITES `rolePermGlobal[hat]`
- * (TaskManager.sol:539) — it does NOT OR. That runs AFTER init has already
- * granted CREATE to every role hat (the deploy always uses
- * `roleAssignments.taskCreatorRolesBitmap = allRolesBitmap`, see
- * newDeployment.js `buildRoleAssignments`). So every emitted mask MUST re-include
- * CREATE or that init grant is silently erased for the role. We also skip any
- * entry whose only bit is CREATE — that's already covered by the init bitmap, so
- * an extra overwrite would be redundant calldata.
- *
- * NOTE: if `taskCreatorRolesBitmap` ever becomes configurable (it is currently
- * hardcoded to all roles), revisit — the CREATE re-add should then track the
- * actual deployed bitmap rather than being unconditional.
+ * (TaskManager.sol:539) — it does NOT OR. That runs AFTER init has already granted
+ * CREATE to the hats in `roleAssignments.taskCreatorRolesBitmap`. So for a role
+ * that IS a task creator, the emitted mask must re-include CREATE or the init grant
+ * is silently erased; for a role that is NOT, CREATE must be left out or we'd hand
+ * it a permission the wizard says it shouldn't have. We also skip any entry whose
+ * only bit is CREATE — the init bitmap already covers that, so the extra overwrite
+ * would be redundant calldata.
  *
  * @param {Object} taskManagerPerms - map of roleIndex -> uint8 mask
+ * @param {number[]} [taskCreatorRoles] - role indices granted CREATE at init.
+ *        Omit to assume every listed role is a creator (the historical behaviour,
+ *        back when `taskCreatorRolesBitmap` was hardcoded to all roles).
  * @returns {{ roleIndices: ethers.BigNumber[], masks: number[] }} parallel arrays
  */
-export function buildTaskManagerPerms(taskManagerPerms = {}) {
+export function buildTaskManagerPerms(taskManagerPerms = {}, taskCreatorRoles = null) {
+  const creators = Array.isArray(taskCreatorRoles) ? new Set(taskCreatorRoles.map(Number)) : null;
   const roleIndices = [];
   const masks = [];
   for (const [k, rawMask] of Object.entries(taskManagerPerms || {})) {
     const idx = Number(k);
     if (!Number.isInteger(idx) || idx < 0) continue;
-    const mask = (Number(rawMask) & 0xff) | TaskPermission.CREATE; // preserve init CREATE grant
+    const isCreator = creators === null || creators.has(idx);
+    const mask = isCreator
+      ? (Number(rawMask) & 0xff) | TaskPermission.CREATE // preserve init CREATE grant
+      : (Number(rawMask) & 0xff) & ~TaskPermission.CREATE; // not a creator — don't grant it
     if (mask === TaskPermission.CREATE) continue; // CREATE-only already handled at init
+    if (mask === 0) continue; // nothing to grant
     roleIndices.push(ethers.BigNumber.from(idx));
     masks.push(mask);
   }
@@ -307,6 +352,31 @@ export function mapStateToDeploymentParams(state, deployerAddress, options = {})
   // Map roles
   const contractRoles = roles.map((role, idx) => mapRole(role, idx, roles.length));
 
+  // Vouched roles must NOT be default-eligible. Two independent contract rules
+  // make this mandatory (POP PR #185):
+  //
+  //   M-03 — EligibilityModule._requireNoDefaultVouchConflictOnVouch reverts
+  //          `DefaultEligibilityConflictsWithVouch` when vouch config with
+  //          `combineWithHierarchy` is written onto an already default-eligible
+  //          hat. OrgDeployer writes defaults first (HatsTreeSetup) and vouch
+  //          config last (step 10.5), so this aborts the WHOLE deploy.
+  //   H-03 — QuickJoin._rejectOpenClaimHats reverts `HatOpenlyClaimable` for any
+  //          claim hat that is default-eligible, which kills the vouch-claim and
+  //          zk-email claim paths for that role even if the deploy succeeded.
+  //
+  // It is also the semantically correct config on the CURRENTLY DEPLOYED
+  // contracts: a default-eligible hat satisfies eligibility for everyone, so the
+  // vouch quorum the wizard advertises is already a no-op there. Normalizing is
+  // therefore safe both pre- and post-upgrade.
+  contractRoles.forEach((cr, roleIdx) => {
+    if (cr.vouching.enabled && cr.defaults.eligible) {
+      console.warn(
+        `[DeployMapper] Forcing defaults.eligible=false on vouched role "${cr.name}" (idx ${roleIdx}); a default-eligible hat makes its vouch quorum meaningless and is rejected by EligibilityModule (M-03) / QuickJoin (H-03).`
+      );
+      contractRoles[roleIdx] = { ...cr, defaults: { ...cr.defaults, eligible: false } };
+    }
+  });
+
   // Defensive normalization for quick-join roles: if a role is in
   // permissions.quickJoinRoles AND has vouching disabled AND has default
   // eligibility disabled, force eligible=true. The EligibilityModule would
@@ -346,7 +416,7 @@ export function mapStateToDeploymentParams(state, deployerAddress, options = {})
   const hybridClasses = mapVotingClasses(votingClasses);
 
   // Build role assignments
-  const roleAssignments = buildRoleAssignments(permissions);
+  const roleAssignments = buildRoleAssignments(permissions, roles.length);
 
   return {
     orgId,
@@ -388,9 +458,21 @@ export function mapStateToDeploymentParams(state, deployerAddress, options = {})
     bootstrap: buildBootstrapConfig(state.bootstrap),
     // Paymaster configuration (all-zeros = skip)
     paymasterConfig: mapPaymasterConfig(paymaster),
-    // Org-wide TaskManager ROLE_PERM grants (must be the LAST field — matches the
-    // contract struct order so ethers encodes the tuple positionally correct).
+    // Org-wide TaskManager ROLE_PERM grants.
+    // No creator list: the deployed `taskCreatorRolesBitmap` is still name-derived
+    // (all roles), so every mask must keep CREATE. See buildTaskManagerPerms.
     taskManagerPerms: buildTaskManagerPerms(state.taskManagerPerms),
+    // Deploy-time governance config (OrgDeployer v17). These four MUST be the LAST
+    // fields, in this order — the struct is encoded positionally.
+    //
+    // The voter-count quorums have been collected by the wizard (and validated as
+    // uint32) since before the contracts could accept them; until v17 they were
+    // setter-only and the deploy silently discarded them. 0 = no minimum.
+    hybridQuorum: Number(voting.hybridVoterQuorum) || 0,
+    ddQuorum: Number(voting.ddVoterQuorum) || 0,
+    // Empty string = contract default ("<orgName> Token" / "PT").
+    tokenName: (organization.tokenName || '').trim(),
+    tokenSymbol: (organization.tokenSymbol || '').trim(),
   };
 }
 
@@ -498,8 +580,80 @@ export function validateDeploymentConfig(state) {
       if (role.vouching.voucherRoleIndex >= state.roles.length) {
         errors.push(`Role "${role.name}" has invalid voucher role reference`);
       }
+      // A vouched role must not also be default-eligible. On the currently deployed
+      // contracts the vouch quorum is silently a no-op; on POP PR #185 contracts it
+      // is a hard revert — `DefaultEligibilityConflictsWithVouch` aborts the whole
+      // deploy (M-03, when "hierarchy admins can also vouch" is on), and
+      // `HatOpenlyClaimable` blocks every claim of that role (H-03). The mapper
+      // normalizes this too; catching it here tells the user WHICH switch to flip.
+      if (role.defaults.eligible) {
+        errors.push(
+          `Role "${role.name}" requires vouches but is also "eligible by default" — that makes the vouch requirement meaningless and the role unclaimable. Turn off "Eligible by default" for this role.`
+        );
+      }
     }
   });
+
+  // Every permission bitmap index must point at a role that exists. POP PR #185
+  // (M-09) made `RoleResolver` revert `UnregisteredRole(idx)` instead of silently
+  // resolving a stale index to hat 0, so an out-of-range bit now aborts the deploy.
+  PERMISSION_KEYS.forEach((key) => {
+    const label = PERMISSION_DESCRIPTIONS[key]?.label || key;
+    (state.permissions?.[key] || []).forEach((rawIdx) => {
+      const idx = Number(rawIdx);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= state.roles.length) {
+        errors.push(`The "${label}" permission is assigned to a role that no longer exists. Re-check the Permissions step.`);
+      }
+    });
+  });
+
+  // Participation-token identity. ParticipationToken.initialize does NOT length-check
+  // these, but setName/setSymbol do (64 / 16) — so an over-long value would deploy a
+  // token whose name governance can never edit again.
+  //
+  // The contract measures BYTES (`bytes(newName).length`), not characters, so an
+  // emoji or accented name that looks short in the input can still be over the limit.
+  const tokenName = (state.organization?.tokenName || '').trim();
+  const tokenSymbol = (state.organization?.tokenSymbol || '').trim();
+  if (utf8Length(tokenName) > 64) {
+    errors.push('Token name is too long — it must be 64 bytes or fewer (accents and emoji count as several bytes each).');
+  }
+  if (utf8Length(tokenSymbol) > 16) {
+    errors.push('Token ticker is too long — it must be 16 bytes or fewer (accents and emoji count as several bytes each).');
+  }
+  // Blank name = the contract builds "<orgName> Token", which is bounded by the org
+  // name (up to 100 chars) rather than by the token limits — so it can land above 64
+  // bytes and be permanently unrenameable.
+  if (!tokenName && utf8Length(`${state.organization?.name || ''} Token`) > 64) {
+    errors.push(
+      'Your organization name is too long to build a default token name from. Set a token name under "Contribution Token" on the Identity step.'
+    );
+  }
+
+  // At least one role must be able to vote. GovernanceFactory._filterCanVoteHats
+  // falls back to enrolling EVERY role hat when no role has canVote — the exact
+  // opposite of what turning them all off looks like it should do.
+  if (state.roles.length > 0 && !state.roles.some((r) => r.canVote)) {
+    errors.push(
+      'No role can vote. Turn on "Can participate in governance votes" for at least one role — otherwise every role ends up able to vote, which is probably not what you want.'
+    );
+  }
+
+  // Voter-count quorums are uint32 on the contract (0 = no minimum).
+  [['hybridVoterQuorum', 'Proposal'], ['ddVoterQuorum', 'Poll']].forEach(([key, label]) => {
+    const v = state.voting?.[key];
+    if (v === undefined || v === null || v === '') return;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 0 || n > 4294967295) {
+      errors.push(`${label} voter minimum must be a whole number between 0 and 4294967295.`);
+    }
+  });
+
+  // Executor.MAX_HATS_PER_MINT caps a single mint batch at 20 hats; quick-join
+  // mints every join-time role in one call, so >20 would make joining impossible.
+  if ((state.permissions?.quickJoinRoles || []).length > 20) {
+    errors.push('At most 20 roles can be granted automatically on join. Remove some join-time roles.');
+  }
 
   // Quick-join eligibility guard: a role in quickJoinRoles with vouching disabled
   // AND default eligibility disabled is unreachable — QuickJoin.memberHatIds

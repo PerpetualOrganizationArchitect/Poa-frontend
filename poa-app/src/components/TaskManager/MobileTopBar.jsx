@@ -3,12 +3,14 @@
 
 import { Box, Flex, HStack, Text, Icon } from '@chakra-ui/react';
 import { ChevronDownIcon } from '@chakra-ui/icons';
-import { FiLayers } from 'react-icons/fi';
+import { FiLayers, FiBriefcase } from 'react-icons/fi';
 import ViewSwitcher from './ViewSwitcher';
 import { mobileNavGlassStyle } from './styles/taskBoardStyles';
 
 const MobileTopBar = ({ variant, projectName, onOpen, allowBoard }) => {
   const isAllTasks = variant === 'allTasks';
+  const isMyWork = variant === 'myWork';
+  const isSystemView = isAllTasks || isMyWork;
 
   return (
     <Box
@@ -43,9 +45,15 @@ const MobileTopBar = ({ variant, projectName, onOpen, allowBoard }) => {
           borderRadius="md"
           _hover={{ bg: 'whiteAlpha.100' }}
           _active={{ bg: 'whiteAlpha.200' }}
-          aria-label={isAllTasks ? 'Switch from All Tasks' : `Switch project (${projectName || 'no project'})`}
+          aria-label={
+            isMyWork
+              ? 'Switch from My Work'
+              : isAllTasks
+              ? 'Switch from All Tasks'
+              : `Switch project (${projectName || 'no project'})`
+          }
         >
-          {isAllTasks ? (
+          {isSystemView ? (
             <HStack
               spacing={1.5}
               px={2}
@@ -54,14 +62,14 @@ const MobileTopBar = ({ variant, projectName, onOpen, allowBoard }) => {
               bgGradient="linear(135deg, rgba(159,122,234,0.35) 0%, rgba(66,153,225,0.25) 100%)"
               border="1px solid rgba(159,122,234,0.45)"
             >
-              <Icon as={FiLayers} color="whiteAlpha.900" boxSize="12px" />
+              <Icon as={isMyWork ? FiBriefcase : FiLayers} color="whiteAlpha.900" boxSize="12px" />
               <Text
                 fontSize="sm"
                 fontWeight="700"
                 color="white"
                 lineHeight="1"
               >
-                All Tasks
+                {isMyWork ? 'My Work' : 'All Tasks'}
               </Text>
             </HStack>
           ) : (
@@ -79,10 +87,13 @@ const MobileTopBar = ({ variant, projectName, onOpen, allowBoard }) => {
           <ChevronDownIcon color="whiteAlpha.800" boxSize="16px" flexShrink={0} />
         </Flex>
 
-        {/* Right: view switcher (Board / List on mobile; Gantt is hidden) */}
-        <Box flexShrink={0}>
-          <ViewSwitcher isMobile size="sm" allowBoard={allowBoard} />
-        </Box>
+        {/* Right: view switcher (Board / List on mobile; Gantt is hidden).
+            My Work is List-only, so it has no switcher. */}
+        {!isMyWork && (
+          <Box flexShrink={0}>
+            <ViewSwitcher isMobile size="sm" allowBoard={allowBoard} />
+          </Box>
+        )}
       </Flex>
     </Box>
   );

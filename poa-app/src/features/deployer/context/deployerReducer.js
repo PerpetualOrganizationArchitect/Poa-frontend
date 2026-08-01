@@ -124,6 +124,31 @@ export const PERMISSION_DESCRIPTIONS = {
   },
 };
 
+/**
+ * A role that requires vouches must NOT be eligible by default.
+ *
+ * A default-eligible hat satisfies eligibility for everyone, so pairing it with a
+ * vouch quorum silently makes the quorum a no-op — and since POP PR #185 the
+ * contracts reject the pair outright: `EligibilityModule` reverts
+ * `DefaultEligibilityConflictsWithVouch` mid-deploy, and `QuickJoin` reverts
+ * `HatOpenlyClaimable` on every claim of an open hat.
+ *
+ * ONE-DIRECTIONAL on purpose. Turning vouching OFF does not force the role open:
+ * "not vouched, not default-eligible" is a legitimate admin-granted-only role
+ * (the deployer still grants per-wearer eligibility to mintToDeployer /
+ * additionalWearers). The only unreachable combination is a JOIN-TIME role with
+ * neither, which `mapStateToDeploymentParams` normalizes and
+ * `validateDeploymentConfig` reports.
+ *
+ * Enforced here rather than in each role editor so simple mode, advanced mode, the
+ * standalone RoleForm, templates and philosophy variations can't drift apart.
+ */
+export const applyVouchEligibilityInvariant = (role) => {
+  if (!role?.vouching || !role?.defaults) return role;
+  if (!role.vouching.enabled || !role.defaults.eligible) return role;
+  return { ...role, defaults: { ...role.defaults, eligible: false } };
+};
+
 // Create a default role object
 export const createDefaultRole = (index = 0, name = 'New Role') => ({
   id: uuidv4(),
@@ -242,6 +267,10 @@ export const initialState = {
     autoUpgrade: true,
     username: '',
     template: 'default',
+    // Participation-token identity (OrgDeployer v17). Empty keeps the contract
+    // defaults: "<orgName> Token" / "PT".
+    tokenName: '',
+    tokenSymbol: '',
   },
 
   // Roles configuration
@@ -293,6 +322,7 @@ export const initialState = {
   features: {
     educationHubEnabled: false,
     electionHubEnabled: false,
+    zkEmailInvitesEnabled: false,
     hideTreasury: false,
   },
 
@@ -776,7 +806,17 @@ export function deployerReducer(state, action) {
       const { voting, permissions } = action.payload;
       return {
         ...state,
-        voting: voting || state.voting,
+        voting: voting
+          ? {
+              ...voting,
+              // The philosophy slider only sets the democracy/contribution split;
+              // sliderToVotingConfig hardcodes the voter minimums to 0. Preserve
+              // whatever the user entered — since OrgDeployer v17 these ship at
+              // genesis, so overwriting them here would silently discard real config.
+              hybridVoterQuorum: state.voting.hybridVoterQuorum,
+              ddVoterQuorum: state.voting.ddVoterQuorum,
+            }
+          : state.voting,
         permissions: permissions || state.permissions,
       };
     }
@@ -946,6 +986,13 @@ export function deployerReducer(state, action) {
           ...newVotingConfig,
           hybridQuorum: quorum ?? newVotingConfig.hybridQuorum,
           ddQuorum: quorum ?? newVotingConfig.ddQuorum,
+          // A variation only re-balances the democracy/contribution split; it says
+          // nothing about how many people have to turn out. Carry the voter minimums
+          // over — sliderToVotingConfig hardcodes them to 0, and since OrgDeployer
+          // v17 these ship at genesis, so wiping them here would silently discard
+          // real config the moment someone nudges the philosophy slider.
+          hybridVoterQuorum: state.voting.hybridVoterQuorum,
+          ddVoterQuorum: state.voting.ddVoterQuorum,
         },
         features: newFeatures,
         permissions: newPermissions,
@@ -1022,7 +1069,7 @@ export function deployerReducer(state, action) {
       return {
         ...state,
         roles: state.roles.map((role, idx) =>
-          idx === index ? { ...role, ...updates } : role
+          idx === index ? applyVouchEligibilityInvariant({ ...role, ...updates }) : role
         ),
       };
     }
@@ -1124,7 +1171,7 @@ export function deployerReducer(state, action) {
         ...state,
         roles: state.roles.map((role, idx) =>
           idx === roleIndex
-            ? { ...role, vouching: { ...role.vouching, ...vouching } }
+            ? applyVouchEligibilityInvariant({ ...role, vouching: { ...role.vouching, ...vouching } })
             : role
         ),
       };

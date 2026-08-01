@@ -36,6 +36,7 @@ import { useRoleNames } from "@/hooks";
 import { usePOContext } from "@/context/POContext";
 import { useProjectContext } from "@/context/ProjectContext";
 import { getNetworkByChainId } from "../../config/networks";
+import { getBountyTokenOptions } from "@/util/tokens";
 import SetterActionSelector from "./SetterActionSelector";
 import ElectionConfigurator from "./ElectionConfigurator";
 import RoleConfigurator, { parseAutoTitle as parseRoleAutoTitle } from "./RoleConfigurator";
@@ -123,12 +124,24 @@ const CreateVoteModal = ({
   const orgNetwork = getNetworkByChainId(orgChainId);
   const nativeCurrencySymbol = orgNetwork?.nativeCurrency?.symbol || 'ETH';
 
-  // Assets a treasury payout can move. Native only for now — see the Asset
-  // field below for why. Adding ERC20s here is the whole change once
-  // PaymentManager.withdraw works for tokens.
+  // Assets a treasury payout can move: the chain's native currency plus every
+  // ERC20 configured for this chain. Payout batches run as the Executor, which
+  // IS the treasury, so both are a single call it can make on its own balance.
   const transferAssetOptions = useMemo(() => ([
-    { symbol: nativeCurrencySymbol, label: `${nativeCurrencySymbol} — the group's native currency` },
-  ]), [nativeCurrencySymbol]);
+    { address: '', symbol: nativeCurrencySymbol, label: `${nativeCurrencySymbol} — the group's native currency` },
+    ...getBountyTokenOptions(orgChainId).map(t => ({
+      address: t.address,
+      symbol: t.symbol,
+      label: `${t.symbol} — ${t.name}`,
+    })),
+  ]), [nativeCurrencySymbol, orgChainId]);
+
+  // Symbol for the currently selected asset — drives the amount label, the
+  // auto-written title/description and the review screen's payout row.
+  const transferSymbol = useMemo(() => (
+    transferAssetOptions.find(a => a.address === (proposal.transferToken || ''))?.symbol
+      || nativeCurrencySymbol
+  ), [transferAssetOptions, proposal.transferToken, nativeCurrencySymbol]);
   const { currentStepDef, isActive: isTourActive } = useTour();
   const isTourStep = isTourActive && currentStepDef?.id === 'create-vote-preview';
 
@@ -216,16 +229,16 @@ const CreateVoteModal = ({
     const clearedTitle = !proposal.name && Boolean(proposal.autoTitle);
     const clearedDescription = !proposal.description && Boolean(proposal.autoDescription);
     const patch = applyAutoCopy(proposal, {
-      title: clearedTitle ? null : `Send ${amount} ${nativeCurrencySymbol} to ${short}`,
+      title: clearedTitle ? null : `Send ${amount} ${transferSymbol} to ${short}`,
       description: clearedDescription
         ? null
-        : `If this vote passes: send ${amount} ${nativeCurrencySymbol} from the treasury to ${short}.`,
+        : `If this vote passes: send ${amount} ${transferSymbol} from the treasury to ${short}.`,
     });
     if (Object.keys(patch).length > 0) handleSetterChange(patch);
   }, [
-    proposal.type, proposal.transferAddress, proposal.transferAmount,
+    proposal.type, proposal.transferAddress, proposal.transferAmount, proposal.transferToken,
     proposal.name, proposal.description, proposal.autoTitle, proposal.autoDescription,
-    nativeCurrencySymbol, handleSetterChange, proposal,
+    transferSymbol, handleSetterChange, proposal,
   ]);
 
   const isBinding = BINDING_TYPES.has(proposal.type);
@@ -521,7 +534,7 @@ const CreateVoteModal = ({
                   <BallotReview
                     proposal={proposal}
                     whoCanVoteLabel={whoCanVoteLabel}
-                    nativeCurrencySymbol={nativeCurrencySymbol}
+                    nativeCurrencySymbol={transferSymbol}
                     {...(isBinding ? { badge: BINDING_REVIEW_BADGE } : {})}
                     {...(reviewOptions ? { options: reviewOptions } : {})}
                   />
@@ -659,25 +672,17 @@ const CreateVoteModal = ({
 
                     {proposal.type === "transferFunds" && (
                       <>
-                        {/* Asset. Only the chain's native currency is offered
-                            today: proposal batches execute as the Executor, and
-                            an ERC20 payout has to route through
-                            PaymentManager.withdraw, which reverts
-                            InsufficientFunds on the deployed contract (verified
-                            on a Gnosis fork). Driven off a list so adding tokens
-                            is a data change once contracts support it. */}
                         <FormControl>
                           <FormLabel color="gray.200" fontSize="sm">
                             Asset
                           </FormLabel>
                           <Select
-                            value={nativeCurrencySymbol}
-                            isDisabled={transferAssetOptions.length <= 1}
-                            onChange={() => {}}
+                            value={proposal.transferToken || ''}
+                            onChange={(e) => handleSetterChange({ transferToken: e.target.value })}
                             {...inputStyles}
                           >
                             {transferAssetOptions.map((asset) => (
-                              <option key={asset.symbol} value={asset.symbol} style={{ background: '#1a1a2e' }}>
+                              <option key={asset.address || 'native'} value={asset.address} style={{ background: '#1a1a2e' }}>
                                 {asset.label}
                               </option>
                             ))}
@@ -702,10 +707,10 @@ const CreateVoteModal = ({
 
                         <FormControl isInvalid={Boolean(visibleErrors.transferAmount)}>
                           <FormLabel color="gray.200" fontSize="sm">
-                            Amount ({nativeCurrencySymbol})
+                            Amount ({transferSymbol})
                           </FormLabel>
                           <Input
-                            placeholder={`Amount in ${nativeCurrencySymbol}`}
+                            placeholder={`Amount in ${transferSymbol}`}
                             value={proposal.transferAmount}
                             onChange={handleTransferAmountChange}
                             onBlur={() => markTouched('transferAmount')}

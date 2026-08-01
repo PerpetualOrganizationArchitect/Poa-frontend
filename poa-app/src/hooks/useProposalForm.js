@@ -19,6 +19,7 @@ import { getNetworkByChainId } from '../config/networks';
 import { getInfrastructureAddress, CONTRACT_NAMES } from '@/config/contracts';
 import { createHatsService } from '@/services/web3/domain/HatsService';
 import { ipfsCidToBytes32 } from '@/services/web3/utils/encoding';
+import { getTokenByAddress } from '@/util/tokens';
 import {
   TITLE_PREFIX as ELECTION_TITLE_PREFIX,
   DESCRIPTION_PREFIX as ELECTION_DESCRIPTION_PREFIX,
@@ -44,6 +45,9 @@ const defaultProposal = {
   type: "normal",
   transferAddress: "",
   transferAmount: "",
+  // Asset to pay out. "" = the chain's native currency (xDAI on Gnosis); any
+  // other value is an ERC20 contract address from getBountyTokenOptions.
+  transferToken: "",
   // Election fields
   electionCandidates: [],           // Array of { name, address }
   electionRoleId: "",               // Hat ID for the role being elected
@@ -175,6 +179,7 @@ export function useProposalForm({ onSubmit }) {
         ...(newType !== 'transferFunds' ? {
           transferAddress: '',
           transferAmount: '',
+          transferToken: '',
         } : {}),
       };
     });
@@ -628,7 +633,10 @@ export function useProposalForm({ onSubmit }) {
       const amt = proposal.transferAmount || '?';
       const addr = proposal.transferAddress || '';
       const short = addr.length > 10 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
-      summaries.push(`If "Yes" wins, send ${amt} ${nativeCurrencySymbol} from the treasury to ${short}.`);
+      const sym = proposal.transferToken
+        ? getTokenByAddress(proposal.transferToken).symbol
+        : nativeCurrencySymbol;
+      summaries.push(`If "Yes" wins, send ${amt} ${sym} from the treasury to ${short}.`);
     } else if (proposal.type === 'setter') {
       if (proposal.setterMode === 'template' && proposal.setterTemplate) {
         const tmpl = getTemplateById(proposal.setterTemplate);
@@ -669,11 +677,30 @@ export function useProposalForm({ onSubmit }) {
     let optionNames = [];
 
     if (proposal.type === "transferFunds") {
-      const transferCall = {
-        target: proposal.transferAddress,
-        value: utils.parseEther(proposal.transferAmount).toString(),
-        data: "0x",
-      };
+      // Batches execute with the Executor as msg.sender, and the Executor is the
+      // org's treasury (POContext aliases treasuryContractAddress to it). So a
+      // native payout is a plain value-send, and an ERC20 payout is a transfer()
+      // on the token contract moving the Executor's own balance. Amounts use the
+      // token's own decimals — parseEther would be 10^12 off for USDC.
+      const payoutToken = proposal.transferToken
+        ? getTokenByAddress(proposal.transferToken)
+        : null;
+      const transferCall = payoutToken
+        ? {
+            target: payoutToken.address,
+            value: "0",
+            data: new utils.Interface([
+              "function transfer(address to, uint256 amount)",
+            ]).encodeFunctionData("transfer", [
+              proposal.transferAddress,
+              utils.parseUnits(String(proposal.transferAmount), payoutToken.decimals),
+            ]),
+          }
+        : {
+            target: proposal.transferAddress,
+            value: utils.parseEther(proposal.transferAmount).toString(),
+            data: "0x",
+          };
 
       batches = [
         [transferCall], // Yes wins: execute transfer
@@ -1430,7 +1457,10 @@ export function useProposalForm({ onSubmit }) {
 
       let successDescription;
       if (proposal.type === "transferFunds") {
-        successDescription = `Transfer proposal created. If "Yes" wins, ${proposal.transferAmount} ${nativeCurrencySymbol} will be sent to ${proposal.transferAddress.slice(0, 6)}...${proposal.transferAddress.slice(-4)}`;
+        const payoutSymbol = proposal.transferToken
+          ? getTokenByAddress(proposal.transferToken).symbol
+          : nativeCurrencySymbol;
+        successDescription = `Transfer proposal created. If "Yes" wins, ${proposal.transferAmount} ${payoutSymbol} will be sent to ${proposal.transferAddress.slice(0, 6)}...${proposal.transferAddress.slice(-4)}`;
       } else if (proposal.type === "election") {
         successDescription = `Election created with ${proposal.electionCandidates.length} candidates. The winner will receive the role automatically.`;
       } else if (proposal.type === "setter") {

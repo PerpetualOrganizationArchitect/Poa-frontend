@@ -2,10 +2,10 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   VStack,
   Text,
-  SimpleGrid,
   Box,
 } from '@chakra-ui/react';
 import { FiInbox } from 'react-icons/fi';
+import { INK } from './treasuryStyles';
 import { useQuery } from '@apollo/client';
 import { useWeb3 } from '@/hooks/useWeb3Services';
 import { useAuth } from '@/context/AuthContext';
@@ -158,7 +158,7 @@ const CurrentDistributions = ({
     }
 
     if (!treasury || !isReady) {
-      throw new Error('Still getting things ready — give it a moment, then try again.');
+      throw new Error('Still getting things ready. Give it a moment, then try again.');
     }
 
     const result = await executeWithNotification(
@@ -185,27 +185,28 @@ const CurrentDistributions = ({
   if (distributions.length === 0) {
     return (
       <VStack py={8} spacing={3}>
-        <Box p={4} borderRadius="full" bg="rgba(148, 115, 220, 0.1)">
-          <FiInbox size={32} color="rgba(148, 115, 220, 0.5)" />
+        <Box p={4} borderRadius="full" bg="rgba(144, 85, 232, 0.08)">
+          <FiInbox size={28} color="rgba(144, 85, 232, 0.5)" />
         </Box>
-        <Text color="gray.400" textAlign="center">
-          No active distributions
+        <Text color={INK.secondary} textAlign="center" fontSize="sm">
+          No payouts to claim right now
         </Text>
-        <Text fontSize="sm" color="gray.500" textAlign="center">
-          Distributions are created to share profits with members based on their participation.
+        <Text fontSize="xs" color={INK.muted} textAlign="center" maxW="360px">
+          When the group approves one, your share appears here.
         </Text>
       </VStack>
     );
   }
 
   return (
-    <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={4}>
+    <VStack spacing={0} align="stretch">
       {distributions.map((distribution) => {
         const distId = distribution.distributionId;
         const rawClaim = claimDataMap[distId];
         const claimData = rawClaim && typeof rawClaim === 'object' ? rawClaim : null;
         const isLoadingClaim = rawClaim === 'loading';
         const claimNotFound = rawClaim === 'not-found';
+        const claimError = rawClaim === 'error';
 
         return (
           <DistributionCard
@@ -217,10 +218,11 @@ const CurrentDistributions = ({
             claimData={claimData}
             isLoadingClaim={isLoadingClaim}
             claimNotFound={claimNotFound}
+            claimError={claimError}
           />
         );
       })}
-    </SimpleGrid>
+    </VStack>
   );
 };
 

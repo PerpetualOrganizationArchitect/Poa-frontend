@@ -6,12 +6,15 @@
 
 import { NETWORKS } from '../config/networks';
 
-// Token metadata (chain-independent)
+// Token metadata (chain-independent).
+// isStable marks USD-pegged tokens (~$1). Only these are summed into the treasury's
+// headline USD figure; tokens without a dollar peg are shown in native units.
+// BREAD is Breadchain's stablecoin, minted and redeemable 1:1 against xDAI.
 const TOKEN_META = {
-  USDC:  { symbol: 'USDC',  name: 'USD Coin', decimals: 6, logo: '/images/tokens/usdc.png', projectUrl: 'https://www.circle.com/usdc' },
-  DAI:   { symbol: 'DAI',   name: 'Dai Stablecoin', decimals: 18, logo: '/images/tokens/dai.png', projectUrl: 'https://makerdao.com/dai' },
-  BREAD: { symbol: 'BREAD', name: 'Breadchain', decimals: 18, logo: '/images/tokens/bread.png', projectUrl: 'https://fund.bread.coop/' },
-  WXDAI: { symbol: 'WXDAI', name: 'Wrapped xDAI', decimals: 18, logo: null, projectUrl: null },
+  USDC:  { symbol: 'USDC',  name: 'USD Coin', decimals: 6, logo: '/images/tokens/usdc.png', projectUrl: 'https://www.circle.com/usdc', isStable: true },
+  DAI:   { symbol: 'DAI',   name: 'Dai Stablecoin', decimals: 18, logo: '/images/tokens/dai.png', projectUrl: 'https://makerdao.com/dai', isStable: true },
+  BREAD: { symbol: 'BREAD', name: 'Breadchain', decimals: 18, logo: '/images/tokens/bread.png', projectUrl: 'https://fund.bread.coop/', isStable: true },
+  WXDAI: { symbol: 'WXDAI', name: 'Wrapped xDAI', decimals: 18, logo: null, projectUrl: null, isStable: true },
 };
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -25,6 +28,7 @@ export const NO_BOUNTY_TOKEN = {
   isDefault: true,
   logo: null,
   projectUrl: null,
+  isStable: false,
 };
 
 // Build flat address→token lookup across all chains (addresses are globally unique)
@@ -64,6 +68,7 @@ export function getTokenByAddress(address) {
     isDefault: false,
     logo: null,
     projectUrl: null,
+    isStable: false,
   };
 }
 

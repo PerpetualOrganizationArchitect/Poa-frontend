@@ -21,7 +21,9 @@ export const NETWORKS = {
   gnosis: {
     chainId: 100,
     name: 'Gnosis',
-    nativeCurrency: { name: 'xDAI', symbol: 'xDAI', decimals: 18 },
+    // usdPegged: xDAI is a USD stablecoin, so UIs may honestly gloss native
+    // amounts as ≈ dollars. Leave unset for volatile natives (ETH).
+    nativeCurrency: { name: 'xDAI', symbol: 'xDAI', decimals: 18, usdPegged: true },
     rpcUrl: process.env.NEXT_PUBLIC_GNOSIS_RPC_URL || 'https://rpc.gnosischain.com',
     blockExplorer: 'https://gnosisscan.io',
     isTestnet: false,

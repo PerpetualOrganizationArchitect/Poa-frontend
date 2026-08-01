@@ -337,7 +337,7 @@ const DepositModal = ({
                 >
                   {tokens.map(token => (
                     <option key={token.address} value={token.address} style={{ background: '#1a1a2e' }}>
-                      {token.symbol} — {token.name}
+                      {token.symbol} · {token.name}
                     </option>
                   ))}
                 </Select>

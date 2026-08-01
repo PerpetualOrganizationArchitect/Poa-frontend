@@ -5,8 +5,6 @@ import {
   HStack,
   Text,
   SimpleGrid,
-  Progress,
-  Badge,
 } from '@chakra-ui/react';
 import {
   BarChart,
@@ -20,20 +18,29 @@ import {
 } from 'recharts';
 import { formatTokenAmount } from '@/util/formatToken';
 import { getTokenByAddress } from '@/util/tokens';
+import { ACCENT, INK, TABULAR, SeriesDot, twoDp, UnitSpan } from './treasuryStyles';
 
+// Series hues validated against the card surface (see treasuryStyles.js).
 const COLORS = {
-  inflow: '#2ECC71',
-  outflow: '#9B59B6',
-  claimed: '#3498DB',
+  inflow: ACCENT.in,
+  outflow: ACCENT.out,
 };
 
-// ─── Summary Cards ───
+// ─── Stat tiles ───
+// Values wear ink, never the series color; the dot beside the label carries
+// identity and ties the tile to its series in the chart below.
 
-const SummaryCard = ({ label, value, subtext, color = 'white' }) => (
-  <Box bg="rgba(0,0,0,0.3)" borderRadius="lg" p={3}>
-    <Text fontSize="xs" color="gray.500" mb={1}>{label}</Text>
-    <Text fontSize="lg" fontWeight="bold" color={color}>{value}</Text>
-    {subtext && <Text fontSize="xs" color="gray.500" mt={1}>{subtext}</Text>}
+const StatTile = ({ label, value, unit, subtext, dot }) => (
+  <Box py={1}>
+    <HStack spacing={1.5} mb={1.5}>
+      {dot && <SeriesDot color={dot} size="7px" />}
+      <Text fontSize="xs" color={INK.muted}>{label}</Text>
+    </HStack>
+    <Text fontSize="2xl" fontWeight="semibold" color={INK.primary} lineHeight="1.1">
+      {value}
+      {unit && <UnitSpan>{unit}</UnitSpan>}
+    </Text>
+    {subtext && <Text fontSize="xs" color={INK.muted} mt={1}>{subtext}</Text>}
   </Box>
 );
 
@@ -42,15 +49,15 @@ const SummaryCard = ({ label, value, subtext, color = 'white' }) => (
 const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <Box bg="rgba(20,20,30,0.95)" border="1px solid rgba(148,115,220,0.5)" borderRadius="lg" p={3} maxW="200px">
-      <Text fontWeight="bold" color="white" fontSize="sm" mb={1}>{label}</Text>
+    <Box bg="rgba(13,20,17,0.97)" border="1px solid rgba(255,255,255,0.14)" borderRadius="lg" p={3} maxW="220px">
+      <Text fontWeight="semibold" color={INK.primary} fontSize="sm" mb={1.5}>{label}</Text>
       {payload.map((entry, i) => (
-        <HStack key={i} justify="space-between" spacing={3}>
-          <HStack spacing={1}>
-            <Box w="8px" h="8px" borderRadius="sm" bg={entry.color} />
-            <Text fontSize="xs" color="gray.300">{entry.name}</Text>
+        <HStack key={i} justify="space-between" spacing={4}>
+          <HStack spacing={1.5}>
+            <SeriesDot color={entry.color} size="7px" />
+            <Text fontSize="xs" color={INK.secondary}>{entry.name}</Text>
           </HStack>
-          <Text fontSize="xs" color="white" fontWeight="medium">
+          <Text fontSize="xs" color={INK.primary} fontWeight="medium" sx={TABULAR}>
             {typeof entry.value === 'number' ? entry.value.toFixed(4) : entry.value}
           </Text>
         </HStack>
@@ -128,38 +135,12 @@ const HistoricalOverview = ({ distributions = [], payments = [] }) => {
       }));
   }, [distributions, payments]);
 
-  // ─── Per-distribution breakdown ───
-  const distBreakdown = useMemo(() => {
-    return distributions
-      .filter(d => d.totalAmount && d.totalAmount !== '0')
-      .map(d => {
-        const token = getTokenByAddress(d.payoutToken);
-        const total = parseFloat(formatTokenAmount(d.totalAmount, token.decimals, 6));
-        const claimed = parseFloat(formatTokenAmount(d.totalClaimed || '0', token.decimals, 6));
-        const pct = total > 0 ? (claimed / total) * 100 : 0;
-
-        return {
-          id: d.distributionId,
-          token: token.symbol,
-          total,
-          claimed,
-          unclaimed: total - claimed,
-          pct,
-          claimCount: d.claims?.length || 0,
-          status: d.status,
-          date: new Date(parseInt(d.createdAt) * 1000).toLocaleDateString('en-US', {
-            month: 'short', day: 'numeric',
-          }),
-        };
-      });
-  }, [distributions]);
-
   if (distributions.length === 0 && payments.length === 0) {
     return (
       <VStack py={8}>
-        <Text color="gray.400">No financial activity yet</Text>
-        <Text fontSize="sm" color="gray.500">
-          Activity will appear here after deposits or distributions
+        <Text color={INK.secondary} fontSize="sm">No financial activity yet</Text>
+        <Text fontSize="xs" color={INK.muted}>
+          Activity will appear here after deposits or payouts
         </Text>
       </VStack>
     );
@@ -167,111 +148,66 @@ const HistoricalOverview = ({ distributions = [], payments = [] }) => {
 
   return (
     <VStack spacing={5} align="stretch">
-      {/* ─── Summary Cards ─── */}
-      <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
-        <SummaryCard
-          label="Total Received"
-          value={stats.totalReceived}
-          subtext={`${stats.paymentCount} deposit${stats.paymentCount !== 1 ? 's' : ''} · ${stats.tokenSymbol}`}
-          color={COLORS.inflow}
+      {/* ─── Insight strip ─── */}
+      <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={4}>
+        <StatTile
+          label="Total received"
+          value={twoDp(stats.totalReceived)}
+          unit={stats.tokenSymbol}
+          subtext={`${stats.paymentCount} deposit${stats.paymentCount !== 1 ? 's' : ''}`}
+          dot={COLORS.inflow}
         />
-        <SummaryCard
-          label="Total Distributed"
-          value={stats.totalDistributed}
-          subtext={`${stats.distributionCount} distribution${stats.distributionCount !== 1 ? 's' : ''} · ${stats.tokenSymbol}`}
-          color={COLORS.outflow}
+        <StatTile
+          label="Shared with members"
+          value={twoDp(stats.totalDistributed)}
+          unit={stats.tokenSymbol}
+          subtext={`${stats.distributionCount} payout${stats.distributionCount !== 1 ? 's' : ''}`}
+          dot={COLORS.outflow}
         />
-        <SummaryCard
-          label="Total Claimed"
-          value={stats.totalClaimed}
-          subtext={`${stats.claimRate}% claim rate · ${stats.tokenSymbol}`}
-          color={COLORS.claimed}
-        />
-        <SummaryCard
-          label="Net Balance"
-          value={(parseFloat(stats.totalReceived) - parseFloat(stats.totalClaimed)).toFixed(4)}
-          subtext={`Received minus claimed · ${stats.tokenSymbol}`}
+        <StatTile
+          label="Claimed by members"
+          value={twoDp(stats.totalClaimed)}
+          unit={stats.tokenSymbol}
+          subtext={`${stats.claimRate}% of what was shared`}
         />
       </SimpleGrid>
 
       {/* ─── Activity Chart ─── */}
       {timelineData.length > 0 && (
         <Box>
-          <Text fontSize="sm" fontWeight="medium" color="gray.400" mb={3}>
-            Treasury Activity
-          </Text>
-          <Box h={{ base: '180px', md: '220px' }}>
+          <Box h={{ base: '170px', md: '200px' }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={timelineData} barGap={2}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
                 <XAxis
                   dataKey="label"
-                  tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 11 }}
+                  tick={{ fill: INK.muted, fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 11 }}
+                  tick={{ fill: INK.muted, fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
                   width={45}
                 />
-                <Tooltip content={<ChartTooltip />} />
+                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                 <Legend
-                  wrapperStyle={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}
+                  wrapperStyle={{ fontSize: '11px' }}
                   iconType="square"
                   iconSize={8}
+                  formatter={(value) => (
+                    <span style={{ color: 'rgba(255,255,255,0.66)' }}>{value}</span>
+                  )}
                 />
-                <Bar dataKey="received" name="Received" fill={COLORS.inflow} radius={[3, 3, 0, 0]} maxBarSize={40} />
-                <Bar dataKey="distributed" name="Distributed" fill={COLORS.outflow} radius={[3, 3, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="received" name="Money in" fill={COLORS.inflow} radius={[4, 4, 0, 0]} maxBarSize={24} />
+                <Bar dataKey="distributed" name="Shared out" fill={COLORS.outflow} radius={[4, 4, 0, 0]} maxBarSize={24} />
               </BarChart>
             </ResponsiveContainer>
           </Box>
-        </Box>
-      )}
-
-      {/* ─── Distribution Breakdown ─── */}
-      {distBreakdown.length > 0 && (
-        <Box>
-          <Text fontSize="sm" fontWeight="medium" color="gray.400" mb={3}>
-            Distribution Breakdown
+          <Text fontSize="xs" color={INK.muted} mt={2}>
+            Amounts shown in the org&apos;s main payout token.
           </Text>
-          <VStack spacing={3} align="stretch">
-            {distBreakdown.map(d => (
-              <Box key={d.id} bg="rgba(0,0,0,0.25)" borderRadius="lg" p={3}>
-                <HStack justify="space-between" mb={2}>
-                  <HStack spacing={2}>
-                    <Text fontSize="sm" fontWeight="bold">#{d.id}</Text>
-                    <Badge
-                      colorScheme={d.status === 'Active' ? 'green' : 'gray'}
-                      fontSize="2xs"
-                    >
-                      {d.status}
-                    </Badge>
-                    <Text fontSize="xs" color="gray.500">{d.date}</Text>
-                  </HStack>
-                  <Text fontSize="sm" color="gray.300">
-                    {d.claimed.toFixed(4)} / {d.total.toFixed(4)} {d.token}
-                  </Text>
-                </HStack>
-                <Progress
-                  value={d.pct}
-                  colorScheme="purple"
-                  borderRadius="full"
-                  size="sm"
-                  bg="rgba(255,255,255,0.08)"
-                />
-                <HStack justify="space-between" mt={1}>
-                  <Text fontSize="xs" color="gray.500">
-                    {d.claimCount} claimed · {d.pct.toFixed(0)}%
-                  </Text>
-                  <Text fontSize="xs" color={d.unclaimed > 0 ? 'orange.300' : 'green.300'}>
-                    {d.unclaimed > 0 ? `${d.unclaimed.toFixed(4)} unclaimed` : 'Fully claimed'}
-                  </Text>
-                </HStack>
-              </Box>
-            ))}
-          </VStack>
         </Box>
       )}
     </VStack>

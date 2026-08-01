@@ -110,7 +110,7 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const [rejectionReason, setRejectionReason] = useState('');
   const { moveTask, deleteTask, applyForTask, approveApplication, assignTask, takeOverTask, releaseTask, rejectTask } = useTaskBoard();
   const { hasExecRole, hasMemberRole, address: account, fetchUserDetails, userData } = useUserContext();
-  const { projectsData } = useProjectContext();
+  const { projectsData, releasesSupported } = useProjectContext();
   const { getUsernameByAddress, setSelectedProject, projects } = useDataBaseContext();
   const { safeFetchFromIpfs } = useIPFScontext();
   const router = useRouter();

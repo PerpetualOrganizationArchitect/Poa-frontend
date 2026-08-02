@@ -6,7 +6,7 @@ import {
     FETCH_PROPOSAL_BY_ID,
     FETCH_PROPOSAL_BY_ID_WITH_PROPOSER,
 } from '../util/queries';
-import { hasProposerField } from '../util/subgraphCapabilities';
+import { hasProposerField, peekCapability, CAPABILITY } from '../util/subgraphCapabilities';
 import { usePOContext } from './POContext';
 import { useRefreshSubscription, RefreshEvent } from './RefreshContext';
 import { useSubgraphClient } from '../util/apolloClient';
@@ -316,12 +316,19 @@ export const VotingProvider = ({ children }) => {
     // Proposer attribution self-enables: probe the serving subgraph's schema
     // once (cached) and upgrade to the richer query only when the field exists
     // — asking for an unknown field errors the entire org query.
-    const [proposerSupported, setProposerSupported] = useState(false);
+    //
+    // Seeded synchronously from the cached answer — see peekCapability. Both
+    // production endpoints already serve `proposer`, so initialising to `false`
+    // meant every load fetched the voting query twice: once bare, then again
+    // with proposer once the probe resolved a microtask later.
+    const [proposerSupported, setProposerSupported] = useState(
+        () => peekCapability(subgraphUrl, CAPABILITY.PROPOSAL_PROPOSER) === true
+    );
     useEffect(() => {
         let cancelled = false;
-        // Reset on every endpoint switch: a cross-chain org may serve an older
+        // Re-seed on every endpoint switch: a cross-chain org may serve an older
         // schema, and carrying `true` over would error its entire org query.
-        setProposerSupported(false);
+        setProposerSupported(peekCapability(subgraphUrl, CAPABILITY.PROPOSAL_PROPOSER) === true);
         if (!subgraphUrl) return undefined;
         hasProposerField(subgraphUrl).then((has) => {
             if (!cancelled) setProposerSupported(!!has);

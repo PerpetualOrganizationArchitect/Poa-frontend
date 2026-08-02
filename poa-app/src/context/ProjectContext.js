@@ -7,7 +7,7 @@ import { formatTokenAmount } from '../util/formatToken';
 import { getTokenByAddress } from '../util/tokens';
 import { useUserActive } from '../hooks/useUserActive';
 import { useSubgraphClient } from '../util/apolloClient';
-import { hasCapability, CAPABILITY } from '../util/subgraphCapabilities';
+import { hasCapability, peekCapability, CAPABILITY } from '../util/subgraphCapabilities';
 
 const ProjectContext = createContext();
 
@@ -36,13 +36,20 @@ export const ProjectProvider = ({ children }) => {
     // TaskManager v7 claim-release fields (subgraph-pop #201) only exist on newer
     // deployments, and one unknown field fails the WHOLE query — which here would
     // blank the entire task board. So probe first and upgrade the document only
-    // once the serving endpoint is known to have them. Both gateway defaults are
-    // currently behind Studio, so this reads false until they are republished.
-    const [releasesSupported, setReleasesSupported] = useState(false);
+    // once the serving endpoint is known to have them.
+    //
+    // Seed synchronously from the cached answer: starting at `false` and flipping
+    // after the async probe renders once with the base document — enough for
+    // Apollo to put it on the wire — and then fetches the whole board a SECOND
+    // time with the rich one, on every load and every org switch. peekCapability
+    // returns undefined when genuinely unknown, where base-first is correct.
+    const [releasesSupported, setReleasesSupported] = useState(
+        () => peekCapability(subgraphUrl, CAPABILITY.TASK_RELEASES) === true
+    );
     useEffect(() => {
         let cancelled = false;
-        // Reset on endpoint change: a different chain may serve an older schema.
-        setReleasesSupported(false);
+        // Re-seed on endpoint change: a different chain may serve an older schema.
+        setReleasesSupported(peekCapability(subgraphUrl, CAPABILITY.TASK_RELEASES) === true);
         if (!subgraphUrl) return undefined;
         hasCapability(subgraphUrl, CAPABILITY.TASK_RELEASES).then((has) => {
             if (!cancelled) setReleasesSupported(!!has);

@@ -8,13 +8,8 @@
  * harness): the requirement evaluator and the introspection document builder.
  */
 
-import { describe, it, expect } from 'vitest';
-import {
-  satisfies,
-  buildIntrospectionQuery,
-  hasCapability,
-  CAPABILITY,
-} from './subgraphCapabilities';
+import { describe, it, expect, vi} from 'vitest';
+import { satisfies, buildIntrospectionQuery, hasCapability, CAPABILITY, peekCapability } from './subgraphCapabilities';
 
 /** Introspection result shaped like introspect() returns: type -> Set|null. */
 const typeMap = (entries) => new Map(Object.entries(entries).map(
@@ -96,5 +91,41 @@ describe('hasCapability guards', () => {
     await expect(hasCapability(undefined, CAPABILITY.TASK_RELEASES)).resolves.toBe(false);
     await expect(hasCapability('', CAPABILITY.TASK_RELEASES)).resolves.toBe(false);
     await expect(hasCapability('https://x/y', null)).resolves.toBe(false);
+  });
+});
+
+describe('peekCapability — synchronous seed', () => {
+  it('returns undefined when nothing is known (no probe fired)', () => {
+    expect(peekCapability('https://unknown.example/x', CAPABILITY.TASK_RELEASES)).toBeUndefined();
+  });
+
+  it('returns undefined for missing inputs rather than a false negative', () => {
+    expect(peekCapability(null, CAPABILITY.TASK_RELEASES)).toBeUndefined();
+    expect(peekCapability('https://x.example', null)).toBeUndefined();
+  });
+
+  it('reads a cached positive from localStorage synchronously', () => {
+    const url = 'https://peek-positive.example/sg';
+    const store = {};
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => { store[k] = v; },
+      },
+    });
+    store[`poa:subgraphCapability:taskReleases:${url}`] = '1';
+    expect(peekCapability(url, CAPABILITY.TASK_RELEASES)).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it('does NOT report an in-flight probe as false', async () => {
+    const url = 'https://peek-inflight.example/sg';
+    vi.stubGlobal('window', { localStorage: { getItem: () => null, setItem: () => {} } });
+    vi.stubGlobal('fetch', () => new Promise(() => {})); // never settles
+    hasCapability(url, CAPABILITY.TASK_RELEASES); // memoises a pending Promise
+    // A Promise in the cache means "unknown" — reporting false here would make a
+    // capable endpoint fetch the base document on every load, forever.
+    expect(peekCapability(url, CAPABILITY.TASK_RELEASES)).toBeUndefined();
+    vi.unstubAllGlobals();
   });
 });

@@ -110,6 +110,39 @@ async function introspect(subgraphUrl, typeNames) {
  * @param {Object} capability - one of CAPABILITY.*
  * @returns {Promise<boolean>}
  */
+/**
+ * SYNCHRONOUS read of an already-known answer: `true`/`false` when settled,
+ * `undefined` when genuinely unknown (never probed, or a probe is in flight).
+ *
+ * This is what makes the "positive answers skip the base→rich switch" claim
+ * above actually true. Consumers hold the answer in useState; with no
+ * synchronous seed they must start at `false`, render once with the base
+ * document — which is already enough for Apollo to put it on the wire — and
+ * only then flip to the rich one. That is a second full fetch of the same data
+ * on EVERY load, and the board query is measured in megabytes.
+ *
+ * Deliberately does not probe; pair it with hasCapability() so an unknown
+ * answer still resolves asynchronously.
+ */
+export function peekCapability(subgraphUrl, capability) {
+  if (!subgraphUrl || !capability) return undefined;
+
+  const mk = memKey(subgraphUrl, capability);
+  if (memory.has(mk)) {
+    const v = memory.get(mk);
+    // An in-flight probe is memoised as a Promise — that is "unknown", not false.
+    return typeof v === 'boolean' ? v : undefined;
+  }
+
+  try {
+    if (typeof window !== 'undefined' && window.localStorage.getItem(storageKey(subgraphUrl, capability)) === '1') {
+      return true;
+    }
+  } catch { /* storage unavailable — unknown */ }
+
+  return undefined;
+}
+
 export function hasCapability(subgraphUrl, capability) {
   if (!subgraphUrl || !capability) return Promise.resolve(false);
 

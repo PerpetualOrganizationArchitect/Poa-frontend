@@ -550,14 +550,14 @@ const SetterActionSelector = ({
                   values={proposal.setterValues || {}}
                   onChange={(values) => onChange({
                     setterValues: values,
-                    // Keep the suggested description tracking the params. The
-                    // title was written when the action was picked and is the
-                    // member's to edit from here on.
-                    ...applyAutoCopy(proposal, {
-                      description: describeTemplate(
-                        selectedTemplate, values, roleNames, projectNames,
-                      ),
-                    }),
+                    // Keep the suggested copy tracking the params. Titles are
+                    // curated and static for most templates, so re-offering one
+                    // is a no-op (applyAutoCopy only writes on a real change);
+                    // a template that sharpens its title from its params gets to
+                    // update it here. Either way an edited field is left alone.
+                    ...applyAutoCopy(proposal, buildSetterCopy(
+                      selectedTemplate, values, roleNames, projectNames,
+                    )),
                   })}
                   allRoles={allRoles}
                   allProjects={allProjects}

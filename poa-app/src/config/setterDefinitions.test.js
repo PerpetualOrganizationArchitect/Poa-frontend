@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { utils } from 'ethers';
+import { diffInvites, summarizeProposal } from '@/lib/zkemail/inviteDisplay';
 import {
   SETTER_TEMPLATES,
   SETTER_CATEGORIES,
@@ -14,6 +15,7 @@ import {
   normalizeBytes32,
   SETTER_TITLE_FALLBACK,
   buildSetterCopy,
+  SETTER_TITLE_MAX,
 } from './setterDefinitions';
 
 // ── Title copy members read (from #465) ──────────────────────────────────
@@ -48,7 +50,7 @@ describe('SETTER_TEMPLATES autoTitle', () => {
 
   it('stays short enough to sit in the title input', () => {
     for (const t of SETTER_TEMPLATES) {
-      expect(t.autoTitle.length, `${t.id}: ${t.autoTitle}`).toBeLessThanOrEqual(60);
+      expect(t.autoTitle.length, `${t.id}: ${t.autoTitle}`).toBeLessThanOrEqual(SETTER_TITLE_MAX);
     }
   });
 
@@ -513,5 +515,49 @@ describe('email-invites copy flows through the wizard pipeline', () => {
     expect(t.describe).toBeUndefined();
     const { description } = buildSetterCopy(t, { threshold: '60' }, {}, {});
     expect(description).toContain('If this vote passes:');
+  });
+});
+
+// The title is what a member meets on the board. Static is right for most
+// templates, but where the params ARE the decision the title should say it.
+describe('a template can sharpen its own title', () => {
+  const CID = `0x${'22'.repeat(32)}`;
+  const base = { cid: CID, root: `0x${'11'.repeat(32)}` };
+  const titleFor = (values) => buildSetterCopy(getTemplateById('email-invites'), values, {}, {}).title;
+
+  it('states the change once the list has been read', () => {
+    expect(titleFor({ ...base, summary: 'Email invites: 2 added, 1 removed, 5 invited in total' }))
+      .toBe('Email invites: 2 added, 1 removed, 5 invited in total');
+  });
+
+  it('keeps the curated title until then', () => {
+    expect(titleFor(base)).toBe('Change who can join by email');
+  });
+
+  it('refuses a sharpened title that would not fit the input', () => {
+    const tooLong = `Email invites: ${'x'.repeat(SETTER_TITLE_MAX)}`;
+    expect(titleFor({ ...base, summary: tooLong })).toBe('Change who can join by email');
+  });
+
+  it('leaves every other template on its curated title', () => {
+    for (const t of SETTER_TEMPLATES) {
+      if (t.id === 'email-invites') continue;
+      expect(t.retitle, `${t.id} should not define retitle`).toBeUndefined();
+    }
+  });
+
+  // Whatever the real summariser can emit has to fit, or the board silently
+  // falls back and the specificity is lost.
+  it('every summary the list can produce fits the budget', () => {
+    const mk = (n, p) => Array.from({ length: n }, (_, i) => ({
+      type: 'domain', identifier: `${p}${i}.example.com`, hatIds: ['100'], roleIndexes: [],
+    }));
+    for (const [next, cur] of [
+      [mk(999, 'n'), mk(999, 'c')], [mk(12, 'n'), mk(9, 'c')],
+      [mk(40, 'n'), null], [mk(7, 'n'), mk(7, 'n')],
+    ]) {
+      const line = summarizeProposal(diffInvites(next, cur), next.length);
+      expect(line.length, `too long: "${line}"`).toBeLessThanOrEqual(SETTER_TITLE_MAX);
+    }
   });
 });

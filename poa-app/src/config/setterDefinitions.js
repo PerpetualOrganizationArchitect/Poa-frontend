@@ -124,6 +124,9 @@ export const CONTRACT_MAP = {
 // USER-FRIENDLY TEMPLATES
 // ============================================================================
 
+/** Longest a proposal title should be, so it sits in the title input unclipped. */
+export const SETTER_TITLE_MAX = 60;
+
 /**
  * `name` is the picker label (title case, sorted next to its siblings).
  * `autoTitle` is the pre-filled *proposal title* a member votes on, so it is
@@ -178,6 +181,9 @@ export const SETTER_TEMPLATES = [
     preview: (values) => (
       values.summary || `Change who can join by email (list ${abbreviateHash(normalizeBytes32(values.cid))})`
     ),
+    // Once the field has read the list, the title states the change itself.
+    // Null until then, so the curated autoTitle stands in.
+    retitle: (values) => values.summary || null,
     // The description a member reads, written from the real list once the field
     // has read it: who is joining, who is losing their invite, and that approving
     // replaces the whole list. Null until then, so the preview line stands in.
@@ -865,8 +871,21 @@ export function templateParamsReady(template, values) {
  */
 export function buildSetterCopy(template, values, roleNames, projectNames) {
   if (!template) return { title: null, description: null };
-  const title = SETTER_TITLE_FALLBACK(template);
+  let title = SETTER_TITLE_FALLBACK(template);
   if (!templateParamsReady(template, values)) return { title, description: null };
+  // Most titles are curated and static — but a template whose params carry the
+  // actual decision can say it. "Email invites: 2 added, 1 removed" is a better
+  // thing to meet on the board than "Change who can join by email". Falls back to
+  // the curated autoTitle when there is nothing specific yet, or it would not fit.
+  if (typeof template.retitle === 'function') {
+    try {
+      const sharper = template.retitle(values || {}, roleNames, projectNames);
+      if (typeof sharper === 'string' && sharper.trim()
+          && sharper.trim().length <= SETTER_TITLE_MAX) {
+        title = sharper.trim();
+      }
+    } catch { /* keep the curated autoTitle */ }
+  }
   // A template can write its own prose when it has more to say than one line —
   // the invite list names who is joining and who is losing their invite. It
   // returns null until it has something real, so the preview still covers the

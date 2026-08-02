@@ -173,30 +173,104 @@ export function describeProposal(diff, invites, ctx = {}) {
     if (changed.length) {
       lines.push('', `Different roles (${changed.length}): ${joinList(changed.map((i) => describeLine(i, ctx)))}`);
     }
-    if (!added.length && !removed.length && !changed.length) {
-      lines.push('', 'Nothing changes. This is the same list that is already in use.');
-    } else if (kept.length) {
-      lines.push('', `${kept.length} other ${kept.length === 1 ? 'invite stays' : 'invites stay'} as ${kept.length === 1 ? 'it is' : 'they are'}.`);
+    const unchanged = !added.length && !removed.length && !changed.length;
+    if (unchanged) {
+      lines.push('', 'The same people stay invited, with the same roles. Approving this '
+        + 'publishes the list again so it stays the one the group has agreed to.');
+    } else {
+      if (kept.length) {
+        lines.push('', `${kept.length} other ${kept.length === 1 ? 'invite stays' : 'invites stay'} as ${kept.length === 1 ? 'it is' : 'they are'}.`);
+      }
+      // Only worth saying when something is actually being dropped or altered —
+      // after "nothing changes" it reads as a contradiction, and it would be the
+      // second sentence in a row opening "Approving this".
+      lines.push('', 'Approving this replaces the whole list.');
     }
-    lines.push('', 'Approving this replaces the whole list.');
   }
 
   return lines.join('\n');
 }
 
 /**
- * The one-line summary that becomes the proposal title and the "if this passes" text.
- * States the CHANGE, not just the size, so a member can read the board without
- * opening anything. Every branch stays in one shape: "Email invites: <what changed>".
+ * "anyone at acme.com", "alice@b.com and 2 others" — the subjects, named.
+ *
+ * describeWho capitalises for use as a row label ("Anyone at acme.com"); these
+ * names always land mid-sentence, so the lead is lowercased back.
  */
-export function summarizeProposal(diff, total) {
-  if (!diff || diff.isFirstList) {
-    return `Email invites: ${total} invited`;
+function namePeople(invites) {
+  const names = (invites || [])
+    .map(describeWho)
+    .filter(Boolean)
+    .map((n) => n.replace(/^Anyone at /, 'anyone at '));
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names[0]} and ${names.length - 1} others`;
+}
+
+/** The one role they all grant, or null when they differ (so we don't misstate it). */
+function sharedRole(invites, ctx) {
+  const sets = (invites || []).map((i) => inviteRoleNames(i, ctx).slice().sort().join(', '));
+  if (!sets.length) return null;
+  const first = sets[0];
+  if (!first || sets.some((s) => s !== first)) return null;
+  return first;
+}
+
+/**
+ * The title a member meets on the board. It has to say what the vote DOES, in
+ * their words: who is being let in, and as what.
+ *
+ * Naming people is the whole point, so the rich form is tried first and only
+ * degrades to counts when it would not fit the title input — a clipped
+ * half-sentence is worse than an honest count.
+ */
+export function summarizeProposal(diff, invites = [], ctx = {}, max = 60) {
+  const list = Array.isArray(invites) ? invites : [];
+  const total = list.length;
+  const fit = (...candidates) => candidates.find((c) => c && c.length <= max) || candidates[candidates.length - 1];
+
+  // Nothing live to compare against, or everything is new: this is an invitation.
+  const added = !diff || diff.isFirstList ? list : diff.added;
+  const removed = diff && !diff.isFirstList ? diff.removed : [];
+  const changed = (diff && !diff.isFirstList ? diff.changed : []) || [];
+
+  const asRole = (people) => {
+    const role = sharedRole(people, ctx);
+    const who = namePeople(people);
+    return role
+      ? fit(`Let ${who} join as ${role}`, `Let ${people.length} more join as ${role}`, `Invite ${people.length} more by email`)
+      : fit(`Let ${who} join by email`, `Invite ${people.length} more by email`);
+  };
+
+  if (added.length && !removed.length && !changed.length) return asRole(added);
+
+  if (!added.length && removed.length && !changed.length) {
+    return fit(
+      `Stop ${namePeople(removed)} joining by email`,
+      `Remove ${removed.length} email ${removed.length === 1 ? 'invite' : 'invites'}`,
+    );
   }
-  const parts = [];
-  if (diff.added.length) parts.push(`${diff.added.length} added`);
-  if (diff.removed.length) parts.push(`${diff.removed.length} removed`);
-  if (diff.changed?.length) parts.push(`${diff.changed.length} changed`);
-  if (!parts.length) return `Email invites: no change (${total} invited)`;
-  return `Email invites: ${parts.join(', ')}, ${total} invited in total`;
+
+  if (!added.length && !removed.length && changed.length) {
+    return fit(
+      `Change the role for ${namePeople(changed)}`,
+      `Change the role for ${changed.length} email ${changed.length === 1 ? 'invite' : 'invites'}`,
+    );
+  }
+
+  if (added.length || removed.length || changed.length) {
+    const parts = [];
+    if (added.length) parts.push(`${added.length} added`);
+    if (removed.length) parts.push(`${removed.length} removed`);
+    if (changed.length) parts.push(`${changed.length} changed`);
+    return fit(`Email invites: ${parts.join(', ')}`);
+  }
+
+  // Same people, same roles. The vote still re-publishes the list on-chain, so
+  // say that plainly rather than "no change", which reads as a pointless vote.
+  return fit(
+    `Re-approve the same ${total} email ${total === 1 ? 'invite' : 'invites'}`,
+    'Re-approve the current email invites',
+  );
 }

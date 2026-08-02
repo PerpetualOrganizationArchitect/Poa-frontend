@@ -102,42 +102,68 @@ describe('what a vote changes', () => {
   });
 });
 
-describe('the sentence members read on the board', () => {
-  it('states the change, not just the size', () => {
-    const d = diffInvites([domain('a.com'), domain('b.com')], [domain('a.com'), domain('c.com')]);
-    const line = summarizeProposal(d, 2);
-    expect(line).toContain('1 added');
-    expect(line).toContain('1 removed');
+describe('the title members read on the board', () => {
+  const title = (next, cur) => summarizeProposal(diffInvites(next, cur), next, ctx);
+
+  // The whole point: say who is being let in, and as what.
+  it('names the people and the role for an invitation', () => {
+    expect(title([domain('acme.com')], null)).toBe('Let anyone at acme.com join as Member');
+    expect(title([email('alice@b.org', [2])], null)).toBe('Let alice@b.org join as Treasurer');
   });
 
-  it('reads plainly for a first list', () => {
-    expect(summarizeProposal(diffInvites([domain('a.com')], null), 1))
-      .toBe('Email invites: 1 invited');
+  it('names the first and counts the rest', () => {
+    expect(title([domain('a.com'), domain('b.com'), domain('c.com')], null))
+      .toBe('Let anyone at a.com and 2 others join as Member');
   });
 
-  it('says so when nothing actually changes', () => {
-    const list = [domain('a.com')];
-    expect(summarizeProposal(diffInvites(list, list), 1)).toBe('Email invites: no change (1 invited)');
+  it('omits the role when they differ, rather than misstating it', () => {
+    const line = title([domain('a.com'), email('b@c.com', [2])], null);
+    expect(line).toBe('Let anyone at a.com and b@c.com join by email');
+    expect(line).not.toMatch(/as Member|as Treasurer/);
   });
 
-  // The title members read on the board once said "Invite 3 invites to join by
-  // email" — the verb and the counted noun collided. Guard that exact shape.
-  it('never says "Invite N invites"', () => {
-    for (const line of [
-      summarizeProposal(diffInvites([domain('a.com')], null), 1),
-      summarizeProposal(diffInvites([domain('a.com'), domain('b.com')], null), 2),
-      summarizeProposal(diffInvites([domain('a.com')], [domain('b.com')]), 1),
-      summarizeProposal(diffInvites([domain('a.com')], [domain('a.com')]), 1),
-      summarizeProposal(null, 3),
-    ]) {
-      expect(line, `clumsy count phrasing in "${line}"`).not.toMatch(/invite\s+\d+\s+invite/i);
-      expect(line, `clumsy count phrasing in "${line}"`).not.toMatch(/\d+\s+invites?\s+(to|in total)\b/i);
-    }
+  it('says who is losing their invite', () => {
+    expect(title([domain('a.com')], [domain('a.com'), email('bob@old.com')]))
+      .toBe('Stop bob@old.com joining by email');
+  });
+
+  it('falls back to counts when both directions changed', () => {
+    const line = title([domain('a.com'), domain('n.com')], [domain('a.com'), email('bob@old.com')]);
+    expect(line).toBe('Email invites: 1 added, 1 removed');
+  });
+
+  it('describes a role change without a subject-verb clash', () => {
+    const line = title([domain('a.com', [2])], [domain('a.com', [0])]);
+    expect(line).toBe('Change the role for anyone at a.com');
+    expect(line).not.toMatch(/anyone .* join as/);
+  });
+
+  // "no change (3 invited)" read as a pointless vote. It still re-publishes the
+  // list on-chain, so the title has to say something a member can act on.
+  it('explains an unchanged list instead of saying "no change"', () => {
+    const list = [domain('a.com'), domain('b.com'), domain('c.com')];
+    const line = title(list, list);
+    expect(line).toBe('Re-approve the same 3 email invites');
+    expect(line).not.toMatch(/no change/i);
+  });
+
+  it('lowercases "anyone" mid-sentence', () => {
+    expect(title([domain('acme.com')], null)).not.toMatch(/Let Anyone/);
+  });
+
+  it('degrades to a count rather than overflowing the title input', () => {
+    const long = [domain('an-extremely-long-domain-name.example.org'), domain('b.com'), domain('c.com')];
+    const line = title(long, null);
+    expect(line.length).toBeLessThanOrEqual(60);
+    expect(line).toBe('Let 3 more join as Member');
   });
 
   it('never leaks a hash or implementation word', () => {
-    const d = diffInvites([domain('a.com')], [domain('b.com')]);
-    for (const line of [summarizeProposal(d, 1), summarizeProposal(null, 3)]) {
+    for (const line of [
+      title([domain('a.com')], [domain('b.com')]),
+      title([domain('a.com')], null),
+      summarizeProposal(null, [domain('a.com')], ctx),
+    ]) {
       expect(line).not.toMatch(/0x|merkle|allowlist|CID|bytes32/i);
     }
   });
@@ -164,8 +190,14 @@ describe('the auto-written description', () => {
     expect(text).not.toMatch(/Losing their invite/);
   });
 
-  it('says plainly when nothing changes', () => {
-    expect(describeProposal(diffInvites(next, next), next, ctx)).toMatch(/Nothing changes/);
+  it('explains an unchanged list rather than calling it nothing', () => {
+    const text = describeProposal(diffInvites(next, next), next, ctx);
+    expect(text).toMatch(/same people stay invited/);
+    expect(text).not.toMatch(/Nothing changes/);
+    // The replace warning is noise when nothing is dropped, and reads as a
+    // contradiction right after "the same people stay invited".
+    expect(text).not.toMatch(/replaces the whole list/);
+    expect((text.match(/Approving this/g) || []).length).toBe(1);
   });
 
   it('stays readable with a long list', () => {

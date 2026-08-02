@@ -187,7 +187,7 @@ export default function EmailInviteListField({ cid, root, onReport }) {
   const reportedRef = useRef('');
   useEffect(() => {
     const readable = state === 'ready';
-    const summary = readable ? summarizeProposal(diff, invites.length) : '';
+    const summary = readable ? summarizeProposal(diff, invites, ctx) : '';
     const signature = `${readable}|${summary}`;
     if (signature === reportedRef.current) return;
     reportedRef.current = signature;

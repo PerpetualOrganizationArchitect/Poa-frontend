@@ -25,7 +25,14 @@ export const NETWORKS = {
     rpcUrl: process.env.NEXT_PUBLIC_GNOSIS_RPC_URL || 'https://rpc.gnosischain.com',
     blockExplorer: 'https://gnosisscan.io',
     isTestnet: false,
-    subgraphUrl: process.env.NEXT_PUBLIC_GNOSIS_SUBGRAPH_URL || 'https://gateway.thegraph.com/api/204b1629ba85581bdc48cc6701e821ff/subgraphs/id/576YA6oF16nA2uG5Q9KFfBSvJm4ZNKzWZkwh8eWXaxJs',
+    // Studio `version/latest`, not the decentralized gateway: publishing to the
+    // gateway is a manual step, so it lags Studio by however long that takes. The
+    // gateway deployment currently predates subgraph-pop #201 — no release fields
+    // and, more importantly, no TaskUnclaimed handler — which keeps the v7 claim
+    // release invisible (see util/subgraphCapabilities). Studio serves the current
+    // build. Trade-off: Studio free tier is rate-limited, which the 40s poll in
+    // ProjectContext is already sized for.
+    subgraphUrl: process.env.NEXT_PUBLIC_GNOSIS_SUBGRAPH_URL || 'https://api.studio.thegraph.com/query/73367/poa-gnosis-v-1/version/latest',
     bountyTokens: {
       BREAD: '0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3',
       USDC:  '0xDDAfbb505ad214D7b80b1f830fcCc89B60fB7A83',

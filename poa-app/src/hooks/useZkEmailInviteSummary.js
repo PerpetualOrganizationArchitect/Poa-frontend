@@ -48,7 +48,7 @@ const READ_ABI = [
 
 // Public read fallbacks: the primary public RPCs rate-limit browsers (observed live: a single
 // failed merkleRoot() read used to kill the whole claim flow). Order: configured URL first.
-const FALLBACK_RPCS = {
+export const FALLBACK_RPCS = {
   // Browser-verified (CORS + concurrent-safe): publicnode is far more generous than the default
   // rpc.gnosischain.com under browser load. drpc/blastapi 400 or CORS-fail in-browser; 1rpc fails
   // concurrent — all avoided.
@@ -56,8 +56,14 @@ const FALLBACK_RPCS = {
   42161: ['https://arbitrum-one-rpc.publicnode.com', 'https://arbitrum.publicnode.com'],
 };
 
-/** Read root+cid, trying each RPC in turn with a short retry — only throw when ALL fail. */
-async function readCommitment(rpcUrls, address) {
+/**
+ * Read root+cid, trying each RPC in turn with a short retry — only throw when ALL fail.
+ *
+ * Exported because the shared service-layer read goes through a provider bound to the
+ * HOME chain, which returns data="0x" for an org contract on another chain. Any surface
+ * that needs the live commitment for a specific org chain should use this.
+ */
+export async function readCommitment(rpcUrls, address) {
   let lastErr;
   for (const url of rpcUrls) {
     for (let attempt = 0; attempt < 2; attempt++) {

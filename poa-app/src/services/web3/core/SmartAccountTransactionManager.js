@@ -372,7 +372,28 @@ export class SmartAccountTransactionManager {
       };
     }
 
-    // 2. Decode the underlying contract revert reason, if any.
+    // 2. Disambiguate the shared BudgetExceeded selector.
+    //
+    // BudgetLib (a project's token budget) and PaymasterHubErrors (the org's gas
+    // allowance) declare the same selector, so the shared map can only offer the
+    // reader both meanings. Inside a paymaster validation revert we know it is the
+    // gas one — say which, and what to do about it.
+    if (/validatePaymasterUserOp|AA33/i.test(text)) {
+      const reason = this._decodeContractRevertMessage(text, originalError, iface);
+      if (reason && /BudgetExceeded|go over a configured budget/i.test(reason)) {
+        return {
+          category: 'paymaster_error',
+          userMessage:
+            'Your role has used up its sponsored-gas allowance for this period, so the group '
+            + 'can’t cover this transaction right now. The allowance refills on a schedule — or '
+            + 'an admin can raise it in the paymaster settings.',
+          technicalMessage: text,
+          originalError,
+        };
+      }
+    }
+
+    // 3. Decode the underlying contract revert reason, if any.
     const contractReason = this._decodeContractRevertMessage(text, originalError, iface);
     if (contractReason) {
       return {
@@ -383,7 +404,7 @@ export class SmartAccountTransactionManager {
       };
     }
 
-    // 3. ERC-4337 AA error codes — use fallback-specific messages when paymaster
+    // 4. ERC-4337 AA error codes — use fallback-specific messages when paymaster
     // was expected but unavailable (so the user knows the real issue is no gas
     // budget + no funds, not a contract problem).
     for (const [code, userMessage] of Object.entries(AA_ERROR_MESSAGES)) {
@@ -398,7 +419,7 @@ export class SmartAccountTransactionManager {
       }
     }
 
-    // 4. Paymaster-specific errors.
+    // 5. Paymaster-specific errors.
     if (text.includes('paymaster') || text.includes('Paymaster')) {
       return {
         category: 'paymaster_error',
@@ -408,7 +429,7 @@ export class SmartAccountTransactionManager {
       };
     }
 
-    // 5. Generic — if paymaster fell back, hint at the real cause.
+    // 6. Generic — if paymaster fell back, hint at the real cause.
     return {
       category: 'smart_account_error',
       userMessage: this._paymasterFellBack

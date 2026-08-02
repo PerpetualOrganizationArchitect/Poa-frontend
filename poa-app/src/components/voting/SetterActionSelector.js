@@ -36,8 +36,8 @@ import {
   SETTER_TEMPLATES,
   CONTRACT_MAP,
   RAW_FUNCTIONS,
-  getTemplatesByCategory,
   getTemplateById,
+  isContractAvailable,
   SETTER_TITLE_FALLBACK,
   buildSetterCopy,
 } from '@/config/setterDefinitions';
@@ -279,6 +279,7 @@ const SetterActionSelector = ({
   projectNames = {},
   votingClasses = [],
   currentValues = null,
+  contractAddresses = null,
 }) => {
   // Everything this screen shows is derived from the proposal, never from local
   // state: the wizard's Back/Next remounts this component, and a category (or a
@@ -298,13 +299,38 @@ const SetterActionSelector = ({
     return null;
   }, [mode, proposal.setterTemplate]);
 
+  // Only offer actions whose target contract this org actually deployed.
+  // Optional modules (Email Invites) are absent on most orgs, and a template
+  // pointing at a missing contract can only produce a proposal that executes
+  // nothing. Callers that don't pass contractAddresses (tests) see everything.
+  const availableTemplates = useMemo(() => {
+    if (!contractAddresses) return SETTER_TEMPLATES;
+    return SETTER_TEMPLATES.filter(t => isContractAvailable(t.contract, contractAddresses));
+  }, [contractAddresses]);
+
+  // Hide a category entirely once none of its actions are available, rather
+  // than letting members click into an empty list.
+  const availableCategories = useMemo(() => (
+    Object.entries(SETTER_CATEGORIES)
+      .filter(([key]) => availableTemplates.some(t => t.category === key))
+  ), [availableTemplates]);
+
   // Get templates for the selected category
   const categoryTemplates = useMemo(() => {
-    if (selectedCategory) {
-      return getTemplatesByCategory(selectedCategory);
-    }
-    return [];
-  }, [selectedCategory]);
+    if (!selectedCategory) return [];
+    return availableTemplates.filter(t => t.category === selectedCategory);
+  }, [selectedCategory, availableTemplates]);
+
+  // Same rule for the raw-ABI escape hatch: don't list contracts the org
+  // doesn't have, and don't list ones we have no function definitions for.
+  const availableContracts = useMemo(() => (
+    Object.entries(CONTRACT_MAP).filter(([key]) => (
+      // templateOnly functions are not raw-callable, so a contract whose entries are
+      // all template-only has nothing to offer here.
+      (RAW_FUNCTIONS[key] || []).some((fn) => !fn.templateOnly)
+      && (!contractAddresses || isContractAvailable(key, contractAddresses))
+    ))
+  ), [contractAddresses]);
 
   // Get raw function for advanced mode
   const selectedRawFunction = useMemo(() => {
@@ -431,7 +457,7 @@ const SetterActionSelector = ({
                 Select a category:
               </Text>
               <SimpleGrid columns={2} spacing={3}>
-                {Object.entries(SETTER_CATEGORIES).map(([key, category]) => (
+                {availableCategories.map(([key, category]) => (
                   <CategoryCard
                     key={key}
                     categoryKey={key}
@@ -524,14 +550,14 @@ const SetterActionSelector = ({
                   values={proposal.setterValues || {}}
                   onChange={(values) => onChange({
                     setterValues: values,
-                    // Keep the suggested description tracking the params. The
-                    // title was written when the action was picked and is the
-                    // member's to edit from here on.
-                    ...applyAutoCopy(proposal, {
-                      description: describeTemplate(
-                        selectedTemplate, values, roleNames, projectNames,
-                      ),
-                    }),
+                    // Keep the suggested copy tracking the params. Titles are
+                    // curated and static for most templates, so re-offering one
+                    // is a no-op (applyAutoCopy only writes on a real change);
+                    // a template that sharpens its title from its params gets to
+                    // update it here. Either way an edited field is left alone.
+                    ...applyAutoCopy(proposal, buildSetterCopy(
+                      selectedTemplate, values, roleNames, projectNames,
+                    )),
                   })}
                   allRoles={allRoles}
                   allProjects={allProjects}
@@ -593,7 +619,7 @@ const SetterActionSelector = ({
             })}
             {...inputStyles}
           >
-            {Object.entries(CONTRACT_MAP).map(([key, contract]) => (
+            {availableContracts.map(([key, contract]) => (
               <option key={key} value={key} style={{ background: '#1a1a2e' }}>
                 {contract.displayName}
               </option>
@@ -610,7 +636,7 @@ const SetterActionSelector = ({
               })}
               {...inputStyles}
             >
-              {RAW_FUNCTIONS[proposal.setterContract]?.map((fn) => (
+              {RAW_FUNCTIONS[proposal.setterContract]?.filter((fn) => !fn.templateOnly).map((fn) => (
                 <option key={fn.name} value={fn.name} style={{ background: '#1a1a2e' }}>
                   {fn.name} - {fn.description}
                 </option>

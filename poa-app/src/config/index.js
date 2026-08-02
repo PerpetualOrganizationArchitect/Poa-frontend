@@ -42,8 +42,10 @@ export {
   SETTER_TEMPLATES,
   CONTRACT_MAP,
   RAW_FUNCTIONS,
-  getTemplatesByCategory,
   getTemplateById,
   getRawFunctions,
   isContractAvailable,
+  isBytes32,
+  normalizeBytes32,
+  abbreviateHash,
 } from './setterDefinitions';

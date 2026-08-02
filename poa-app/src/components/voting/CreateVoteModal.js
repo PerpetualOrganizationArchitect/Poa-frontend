@@ -117,6 +117,9 @@ const CreateVoteModal = ({
   currentValues = null,
   leaderboardData = [],
   ongoingProposals = [],
+  // Org contract addresses keyed by CONTRACT_MAP contextKey. Used to hide
+  // rule-change actions targeting contracts this org never deployed.
+  contractAddresses = null,
 }) => {
   const { allRoles } = useRoleNames();
   const { orgChainId } = usePOContext();
@@ -766,6 +769,7 @@ const CreateVoteModal = ({
                         votingClasses={votingClasses}
                         currentValues={currentValues}
                         projectNames={projectNames}
+                        contractAddresses={contractAddresses}
                       />
                     )}
                   </VStack>

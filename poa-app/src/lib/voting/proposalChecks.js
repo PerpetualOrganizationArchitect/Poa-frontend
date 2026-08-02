@@ -50,6 +50,13 @@ export function configError(proposal) {
       );
       return `Please provide a value for "${missing?.label || missing?.name || 'this action'}".`;
     }
+    // A template can gate its own config screen — the invite list only counts as
+    // configured once the field has actually READ and verified it. Without this a
+    // deep link counts as configured, skips the screen where the list is fetched
+    // and shown, and lands a member on details having never seen what they are
+    // approving (and with the submit-time validate then blocking them anyway).
+    const templateError = tmpl?.validate?.(p.setterValues || {});
+    if (templateError) return templateError;
     return null;
   }
 

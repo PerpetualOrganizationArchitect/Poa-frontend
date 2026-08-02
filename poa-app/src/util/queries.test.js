@@ -14,6 +14,10 @@ import {
   FETCH_VOTING_DATA_WITH_PROPOSER,
   FETCH_PROPOSAL_BY_ID,
   FETCH_PROPOSAL_BY_ID_WITH_PROPOSER,
+  FETCH_PROJECTS_DATA_NEW,
+  FETCH_PROJECTS_DATA_WITH_RELEASES,
+  FETCH_ORG_FULL_DATA,
+  FETCH_ORG_STRUCTURE_DATA,
 } from './queries';
 
 /** Print the selection set of the first field named `name` (by field name, not alias). */
@@ -74,5 +78,64 @@ describe('rescue query shape', () => {
   it('only the proposer variant asks for proposer fields', () => {
     expect(print(FETCH_PROPOSAL_BY_ID)).not.toContain('proposerUsername');
     expect(print(FETCH_PROPOSAL_BY_ID_WITH_PROPOSER)).toContain('proposerUsername');
+  });
+});
+
+/**
+ * The projects query backs the ENTIRE task board, and one unknown field fails
+ * the whole document — so a release field leaking into the base variant blanks
+ * the board on every endpoint that predates subgraph-pop #201 (today: both
+ * decentralized-gateway defaults the app ships with). These are the guards.
+ */
+describe('projects query — v7 claim-release gating', () => {
+  it('the base variant asks for NO release fields', () => {
+    const text = print(FETCH_PROJECTS_DATA_NEW);
+    for (const field of ['releaseCount', 'lastReleasedAt', 'releases', 'selfRelease']) {
+      expect(text).not.toContain(field);
+    }
+  });
+
+  it('the release variant asks for all of them', () => {
+    const text = print(FETCH_PROJECTS_DATA_WITH_RELEASES);
+    for (const field of ['releaseCount', 'lastReleasedAt', 'releases', 'selfRelease']) {
+      expect(text).toContain(field);
+    }
+  });
+
+  it('the two variants differ ONLY by the release fields', () => {
+    // Both come from one builder, so this should hold by construction; the test
+    // pins it so a future hand-edit to either one cannot silently diverge.
+    const base = selectionOf(FETCH_PROJECTS_DATA_NEW, 'tasks');
+    const rich = selectionOf(FETCH_PROJECTS_DATA_WITH_RELEASES, 'tasks');
+    expect(base).toBeTruthy();
+    expect(rich).not.toBe(base);
+    const stripped = rich
+      .replace(/releases\(orderBy: releasedAt, orderDirection: desc, first: 5\) \{[^}]*\}/, '')
+      .replace(/\breleaseCount\b/, '')
+      .replace(/\blastReleasedAt\b/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    expect(stripped).toBe(base);
+  });
+
+  it('both take $orgId as their only variable, under distinct operation names', () => {
+    const ops = [FETCH_PROJECTS_DATA_NEW, FETCH_PROJECTS_DATA_WITH_RELEASES].map(
+      (doc) => doc.definitions.find((d) => d.kind === 'OperationDefinition')
+    );
+    for (const op of ops) {
+      expect(op.variableDefinitions).toHaveLength(1);
+      expect(op.variableDefinitions[0].variable.name.value).toBe('orgId');
+    }
+    expect(ops[0].name.value).not.toBe(ops[1].name.value);
+  });
+
+  it('keeps release fields out of the app-global org queries', () => {
+    // FETCH_ORG_FULL_DATA / FETCH_ORG_STRUCTURE_DATA back every page, not just
+    // the board — an ungated field there is a whole-app outage, so they stay bare.
+    for (const doc of [FETCH_ORG_FULL_DATA, FETCH_ORG_STRUCTURE_DATA]) {
+      const text = print(doc);
+      expect(text).not.toContain('totalTasksReleased');
+      expect(text).not.toContain('releaseCount');
+    }
   });
 });

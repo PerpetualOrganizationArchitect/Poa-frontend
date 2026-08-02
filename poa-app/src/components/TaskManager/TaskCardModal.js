@@ -22,8 +22,14 @@ import {
   Image,
   Link,
   Tooltip,
+  AlertDialog,
+  AlertDialogOverlay,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogBody,
+  AlertDialogFooter,
 } from '@chakra-ui/react';
-import { CheckIcon, WarningIcon, ExternalLinkIcon, InfoOutlineIcon, CloseIcon, TimeIcon } from '@chakra-ui/icons';
+import { CheckIcon, WarningIcon, ExternalLinkIcon, InfoOutlineIcon, CloseIcon, TimeIcon, RepeatIcon } from '@chakra-ui/icons';
 import { hasBounty as checkHasBounty, getTokenByAddress } from '../../util/tokens';
 import EditTaskModal from './EditTaskModal';
 import TaskApplicationModal from './TaskApplicationModal';
@@ -38,7 +44,9 @@ import {
   deadlineSeverity,
   SEVERITY_SCHEME,
   toSec,
+  nowMs,
 } from '@/util/deadlineUtils';
+import { canReleaseTask, releaseActionLabel, releaseConfirmCopy, ReleaseReason } from '@/util/releaseGate';
 import { useNow } from '@/hooks/useNow';
 import { useDataBaseContext } from '@/context/dataBaseContext';
 import { useUserContext } from '@/context/UserContext';
@@ -100,9 +108,9 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const [selectedAssignee, setSelectedAssignee] = useState(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
-  const { moveTask, deleteTask, applyForTask, approveApplication, assignTask, takeOverTask, rejectTask } = useTaskBoard();
+  const { moveTask, deleteTask, applyForTask, approveApplication, assignTask, takeOverTask, releaseTask, rejectTask } = useTaskBoard();
   const { hasExecRole, hasMemberRole, address: account, fetchUserDetails, userData } = useUserContext();
-  const { projectsData } = useProjectContext();
+  const { projectsData, releasesSupported } = useProjectContext();
   const { getUsernameByAddress, setSelectedProject, projects } = useDataBaseContext();
   const { safeFetchFromIpfs } = useIPFScontext();
   const router = useRouter();
@@ -111,6 +119,8 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const toast = useToast();
   const { isOpen, onOpen, onClose} = useDisclosure();
   const { isOpen: isApplicationModalOpen, onOpen: onOpenApplicationModal, onClose: onCloseApplicationModal } = useDisclosure();
+  const releaseConfirm = useDisclosure();
+  const releaseCancelRef = useRef();
   const [showAssignSection, setShowAssignSection] = useState(false);
   // After ~30s of the modal sitting in the indexing state, soften the copy so a
   // slow subgraph doesn't read as "stuck".
@@ -193,6 +203,20 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const now = useNow(15000);
   const isClaimer = !!account && task?.claimedBy?.toLowerCase() === account?.toLowerCase();
   const claimExpired = columnId === 'inProgress' && isClaimExpired(task, now);
+  // v7 claim release. The gate lives in util/releaseGate so the contract's two
+  // routes (claimer always; ASSIGN holder only once expired) are decided in one
+  // pure, tested place. `now` is threaded in so the button re-evaluates on the
+  // same 15s tick as the countdown rather than going stale.
+  // `releasesSupported` gates the action on the org's INDEXER, not the chain: an
+  // endpoint without the TaskUnclaimed handler would let the tx succeed and then
+  // keep rendering the task as claimed forever.
+  const release = useMemo(
+    () => canReleaseTask(
+      { task, columnId, address: account, canAssign, releasesIndexed: releasesSupported },
+      now
+    ),
+    [task, columnId, account, canAssign, releasesSupported, now]
+  );
   const enforcedDeadline = columnId === 'inProgress' ? effectiveDeadlineSec(task) : null;
   const taskDue = dueDateSec(task);
   const taskAbs = toSec(task?.absoluteDeadline);
@@ -498,6 +522,41 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
 
     rejectTask(task, rejectionReason).catch(error => {
       console.error("Error rejecting task:", error);
+    });
+  };
+
+  const handleReleaseTask = async () => {
+    // Re-decide against the live clock rather than the memoised `release`.
+    // For a third-party release the contract's expiry check is strict, and a
+    // browser running fast would otherwise fire a tx that reverts BadStatus —
+    // which reads as "wrong status", not "the claim is still live".
+    // nowMs(), not Date.now(): every other deadline surface honours the
+    // `poa.devNowOffsetMs` time-travel offset, and a handler on the real clock
+    // would refuse the very release the button just offered under the offset.
+    const live = canReleaseTask(
+      { task, columnId, address: account, canAssign, releasesIndexed: releasesSupported },
+      nowMs()
+    );
+    if (!live.allowed) {
+      releaseConfirm.onClose();
+      toast({
+        title: live.reason === ReleaseReason.CLAIM_NOT_EXPIRED ? 'Claim still active' : 'Cannot release this task',
+        description: live.reason === ReleaseReason.CLAIM_NOT_EXPIRED
+          ? "This claim hasn't expired yet, so only its claimer can give it back."
+          : 'This task is no longer in a state that can be released.',
+        status: 'info',
+        duration: 4000,
+        isClosable: true,
+        position: 'top',
+      });
+      return;
+    }
+
+    releaseConfirm.onClose();
+    await handleCloseModal();
+
+    releaseTask(task).catch(error => {
+      console.error("Error releasing task:", error);
     });
   };
 
@@ -973,6 +1032,50 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                     </Box>
                   )}
 
+                  {/* Claim-release history (TaskManager v7). `releases` is only
+                      selected when the endpoint is known to serve it, so this
+                      block silently stays closed on older subgraphs — never a
+                      "0 releases" empty state. `selfRelease` is the on-chain
+                      discriminator (caller == previousClaimer), so we can say
+                      which of the two routes it was with no extra call. */}
+                  {task.releaseCount > 0 && task.releases?.length > 0 && (
+                    <Box w="100%" p={4} bg="rgba(124, 45, 18, 0.45)" borderRadius="lg" borderLeft="4px solid" borderColor="orange.400">
+                      <HStack mb={2}>
+                        <RepeatIcon color="orange.300" />
+                        <Text fontWeight="bold" color="orange.200" fontSize="md">
+                          Returned to Open{task.releaseCount > 1 ? ` (${task.releaseCount} times)` : ''}
+                        </Text>
+                      </HStack>
+                      <VStack align="stretch" spacing={1}>
+                        {task.releases.map((r) => (
+                          <Text key={r.id || `${r.previousClaimer}-${r.releasedAt}`} fontSize="xs" color="gray.300">
+                            <UsernameLink
+                              username={r.previousClaimerUsername}
+                              hasUsername={!!r.previousClaimerUsername}
+                              color="gray.200"
+                              fontWeight="medium"
+                              fontSize="xs"
+                            />
+                            {r.selfRelease ? ' gave it back' : ' had an expired claim released'}
+                            {!r.selfRelease && r.callerUsername && (
+                              <>
+                                {' by '}
+                                <UsernameLink
+                                  username={r.callerUsername}
+                                  hasUsername={!!r.callerUsername}
+                                  color="gray.200"
+                                  fontWeight="medium"
+                                  fontSize="xs"
+                                />
+                              </>
+                            )}
+                            {r.releasedAt && <> on {new Date(r.releasedAt * 1000).toLocaleDateString()}</>}
+                          </Text>
+                        ))}
+                      </VStack>
+                    </Box>
+                  )}
+
                   {/* Rejection Reason Input (In Review) */}
                   {columnId === 'inReview' && canReviewTask && (
                     <Box>
@@ -1269,6 +1372,23 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                     Reject
                   </Button>
                 )}
+                {release.allowed && (
+                  <Tooltip
+                    label={release.isClaimer
+                      ? 'Return this task to Open. You lose the claim and anyone can pick it up.'
+                      : 'Free this expired claim so the task returns to Open for anyone.'}
+                    placement="top"
+                  >
+                    <Button
+                      colorScheme={release.isClaimer ? 'orange' : 'red'}
+                      variant="outline"
+                      onClick={releaseConfirm.onOpen}
+                      size="sm"
+                    >
+                      {releaseActionLabel(release.reason)}
+                    </Button>
+                  </Tooltip>
+                )}
                 <Tooltip
                   label={`Only ${task.claimerUsername || 'the current claimer'} can submit this task.`}
                   isDisabled={!(columnId === 'inProgress' && !isClaimer && !claimExpired)}
@@ -1315,6 +1435,45 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
         onApply={handleApply}
         task={task}
       />
+
+      {/* Release confirmation — destructive and not undoable by the releaser:
+          the claim is gone and anyone eligible can take the task next. */}
+      <AlertDialog
+        isOpen={releaseConfirm.isOpen}
+        leastDestructiveRef={releaseCancelRef}
+        onClose={releaseConfirm.onClose}
+        isCentered
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent bg="gray.800" color="white" borderRadius="2xl">
+            <AlertDialogHeader fontSize="lg" fontWeight="800">
+              {release.isClaimer ? 'Give this task back?' : 'Release this claim?'}
+            </AlertDialogHeader>
+            <AlertDialogBody fontSize="sm" color="gray.200">
+              {releaseConfirmCopy(release.reason, task.claimerUsername)}
+            </AlertDialogBody>
+            <AlertDialogFooter>
+              <Button
+                ref={releaseCancelRef}
+                onClick={releaseConfirm.onClose}
+                variant="outline"
+                color="gray.200"
+                borderColor="whiteAlpha.400"
+                _hover={{ bg: 'whiteAlpha.100' }}
+              >
+                {release.isClaimer ? 'Keep it' : 'Cancel'}
+              </Button>
+              <Button
+                onClick={handleReleaseTask}
+                ml={3}
+                colorScheme={release.isClaimer ? 'orange' : 'red'}
+              >
+                {releaseActionLabel(release.reason)}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
     </>
   ) : null;
 };

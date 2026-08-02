@@ -324,6 +324,30 @@ export class TaskService {
   }
 
   /**
+   * Release a claimed task back to the pool (TaskManager v7).
+   *
+   * The claimer may ALWAYS release their own claim — the contract runs no
+   * permission check on that branch, deliberately: an assignee never needed
+   * CLAIM to hold the task, and hats get revoked mid-claim, so gating this
+   * would trap exactly the people it frees. Anyone else needs ASSIGN on the
+   * project AND an already-expired claim. Only CLAIMED tasks; a SUBMITTED task
+   * must be rejected first (both refusals surface as BadStatus).
+   *
+   * @param {string} contractAddress - TaskManager contract address
+   * @param {string|number} taskId - Task ID
+   * @param {Object} [options={}] - Transaction options
+   * @returns {Promise<TransactionResult>}
+   */
+  async unclaimTask(contractAddress, taskId, options = {}) {
+    requireAddress(contractAddress, 'TaskManager contract address');
+
+    const contract = this.factory.createWritable(contractAddress, TaskManagerABI);
+    const parsedTaskId = parseTaskId(taskId);
+
+    return this.txManager.execute(contract, 'unclaimTask', [parsedTaskId], options);
+  }
+
+  /**
    * Submit a task for review
    * @param {string} contractAddress - TaskManager contract address
    * @param {string|number} taskId - Task ID

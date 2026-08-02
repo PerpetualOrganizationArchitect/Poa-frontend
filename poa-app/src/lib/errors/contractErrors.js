@@ -327,7 +327,9 @@ export const CONTRACT_ERROR_MESSAGES = {
   ZeroUser: 'No account was provided for this action. Reconnect your wallet or passkey and try again.',
 
   // ---- TaskManager: claim / submit / review / create (task flows) ----
-  BadStatus: "This task isn't in the right state for that action — it may already be claimed, submitted, or completed. Refresh the board and try again.",
+  // v7 note: releasing a claim shares this error for two distinct cases — wrong status,
+  // and "the claim you tried to release hasn't expired yet" — so the copy stays neutral.
+  BadStatus: "This task isn't in the right state for that action — it may already be claimed, released, submitted, or completed. Refresh the board and try again.",
   NotClaimer: 'Only the person who claimed this task can do this. If it should be yours, claim it first.',
   NotFound: 'This task no longer exists or could not be found. It may have been deleted — refresh the board.',
   RequiresApplication: 'This task requires an application before you can claim it. Apply first, then claim once you are accepted.',

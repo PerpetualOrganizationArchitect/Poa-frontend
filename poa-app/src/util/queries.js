@@ -612,9 +612,34 @@ export const FETCH_PROPOSAL_BY_ID_WITH_PROPOSER = gql`
 `;
 
 
-// Fetch projects and tasks data
-export const FETCH_PROJECTS_DATA_NEW = gql`
-  query FetchProjectsDataNew($orgId: Bytes!) {
+/**
+ * Claim-release fields (subgraph-pop #201, TaskManager v7). Spliced into the
+ * task selection ONLY when the serving endpoint is confirmed to have them —
+ * see util/subgraphCapabilities CAPABILITY.TASK_RELEASES. One unknown field
+ * fails the whole document, and this one backs the entire task board, so an
+ * ungated splice would blank the board on every not-yet-upgraded endpoint
+ * (which today includes both decentralized-gateway defaults).
+ */
+const TASK_RELEASE_FIELDS = `
+            releaseCount
+            lastReleasedAt
+            releases(orderBy: releasedAt, orderDirection: desc, first: 5) {
+              id
+              previousClaimer
+              previousClaimerUsername
+              caller
+              callerUsername
+              selfRelease
+              releasedAt
+            }`;
+
+/**
+ * Both projects documents come from this one builder rather than being copied,
+ * so the base and release-aware variants cannot drift — the task selection is
+ * ~60 fields and this query backs the whole board.
+ */
+const projectsDataQuery = (operationName, releaseFields) => gql`
+  query ${operationName}($orgId: Bytes!) {
     organization(id: $orgId) {
       id
       taskManager {
@@ -704,7 +729,7 @@ export const FETCH_PROJECTS_DATA_NEW = gql`
               previousClaimerUsername
               newClaimer
               expiredAt
-            }
+            }${releaseFields}
             createdAt
             assignedAt
             submittedAt
@@ -728,6 +753,16 @@ export const FETCH_PROJECTS_DATA_NEW = gql`
     }
   }
 `;
+
+// Fetch projects and tasks data. Base variant — safe against every deployed
+// subgraph version.
+export const FETCH_PROJECTS_DATA_NEW = projectsDataQuery('FetchProjectsDataNew', '');
+
+// Same query plus the v7 claim-release fields. Gated on CAPABILITY.TASK_RELEASES.
+export const FETCH_PROJECTS_DATA_WITH_RELEASES = projectsDataQuery(
+  'FetchProjectsDataWithReleases',
+  TASK_RELEASE_FIELDS
+);
 
 // Fetch user data within an organization
 export const FETCH_USER_DATA_NEW = gql`

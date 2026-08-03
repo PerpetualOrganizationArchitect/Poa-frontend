@@ -6,6 +6,7 @@ import {
   VStack,
   Text,
   Icon,
+  Tooltip,
 } from '@chakra-ui/react';
 import {
   FiHelpCircle,
@@ -63,21 +64,26 @@ export const INTENT_OPTIONS = [
   },
 ];
 
-const IntentCard = ({ option, onSelect }) => {
+const IntentCard = ({ option, onSelect, isDisabled = false }) => {
   const IconComponent = option.icon;
-  return (
+  const card = (
     <Box
       as="button"
       type="button"
       textAlign="left"
       p={4}
       borderRadius="md"
-      cursor="pointer"
+      cursor={isDisabled ? 'not-allowed' : 'pointer'}
       bg="whiteAlpha.50"
       border="1px solid"
       borderColor="rgba(148, 115, 220, 0.2)"
-      onClick={() => onSelect(option.type)}
-      _hover={{
+      opacity={isDisabled ? 0.45 : 1}
+      // aria-disabled (not the native attr): native disabled buttons swallow
+      // pointer/focus events, which would mute the explanatory Tooltip and
+      // make the reason unreachable by keyboard. The onClick guard enforces.
+      aria-disabled={isDisabled}
+      onClick={() => { if (!isDisabled) onSelect(option.type); }}
+      _hover={isDisabled ? {} : {
         borderColor: 'purple.400',
         bg: 'whiteAlpha.100',
       }}
@@ -101,13 +107,34 @@ const IntentCard = ({ option, onSelect }) => {
       </HStack>
     </Box>
   );
+  if (!isDisabled) return card;
+  return (
+    <Tooltip
+      hasArrow
+      label="Your roles can't start this kind of vote. Ask an admin to grant you a vote-creator role."
+    >
+      {card}
+    </Tooltip>
+  );
 };
 
-const IntentGallery = ({ onSelect }) => {
+/**
+ * `canCreatePoll` / `canCreateProposal` gate the cards by which contract each
+ * intent submits to: binding intents go through Blended (Hybrid) governance,
+ * the rest through the poll (DirectDemocracy) contract. The creator sets can
+ * differ per contract, so a poll-only creator sees binding cards disabled
+ * instead of walking the wizard into an Unauthorized revert.
+ */
+const IntentGallery = ({ onSelect, canCreatePoll = true, canCreateProposal = true }) => {
   return (
     <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
       {INTENT_OPTIONS.map((option) => (
-        <IntentCard key={option.type} option={option} onSelect={onSelect} />
+        <IntentCard
+          key={option.type}
+          option={option}
+          onSelect={onSelect}
+          isDisabled={option.binding ? !canCreateProposal : !canCreatePoll}
+        />
       ))}
     </SimpleGrid>
   );

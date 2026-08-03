@@ -120,6 +120,11 @@ const CreateVoteModal = ({
   // Org contract addresses keyed by CONTRACT_MAP contextKey. Used to hide
   // rule-change actions targeting contracts this org never deployed.
   contractAddresses = null,
+  // Per-contract creator gates (on-chain creator hats via useVoteCreateGate).
+  // Binding intents submit through Hybrid, the rest through DirectDemocracy;
+  // the sets can differ, so the gallery disables cards the user can't submit.
+  canCreatePoll = true,
+  canCreateProposal = true,
 }) => {
   const { allRoles } = useRoleNames();
   const { orgChainId } = usePOContext();
@@ -361,8 +366,16 @@ const CreateVoteModal = ({
     return null;
   }, [step, configError, fieldErrors]);
 
+  // Creator gate for the CURRENT proposal type — not just the intent gallery.
+  // A restored draft (or a deep link) jumps past the gallery straight into
+  // later steps, and the poll/proposal creator sets can differ, so the gate
+  // must hold at every step and at final submission, or a poll-only creator
+  // submits a Hybrid draft into a contract rejection after the IPFS upload.
+  const typeAllowed = isTourActive
+    || (BINDING_TYPES.has(proposal.type) ? canCreateProposal : canCreatePoll);
+
   // Gates leaving the current step (and, on the last step, submitting).
-  const canSubmit = !firstError && !isTourStep;
+  const canSubmit = !firstError && !isTourStep && typeAllowed;
 
   const whoCanVoteLabel = useMemo(() => {
     if (isBinding) return 'All members (Blended voting)';
@@ -512,7 +525,13 @@ const CreateVoteModal = ({
                 >
                   What do you want to do?
                 </Text>
-                <IntentGallery onSelect={handleSelectIntent} />
+                <IntentGallery
+                  onSelect={handleSelectIntent}
+                  // Tour demo never submits ("Demo only"), so keep every card
+                  // walkable there regardless of the viewer's creator hats.
+                  canCreatePoll={isTourActive || canCreatePoll}
+                  canCreateProposal={isTourActive || canCreateProposal}
+                />
               </Box>
             ) : (
               <>
@@ -880,8 +899,10 @@ const CreateVoteModal = ({
               <Tooltip
                 label={isTourStep
                   ? "Demo only — finish the tour to create a real proposal"
-                  : firstError || ''}
-                isDisabled={!isTourStep && !firstError}
+                  : !typeAllowed
+                    ? "Your roles can't submit this kind of vote. Ask an admin to grant you a vote-creator role."
+                    : firstError || ''}
+                isDisabled={!isTourStep && typeAllowed && !firstError}
                 hasArrow
                 placement="top"
               >

@@ -17,7 +17,7 @@
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/router";
-import { Box, Container, Center, Flex, Heading, Button, Icon, Link, useToast } from "@chakra-ui/react";
+import { Box, Container, Center, Flex, Heading, Button, Icon, Link, Tooltip, useToast } from "@chakra-ui/react";
 import { PiPlusCircle, PiScales } from "react-icons/pi";
 import {
   getTemplateById, isContractAvailable, CONTRACT_MAP, buildSetterCopy,
@@ -30,6 +30,7 @@ import { useVotingContext } from "@/context/VotingContext";
 import { useUserContext } from "@/context/UserContext";
 import { useAuth } from "@/context/AuthContext";
 import { useWeb3, useOrgTheme, useVoteLanes } from "@/hooks";
+import { useVoteCreateGate } from "@/hooks/useVoteCreateGate";
 import { useOrgName } from "@/hooks/useOrgName";
 import { VotingType } from "@/services/web3/domain/VotingService";
 
@@ -100,9 +101,14 @@ const VotingPage = () => {
     refetch,
   } = useVotingContext();
 
-  const { hasMemberRole } = useUserContext();
+  const { hasMemberRole, userDataLoading } = useUserContext();
   const { accountAddress } = useAuth();
   const isConnected = !!accountAddress;
+
+  // On-chain creator-hat gate: membership alone is NOT enough to create votes —
+  // createProposal reverts Unauthorized for members without a creator hat,
+  // after they've walked the whole wizard and uploaded metadata to IPFS.
+  const { canCreatePoll, canCreateProposal, canCreateAny, creatorGateLoading } = useVoteCreateGate();
 
   // Derived lifecycle lanes (shared definitions with /votes + dashboard).
   const { lanes, loading, error } = useVoteLanes();
@@ -242,6 +248,19 @@ const VotingPage = () => {
   const handleProposeRuleChange = useCallback((templateId, initialValues = null) => {
     const template = getTemplateById(templateId);
     if (!template) return;
+    // Rule changes are setter proposals on HybridVoting — require its creator
+    // hat up front. This also closes the ?propose= deep link, which previously
+    // opened the wizard with no gate at all.
+    if (!canCreateProposal) {
+      toast({
+        title: "You can't propose changes here",
+        description: 'Only members holding a vote-creator role can open proposals.',
+        status: 'info',
+        duration: 6000,
+        isClosable: true,
+      });
+      return;
+    }
     // A ?propose= link can outlive the org it was copied from. Opening the form
     // for a contract this org never deployed would only build an empty proposal
     // — say so instead of dropping the click on the floor.
@@ -287,7 +306,7 @@ const VotingPage = () => {
     });
     setDeepLinkedOpen(true);
     setShowCreatePoll(true);
-  }, [restoreProposal, votingClasses, contractAddresses, toast, roleNames]);
+  }, [restoreProposal, votingClasses, contractAddresses, toast, roleNames, canCreateProposal]);
 
   // Deep link support: /voting?propose=<templateId> (from the /rules page)
   // opens the create modal with that rule template preselected, once.
@@ -298,6 +317,12 @@ const VotingPage = () => {
     // router.isReady alone races the subgraph fetch, and handleProposeRuleChange
     // would reject the template as "not deployed here" before we know better.
     if (poContextLoading) return;
+    // Also wait for the creator gate's inputs: on a cold load the user query
+    // can only START after orgId resolves, so at this instant hasMemberRole is
+    // still false and consuming the param would bounce an authorized creator
+    // with a false denial (and strip the link). isConnected scopes the wait —
+    // visitors' userDataLoading never settles and they should get the toast.
+    if (creatorGateLoading || (isConnected && userDataLoading)) return;
     const templateId = router.query.propose;
     if (!templateId || typeof templateId !== 'string') return;
     proposeParamHandledRef.current = true;
@@ -312,7 +337,7 @@ const VotingPage = () => {
       Object.entries(router.query).filter(([key]) => key !== 'propose' && !key.startsWith('prefill_')),
     );
     router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
-  }, [router.isReady, router.query, handleProposeRuleChange, router, poContextLoading]);
+  }, [router.isReady, router.query, handleProposeRuleChange, router, poContextLoading, creatorGateLoading, isConnected, userDataLoading]);
 
   // Finalize ("Count the votes") — routed through PollDetail's AlertDialog.
   // RETURNS the result so the confirm dialog can await it.
@@ -356,7 +381,7 @@ const VotingPage = () => {
     );
   }, [voting, executeWithNotification]);
 
-  const canCreate = hasMemberRole;
+  const canCreate = canCreateAny;
 
   // No org to render: a dead end, not a pending state. After every hook.
   if (orgGate) return orgGate;
@@ -421,17 +446,26 @@ const VotingPage = () => {
                   Our rules
                 </Link>
               </Flex>
-              {canCreate && (
-                <Button
-                  leftIcon={<Icon as={PiPlusCircle} boxSize={5} />}
-                  minH="44px"
-                  bg="#9473DC"
-                  color="white"
-                  _hover={{ bg: "#B79BF0" }}
-                  onClick={handleCreatePollClick}
+              {hasMemberRole && (
+                <Tooltip
+                  isDisabled={canCreate}
+                  hasArrow
+                  label="Only members holding a vote-creator role can start votes. Ask an admin to grant you one."
                 >
-                  Create vote
-                </Button>
+                  <Box display="inline-block">
+                    <Button
+                      leftIcon={<Icon as={PiPlusCircle} boxSize={5} />}
+                      minH="44px"
+                      bg="#9473DC"
+                      color="white"
+                      _hover={{ bg: "#B79BF0" }}
+                      isDisabled={!canCreate}
+                      onClick={handleCreatePollClick}
+                    >
+                      Create vote
+                    </Button>
+                  </Box>
+                </Tooltip>
               )}
             </Flex>
 
@@ -451,9 +485,11 @@ const VotingPage = () => {
             />
           </Box>
 
-          {/* Constitution — "Our rules" (collapsible, below the board). */}
+          {/* Constitution — "Our rules" (collapsible, below the board).
+              Rule changes are HybridVoting setter proposals, so the propose
+              rows follow the proposal-creator gate, not bare membership. */}
           <OrgConstitution
-            hasMemberRole={hasMemberRole}
+            hasMemberRole={canCreateProposal}
             onProposeRuleChange={handleProposeRuleChange}
           />
 
@@ -480,6 +516,8 @@ const VotingPage = () => {
             leaderboardData={leaderboardData}
             ongoingProposals={hybridVotingOngoing}
             contractAddresses={contractAddresses}
+            canCreatePoll={canCreatePoll}
+            canCreateProposal={canCreateProposal}
           />
 
           {/* ONE detail surface for ongoing AND completed polls. */}

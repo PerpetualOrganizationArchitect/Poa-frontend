@@ -62,13 +62,34 @@ export const ProjectProvider = ({ children }) => {
     // pollInterval keeps task data fresh. cache-and-network shows cached data instantly.
     // 40s balances liveness against The Graph Studio rate limits.
     // Polling pauses when the tab is hidden or the user is idle (useUserActive).
-    const { data, refetch } = useQuery(projectsQuery, {
+    const { data, error, refetch } = useQuery(projectsQuery, {
         variables: { orgId: orgId },
         skip: !orgId,
         fetchPolicy: 'cache-and-network',
         pollInterval: isActive ? 40000 : 0,
         client,
     });
+
+    // Reset the board the moment the org changes — otherwise the previous org's
+    // projects survive until (and unless) the new org's query answers with a
+    // taskManager, and actions would pair the new org's TaskManager address
+    // with the old org's composite ids.
+    const prevOrgIdRef = useRef(orgId);
+    useEffect(() => {
+        if (prevOrgIdRef.current === orgId) return;
+        prevOrgIdRef.current = orgId;
+        setProjectsData([]);
+        setNextTaskId(0);
+        setGlobalRolePermissions([]);
+    }, [orgId]);
+
+    // True while this org's query has not answered yet (Apollo clears `data`
+    // when variables change; cache-and-network serves a revisit instantly from
+    // cache). Lets pages show a loader instead of a false "no projects" state.
+    // `!error` is the escape hatch: a persistent subgraph failure must render
+    // the (empty) board rather than an infinite spinner — the 40s poll then
+    // heals the board when the endpoint recovers.
+    const projectsLoading = !!orgId && !data && !error;
 
     // Ref-stabilize refetch so callbacks don't re-create when Apollo returns a new reference
     const refetchRef = useRef(refetch);
@@ -272,6 +293,7 @@ export const ProjectProvider = ({ children }) => {
 
     const contextValue = useMemo(() => ({
         projectsData,
+        projectsLoading,
         taskCount,
         recommendedTasks,
         nextTaskId,
@@ -282,7 +304,7 @@ export const ProjectProvider = ({ children }) => {
         // also cannot index a release — the board would show the task as still
         // claimed forever, and the next click would revert BadStatus.
         releasesSupported,
-    }), [projectsData, taskCount, recommendedTasks, nextTaskId, globalRolePermissions, releasesSupported]);
+    }), [projectsData, projectsLoading, taskCount, recommendedTasks, nextTaskId, globalRolePermissions, releasesSupported]);
 
     return (
         <ProjectContext.Provider value={contextValue}>

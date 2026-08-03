@@ -71,6 +71,32 @@ function normalizeHatId(hatId) {
 }
 
 /**
+ * Canonicalize a hat id to a decimal string so hex, decimal, and BigInt
+ * representations compare cleanly (subgraph vs on-chain reads).
+ */
+function canonicalHatId(hatId) {
+    const str = normalizeHatId(hatId);
+    if (!str) return '';
+    try {
+        return BigInt(str).toString();
+    } catch {
+        return str.toLowerCase();
+    }
+}
+
+/**
+ * Does the user wear at least one of the given hats?
+ * @param {string[]} userHatIds - Hat IDs the user currently holds
+ * @param {string[]} hatIds - Hat IDs to test against
+ * @returns {boolean}
+ */
+export function userWearsAnyHat(userHatIds, hatIds) {
+    if (!userHatIds?.length || !hatIds?.length) return false;
+    const normalized = new Set(userHatIds.map(canonicalHatId));
+    return hatIds.some((h) => normalized.has(canonicalHatId(h)));
+}
+
+/**
  * Check if a user has a specific permission for a project
  * @param {string[]} userHatIds - Array of hat IDs the user currently holds
  * @param {Array} projectRolePermissions - Array of ProjectRolePermission objects from the subgraph

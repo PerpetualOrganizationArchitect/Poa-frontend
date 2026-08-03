@@ -281,7 +281,7 @@ export const FETCH_VOTING_DATA_NEW = gql`
         id
         thresholdPct
         quorum
-        votingClasses(where: { isActive: true }, orderBy: classIndex, orderDirection: asc) {
+        votingClasses(first: 1000, orderBy: classIndex, orderDirection: asc) {
           id
           classIndex
           version
@@ -296,6 +296,7 @@ export const FETCH_VOTING_DATA_NEW = gql`
         proposals(orderBy: startTimestamp, orderDirection: desc, first: $first, where: { proposalId_lt: $hybridBefore }) {
           id
           proposalId
+          classesVersion
           title
           descriptionHash
           metadata {
@@ -370,7 +371,7 @@ export const FETCH_VOTING_DATA_WITH_PROPOSER = gql`
         id
         thresholdPct
         quorum
-        votingClasses(where: { isActive: true }, orderBy: classIndex, orderDirection: asc) {
+        votingClasses(first: 1000, orderBy: classIndex, orderDirection: asc) {
           id
           classIndex
           version
@@ -385,6 +386,7 @@ export const FETCH_VOTING_DATA_WITH_PROPOSER = gql`
         proposals(orderBy: startTimestamp, orderDirection: desc, first: $first, where: { proposalId_lt: $hybridBefore }) {
           id
           proposalId
+          classesVersion
           proposer
           proposerUsername
           title
@@ -479,6 +481,7 @@ export const FETCH_PROPOSAL_BY_ID = gql`
     proposal(id: $proposalId) {
       id
       proposalId
+      classesVersion
       title
       descriptionHash
       metadata {
@@ -546,6 +549,7 @@ export const FETCH_PROPOSAL_BY_ID_WITH_PROPOSER = gql`
     proposal(id: $proposalId) {
       id
       proposalId
+      classesVersion
       proposer
       proposerUsername
       title

@@ -177,7 +177,12 @@ function computeClassEntry({
     };
   }
 
-  // ERC20_BAL (shares / token) class
+  // ERC20_BAL (shares / token) class. The contract applies the class hat gate
+  // BEFORE the strategy switch (HybridVotingCore._calculateClassPower), so a
+  // hat-gated shares class requires the hat too — shares alone are not enough.
+  if (!userHoldsGatingHat(cls.hatIds, userHatIds)) {
+    return { ...base, eligible: false, ineligibleReason: 'no_role' };
+  }
   const balance = parseTokenBalance(userBalanceRaw || '0');
   const minBalance = parseTokenBalance(formatTokenAmount(cls.minBalance || '0'));
 
@@ -190,10 +195,13 @@ function computeClassEntry({
 
   const userPower = cls.quadratic ? sqrt(balance) : balance;
 
-  // Sum eligible power across the org from leaderboard balances.
+  // Sum eligible power across the org from leaderboard balances. Members who
+  // don't wear a class gate hat contribute nothing on-chain, so exclude them
+  // from the denominator too.
   let totalPower = 0n;
   if (Array.isArray(leaderboardData) && leaderboardData.length > 0) {
     for (const u of leaderboardData) {
+      if (!userHoldsGatingHat(cls.hatIds, u.hatIds || [])) continue;
       const b = parseTokenBalance(u.token || '0');
       if (b <= 0n || b < minBalance) continue;
       totalPower += cls.quadratic ? sqrt(b) : b;

@@ -102,11 +102,16 @@ Getting this wrong produces numbers that are 10^18 too large or too small.
 
 ### Subgraph queries need chain routing
 
-Apollo queries must pass `context: { subgraphUrl }` (from POContext). Without it,
-queries hit the default subgraph and return wrong-chain data.
+Org-scoped queries must pass a per-endpoint client: `useQuery(QUERY, { client:
+useSubgraphClient(subgraphUrl) })` (subgraphUrl from POContext), or
+`getClient(subgraphUrl)` for imperative queries. Without it, queries hit the
+default (Arbitrum) subgraph and return wrong-chain data.
 
-For cross-chain queries, use `fetchPolicy: 'no-cache'` — Apollo caches by
-query+variables, NOT by endpoint, so different chains poison each other's cache.
+Each endpoint gets its OWN ApolloClient + InMemoryCache, so cross-chain cache
+poisoning is structurally impossible — no `fetchPolicy: 'no-cache'` needed for
+that. The old `context: { subgraphUrl }` plumbing is deprecated (apolloClient.js);
+do not use it in new code. For query-all-chains fan-outs, use the helpers in
+`src/util/crossChainUsername.js` (queryAllChains pattern).
 
 ### Subgraph IDs have composite format
 

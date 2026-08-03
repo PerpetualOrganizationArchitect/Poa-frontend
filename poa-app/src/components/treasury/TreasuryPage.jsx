@@ -15,7 +15,7 @@ import { useRouter } from 'next/router';
 import { useQuery } from '@apollo/client';
 import { getClient, useSubgraphClient } from '@/util/apolloClient';
 import { usePOContext } from '@/context/POContext';
-import { useUserContext } from '@/context/UserContext';
+import { useVoteCreateGate } from '@/hooks/useVoteCreateGate';
 import { useOrgName } from '@/hooks/useOrgName';
 import { useRefreshSubscription, RefreshEvent } from '@/context/RefreshContext';
 import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
@@ -74,7 +74,11 @@ const TreasuryPage = () => {
     hideTreasury,
     orgChainId,
   } = usePOContext();
-  const { hasExecRole } = useUserContext();
+  // "Propose a payout" submits a HybridVoting governance proposal, so the
+  // button follows the on-chain proposal-creator hats — NOT the positional
+  // hasExecRole guess (roleHatIds[1]), which inverts on orgs whose senior
+  // role deployed first (e.g. Argus: Agent at index 0, Apprentice at 1).
+  const { canCreateProposal } = useVoteCreateGate();
   const { pageBackground } = useOrgTheme();
 
   // Redirect to dashboard if treasury is hidden (skip during tour to prevent bricking)
@@ -279,7 +283,7 @@ const TreasuryPage = () => {
                 <TreasuryHeader
                   memberCount={poMembers}
                   activeDistributionCount={openDistributionCount}
-                  isAdmin={hasExecRole}
+                  isAdmin={canCreateProposal}
                   onCreateDistribution={onCreateDistOpen}
                   onDeposit={onDepositOpen}
                   onFundBounties={taskManagerAddress ? onBountyDepositOpen : undefined}

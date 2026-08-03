@@ -177,6 +177,12 @@ export async function buildUserOpWithFallback({
   // Normalize: support both single paymasterData and paymasterDataEntries array
   const dataEntries = paymasterDataEntries || (paymasterData ? [paymasterData] : []);
 
+  // Last paymaster rejection — kept so the tx managers can say WHY sponsorship
+  // fell through (e.g. PaymasterHub RuleDenied: the selector isn't on the org's
+  // sponsored list) instead of reporting the self-funded AA21 as plain
+  // "your account has no funds".
+  let lastPaymasterRejection = null;
+
   // 2. Try with paymaster if available — iterate through all entries before giving up
   if (paymasterAddress && dataEntries.length > 0) {
     for (let i = 0; i < dataEntries.length; i++) {
@@ -199,6 +205,7 @@ export async function buildUserOpWithFallback({
           || msg.includes('validatePaymasterUserOp');
 
         if (isPaymasterRejection) {
+          lastPaymasterRejection = e;
           console.warn(`Paymaster rejected entry ${i + 1}/${dataEntries.length}, trying next:`, msg);
         } else {
           throw e;
@@ -211,7 +218,22 @@ export async function buildUserOpWithFallback({
   // 3. Self-funded (no paymaster fields)
   const userOp = { ...baseFields };
   console.log('Building self-funded UserOp (account pays gas)');
-  await estimateGas(userOp, bundlerClient, gasOverrides);
+  try {
+    await estimateGas(userOp, bundlerClient, gasOverrides);
+  } catch (e) {
+    // Thread the sponsorship-denial context through errors too (e.g. the AA21
+    // prefund fast-fail below) so the managers can compose an accurate message.
+    if (lastPaymasterRejection && !e.paymasterRejection) {
+      Object.defineProperty(e, 'paymasterRejection', { value: lastPaymasterRejection, enumerable: false });
+    }
+    throw e;
+  }
+  if (lastPaymasterRejection) {
+    // WHY sponsorship fell through — read by the tx managers for error copy.
+    // Non-enumerable so `{ ...userOp }` spreads (sendUserOperation) and
+    // getUserOpHash never see it.
+    Object.defineProperty(userOp, 'paymasterRejection', { value: lastPaymasterRejection, enumerable: false });
+  }
   return userOp;
 }
 
@@ -333,6 +355,15 @@ async function estimateGas(userOp, bundlerClient, gasOverrides = {}) {
     if (msg.includes('AA31') || msg.includes('AA32') || msg.includes('AA33')
         || msg.includes('paymaster') || msg.includes('Paymaster')
         || msg.includes('validatePaymasterUserOp')) {
+      throw e;
+    }
+
+    // Re-throw prefund failures: AA21 during self-funded estimation is
+    // deterministic (the account simply can't pay), so "generous defaults"
+    // would only sign + submit a doomed op — a pointless biometric prompt
+    // before the same rejection. Paymaster attempts never produce AA21
+    // (their deposit failures are AA31), so this can't break the fallback loop.
+    if (msg.includes('AA21') || msg.includes("didn't pay prefund")) {
       throw e;
     }
 

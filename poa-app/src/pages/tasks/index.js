@@ -4,6 +4,7 @@ import { Box, Center } from '@chakra-ui/react';
 import PulseLoader from "@/components/shared/PulseLoader";
 import MainLayout, { ALL_TASKS_ID } from '../../components/TaskManager/MainLayout';
 import { useDataBaseContext } from '@/context/dataBaseContext';
+import { useProjectContext } from '@/context/ProjectContext';
 import { useRouter } from 'next/router';
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import { usePOContext } from '@/context/POContext';
@@ -16,6 +17,7 @@ const Tasks = () => {
   const router = useRouter();
   const userDAO = useOrgName();
   const { setSelectedProjectId, projects } = useDataBaseContext();
+  const { projectsLoading } = useProjectContext();
   const { poContextLoading } = usePOContext();
   const { pageBackground } = useOrgTheme();
   const orgGate = useOrgGate();
@@ -62,7 +64,7 @@ const Tasks = () => {
         path="/tasks"
       />
       <Navbar />
-      {poContextLoading ? (
+      {poContextLoading || projectsLoading ? (
         <Center height="90vh" background={pageBackground()}>
           <PulseLoader size="xl" />
         </Center>

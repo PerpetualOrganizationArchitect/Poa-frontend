@@ -3,48 +3,21 @@
  * Resolves usernames to addresses via subgraph queries
  */
 
-import apolloClient from '@/util/apolloClient';
-import { GET_ACCOUNTS_BY_USERNAMES } from '@/util/queries';
+import { resolveUsernamesAcrossChains } from '@/util/crossChainUsername';
 
 /**
- * Resolve multiple usernames to addresses via subgraph
+ * Resolve multiple usernames to addresses via subgraph.
+ * Accounts live on whichever chain the user onboarded through (per-chain
+ * UniversalAccountRegistry), so resolution fans out across ALL mainnet
+ * subgraphs — a Gnosis-registered member must resolve when deploying to
+ * Gnosis, and vice versa. Resolved addresses are chain-portable (EOAs
+ * trivially; passkey accounts by chain-independent CREATE2 salt).
  * @param {string[]} usernames - Array of usernames to resolve
  * @returns {Promise<{resolved: Map<string, string>, notFound: string[]}>}
  */
 export async function resolveUsernames(usernames) {
-  if (!usernames || usernames.length === 0) {
-    return { resolved: new Map(), notFound: [] };
-  }
-
-  // Normalize usernames (lowercase, trim, filter empty)
-  const normalized = usernames
-    .map(u => u.toLowerCase().trim())
-    .filter(u => u.length > 0);
-
-  if (normalized.length === 0) {
-    return { resolved: new Map(), notFound: [] };
-  }
-
   try {
-    const { data } = await apolloClient.query({
-      query: GET_ACCOUNTS_BY_USERNAMES,
-      variables: { usernames: normalized },
-      fetchPolicy: 'network-only', // Always fetch fresh data
-    });
-
-    const resolved = new Map();
-    if (data?.accounts) {
-      data.accounts.forEach(acc => {
-        // Store lowercase username -> address mapping
-        // Note: 'user' field contains the address, 'username' is lowercase
-        resolved.set(acc.username.toLowerCase(), acc.user);
-      });
-    }
-
-    // Find usernames that weren't resolved
-    const notFound = normalized.filter(u => !resolved.has(u));
-
-    return { resolved, notFound };
+    return await resolveUsernamesAcrossChains(usernames);
   } catch (error) {
     console.error('Error resolving usernames:', error);
     throw new Error(`Failed to resolve usernames: ${error.message}`);
@@ -136,9 +109,18 @@ export async function resolveRoleUsernames(roles) {
       return role;
     }
 
+    // Throw rather than silently drop: an unresolved username here (resolution
+    // degraded between RolesStep validation and deploy) would otherwise omit a
+    // member from the deployed org with no warning.
     const addresses = usernames
-      .map(u => resolved.get(u.toLowerCase().trim()))
-      .filter(Boolean); // Filter out any unresolved (should not happen after validation)
+      .filter(u => u && u.trim())
+      .map(u => {
+        const address = resolved.get(u.toLowerCase().trim());
+        if (!address) {
+          throw new Error(`Could not resolve username "${u.trim()}" for role "${role.name}". Please re-verify members and try again.`);
+        }
+        return address;
+      });
 
     return {
       ...role,

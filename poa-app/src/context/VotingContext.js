@@ -7,8 +7,10 @@ import {
     FETCH_PROPOSAL_BY_ID_WITH_PROPOSER,
 } from '../util/queries';
 import { hasProposerField, peekCapability, CAPABILITY } from '../util/subgraphCapabilities';
+import { createChainClients } from '../services/web3/utils/chainClients';
+import DirectDemocracyVotingABI from '../../abi/DirectDemocracyVotingNew.json';
 import { usePOContext } from './POContext';
-import { useRefreshSubscription, RefreshEvent } from './RefreshContext';
+import { useRefreshSubscription, useRefreshEmit, RefreshEvent } from './RefreshContext';
 import { useSubgraphClient } from '../util/apolloClient';
 import { useUserActive } from '../hooks/useUserActive';
 import { useAuth } from './AuthContext';
@@ -269,6 +271,11 @@ function transformProposal(proposal, votingTypeId, type, thresholdPct = 0, quoru
         quorum,
         isHatRestricted: proposal.isHatRestricted,
         restrictedHatIds: proposal.restrictedHatIds || [],
+        // Class-config version snapshotted at createProposal — vote() enforces
+        // THIS version's classes, not the current ones. null only when the
+        // entity value itself is missing (consumers then fall back to current
+        // classes); both prod endpoints serve the field (verified 2026-08-02).
+        classesVersion: proposal.classesVersion != null ? Number(proposal.classesVersion) : null,
         // Passthroughs for subgraph fields that ship later (undefined until the
         // query fetches them — ProposalCard's proposer slot self-enables).
         proposerUsername: proposal.proposerUsername ?? proposal.creatorUsername ?? null,
@@ -287,6 +294,7 @@ const initialVotingState = {
     ongoingPolls: [],
     votingType: 'Hybrid',
     votingClasses: [],
+    votingClassesByVersion: {},
     // Rule constants (additive — surfaced for the Constitution panel). These are
     // the same threshold/quorum values already read from the org in the data
     // effect; storing them here makes the group's live rules legible on /voting.
@@ -308,10 +316,59 @@ function votingReducer(state, action) {
 export const VotingProvider = ({ children }) => {
     const [state, dispatch] = useReducer(votingReducer, initialVotingState);
 
-    const { orgId, subgraphUrl } = usePOContext();
+    const { orgId, subgraphUrl, directDemocracyVotingContractAddress, orgChainId } = usePOContext();
     const client = useSubgraphClient(subgraphUrl);
     const isActive = useUserActive();
     const { accountAddress } = useAuth();
+
+    // Contract-level DirectDemocracy voting hats — who may VOTE on polls.
+    // Seeded at initialize() without events, so the subgraph cannot supply
+    // them (POP#171); read once per org from the contract. null = unknown
+    // (loading / RPC failure) and MUST stay distinct from []: on-chain, an
+    // empty votingHats array means NOBODY can vote, while "unknown" fails
+    // open to today's membership-only gating.
+    // Remote-finalization detector state: last seen ongoing proposal ids per
+    // org, plus a ref-stable emit so the data effect can re-broadcast
+    // PROPOSAL_COMPLETED when POLLED data shows a proposal completing.
+    const { emit } = useRefreshEmit();
+    const emitRef = useRef(emit);
+    emitRef.current = emit;
+    const prevOngoingRef = useRef({ orgId: null, ongoing: new Set() });
+
+    const [ddVotingHats, setDdVotingHats] = useState(null);
+    const ddHatsSeqRef = useRef(0);
+    const loadDdVotingHats = useCallback((reset = false) => {
+        const seq = ++ddHatsSeqRef.current;
+        if (reset) setDdVotingHats(null);
+        if (!directDemocracyVotingContractAddress || !orgChainId) return;
+        const pc = createChainClients(orgChainId)?.publicClient;
+        if (!pc) return;
+        pc.readContract({
+            address: directDemocracyVotingContractAddress,
+            abi: DirectDemocracyVotingABI,
+            functionName: 'votingHats',
+        })
+            .then((res) => {
+                if (seq === ddHatsSeqRef.current) setDdVotingHats((res || []).map((id) => id.toString()));
+            })
+            .catch(() => {
+                // RPC error → unknown, NOT [] — but only clobber on a reset
+                // load; a failed refresh keeps the previous known value.
+                if (seq === ddHatsSeqRef.current && reset) setDdVotingHats(null);
+            });
+    }, [directDemocracyVotingContractAddress, orgChainId]);
+
+    useEffect(() => {
+        loadDdVotingHats(true);
+    }, [loadDdVotingHats]);
+
+    // A passed setter proposal can change the voting hats; re-read after any
+    // count-the-votes so verdicts don't stay stale for the session.
+    useRefreshSubscription(
+        [RefreshEvent.PROPOSAL_COMPLETED],
+        () => loadDdVotingHats(false),
+        [loadDdVotingHats]
+    );
 
     // Proposer attribution self-enables: probe the serving subgraph's schema
     // once (cached) and upgrade to the richer query only when the field exists
@@ -716,29 +773,50 @@ export const VotingProvider = ({ children }) => {
                 // Process voting classes first — transformProposal needs them for
                 // the per-class-weighted percentage math (matches contract logic).
                 // Filter to latest version only (subgraph bug: old versions stay isActive).
-                // NOTE: This uses CURRENT classes, not the classesSnapshot stored on
-                // each proposal at creation time. If classes changed mid-proposal
-                // lifetime, percentages may drift from the exact on-chain calculation.
+                // Each proposal is transformed against its OWN classesVersion snapshot
+                // (what vote()/winner math enforce on-chain), falling back to the
+                // current classes when the version isn't resolvable.
                 const rawClasses = org.hybridVoting.votingClasses || [];
                 const maxVersion = rawClasses.reduce(
                     (max, c) => Math.max(max, Number(c.version || 0)), 0
                 );
+                const normalizeClass = (c) => ({
+                    classIndex: Number(c.classIndex),
+                    strategy: c.strategy,
+                    slicePct: Number(c.slicePct),
+                    quadratic: c.quadratic,
+                    minBalance: c.minBalance?.toString() || '0',
+                    asset: c.asset,
+                    hatIds: (c.hatIds || []).map(h => h.toString()),
+                });
                 const activeClasses = rawClasses
                     .filter(c => Number(c.version || 0) === maxVersion)
-                    .map(c => ({
-                        classIndex: Number(c.classIndex),
-                        strategy: c.strategy,
-                        slicePct: Number(c.slicePct),
-                        quadratic: c.quadratic,
-                        minBalance: c.minBalance?.toString() || '0',
-                        asset: c.asset,
-                        hatIds: (c.hatIds || []).map(h => h.toString()),
-                    }))
+                    .map(normalizeClass)
                     .sort((a, b) => a.classIndex - b.classIndex);
                 update.votingClasses = activeClasses;
 
+                // All versions, keyed by version — proposals snapshot their
+                // class config at creation (proposal.classesVersion), and
+                // vote() enforces the SNAPSHOT, so eligibility for an older
+                // proposal must consult its own version, not the current one.
+                const byVersion = {};
+                rawClasses.forEach((c) => {
+                    const v = Number(c.version || 0);
+                    (byVersion[v] = byVersion[v] || []).push(normalizeClass(c));
+                });
+                Object.values(byVersion).forEach((arr) => arr.sort((a, b) => a.classIndex - b.classIndex));
+                update.votingClassesByVersion = byVersion;
+
                 hybridProposals = withRescued(org.hybridVoting.proposals, 'Hybrid').map(p =>
-                    transformProposal(mergeOptimistic(p), org.hybridVoting.id, 'Hybrid', hybridThreshold, hybridQuorum, activeClasses, accountAddress)
+                    transformProposal(
+                        mergeOptimistic(p),
+                        org.hybridVoting.id,
+                        'Hybrid',
+                        hybridThreshold,
+                        hybridQuorum,
+                        (p.classesVersion != null && byVersion[Number(p.classesVersion)]) || activeClasses,
+                        accountAddress
+                    )
                 );
                 update.hybridVotingOngoing = hybridProposals.filter(p => p.isOngoing);
                 const hybridCompleted = hybridProposals.filter(p => !p.isOngoing);
@@ -748,6 +826,7 @@ export const VotingProvider = ({ children }) => {
                 update.hybridVotingOngoing = [];
                 update.hybridVotingCompleted = [];
                 update.votingClasses = [];
+                update.votingClassesByVersion = {};
                 update.hybridThresholdPct = 0;
                 update.hybridQuorum = 0;
             }
@@ -777,6 +856,29 @@ export const VotingProvider = ({ children }) => {
                 ...hybridProposals.filter(p => p.isOngoing),
                 ...ddProposals.filter(p => p.isOngoing),
             ];
+
+            // Remote finalizations: RefreshEvents only exist in THIS browser,
+            // so when ANOTHER member counts the votes, the only signal is the
+            // polled data itself. A proposal we previously saw ongoing that is
+            // now completed = a real finalization (pagination adding old
+            // completed proposals never trips this) → re-emit the same event
+            // the local path fires, so ddVotingHats / creator-hat gates /
+            // UserContext refresh identically for both actors. Executed
+            // setters are exactly the proposals that change those hats.
+            const completedNow = new Set(
+                [...hybridProposals, ...ddProposals].filter(p => !p.isOngoing).map(p => p.id)
+            );
+            const prev = prevOngoingRef.current;
+            if (prev.orgId === orgId) {
+                const newlyCompleted = [...prev.ongoing].filter(id => completedNow.has(id));
+                if (newlyCompleted.length > 0) {
+                    emitRef.current(RefreshEvent.PROPOSAL_COMPLETED, { remote: true, ids: newlyCompleted });
+                }
+            }
+            prevOngoingRef.current = {
+                orgId,
+                ongoing: new Set(update.ongoingPolls.map(p => p.id)),
+            };
 
             // Single dispatch — one re-render instead of 7
             dispatch({ type: 'SET_VOTING_DATA', payload: update });
@@ -821,6 +923,8 @@ export const VotingProvider = ({ children }) => {
         ongoingPolls: state.ongoingPolls,
         votingType: state.votingType,
         votingClasses: state.votingClasses,
+        votingClassesByVersion: state.votingClassesByVersion,
+        ddVotingHats,
         hybridThresholdPct: state.hybridThresholdPct,
         hybridQuorum: state.hybridQuorum,
         ddThresholdPct: state.ddThresholdPct,
@@ -828,7 +932,7 @@ export const VotingProvider = ({ children }) => {
     }), [
         state, loading, error, refetchVoting, resolveMissingPoll,
         loadMoreProposals, loadingMore, hasMoreProposals,
-        addOptimisticVote, removeOptimisticVote,
+        addOptimisticVote, removeOptimisticVote, ddVotingHats,
     ]);
 
     return (

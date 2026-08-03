@@ -6,9 +6,10 @@ import { useRouter } from 'next/router';
 import { useOrgName } from '../hooks/useOrgName';
 import { usePOContext } from './POContext';
 import { formatTokenAmount } from '../util/formatToken';
-import { useRefresh } from './RefreshContext';
+import { useRefreshSubscription, RefreshEvent } from './RefreshContext';
 import { findUsernameAcrossChains } from '../util/crossChainUsername';
 import { useSubgraphClient } from '../util/apolloClient';
+import { useUserActive } from '../hooks/useUserActive';
 
 const UserContext = createContext();
 
@@ -48,6 +49,7 @@ export const UserProvider = ({ children }) => {
     // Construct the org-specific user ID
     const orgUserID = orgId && account ? `${orgId}-${account}` : null;
     const client = useSubgraphClient(subgraphUrl);
+    const isActive = useUserActive();
 
     const { data, error, loading, refetch } = useQuery(FETCH_USER_DATA_NEW, {
         variables: {
@@ -56,12 +58,27 @@ export const UserProvider = ({ children }) => {
         },
         skip: !orgUserID || !account,
         fetchPolicy: 'cache-first',
+        // Gentle poll: hat grants / assignments by OTHER members produce no local
+        // RefreshEvent, so polling is the only way they appear without a reload.
+        // 60s (vs ProjectContext's 40s) since this is a liveness backstop.
+        // Pauses when the tab is hidden or the user is idle (useUserActive).
+        pollInterval: isActive ? 60000 : 0,
         client,
     });
 
     // Ref-stabilize refetch so callbacks don't re-create when Apollo returns a new reference
     const refetchRef = useRef(refetch);
     refetchRef.current = refetch;
+
+    // When the user returns (tab visible / mouse moves), refetch immediately
+    // so stale data doesn't persist until the next poll tick.
+    const wasActiveRef = useRef(isActive);
+    useEffect(() => {
+        if (isActive && !wasActiveRef.current && orgUserID && account) {
+            refetchRef.current();
+        }
+        wasActiveRef.current = isActive;
+    }, [isActive, orgUserID, account]);
 
     // Query approver hats for the participation token
     const { data: approverHatsData } = useQuery(FETCH_TOKEN_APPROVER_HATS, {
@@ -79,6 +96,14 @@ export const UserProvider = ({ children }) => {
         return !!(user && user.membershipStatus === 'Active');
     }, [data, optimisticRoles]);
 
+    // NOTE: roleHatIds[1] is a positional guess at the "executive" role (wrong
+    // on orgs whose senior role deployed first, e.g. Argus). Authority-accurate
+    // gates exist where the harm was real: treasury "Propose a payout" and the
+    // create-vote entry points check the voting contracts' on-chain creator
+    // hats via useVoteCreateGate. Deriving a true exec set for the remaining
+    // consumers (task assign/review bypass, learn, tour) needs per-surface
+    // authority mapping — TaskManager creator hats are NOT it (the default
+    // template makes every Member a task creator).
     const hasExecRole = useMemo(() => {
         if (optimisticRoles?.hasExecRole) return true;
         const userHatIds = data?.user?.currentHatIds || [];
@@ -92,30 +117,48 @@ export const UserProvider = ({ children }) => {
         return approverHatIds.some(hatId => userHatIds.includes(hatId));
     }, [data, approverHatsData]);
 
-    // Subscribe to role:claimed event to refetch user data
-    const { subscribe } = useRefresh();
-
     const refetchUserData = useCallback(() => {
         if (orgUserID && account) {
             refetchRef.current();
         }
     }, [orgUserID, account]);
 
-    // Refetch immediately — executeWithNotification already waited for the
-    // subgraph to index the transaction block before emitting these events.
-    useEffect(() => {
-        const unsubscribe = subscribe('role:claimed', () => {
-            refetchUserData();
-        });
-        return unsubscribe;
-    }, [subscribe, refetchUserData]);
-
-    useEffect(() => {
-        const unsubscribe = subscribe('user:username_changed', () => {
-            refetchUserData();
-        });
-        return unsubscribe;
-    }, [subscribe, refetchUserData]);
+    // Refetch on any event that can change this user's row in FETCH_USER_DATA_NEW.
+    // executeWithNotification-emitted events already waited for the subgraph to
+    // index the tx block; TaskBoardContext emits immediately, and the poll heals
+    // any pre-index refetch.
+    useRefreshSubscription(
+        [
+            // assignedTasks / completedTasks / totalTasksCompleted / balance
+            RefreshEvent.TASK_CLAIMED,
+            RefreshEvent.TASK_SUBMITTED,
+            RefreshEvent.TASK_COMPLETED,
+            RefreshEvent.TASK_UNCLAIMED,
+            RefreshEvent.TASK_ASSIGNED,
+            RefreshEvent.TASK_REJECTED,
+            RefreshEvent.TASK_CANCELLED,
+            RefreshEvent.TASK_UPDATED,
+            RefreshEvent.TASK_APPLICATION_APPROVED,
+            // modulesCompleted + module payout → balance
+            RefreshEvent.MODULE_COMPLETED,
+            // participationTokenBalance (self-approval; requester side is poll-covered)
+            RefreshEvent.TOKEN_REQUEST_APPROVED,
+            // hybridProposalsCreated + totalVotes
+            RefreshEvent.PROPOSAL_CREATED,
+            RefreshEvent.PROPOSAL_VOTED,
+            RefreshEvent.PROPOSAL_COMPLETED,
+            // membershipStatus / currentHatIds
+            RefreshEvent.MEMBER_JOINED,
+            RefreshEvent.ROLE_CLAIMED,
+            RefreshEvent.ROLE_VOUCHED,
+            RefreshEvent.ROLE_VOUCH_REVOKED,
+            // account.username
+            RefreshEvent.USER_CREATED,
+            RefreshEvent.USERNAME_CHANGED,
+        ],
+        refetchUserData,
+        [refetchUserData]
+    );
 
     useEffect(() => {
         if (data) {
@@ -144,6 +187,11 @@ export const UserProvider = ({ children }) => {
                     id: user.id,
                     address: user.address,
                     participationTokenBalance: formatTokenAmount(user.participationTokenBalance || '0'),
+                    // Raw wei alongside the display value: eligibility gates
+                    // (voterEligibility ERC20_BAL) must compare wei exactly as
+                    // the contract does — the formatted value rounds to whole
+                    // tokens and misjudges sub-token balances.
+                    participationTokenBalanceWei: user.participationTokenBalance || '0',
                     hatIds: user.currentHatIds || [],
                     tasksCompleted: user.totalTasksCompleted || 0,
                     totalVotes: user.totalVotes || 0,
@@ -264,6 +312,7 @@ export const UserProvider = ({ children }) => {
             hatIds: hatIds || prev.hatIds || [],
             membershipStatus: 'Active',
             participationTokenBalance: prev.participationTokenBalance || '0',
+            participationTokenBalanceWei: prev.participationTokenBalanceWei || '0',
             tasksCompleted: prev.tasksCompleted || 0,
             totalVotes: prev.totalVotes || 0,
         }));

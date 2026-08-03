@@ -174,10 +174,12 @@ export function executionStatus(p = {}) {
 
   if (!isValid) {
     return {
+      // `key` stays 'no_quorum' — callers branch on it — but the member-facing
+      // copy must not name a cause `isValid` cannot distinguish (see invalidReason).
       key: 'no_quorum',
-      label: 'No quorum',
+      label: 'No result',
       colorScheme: 'gray',
-      explain: 'Not enough people voted, so nothing changed.',
+      explain: invalidReason(p),
       canRetry: false,
     };
   }
@@ -224,14 +226,75 @@ export function executionStatus(p = {}) {
  * @param {object} p - transformed proposal
  */
 export function outcomeHeadline(p = {}) {
-  if (p.isValid === false) return 'No quorum — not enough people voted';
+  // Same three-way `isValid` caveat as outcomeProblem — don't assert a cause.
+  if (p.isValid === false) return `No result — ${invalidReason(p).replace(/, so nothing changed\.$/, '')}`;
   const win = p.options?.[p.winningOption];
   if (!win) return 'Voting complete';
-  const support = Math.round(win.percentage || 0);
-  const passed = !p.thresholdPct || support >= p.thresholdPct;
+  const raw = Number(win.percentage) || 0;
+  const support = Math.round(raw);
+  // Compare raw, display rounded — and stay in step with outcomeProblem, or the
+  // detail modal would say "Passed" over a card that says "Didn't pass".
+  const passed = !p.thresholdPct || raw >= p.thresholdPct;
   return passed
     ? `Passed — "${win.name}" won with ${support}% support`
     : `Did not pass — "${win.name}" led with ${support}% but fell short`;
+}
+
+/**
+ * Why a proposal came back `isValid === false`.
+ *
+ * IMPORTANT: `isValid` is NOT a quorum flag. Both contracts compute it as
+ *   ok = (winner's share >= quorum) && (winner > runner-up)
+ * (VotingMath.pickWinnerMajority / pickWinnerTwoSlice), so a false value covers
+ * THREE different outcomes: nothing was counted, the top two TIED, or the winner
+ * fell under the required share. Calling all of them "not enough people voted"
+ * mislabels two of the three.
+ *
+ * Only the first two are identifiable from vote data, so the third gets a
+ * cause-neutral sentence rather than an invented one. In particular we do NOT
+ * compare voter count against `p.quorum`: the contracts emit that value as a
+ * PERCENTAGE (`event QuorumSet(uint8 pct)`), despite the subgraph schema
+ * describing it as a minimum voter count.
+ */
+function invalidReason(p) {
+  const shares = (p.options || []).map((o) => Number(o.percentage) || 0);
+  const top = shares.length ? Math.max(...shares) : 0;
+  if (top <= 0) return 'No votes were counted, so nothing changed.';
+  // A tie is the one failure a member can read straight off the bars.
+  if (shares.filter((s) => s === top).length > 1) {
+    return 'Tied — no single option won, so nothing changed.';
+  }
+  return 'No option reached the support this group requires, so nothing changed.';
+}
+
+/**
+ * Failure sentence for a completed proposal, or null when it passed cleanly.
+ *
+ * Product direction (Hudson): a card spends a line ONLY when something went
+ * wrong. A clean pass is signalled by the green seal beside the winning option
+ * in ResultBars — "Passed — X won with 100% support" just re-narrates the bar
+ * that is already on screen. The detail modal still gets the full headline
+ * (see outcomeHeadline).
+ *
+ * Two families of failure: the result was never valid on-chain (see
+ * invalidReason for why that is not the same as "missed quorum"), or it was
+ * valid but the leader fell under this org's pass line.
+ */
+export function outcomeProblem(p = {}) {
+  if (p.isValid === false) return invalidReason(p);
+  const win = p.options?.[p.winningOption];
+  // A winner the subgraph hasn't indexed yet is a data gap, not a failure —
+  // reporting it as one would libel a vote that may well have passed.
+  if (!win) return null;
+  const threshold = Number(p.thresholdPct) || 0;
+  if (threshold <= 0) return null;
+  // Compare the RAW support, display the rounded one: 49.6% against a 50% line
+  // rounds up to "50%" and would otherwise earn the green pass seal.
+  const raw = Number(win.percentage) || 0;
+  if (raw >= threshold) return null;
+  // The bars right above already name the leading option — repeating it here
+  // pushes the numbers, which are the point, past the card's 2-line clamp.
+  return `Didn’t pass — ${Math.round(raw)}% support, under the ${Math.round(threshold)}% needed.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +432,7 @@ export default {
   YOU_VOTED_CHIP,
   executionStatus,
   outcomeHeadline,
+  outcomeProblem,
   CELEBRATION_HEADLINE,
   celebrationShare,
   CELEBRATION_YOUR_CHOICE,

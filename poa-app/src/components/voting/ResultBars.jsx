@@ -16,6 +16,7 @@
  * Props:
  *   options       transformed proposal.options ({name, percentage, votes, displayVotes})
  *   winningIndex  number|null — highlight the actual leader/winner
+ *   winnerConfirmed bool      — poll is closed AND passed: green seal on the winner
  *   userIndexes   number[]    — option indexes the viewer voted for ("you" dot)
  *   userWeights   number[]    — parallel weights (weighted votes → "you · 60%")
  *   maxRows       number      — collapse to top N + "+M more" (default: all)
@@ -25,7 +26,8 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, HStack, VStack, Text } from '@chakra-ui/react';
+import { Box, HStack, VStack, Text, Icon, VisuallyHidden } from '@chakra-ui/react';
+import { PiSealCheck } from 'react-icons/pi';
 import { VOTE_PALETTE } from './votingDisplay';
 
 const { amethyst, amethystBright, leaderText, coral } = VOTE_PALETTE;
@@ -52,7 +54,7 @@ function YouDot() {
   );
 }
 
-function Row({ option, index, isWinner, isUserPick, userWeight, animate, reduceMotion, size }) {
+function Row({ option, index, isWinner, showSeal, isUserPick, userWeight, animate, reduceMotion, size }) {
   const target = Math.max(0, Math.min(100, Number(option.percentage) || 0));
   // Start collapsed only when animating; otherwise render at final width.
   const [w, setW] = useState(animate && !reduceMotion ? 0 : target);
@@ -82,10 +84,32 @@ function Row({ option, index, isWinner, isUserPick, userWeight, animate, reduceM
             fontSize={fontSize}
             fontWeight={isWinner ? '700' : '500'}
             color={nameColor}
-            noOfLines={1}
+            // Not noOfLines: -webkit-box reserves the name's UNCLAMPED width as
+            // its flex basis, so it both leaves a phantom gap before the seal
+            // and steals room the name could have used. text-overflow shrinks
+            // honestly and ellipsizes exactly at the box edge.
+            minW={0}
+            whiteSpace="nowrap"
+            overflow="hidden"
+            textOverflow="ellipsis"
           >
             {option.name}
           </Text>
+          {showSeal && (
+            // Outside the truncating Text with flexShrink={0}: a long option
+            // name ellipsizes, the winner's mark always survives.
+            <>
+              <Icon
+                as={PiSealCheck}
+                aria-hidden
+                boxSize={size === 'sm' ? '14px' : '16px'}
+                color={VOTE_PALETTE.pass}
+                ml={1.5}
+                flexShrink={0}
+              />
+              <VisuallyHidden as="span"> (winner)</VisuallyHidden>
+            </>
+          )}
           {isUserPick && <YouDot />}
         </HStack>
         <HStack spacing={2} flexShrink={0} align="baseline">
@@ -119,6 +143,10 @@ function Row({ option, index, isWinner, isUserPick, userWeight, animate, reduceM
 export function ResultBars({
   options = [],
   winningIndex = null,
+  // Green seal beside the winning option's name. Callers opt in ONLY for a
+  // completed poll that actually passed — on live bars `winningIndex` is just
+  // the current leader, and a check there would declare a winner mid-vote.
+  winnerConfirmed = false,
   userIndexes = [],
   userWeights = [],
   maxRows,
@@ -151,6 +179,15 @@ export function ResultBars({
     hiddenCount = indexed.length - maxRows;
   }
 
+  // `shown` is the top N BY PERCENTAGE, but `winningIndex` comes from the
+  // contract — on a tie they can disagree and cut the winner. A passed card
+  // that shows neither a seal nor a sentence says nothing about its outcome,
+  // so force the winning row into the last visible slot.
+  if (winnerConfirmed && winningIndex != null && !shown.some((s) => s.index === winningIndex)) {
+    const winnerRow = indexed[winningIndex];
+    if (winnerRow) shown = [...shown.slice(0, shown.length - 1), winnerRow];
+  }
+
   const staggerBase = 0.05; // 50ms lead so the first bar isn't at t=0 exactly
 
   return (
@@ -179,6 +216,7 @@ export function ResultBars({
             option={option}
             index={index}
             isWinner={winningIndex != null && index === winningIndex}
+            showSeal={winnerConfirmed && winningIndex != null && index === winningIndex}
             isUserPick={userSet.has(index)}
             userWeight={weightByIndex[index]}
             animate={animate}

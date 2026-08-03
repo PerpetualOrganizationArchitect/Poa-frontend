@@ -20,6 +20,7 @@
 import { useMemo } from 'react';
 import { useVotingContext } from '@/context/VotingContext';
 import { useUserContext } from '@/context/UserContext';
+import { useNow } from '@/hooks/useNow';
 import { BINDING_BADGE, POLL_BADGE } from '@/config/votingVocabulary';
 import { lifecycleVariant, isEligibleToVote } from '@/components/voting/votingDisplay';
 
@@ -62,6 +63,11 @@ export function useVoteLanes() {
     userHatIds,
   ]);
 
+  // The cards tick (ProposalCard uses the same shared 30s registry), so the lanes
+  // must too — otherwise a vote whose deadline passes while the board is open
+  // renders a "VOTING ENDED" card underneath the "Needs your vote" header.
+  const now = useNow(30000);
+
   const lanes = useMemo(() => {
     const needsVote = [];
     const liveVotes = [];
@@ -69,7 +75,7 @@ export function useVoteLanes() {
     const recentOutcomes = [];
 
     for (const p of all) {
-      const variant = lifecycleVariant(p);
+      const variant = lifecycleVariant(p, now);
       if (variant === 'completed') {
         recentOutcomes.push(p);
       } else if (variant === 'awaiting-finalize') {
@@ -87,7 +93,7 @@ export function useVoteLanes() {
     recentOutcomes.sort(byEndDesc);
 
     return { needsVote, liveVotes, awaitingCount, recentOutcomes };
-  }, [all]);
+  }, [all, now]);
 
   return { all, lanes, loading, error };
 }

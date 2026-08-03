@@ -238,13 +238,17 @@ export function PollDetail({
   const closed = !!poll && !poll.isOngoing;
   const awaitingCount = variant === 'awaiting-finalize';
   const hasVoted = !!poll?.userHasVoted;
+  // ONE source of truth for "the voting window is over". `poll.isExpired` is
+  // frozen at transform time, so mixing it with the ticking `variant` would let
+  // the modal offer the ballot and "Count the votes" at the same time.
+  const windowClosed = !poll || awaitingCount || closed;
   // "Voting ended" counts as closed for visibility: no bandwagon risk remains,
   // and hiding standings on an ended-but-uncounted vote reads as broken.
-  const showResults = hasVoted || closed || !!poll?.isExpired;
+  const showResults = hasVoted || windowClosed;
   // Visitors (no account) and non-members see everything but can't cast —
   // the read surface is public, the ballot is membership's.
   const canAct = !!accountAddress && hasMemberRole;
-  const canVote = !!poll?.isOngoing && !poll?.isExpired && eligible && !hasVoted && canAct;
+  const canVote = !windowClosed && eligible && !hasVoted && canAct;
 
   const restrictedRolesText =
     poll?.isHatRestricted && (poll?.restrictedHatIds || []).length > 0
@@ -492,7 +496,7 @@ export function PollDetail({
                     <Text as="span" color="#C6B4F5" fontWeight="600">by {poll.proposerUsername} · </Text>
                   )}
                   opened {shortDate(poll.startTimestamp)} · closes {shortDate(poll.endTimestamp)}
-                  {poll.isOngoing && !poll.isExpired && (
+                  {!windowClosed && (
                     <Text as="span" color={leaderText}> ({relativeTime(poll.endTimestamp)})</Text>
                   )}
                 </Text>
@@ -570,7 +574,7 @@ export function PollDetail({
                   )}
                   <VoterRoster
                     roster={roster}
-                    live={!!poll.isOngoing && !poll.isExpired}
+                    live={!windowClosed}
                   />
                 </VStack>
               </Box>

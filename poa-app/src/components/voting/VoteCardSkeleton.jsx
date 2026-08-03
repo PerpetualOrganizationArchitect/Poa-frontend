@@ -27,9 +27,22 @@ export function VoteCardSkeleton({ size = 'default' }) {
     >
       <GlassBack />
       <VStack align="stretch" spacing={compact ? 2 : 3} h="100%">
-        <Flex justify="space-between" align="center">
+        {/* Matches ProposalCard's header band: type badge + the two-line
+            status plate (eyebrow hidden below md, as on the real card). */}
+        <Flex
+          justify="space-between"
+          align="center"
+          minH={compact ? '22px' : { base: '22px', md: '34px' }}
+        >
           <Skeleton height="16px" width="64px" borderRadius="md" />
-          <Skeleton height="16px" width="88px" borderRadius="md" />
+          {compact ? (
+            <Skeleton height="16px" width="72px" borderRadius="md" />
+          ) : (
+            <VStack spacing="3px" align="flex-end">
+              <Skeleton height="8px" width="60px" borderRadius="md" display={{ base: 'none', md: 'block' }} />
+              <Skeleton height="18px" width="92px" borderRadius="md" />
+            </VStack>
+          )}
         </Flex>
         <Skeleton height="18px" width="82%" borderRadius="md" />
         <Skeleton height="18px" width="55%" borderRadius="md" />

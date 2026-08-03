@@ -384,7 +384,7 @@ const VotingHistoryPage = () => {
                     >
                       <option style={{ background: "#1a1a2e" }} value="all">All Status</option>
                       <option style={{ background: "#1a1a2e" }} value="valid">Valid (Had Winner)</option>
-                      <option style={{ background: "#1a1a2e" }} value="invalid">Invalid (No Quorum)</option>
+                      <option style={{ background: "#1a1a2e" }} value="invalid">Invalid (No Result)</option>
                     </Select>
 
                     <Select

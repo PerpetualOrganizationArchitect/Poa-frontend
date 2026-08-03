@@ -39,6 +39,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useWeb3, useOrgTheme } from '@/hooks';
 import { useOrgName } from '@/hooks/useOrgName';
 import { useUserContext } from '@/context/UserContext';
+import { useEducationCreateGate } from '@/hooks/useEducationCreateGate';
 import { getNetworkByChainId } from '@/config/networks';
 import QuizModal from '@/components/eduHub/QuizModal';
 import { useRouter } from 'next/router';
@@ -47,7 +48,7 @@ import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 const EducationHub = () => {
   const { poContextLoading, orgStatus, educationModules, educationHubAddress, educationHubEnabled, orgChainId } = usePOContext();
   const { pageBackground } = useOrgTheme();
-  const { completedModules, hasExecRole } = useUserContext();
+  const { completedModules } = useUserContext();
   const { education, executeWithNotification } = useWeb3();
   const { isPasskeyUser } = useAuth();
   const { chain: connectedChain } = useAccount();
@@ -82,8 +83,11 @@ const EducationHub = () => {
   const [correctAnswerIndex, setCorrectAnswerIndex] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Executive status comes from UserContext (Hats-based check)
-  const isExecutive = hasExecRole;
+  // Module creation follows the EducationHub's on-chain creator hats — the
+  // gate createModule actually enforces. hasExecRole (positional guess) is
+  // only the fail-open fallback inside the hook.
+  const { canCreateModule } = useEducationCreateGate();
+  const isExecutive = canCreateModule;
 
   const handleAddModule = useCallback(async () => {
     if (!education) return;

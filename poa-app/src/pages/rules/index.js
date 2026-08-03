@@ -15,7 +15,7 @@ import SEOHead from "@/components/common/SEOHead";
 import PulseLoader from "@/components/shared/PulseLoader";
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import { usePOContext } from "@/context/POContext";
-import { useUserContext } from "@/context/UserContext";
+import { useVoteCreateGate } from "@/hooks/useVoteCreateGate";
 import { useOrgTheme } from "@/hooks";
 import { useOrgName } from "@/hooks/useOrgName";
 import OrgConstitution from "@/components/voting/OrgConstitution";
@@ -26,7 +26,9 @@ const RulesPage = () => {
   const userDAO = useOrgName();
   const orgGate = useOrgGate();
   const { poContextLoading } = usePOContext();
-  const { hasMemberRole } = useUserContext();
+  // Rule changes are HybridVoting setter proposals — gate the propose rows on
+  // the on-chain proposal-creator hat, matching /voting's constitution panel.
+  const { canCreateProposal } = useVoteCreateGate();
   const { pageBackground } = useOrgTheme();
 
   const handleProposeRuleChange = useCallback((templateId) => {
@@ -59,7 +61,7 @@ const RulesPage = () => {
           <Container maxW="1400px" mx="auto">
             <OrgConstitution
               defaultOpen
-              hasMemberRole={hasMemberRole}
+              hasMemberRole={canCreateProposal}
               onProposeRuleChange={handleProposeRuleChange}
             />
           </Container>

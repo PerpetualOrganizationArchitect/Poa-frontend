@@ -12,25 +12,28 @@ export const DataBaseProvider = ({ children }) => {
 
 
     useEffect(()=>{
-        if (typeof projectsData === 'object' && projectsData !== null && Object.keys(projectsData).length !== 0) {
-            setProjects(projectsData);
+        // Sync arrays INCLUDING empty ones: an org with zero projects must clear
+        // the previous org's board, otherwise actions pair the new org's
+        // TaskManager address with stale composite ids (silent wrong-task hits
+        // or reverts). ProjectContext resets projectsData to [] on org change.
+        if (!Array.isArray(projectsData)) return;
+        setProjects(projectsData);
 
-            // Only set selectedProject if:
-            // 1. No project is currently selected, OR
-            // 2. The currently selected project is no longer in the list
-            // This preserves the user's selection when data is refreshed
-            setSelectedProject(prev => {
-                // If we have a selection and it still exists in the new data, update it with fresh data
-                if (prev && prev.id) {
-                    const updatedProject = projectsData.find(p => p.id === prev.id);
-                    if (updatedProject) {
-                        return updatedProject;
-                    }
+        // Only set selectedProject if:
+        // 1. No project is currently selected, OR
+        // 2. The currently selected project is no longer in the list
+        // This preserves the user's selection when data is refreshed
+        setSelectedProject(prev => {
+            // If we have a selection and it still exists in the new data, update it with fresh data
+            if (prev && prev.id) {
+                const updatedProject = projectsData.find(p => p.id === prev.id);
+                if (updatedProject) {
+                    return updatedProject;
                 }
-                // Otherwise default to first project
-                return projectsData[0];
-            });
-        }
+            }
+            // Otherwise default to first project (undefined when the org has none)
+            return projectsData[0];
+        });
     },[projectsData])
 
 

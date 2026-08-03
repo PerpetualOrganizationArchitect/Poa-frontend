@@ -14,6 +14,7 @@
 import { gql } from '@apollo/client';
 import { getAllSubgraphUrls, DEFAULT_CHAIN_ID } from '@/config/networks';
 import { getClient } from '@/util/apolloClient';
+import { GET_ACCOUNTS_BY_USERNAMES } from '@/util/queries';
 
 const CHECK_USERNAME = gql`
   query CheckUsername($username: String!) {
@@ -229,6 +230,55 @@ export async function findUserByUsernameAcrossChains(username) {
   }
 
   return { address: null, username: null, chain: null };
+}
+
+/**
+ * Batch-resolve usernames to addresses across ALL mainnet chains.
+ * Home chain (Arbitrum) wins if a username somehow exists on multiple chains.
+ * Throws when a chain was unreachable AND usernames remain unresolved, so
+ * "endpoint down" is never reported as "user not found" (callers like the
+ * deploy wizard would otherwise silently drop members from roles).
+ *
+ * @param {string[]} usernames - Usernames to resolve (case-insensitive)
+ * @returns {Promise<{ resolved: Map<string, string>, notFound: string[] }>}
+ */
+export async function resolveUsernamesAcrossChains(usernames) {
+  const resolved = new Map();
+  if (!usernames || usernames.length === 0) return { resolved, notFound: [] };
+  const normalized = [...new Set(
+    usernames.map(u => u.toLowerCase().trim()).filter(u => u.length > 0)
+  )];
+  if (normalized.length === 0) return { resolved, notFound: [] };
+
+  const sources = getAllSubgraphUrls();
+  const results = await Promise.allSettled(
+    sources.map(async (source) => {
+      const { data } = await getClient(source.url).query({
+        query: GET_ACCOUNTS_BY_USERNAMES,
+        variables: { usernames: normalized },
+        fetchPolicy: 'network-only', // pre-deploy validation must be fresh
+      });
+      return { source, data };
+    })
+  );
+
+  let anyFailed = false;
+  for (const result of results) {
+    if (result.status !== 'fulfilled') { anyFailed = true; continue; }
+    const { source, data } = result.value;
+    const isHome = source.chainId === DEFAULT_CHAIN_ID;
+    for (const acc of data?.accounts || []) {
+      const key = acc.username?.toLowerCase();
+      if (!key) continue;
+      if (!resolved.has(key) || isHome) resolved.set(key, acc.user);
+    }
+  }
+
+  const notFound = normalized.filter(u => !resolved.has(u));
+  if (anyFailed && notFound.length > 0) {
+    throw new Error('Could not reach all networks to verify usernames — please try again.');
+  }
+  return { resolved, notFound };
 }
 
 /**

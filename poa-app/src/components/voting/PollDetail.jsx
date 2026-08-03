@@ -105,7 +105,7 @@ import {
   leadingOption,
   relativeTime,
   shortDate,
-  isEligibleToVote,
+  voterEligibility,
   computeVoterRoster,
   VOTE_PALETTE,
 } from './votingDisplay';
@@ -167,8 +167,8 @@ export function PollDetail({
   votingTypeSelected,
 }) {
   const { accountAddress } = useAuth();
-  const { userData, graphUsername, hasMemberRole } = useUserContext();
-  const { addOptimisticVote, removeOptimisticVote } = useVotingContext();
+  const { userData, graphUsername, hasMemberRole, userDataLoading } = useUserContext();
+  const { addOptimisticVote, removeOptimisticVote, ddVotingHats, votingClassesByVersion } = useVotingContext();
   const { classBreakdown, totalSharePct } = useVotingPower();
   const { getRoleNamesString } = useRoleNames();
   const { poMembers, leaderboardData } = usePOContext();
@@ -209,10 +209,26 @@ export function PollDetail({
   }, [poll, poMembers, roster]);
   const leader = useMemo(() => leadingOption(poll), [poll]);
 
-  const eligible = useMemo(
-    () => isEligibleToVote(poll, userData?.hatIds || []),
-    [poll, userData]
+  // Truthful eligibility: per-poll restriction hats AND the contract-level
+  // gate (DD votingHats / Hybrid class power). The old restriction-only check
+  // said "You're eligible ✓" to members whose vote would revert Unauthorized
+  // (DD) or record permanently weightless (Hybrid). Indeterminate (data still
+  // loading / RPC failure) fails open with neutral copy.
+  const verdict = useMemo(
+    () => voterEligibility(poll, userData?.hatIds || [], {
+      ddVotingHats,
+      classBreakdown,
+      // vote() enforces the proposal's SNAPSHOT class config, not the current
+      // one — judge eligibility against the version this proposal recorded.
+      proposalClasses: poll?.type === 'Hybrid' && poll?.classesVersion != null
+        ? votingClassesByVersion?.[poll.classesVersion] || null
+        : null,
+      userBalance: userData?.participationTokenBalanceWei || '0',
+      userDataReady: !userDataLoading,
+    }),
+    [poll, userData, ddVotingHats, classBreakdown, votingClassesByVersion, userDataLoading]
   );
+  const eligible = verdict.eligible;
 
   // NOTE: no early return before this point — every hook above and below must
   // run on EVERY render (React hooks-order rule). All poll derivations here are
@@ -576,16 +592,28 @@ export function PollDetail({
                     {!hasVoted && (
                       <Text
                         fontSize="xs"
-                        color={!canAct ? '#C6B4F5' : eligible ? 'green.300' : '#F6C177'}
+                        color={
+                          !canAct ? '#C6B4F5'
+                            : verdict.indeterminate ? 'gray.400'
+                              : eligible ? 'green.300' : '#F6C177'
+                        }
                         fontWeight="600"
                       >
                         {!accountAddress
                           ? 'Votes here are public — connect and join to take part'
                           : !hasMemberRole
                             ? 'Votes here are public — join this org to take part'
-                            : eligible
-                              ? "You're eligible ✓"
-                              : `Only ${restrictedRolesText} can vote on this one`}
+                            : verdict.indeterminate
+                              ? 'Checking your eligibility…'
+                              : eligible
+                                ? "You're eligible ✓"
+                                : verdict.reason === 'no_voting_hat'
+                                  ? (ddVotingHats?.length
+                                      ? `Only ${getRoleNamesString(ddVotingHats)} can cast this vote — your roles can't`
+                                      : "Your roles can't cast this vote")
+                                  : verdict.reason === 'no_class_power'
+                                    ? "You don't have voting power yet — hold an eligible role or earn shares to take part"
+                                    : `Only ${restrictedRolesText} can vote on this one`}
                       </Text>
                     )}
                   </VStack>

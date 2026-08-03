@@ -240,6 +240,11 @@ export class EOA7702TransactionManager {
   }
 
   async _buildUserOpWithFallback(callData, authorization, overrideHatIds = null, claimTarget = null, gasOverrides = {}) {
+    // Reset per-transaction: the instance is reused, and a stale fell-back flag
+    // would mislabel an unrelated later failure as a sponsorship problem.
+    this._paymasterFellBack = false;
+    this._paymasterRejection = null;
+
     const effectiveHatIds = overrideHatIds?.length > 0 ? overrideHatIds : this.hatIds;
     const hasPaymaster = this.paymasterAddress && this.orgId && (claimTarget || effectiveHatIds?.length > 0);
 
@@ -267,6 +272,7 @@ export class EOA7702TransactionManager {
     });
 
     this._paymasterFellBack = hasPaymaster && !userOp.paymaster;
+    this._paymasterRejection = userOp.paymasterRejection || null;
     return userOp;
   }
 
@@ -307,13 +313,17 @@ export class EOA7702TransactionManager {
       };
     }
 
-    // ERC-4337 AA error codes
+    // ERC-4337 AA error codes — compose the real sponsorship denial (e.g.
+    // PaymasterHub RuleDenied) into the message when the op fell back to
+    // self-funded, instead of a bare "no funds".
+    const fellBack = this._paymasterFellBack || !!originalError?.paymasterRejection;
     for (const [code, userMessage] of Object.entries(AA_ERROR_MESSAGES)) {
       if (text.includes(code)) {
         return {
           category: 'smart_account_error',
-          userMessage: this._paymasterFellBack
-            ? 'Gas sponsorship was unavailable and your account has no funds for gas.'
+          userMessage: fellBack
+            ? (this._composeFallbackMessage(originalError)
+                || 'Gas sponsorship was unavailable and your account has no funds for gas.')
             : userMessage,
           technicalMessage: text,
           originalError,
@@ -326,6 +336,38 @@ export class EOA7702TransactionManager {
       technicalMessage: text,
       originalError,
     };
+  }
+
+  /**
+   * Decode WHY the paymaster refused sponsorship (captured by userOpBuilder
+   * during the fallback) into accurate copy. Wallet-flavored: 7702 users have
+   * a real wallet that can hold gas funds. Mirrors the passkey manager.
+   */
+  _composeFallbackMessage(originalError = null) {
+    const e = this._paymasterRejection || originalError?.paymasterRejection;
+    if (!e) return null;
+    const text = [
+      e.message,
+      e.shortMessage,
+      e.details,
+      e.cause?.shortMessage,
+      e.cause?.details,
+      e.cause?.message,
+    ].filter(Boolean).join('\n');
+    const d = decodeContractRevert(e, text, null);
+    if (!d) return null;
+    if (d.name === 'RuleDenied') {
+      return "The organization doesn't sponsor gas for this action, and your wallet has no funds to pay for gas "
+        + 'on this network. An admin can add this action to the sponsored-gas list, or you can add funds.';
+    }
+    if (d.name === 'BudgetExceeded') {
+      return 'Your role has used up its sponsored-gas allowance for this period, and your wallet has no funds '
+        + 'to pay for gas on this network. The allowance refills on a schedule — or an admin can raise it.';
+    }
+    const friendly = friendly7702FromDecoded(d);
+    return friendly
+      ? `${friendly} Your wallet also has no funds to pay for gas on this network.`
+      : null;
   }
 
   /**

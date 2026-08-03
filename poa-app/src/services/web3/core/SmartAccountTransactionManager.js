@@ -277,6 +277,12 @@ export class SmartAccountTransactionManager {
    * @param {Object} [gasOverrides] - Optional gas overrides ({ callGasLimit, callGasLimitMultiplier })
    */
   async _buildUserOpWithFallback(callData, overrideHatIds = null, claimTarget = null, gasOverrides = {}) {
+    // Reset per-transaction state up front: the manager instance is memoized
+    // across transactions, so a stale fell-back flag from a previous tx would
+    // mislabel an unrelated failure as "sponsorship unavailable + no funds".
+    this._paymasterFellBack = false;
+    this._paymasterRejection = null;
+
     // Use override hat IDs if provided (e.g., target hat for first role claim),
     // otherwise fall back to the user's current hats.
     const effectiveHatIds = overrideHatIds?.length > 0 ? overrideHatIds : this.hatIds;
@@ -334,9 +340,12 @@ export class SmartAccountTransactionManager {
       gasOverrides,
     });
 
-    // Track whether paymaster was expected but the UserOp ended up self-funded.
-    // This helps produce better error messages if self-funded execution also fails.
+    // Track whether paymaster was expected but the UserOp ended up self-funded,
+    // and WHY (the rejection the builder captured — e.g. PaymasterHub
+    // RuleDenied). This lets error messages report the real sponsorship denial
+    // instead of a bare "no funds".
     this._paymasterFellBack = hasPaymaster && !userOp.paymaster;
+    this._paymasterRejection = userOp.paymasterRejection || null;
 
     return userOp;
   }
@@ -404,15 +413,20 @@ export class SmartAccountTransactionManager {
       };
     }
 
-    // 4. ERC-4337 AA error codes — use fallback-specific messages when paymaster
-    // was expected but unavailable (so the user knows the real issue is no gas
-    // budget + no funds, not a contract problem).
+    // 4. ERC-4337 AA error codes — when the paymaster was expected but the op
+    // fell back to self-funded, compose the REAL sponsorship denial (e.g.
+    // RuleDenied: this selector isn't on the org's sponsored list) into the
+    // prefund message instead of reporting a bare "no funds".
+    const fellBack = this._paymasterFellBack || !!originalError?.paymasterRejection;
     for (const [code, userMessage] of Object.entries(AA_ERROR_MESSAGES)) {
       if (text.includes(code)) {
-        const fallbackMsg = this._paymasterFellBack ? AA_FALLBACK_MESSAGES[code] : null;
+        let msg = userMessage;
+        if (fellBack && (code === 'AA21' || code === 'AA51')) {
+          msg = this._composeFallbackMessage(originalError) || AA_FALLBACK_MESSAGES[code] || userMessage;
+        }
         return {
           category: 'smart_account_error',
-          userMessage: fallbackMsg || userMessage,
+          userMessage: msg,
           technicalMessage: text,
           originalError,
         };
@@ -429,15 +443,51 @@ export class SmartAccountTransactionManager {
       };
     }
 
-    // 6. Generic — if paymaster fell back, hint at the real cause.
+    // 6. Generic — if paymaster fell back, report the real cause.
     return {
       category: 'smart_account_error',
-      userMessage: this._paymasterFellBack
-        ? 'Gas sponsorship was unavailable and your account has no funds to pay for gas.'
+      userMessage: fellBack
+        ? (this._composeFallbackMessage(originalError)
+            || 'Gas sponsorship was unavailable and your account has no funds to pay for gas.')
         : 'Transaction failed. Please try again.',
       technicalMessage: text,
       originalError,
     };
+  }
+
+  /**
+   * Decode WHY the paymaster refused sponsorship (captured by userOpBuilder
+   * during the fallback) into accurate user-facing copy. Returns null when
+   * there is no rejection or it doesn't decode — callers then use the generic
+   * fallback message.
+   */
+  _composeFallbackMessage(originalError = null) {
+    const e = this._paymasterRejection || originalError?.paymasterRejection;
+    if (!e) return null;
+    const text = [
+      e.message,
+      e.shortMessage,
+      e.details,
+      e.cause?.shortMessage,
+      e.cause?.details,
+      e.cause?.message,
+    ].filter(Boolean).join('\n');
+    const d = decodeContractRevert(e, text, null);
+    if (!d) return null;
+    if (d.name === 'RuleDenied') {
+      return "The organization doesn't sponsor gas for this action, and your account has no funds to pay for gas itself. "
+        + 'An admin can add this action to the sponsored-gas list, or you can add funds to your account.';
+    }
+    if (d.name === 'BudgetExceeded') {
+      // Inside a paymaster rejection the shared BudgetExceeded selector is
+      // known to mean the gas allowance (mirrors the AA33 disambiguation above).
+      return 'Your role has used up its sponsored-gas allowance for this period, and your account has no funds '
+        + 'to pay for gas itself. The allowance refills on a schedule — or an admin can raise it.';
+    }
+    const friendly = friendlyFromDecoded(d);
+    return friendly
+      ? `${friendly} Your account also has no funds to pay for gas itself.`
+      : null;
   }
 
   /**

@@ -10,13 +10,15 @@ cd poa-app && yarn dev:e2e          # dev server in E2E mode (burner EOA auto-co
 cd poa-app && yarn dev:e2e-passkey  # dev server in E2E mode, passkey identity
 cd poa-app && yarn build            # production build (static export to IPFS)
 cd poa-app && yarn lint             # ESLint (Next.js built-in)
+cd poa-app && yarn test             # vitest (unit tests for the pure `src/lib/**` layer)
 cd poa-app && yarn e2e:setup        # one-time machine setup (writes ~/.poa/e2e.env)
 cd poa-app && yarn e2e:check        # CI guard — fails if E2E code leaks into prod bundle
 cd poa-app && yarn e2e:test-passkey # virtual-passkey crypto self-test
 ```
 
-No unit/integration tests; the E2E harness above is the only automated coverage.
-No Prettier. No formatting commands.
+Automated coverage is vitest over the pure layer (colocated `*.test.js`, mostly
+`src/lib/**` + `src/util/**`) plus the E2E harness. React-coupled code has no unit
+tests — drive it through Test6 instead. No Prettier. No formatting commands.
 
 ## Frontend changes: verify on Test6
 

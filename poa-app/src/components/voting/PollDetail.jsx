@@ -8,8 +8,9 @@
  * Product direction (Hudson):
  *   - Casting a vote NEVER blocks on a spinner. On "Cast vote" we fire the
  *     optimistic vote + onVote in the background and immediately swap the body
- *     to VoteCelebration; the corner toast carries tx status. If onVote resolves
- *     { success:false } we roll the optimistic vote back and show the calm error.
+ *     to VoteCelebration; the corner toast carries tx status. Unless onVote
+ *     proves the cast landed ({ success:true }) we roll the optimistic vote
+ *     back and show the calm error.
  *   - Per-option tallies are hidden until the viewer has voted or the poll
  *     closed. Turnout (TurnoutMeter) is always visible; SupportMeter is
  *     post-vote/closed only.
@@ -23,12 +24,15 @@
  *   isOpen             bool
  *   onClose            () => void — caller strips ?poll via router.replace
  *   onVote             (contractAddress, proposalId, optionIndexes, weights) =>
- *                      Promise<{ success:boolean } | void> — matches
- *                      handleDDVote/handleHybridVote; a falsy/void resolve is
- *                      treated as success (celebration stays).
- *   onFinalize         (contractAddress, proposalId, isHybrid) => Promise
+ *                      Promise<{ success:boolean }> — use useVoteActions().
+ *                      REQUIRED to render the ballot: without a callable
+ *                      handler the modal is read-only, because a cast with
+ *                      nowhere to go would celebrate a vote it never sent.
+ *                      Only `success === true` confirms; see txOutcome.
+ *   onFinalize         (contractAddress, proposalId, isHybrid) =>
+ *                      Promise<{ success:boolean }> — same contract as onVote:
+ *                      the confirm dialog only closes on success.
  *   contractAddress    string — voting contract for this poll's type
- *   votingTypeSelected 'Hybrid' | 'Direct Democracy'
  */
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
@@ -92,6 +96,7 @@ import {
   executionStatus,
   outcomeHeadline,
 } from '@/config/votingVocabulary';
+import { txConfirmed } from '@/lib/voting/txOutcome';
 import { VotePowerReceipt } from './VotePowerReceipt';
 import { TurnoutMeter } from './meters/TurnoutMeter';
 import { SupportMeter } from './meters/SupportMeter';
@@ -164,7 +169,6 @@ export function PollDetail({
   onVote,
   onFinalize,
   contractAddress,
-  votingTypeSelected,
 }) {
   const { accountAddress } = useAuth();
   const { userData, graphUsername, hasMemberRole, userDataLoading } = useUserContext();
@@ -197,6 +201,14 @@ export function PollDetail({
       setCelebration(null);
     }
   }, [isOpen, poll?.id]);
+
+  // Which poll the body is currently showing. A cast settles in the BACKGROUND
+  // and this modal is never unmounted between polls — it just re-renders with a
+  // new `poll` — so without this a late resolve from poll A would paint its
+  // outcome (a full-screen "your vote didn't go through", naming A's option)
+  // over whichever poll the member has since opened.
+  const shownPollIdRef = React.useRef(null);
+  useEffect(() => { shownPollIdRef.current = poll?.id ?? null; }, [poll?.id]);
 
   const variant = useMemo(() => lifecycleVariant(poll), [poll]);
   const roster = useMemo(() => computeVoterRoster(poll, leaderboardData), [poll, leaderboardData]);
@@ -248,7 +260,22 @@ export function PollDetail({
   // Visitors (no account) and non-members see everything but can't cast —
   // the read surface is public, the ballot is membership's.
   const canAct = !!accountAddress && hasMemberRole;
-  const canVote = !windowClosed && eligible && !hasVoted && canAct;
+  // A ballot is only honest if there is somewhere for the cast to go. A surface
+  // that mounts PollDetail without wiring onVote gets the read-only view rather
+  // than a button that optimistically celebrates a vote it never sent.
+  const canCast = typeof onVote === 'function';
+  const canVote = !windowClosed && eligible && !hasVoted && canAct && canCast;
+
+  // A miswire otherwise degrades into a silent dead end: a member who is told
+  // "You're eligible ✓" on a live poll, with no ballot and no reason given.
+  // Say so where a developer will see it, in dev only.
+  if (process.env.NODE_ENV !== 'production' && !canCast
+      && !windowClosed && eligible && !hasVoted && canAct) {
+    console.error(
+      '[PollDetail] eligible member has no ballot: this surface rendered PollDetail '
+      + 'without a callable `onVote`. Wire it with useVoteActions().'
+    );
+  }
 
   const restrictedRolesText =
     poll?.isHatRestricted && (poll?.restrictedHatIds || []).length > 0
@@ -263,7 +290,10 @@ export function PollDetail({
 
   // ── Cast: optimistic celebration, no spinner ────────────────────────────────
   const handleCast = useCallback(async () => {
-    if (!voteValid || !poll) return;
+    // Same `canCast` that hides the button — the render gate and the write gate
+    // must agree, so they read ONE expression. Bailing here too means no path
+    // can leave an optimistic vote standing with no transaction behind it.
+    if (!voteValid || !poll || !canCast) return;
 
     let optionIndexes;
     let optionWeights;
@@ -305,22 +335,29 @@ export function PollDetail({
     setCelebration({ userVote, status: 'pending' });
 
     // Resolve the proposalId the contract expects (numeric part of composite id).
+    const castPollId = poll.id;
     const proposalId = poll.proposalId || String(poll.id).split('-')[1];
+    // Only touch the celebration while the body still shows the poll we cast
+    // on. The rollback is NOT gated on this — poll A's optimistic vote has to
+    // come off whether or not the member is still looking at A.
+    const stillShowing = () => shownPollIdRef.current === castPollId;
 
     // Run the real cast in the background. onVote drives its own toast.
     Promise.resolve()
-      .then(() => onVote?.(contractAddress, proposalId, optionIndexes, optionWeights))
+      .then(() => onVote(contractAddress, proposalId, optionIndexes, optionWeights))
       .then((result) => {
-        if (result && result.success === false) {
-          removeOptimisticVote(poll.id);
-          setCelebration({ userVote, status: 'failed' });
+        if (txConfirmed(result)) {
+          if (stillShowing()) {
+            setCelebration((prev) => (prev ? { ...prev, status: 'confirmed' } : prev));
+          }
         } else {
-          setCelebration((prev) => (prev ? { ...prev, status: 'confirmed' } : prev));
+          removeOptimisticVote(castPollId);
+          if (stillShowing()) setCelebration({ userVote, status: 'failed' });
         }
       })
       .catch(() => {
-        removeOptimisticVote(poll.id);
-        setCelebration({ userVote, status: 'failed' });
+        removeOptimisticVote(castPollId);
+        if (stillShowing()) setCelebration({ userVote, status: 'failed' });
       });
   }, [
     voteValid,
@@ -334,6 +371,7 @@ export function PollDetail({
     accountAddress,
     graphUsername,
     onVote,
+    canCast,
     contractAddress,
   ]);
 
@@ -348,8 +386,13 @@ export function PollDetail({
     const proposalId = poll.proposalId || String(poll.id).split('-')[1];
     setFinalizing(true);
     try {
-      await onFinalize(contractAddress, proposalId, isBinding);
-      finalizeConfirm.onClose();
+      // Dismiss the confirm ONLY when the count actually landed. Closing on a
+      // revert (sub-quorum, a failed executor batch, gas budget) left the user
+      // looking at the same "Count the votes" button with the outcome buried in
+      // a corner toast — the finalize twin of the cast bug this modal had.
+      if (txConfirmed(await onFinalize(contractAddress, proposalId, isBinding))) {
+        finalizeConfirm.onClose();
+      }
     } finally {
       setFinalizing(false);
     }

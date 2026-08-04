@@ -8,10 +8,9 @@
  *
  * Container responsibilities (kept out of the presentation components):
  *   - CreateVoteModal wiring + handleProposalSubmit (forwarding actionSummaries)
- *   - vote handlers (return the executeWithNotification result so PollDetail can
- *     roll back its optimistic celebration on failure)
- *   - the finalize handler ("Count the votes"), routed through PollDetail's
- *     AlertDialog confirm
+ *   - the cast + finalize handlers (useVoteActions — shared with /votes, and
+ *     returning the executeWithNotification result so PollDetail can roll back
+ *     its optimistic celebration on failure)
  *   - tour auto-open of CreateVoteModal at the create-vote-preview step
  */
 
@@ -29,10 +28,10 @@ import { usePOContext } from "@/context/POContext";
 import { useVotingContext } from "@/context/VotingContext";
 import { useUserContext } from "@/context/UserContext";
 import { useAuth } from "@/context/AuthContext";
-import { useWeb3, useOrgTheme, useVoteLanes } from "@/hooks";
+import { useOrgTheme, useVoteLanes } from "@/hooks";
 import { useVoteCreateGate } from "@/hooks/useVoteCreateGate";
+import { useVoteActions } from "@/hooks/useVoteActions";
 import { useOrgName } from "@/hooks/useOrgName";
-import { VotingType } from "@/services/web3/domain/VotingService";
 
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import VotingEducationHeader from "./VotingEducationHeader";
@@ -65,8 +64,6 @@ const VotingPage = () => {
     }
   }, [isTourActive, currentStepDef?.id, showCreatePoll]);
 
-  // Web3 services hook
-  const { voting, executeWithNotification } = useWeb3();
   const { pageBackground } = useOrgTheme();
   const userDAO = useOrgName();
   const orgGate = useOrgGate();
@@ -129,6 +126,17 @@ const VotingPage = () => {
     PTVoteType,
     resolveMissingPoll,
   });
+
+  // Cast + finalize handlers, shared with the /votes archive so the two
+  // PollDetail surfaces can't drift (they did: the archive shipped without a
+  // cast handler and celebrated votes it never sent). Both RETURN the
+  // executeWithNotification result so PollDetail can roll its optimistic
+  // celebration back and show the calm error on failure.
+  //
+  // `voting`/`executeWithNotification` come from here too — proposal creation
+  // below needs them, and a second useWeb3Services() would give this page two
+  // independent txManagers (see the hook for why that bites on EIP-7702).
+  const { handleVote, handleFinalize, voting, executeWithNotification } = useVoteActions(votingTypeSelected);
 
   // PollDetail must render LIVE data — selectedPoll is a click-time snapshot,
   // so optimistic votes and 30s polling refreshes would never reach an open
@@ -339,48 +347,6 @@ const VotingPage = () => {
     router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
   }, [router.isReady, router.query, handleProposeRuleChange, router, poContextLoading, creatorGateLoading, isConnected, userDataLoading]);
 
-  // Finalize ("Count the votes") — routed through PollDetail's AlertDialog.
-  // RETURNS the result so the confirm dialog can await it.
-  const handleGetWinner = useCallback(async (contractAddress, proposalId, isHybrid = false) => {
-    if (!voting) return { success: false };
-
-    const type = isHybrid ? VotingType.HYBRID : VotingType.DIRECT_DEMOCRACY;
-    return executeWithNotification(
-      () => voting.announceWinner(type, contractAddress, proposalId),
-      {
-        pendingMessage: 'Counting the votes...',
-        successMessage: 'Result recorded on-chain!',
-        refreshEvent: 'proposal:completed',
-      }
-    );
-  }, [voting, executeWithNotification]);
-
-  // Vote handlers — RETURN the executeWithNotification result so PollDetail can
-  // react (roll back the optimistic celebration + show the calm error on fail).
-  const handleDDVote = useCallback(async (contractAddress, proposalId, optionIndices, weights) => {
-    if (!voting) return { success: false };
-    return executeWithNotification(
-      () => voting.castDDVote(contractAddress, proposalId, optionIndices, weights),
-      {
-        pendingMessage: 'Casting vote...',
-        successMessage: 'Vote cast successfully!',
-        refreshEvent: 'proposal:voted',
-      }
-    );
-  }, [voting, executeWithNotification]);
-
-  const handleHybridVote = useCallback(async (contractAddress, proposalId, optionIndices, weights) => {
-    if (!voting) return { success: false };
-    return executeWithNotification(
-      () => voting.castHybridVote(contractAddress, proposalId, optionIndices, weights),
-      {
-        pendingMessage: 'Casting vote...',
-        successMessage: 'Vote cast successfully!',
-        refreshEvent: 'proposal:voted',
-      }
-    );
-  }, [voting, executeWithNotification]);
-
   const canCreate = canCreateAny;
 
   // No org to render: a dead end, not a pending state. After every hook.
@@ -525,13 +491,12 @@ const VotingPage = () => {
             poll={livePoll}
             isOpen={isDetailOpen}
             onClose={onDetailClose}
-            onVote={votingTypeSelected === "Direct Democracy" ? handleDDVote : handleHybridVote}
-            onFinalize={handleGetWinner}
+            onVote={handleVote}
+            onFinalize={handleFinalize}
             contractAddress={getContractAddressForVotingType(
               directDemocracyVotingContractAddress,
               votingContractAddress
             )}
-            votingTypeSelected={votingTypeSelected}
           />
         </Container>
       )}

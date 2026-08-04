@@ -153,7 +153,7 @@ export const STATUS_LIVE = 'LIVE';
 /** Live poll closing within 24h. */
 export const STATUS_CLOSING_SOON = 'CLOSING SOON';
 /** Voting window ended, result not yet counted on-chain. */
-export const STATUS_AWAITING_COUNT = 'VOTING ENDED — awaiting count';
+export const STATUS_AWAITING_COUNT = 'VOTING ENDED';
 
 /** "You already voted" affordance. */
 export const YOU_VOTED_CHIP = 'You voted ✓';

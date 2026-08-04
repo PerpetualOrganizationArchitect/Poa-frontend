@@ -37,9 +37,8 @@ import { usePOContext } from "@/context/POContext";
 import { useVotingContext } from "@/context/VotingContext";
 import { useOrgTheme, useVoteLanes } from "@/hooks";
 import { usePollNavigation } from "@/hooks/usePollNavigation";
+import { useVoteActions } from "@/hooks/useVoteActions";
 import { useOrgName } from "@/hooks/useOrgName";
-import { useWeb3 } from "@/hooks";
-import { VotingType } from "@/services/web3/domain/VotingService";
 import EmptyState from "@/components/voting/EmptyState";
 import { ProposalCard } from "@/components/voting/ProposalCard";
 import { PollDetail } from "@/components/voting/PollDetail";
@@ -88,7 +87,6 @@ const VotingHistoryPage = () => {
     loadingMoreProposals,
     hasMoreProposals,
   } = useVotingContext();
-  const { voting, executeWithNotification } = useWeb3();
 
   // The archive shows completed proposals from the shared feed.
   const { all } = useVoteLanes();
@@ -122,6 +120,13 @@ const VotingHistoryPage = () => {
     PTVoteType,
     resolveMissingPoll,
   });
+
+  // The archive lists completed votes, but its PollDetail is not read-only: a
+  // `?poll=` deep link resolves against the ongoing arrays too, and a
+  // still-Active expired proposal can surface here. Both handlers are wired for
+  // the same reason — a ballot or a "Count the votes" button with no handler
+  // behind it would report success without sending a transaction.
+  const { handleVote, handleFinalize } = useVoteActions(votingTypeSelected);
 
   // PollDetail must render LIVE data — selectedPoll is a click-time snapshot;
   // optimistic votes / 30s polling refreshes only reach the context arrays.
@@ -224,21 +229,6 @@ const VotingHistoryPage = () => {
 
   const hasActiveFilters =
     searchQuery.trim() || statusFilter !== "all" || sortOrder !== "newest" || filter !== "all";
-
-  // Finalize ("Count the votes") — completed archive rarely needs it, but a
-  // still-Active expired proposal can surface here; route it through PollDetail.
-  const handleGetWinner = useCallback(async (contractAddress, proposalId, isHybrid = false) => {
-    if (!voting) return { success: false };
-    const type = isHybrid ? VotingType.HYBRID : VotingType.DIRECT_DEMOCRACY;
-    return executeWithNotification(
-      () => voting.announceWinner(type, contractAddress, proposalId),
-      {
-        pendingMessage: "Counting the votes...",
-        successMessage: "Result recorded on-chain!",
-        refreshEvent: "proposal:completed",
-      }
-    );
-  }, [voting, executeWithNotification]);
 
   const seoHead = (
     <SEOHead
@@ -519,13 +509,12 @@ const VotingHistoryPage = () => {
         poll={livePoll}
         isOpen={isDetailOpen}
         onClose={onDetailClose}
-        onVote={undefined}
-        onFinalize={handleGetWinner}
+        onVote={handleVote}
+        onFinalize={handleFinalize}
         contractAddress={getContractAddressForVotingType(
           directDemocracyVotingContractAddress,
           votingContractAddress
         )}
-        votingTypeSelected={votingTypeSelected}
       />
     </>
   );

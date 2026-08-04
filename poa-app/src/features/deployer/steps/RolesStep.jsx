@@ -21,6 +21,7 @@ import PulseLoader from "@/components/shared/PulseLoader";
 import { useDeployer } from '../context/DeployerContext';
 import { validateRolesStep } from '../validation/schemas';
 import { validateAllUsernames } from '../utils/usernameResolver';
+import { getAdditionalMembers } from '../utils/additionalMembers';
 import StepHeader from '../components/common/StepHeader';
 import NavigationButtons from '../components/common/NavigationButtons';
 import ValidationSummary from '../components/common/ValidationSummary';
@@ -45,9 +46,7 @@ export function RolesStep() {
   const hasVotingRole = state.roles.some((r) => r.canVote);
 
   // Check if any roles have additional members specified
-  const hasAdditionalMembers = state.roles.some(
-    (r) => (r.distribution?.additionalWearerUsernames || []).filter(u => u?.trim()).length > 0
-  );
+  const hasAdditionalMembers = state.roles.some((r) => getAdditionalMembers(r).length > 0);
 
   const handleNext = async () => {
     // First, check sync validation

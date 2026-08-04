@@ -40,15 +40,14 @@ import {
   PiInfo,
   PiCaretDown,
   PiCaretUp,
-  PiPlus,
-  PiX,
   PiImage,
   PiGear,
-  PiUserPlus,
   PiSliders,
 } from 'react-icons/pi';
 import { roleHasBundle } from '../../utils/powerBundles';
 import { GranularPermissionsModal } from './GranularPermissionsModal';
+import { AdditionalMembersInput } from './AdditionalMembersInput';
+import { setAdditionalMembers } from '../../utils/additionalMembers';
 
 /**
  * AssignToMeToggle - Prominent self-assignment toggle
@@ -379,7 +378,6 @@ function PowerBadges({ roleIndex, permissions, onToggle }) {
  */
 function AdvancedSettings({ role, roleIndex, roles, onUpdate }) {
   const { isOpen, onToggle } = useDisclosure();
-  const additionalUsernames = role.distribution?.additionalWearerUsernames || [];
 
   const updateField = (path, value) => {
     const keys = path.split('.');
@@ -393,25 +391,6 @@ function AdvancedSettings({ role, roleIndex, roles, onUpdate }) {
     current[keys[keys.length - 1]] = value;
 
     onUpdate(roleIndex, newRole);
-  };
-
-  const addUsername = () => {
-    const current = role.distribution?.additionalWearerUsernames || [];
-    updateField('distribution.additionalWearerUsernames', [...current, '']);
-  };
-
-  const updateUsername = (idx, value) => {
-    const current = [...(role.distribution?.additionalWearerUsernames || [])];
-    current[idx] = value;
-    updateField('distribution.additionalWearerUsernames', current);
-  };
-
-  const removeUsername = (idx) => {
-    const current = role.distribution?.additionalWearerUsernames || [];
-    updateField(
-      'distribution.additionalWearerUsernames',
-      current.filter((_, i) => i !== idx)
-    );
   };
 
   return (
@@ -595,60 +574,10 @@ function AdvancedSettings({ role, roleIndex, roles, onUpdate }) {
               Initial Distribution
             </Text>
             <VStack spacing={3} align="stretch">
-              {/* Additional Members */}
-              <Box>
-                <HStack spacing={1} mb={2}>
-                  <Icon as={PiUserPlus} boxSize={3.5} color="warmGray.400" />
-                  <Text fontSize="xs" color="warmGray.500" fontWeight="600">
-                    Additional Members
-                  </Text>
-                  <Tooltip
-                    label="Enter usernames of people who should receive this role when the org is deployed"
-                    hasArrow
-                    placement="top"
-                    fontSize="xs"
-                  >
-                    <Box as="span" cursor="help">
-                      <Icon as={PiInfo} boxSize={3} color="warmGray.400" />
-                    </Box>
-                  </Tooltip>
-                </HStack>
-
-                <VStack spacing={2} align="stretch">
-                  {additionalUsernames.map((username, idx) => (
-                    <HStack key={idx}>
-                      <Input
-                        size="sm"
-                        value={username}
-                        onChange={(e) => updateUsername(idx, e.target.value)}
-                        placeholder="Enter username"
-                        bg="white"
-                      />
-                      <IconButton
-                        size="sm"
-                        icon={<Icon as={PiX} />}
-                        onClick={() => removeUsername(idx)}
-                        aria-label="Remove member"
-                        variant="ghost"
-                        color="warmGray.400"
-                        _hover={{ color: 'red.500', bg: 'red.50' }}
-                      />
-                    </HStack>
-                  ))}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    leftIcon={<Icon as={PiPlus} />}
-                    onClick={addUsername}
-                    alignSelf="flex-start"
-                    borderColor="warmGray.300"
-                    color="warmGray.600"
-                    _hover={{ bg: 'warmGray.50' }}
-                  >
-                    Add member
-                  </Button>
-                </VStack>
-              </Box>
+              <AdditionalMembersInput
+                role={role}
+                onChange={(members) => onUpdate(roleIndex, setAdditionalMembers(role, members))}
+              />
             </VStack>
           </Box>
         </VStack>

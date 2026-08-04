@@ -83,7 +83,7 @@ const WORKER_COOP_TEMPLATE = {
         distribution: {
           mintToDeployer: true,
           additionalWearers: [],
-          additionalWearerUsernames: [],
+          additionalMembers: [],
         },
         hatConfig: { maxSupply: 1000, mutableHat: true },
       },
@@ -103,7 +103,7 @@ const WORKER_COOP_TEMPLATE = {
         distribution: {
           mintToDeployer: true,
           additionalWearers: [],
-          additionalWearerUsernames: [],
+          additionalMembers: [],
         },
         hatConfig: { maxSupply: 5, mutableHat: true },
       },
@@ -200,7 +200,7 @@ const OPEN_SOURCE_TEMPLATE = {
         distribution: {
           mintToDeployer: true,
           additionalWearers: [],
-          additionalWearerUsernames: [],
+          additionalMembers: [],
         },
         hatConfig: { maxSupply: 10000, mutableHat: true },
       },
@@ -220,7 +220,7 @@ const OPEN_SOURCE_TEMPLATE = {
         distribution: {
           mintToDeployer: true,
           additionalWearers: [],
-          additionalWearerUsernames: [],
+          additionalMembers: [],
         },
         hatConfig: { maxSupply: 20, mutableHat: true },
       },
@@ -326,7 +326,7 @@ const CREATIVE_COLLECTIVE_TEMPLATE = {
         distribution: {
           mintToDeployer: true,
           additionalWearers: [],
-          additionalWearerUsernames: [],
+          additionalMembers: [],
         },
         hatConfig: { maxSupply: 100, mutableHat: true },
       },
@@ -346,7 +346,7 @@ const CREATIVE_COLLECTIVE_TEMPLATE = {
         distribution: {
           mintToDeployer: true,
           additionalWearers: [],
-          additionalWearerUsernames: [],
+          additionalMembers: [],
         },
         hatConfig: { maxSupply: 10, mutableHat: true },
       },
@@ -443,7 +443,7 @@ const COMMUNITY_DAO_TEMPLATE = {
         distribution: {
           mintToDeployer: true,
           additionalWearers: [],
-          additionalWearerUsernames: [],
+          additionalMembers: [],
         },
         hatConfig: { maxSupply: 5000, mutableHat: true },
       },
@@ -463,7 +463,7 @@ const COMMUNITY_DAO_TEMPLATE = {
         distribution: {
           mintToDeployer: true,
           additionalWearers: [],
-          additionalWearerUsernames: [],
+          additionalMembers: [],
         },
         hatConfig: { maxSupply: 15, mutableHat: true },
       },
@@ -569,7 +569,7 @@ const STUDENT_ORG_TEMPLATE = {
         distribution: {
           mintToDeployer: true,
           additionalWearers: [],
-          additionalWearerUsernames: [],
+          additionalMembers: [],
         },
         hatConfig: { maxSupply: 1000, mutableHat: true },
       },
@@ -589,7 +589,7 @@ const STUDENT_ORG_TEMPLATE = {
         distribution: {
           mintToDeployer: true, // Deployer becomes first executive
           additionalWearers: [],
-          additionalWearerUsernames: [],
+          additionalMembers: [],
         },
         hatConfig: { maxSupply: 10, mutableHat: true },
       },
@@ -694,7 +694,7 @@ const CUSTOM_TEMPLATE = {
         distribution: {
           mintToDeployer: true,
           additionalWearers: [],
-          additionalWearerUsernames: [],
+          additionalMembers: [],
         },
         hatConfig: { maxSupply: 1000, mutableHat: true },
       },
@@ -714,7 +714,7 @@ const CUSTOM_TEMPLATE = {
         distribution: {
           mintToDeployer: true,
           additionalWearers: [],
-          additionalWearerUsernames: [],
+          additionalMembers: [],
         },
         hatConfig: { maxSupply: 10, mutableHat: true },
       },

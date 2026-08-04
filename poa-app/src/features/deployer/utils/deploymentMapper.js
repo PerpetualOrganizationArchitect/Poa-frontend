@@ -400,6 +400,39 @@ export function mapStateToDeploymentParams(state, deployerAddress, options = {})
     }
   });
 
+  // Additional wearers must be unique, and must not repeat the deployer when the
+  // role is already minted to them. Hats reverts a mint to someone who already
+  // wears the hat, and that aborts the entire deploy — no partial org, just a
+  // burned transaction. Nobody loses the role by being collapsed here: a
+  // duplicate address already gets it once, and the deployer gets it via
+  // mintToDeployer. The Team step warns before it gets this far; this is the
+  // backstop for state assembled some other way (templates, legacy editors).
+  const lowerDeployer = deployerAddress ? String(deployerAddress).toLowerCase() : null;
+  contractRoles.forEach((cr, roleIdx) => {
+    const wearers = cr.distribution?.additionalWearers || [];
+    if (wearers.length === 0) return;
+
+    const seen = new Set();
+    const deduped = wearers.filter((wearer) => {
+      const key = String(wearer || '').toLowerCase();
+      if (!key) return false;
+      if (cr.distribution.mintToDeployer && key === lowerDeployer) return false;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    if (deduped.length !== wearers.length) {
+      console.warn(
+        `[DeployMapper] Dropped ${wearers.length - deduped.length} duplicate additional wearer(s) on role "${cr.name}" (idx ${roleIdx}); minting a hat twice to the same wearer reverts the deploy.`
+      );
+      contractRoles[roleIdx] = {
+        ...cr,
+        distribution: { ...cr.distribution, additionalWearers: deduped },
+      };
+    }
+  });
+
   // Map voting classes.
   // Safety check: if democracyWeight exists and classes don't match it
   // (e.g., APPLY_VARIATION updated the weight but not classes), rebuild from the weight.

@@ -4,6 +4,7 @@
  */
 
 import { resolveUsernamesAcrossChains } from '@/util/crossChainUsername';
+import { getAdditionalMembers } from './additionalMembers';
 
 /**
  * Resolve multiple usernames to addresses via subgraph.
@@ -26,19 +27,20 @@ export async function resolveUsernames(usernames) {
 
 /**
  * Validate that all usernames in roles exist in the registry
- * @param {Array} roles - Array of role objects with distribution.additionalWearerUsernames
+ * @param {Array} roles - Array of role objects with additional members (see additionalMembers.js)
  * @returns {Promise<{isValid: boolean, errors: Object}>}
  */
 export async function validateAllUsernames(roles) {
-  // Collect all unique usernames from all roles
+  // Collect all unique usernames from all roles. Entries the Team step's member
+  // picker produced already carry an address, so only username-only entries
+  // (legacy free-text editors, older templates) need a registry lookup.
   const allUsernames = [];
 
   roles.forEach((role, roleIndex) => {
-    const usernames = role.distribution?.additionalWearerUsernames || [];
-    usernames.forEach(username => {
-      if (username && username.trim()) {
+    getAdditionalMembers(role).forEach(member => {
+      if (!member.address && member.username) {
         allUsernames.push({
-          username: username.trim(),
+          username: member.username,
           roleIndex,
           roleName: role.name,
         });
@@ -83,44 +85,56 @@ export async function validateAllUsernames(roles) {
 }
 
 /**
- * Resolve all usernames in roles to addresses
- * Call this before deployment to populate additionalWearers
+ * Resolve every role's additional members to addresses.
+ * Call this before deployment to populate additionalWearers.
+ *
+ * Members chosen through the Team step's search picker already carry the address
+ * the subgraph returned at selection time, so they need no lookup here; only
+ * username-only entries (legacy free-text editors, older templates) hit the
+ * registry. That keeps the deploy from failing on a name that resolved fine
+ * minutes earlier.
+ *
  * @param {Array} roles - Array of role objects
  * @returns {Promise<Array>} - Roles with additionalWearers populated
  */
 export async function resolveRoleUsernames(roles) {
-  // Collect all unique usernames
-  const allUsernames = roles.flatMap(role =>
-    (role.distribution?.additionalWearerUsernames || [])
-      .filter(u => u && u.trim())
-      .map(u => u.toLowerCase().trim())
-  );
+  const pendingUsernames = new Set();
+  roles.forEach(role => {
+    getAdditionalMembers(role).forEach(member => {
+      if (!member.address && member.username) {
+        pendingUsernames.add(member.username.toLowerCase());
+      }
+    });
+  });
 
-  if (allUsernames.length === 0) {
-    return roles;
-  }
+  const resolved = pendingUsernames.size > 0
+    ? (await resolveUsernames([...pendingUsernames])).resolved
+    : new Map();
 
-  const { resolved } = await resolveUsernames([...new Set(allUsernames)]);
-
-  // Map roles with resolved addresses
   return roles.map(role => {
-    const usernames = role.distribution?.additionalWearerUsernames || [];
-    if (usernames.length === 0) {
+    const members = getAdditionalMembers(role);
+    if (members.length === 0) {
       return role;
     }
 
-    // Throw rather than silently drop: an unresolved username here (resolution
-    // degraded between RolesStep validation and deploy) would otherwise omit a
-    // member from the deployed org with no warning.
-    const addresses = usernames
-      .filter(u => u && u.trim())
-      .map(u => {
-        const address = resolved.get(u.toLowerCase().trim());
-        if (!address) {
-          throw new Error(`Could not resolve username "${u.trim()}" for role "${role.name}". Please re-verify members and try again.`);
-        }
-        return address;
-      });
+    const addresses = [];
+    const seen = new Set();
+
+    members.forEach(member => {
+      // Throw rather than silently drop: an unresolved username here would
+      // otherwise omit a member from the deployed org with no warning.
+      const address = member.address || resolved.get(member.username.toLowerCase());
+      if (!address) {
+        throw new Error(`Could not resolve username "${member.username}" for role "${role.name}". Please re-verify members and try again.`);
+      }
+
+      // Hats reverts a mint to someone who already wears the hat, which aborts
+      // the whole deploy — and one person listed twice never means "mint twice".
+      const key = address.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      addresses.push(address);
+    });
 
     return {
       ...role,

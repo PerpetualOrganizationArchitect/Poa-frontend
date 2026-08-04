@@ -57,6 +57,7 @@ import {
   PiInfo,
   PiGasPump,
   PiListChecks,
+  PiUserPlus,
 } from 'react-icons/pi';
 import SignInModal from '../../../components/passkey/SignInModal';
 import PasskeyOnboardingModal from '../../../components/passkey/PasskeyOnboardingModal';
@@ -66,9 +67,11 @@ import { validateDeploymentConfig } from '../utils/deploymentMapper';
 import { validateHierarchy } from '../utils/hierarchyUtils';
 import NavigationButtons from '../components/common/NavigationButtons';
 import { roleHasBundle } from '../utils/powerBundles';
+import { getAdditionalMembers, countGenesisVoters, memberLabel } from '../utils/additionalMembers';
 import { DeployerUsernameSection } from '../components/review/DeployerUsernameSection';
 import { getNetworkByChainId, DEFAULT_DEPLOY_CHAIN_ID } from '../../../config/networks';
 import { TaskPermission, hasPermission } from '@/util/permissions';
+import { useAuth } from '@/context/AuthContext';
 
 // TaskPerm bits surfaced in the review summary. CREATE is omitted — it is granted
 // to every role by default at deploy (see TaskManagerPermsMatrix / buildTaskManagerPerms).
@@ -353,10 +356,31 @@ function OrganizationHero({ organization, templateName, goToStep }) {
 /**
  * RoleCard - Visual card for a single role
  */
-function RoleCard({ role, index, roles }) {
+function RoleCard({ role, index, roles, deployerAddress }) {
   const parentRole = role.hierarchy.adminRoleIndex !== null
     ? roles[role.hierarchy.adminRoleIndex]
     : null;
+
+  // Who actually wears this hat the moment the org launches. Worth stating on
+  // the last screen before signing: it's the only irreversible part of the role
+  // config, and an unresolved entry here is what aborts the deploy.
+  const additionalMembers = getAdditionalMembers(role);
+  const mintsToDeployer = Boolean(role.distribution?.mintToDeployer);
+
+  // The Team step's "that's you" guard can't fire before sign-in, so a founder
+  // can list themselves on a role already minted to them. Show them once —
+  // mapStateToDeploymentParams drops the duplicate before it reaches calldata,
+  // because minting one hat twice to one wearer reverts the whole deploy.
+  const deployer = deployerAddress ? deployerAddress.toLowerCase() : null;
+  const others = additionalMembers.filter(
+    (m) => !(mintsToDeployer && deployer && m.address === deployer)
+  );
+  const collapsedSelf = others.length !== additionalMembers.length;
+
+  const launchLabels = [
+    ...(mintsToDeployer ? ['you'] : []),
+    ...others.map((m) => memberLabel(m)),
+  ];
 
   return (
     <Box
@@ -397,6 +421,31 @@ function RoleCard({ role, index, roles }) {
           </Text>
         )}
       </HStack>
+
+      {launchLabels.length > 0 && (
+        <HStack
+          spacing={1.5}
+          mt={3}
+          pt={3}
+          borderTop="1px solid"
+          borderColor="warmGray.100"
+          align="start"
+        >
+          <Icon as={PiUserPlus} boxSize={3.5} color="warmGray.400" mt="2px" />
+          <Text fontSize="xs" color="warmGray.500">
+            At launch:{' '}
+            <Text as="span" color="warmGray.700">
+              {launchLabels.join(', ')}
+            </Text>
+            {collapsedSelf && ' — you were listed twice; the role is granted once'}
+          </Text>
+          {others.some((m) => !m.address) && (
+            <Badge bg="orange.100" color="orange.700" borderRadius="full" fontSize="0.6rem" px={2}>
+              Unverified
+            </Badge>
+          )}
+        </HStack>
+      )}
     </Box>
   );
 }
@@ -838,6 +887,9 @@ export function ReviewStep({
   onDeploySuccess,
 }) {
   const { state, actions, selectors } = useDeployer();
+  // Passkey-aware: the founder may have no wagmi address. Used to count them
+  // once in the genesis-voter warning below.
+  const { accountAddress } = useAuth();
   const toast = useToast();
 
   // Get native currency symbol for the selected deploy chain
@@ -972,12 +1024,10 @@ export function ReviewStep({
     // itself once enough members join, so this is a warning, not an error — but the
     // user has to know before they sign, because OrgDeployer v17 ships it at genesis.
     {
-      const genesisVoters = new Set(['deployer']);
-      state.roles.forEach((r) => {
-        if (!r.canVote) return;
-        (r.distribution?.additionalWearers || []).forEach((a) => a && genesisVoters.add(String(a).toLowerCase()));
-      });
-      const atLaunch = genesisVoters.size;
+      // Counted from the picker's entries, not distribution.additionalWearers —
+      // that array stays empty until resolveRoleUsernames runs at deploy time,
+      // so reading it here scored every added member as zero.
+      const atLaunch = countGenesisVoters(state.roles, accountAddress);
       const worst = Math.max(state.voting.hybridVoterQuorum || 0, state.voting.ddVoterQuorum || 0);
       if (worst > atLaunch) {
         result.push({
@@ -1020,7 +1070,7 @@ export function ReviewStep({
     });
 
     return result;
-  }, [state.voting, state.roles, state.features, state.paymaster, hierarchyWarnings]);
+  }, [state.voting, state.roles, state.features, state.paymaster, hierarchyWarnings, accountAddress]);
 
   // Summary stats
   const summaryStats = useMemo(() => ({
@@ -1121,7 +1171,7 @@ export function ReviewStep({
           {state.roles.length > 0 ? (
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
               {state.roles.map((role, idx) => (
-                <RoleCard key={idx} role={role} index={idx} roles={state.roles} />
+                <RoleCard key={idx} role={role} index={idx} roles={state.roles} deployerAddress={accountAddress} />
               ))}
             </SimpleGrid>
           ) : (

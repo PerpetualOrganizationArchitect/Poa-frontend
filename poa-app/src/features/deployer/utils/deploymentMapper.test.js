@@ -107,6 +107,94 @@ describe('vouching ⇒ not default-eligible (M-03 / H-03)', () => {
   });
 });
 
+describe('additional wearers are unique per role', () => {
+  // Hats reverts a mint to an address that already wears the hat, and the deploy
+  // is one transaction — a duplicate wearer burns the launch outright. The Team
+  // step blocks it at entry; this is the backstop for state built another way.
+  const ALICE = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+  const stateWithWearers = (wearers, mintToDeployer = true) => {
+    const state = stateWith();
+    state.roles = [
+      {
+        ...createDefaultRole(0, 'Member'),
+        hierarchy: { adminRoleIndex: 1 },
+        distribution: { mintToDeployer, additionalWearers: wearers },
+      },
+      { ...createDefaultRole(1, 'Exec'), hierarchy: { adminRoleIndex: null } },
+    ];
+    return state;
+  };
+
+  it('drops the deployer when the role is already minted to them', () => {
+    const params = mapStateToDeploymentParams(
+      stateWithWearers([DEPLOYER, ALICE]),
+      DEPLOYER,
+      { registryAddress: REGISTRY }
+    );
+    expect(params.roles[0].distribution.additionalWearers).toEqual([ALICE]);
+  });
+
+  it('matches the deployer case-insensitively', () => {
+    const params = mapStateToDeploymentParams(
+      stateWithWearers([DEPLOYER.toUpperCase().replace('0X', '0x')]),
+      DEPLOYER,
+      { registryAddress: REGISTRY }
+    );
+    expect(params.roles[0].distribution.additionalWearers).toEqual([]);
+  });
+
+  it('keeps the deployer when the role is NOT minted to them', () => {
+    const params = mapStateToDeploymentParams(
+      stateWithWearers([DEPLOYER, ALICE], false),
+      DEPLOYER,
+      { registryAddress: REGISTRY }
+    );
+    expect(params.roles[0].distribution.additionalWearers).toEqual([DEPLOYER, ALICE]);
+  });
+
+  it('collapses a repeated address and drops empty slots', () => {
+    const params = mapStateToDeploymentParams(
+      stateWithWearers([ALICE, ALICE, '', null], false),
+      DEPLOYER,
+      { registryAddress: REGISTRY }
+    );
+    expect(params.roles[0].distribution.additionalWearers).toEqual([ALICE]);
+  });
+
+  it('dedupes against a passkey smart-account deployer', () => {
+    // A passkey founder has no wagmi address, so create/index.js must pass
+    // `passkeyState.accountAddress || address`. Handing the mapper undefined
+    // skips this filter entirely and ships the duplicate mint.
+    const SMART_ACCOUNT = '0x5ba1000000000000000000000000000000000a8b';
+    const params = mapStateToDeploymentParams(
+      stateWithWearers([SMART_ACCOUNT, ALICE]),
+      SMART_ACCOUNT,
+      { registryAddress: REGISTRY }
+    );
+    expect(params.roles[0].distribution.additionalWearers).toEqual([ALICE]);
+  });
+
+  it('cannot drop the deployer when no address is supplied (call sites must pass one)', () => {
+    const params = mapStateToDeploymentParams(
+      stateWithWearers([DEPLOYER, ALICE]),
+      undefined,
+      { registryAddress: REGISTRY }
+    );
+    // Documents the coupling: the filter is only as good as the address given.
+    expect(params.roles[0].distribution.additionalWearers).toEqual([DEPLOYER, ALICE]);
+  });
+
+  it('leaves a clean wearer list untouched', () => {
+    const params = mapStateToDeploymentParams(
+      stateWithWearers([ALICE], false),
+      DEPLOYER,
+      { registryAddress: REGISTRY }
+    );
+    expect(params.roles[0].distribution.additionalWearers).toEqual([ALICE]);
+  });
+});
+
 describe('reducer keeps vouching and default-eligibility mutually exclusive', () => {
   const base = () => {
     const s = clone(initialState);

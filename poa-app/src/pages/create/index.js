@@ -423,7 +423,11 @@ function DeployerPageContent() {
       console.log('=== DEPLOYMENT DEBUG ===');
       console.log('Infrastructure addresses:', infrastructureAddresses);
 
-      const deployParams = mapStateToDeploymentParams(stateWithResolvedRoles, address, infrastructureAddresses);
+      // deployerAddr, not the wagmi `address` — a passkey founder has no wagmi
+      // address, and the mapper uses this to drop a duplicate wearer from a role
+      // that is already minted to the deployer. Passing undefined silently skips
+      // that, and the same hat minted twice reverts the whole deploy.
+      const deployParams = mapStateToDeploymentParams(stateWithResolvedRoles, deployerAddr, infrastructureAddresses);
 
       console.log('Deployment params:', deployParams);
 

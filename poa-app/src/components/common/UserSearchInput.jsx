@@ -58,6 +58,32 @@ const VARIANTS = {
 };
 
 /**
+ * Where the results list sits relative to the input.
+ *
+ * 'overlay' floats it over whatever follows — right for modals and panels.
+ * 'inline' keeps it in normal flow so the container grows instead. Required
+ * inside a Chakra `Collapse` (e.g. the deployer's Advanced Settings), which
+ * keeps `overflow: hidden` even when fully open and would otherwise slice the
+ * dropdown off at the container's edge.
+ */
+const PLACEMENTS = {
+  overlay: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    mt: 1,
+    zIndex: 20,
+    boxShadow: 'lg',
+  },
+  inline: {
+    position: 'static',
+    mt: 2,
+    boxShadow: 'sm',
+  },
+};
+
+/**
  * UserSearchInput component
  * @param {Object} props
  * @param {Function} props.onSelect - Callback when user is selected: ({ address, username }) => void
@@ -65,6 +91,7 @@ const VARIANTS = {
  * @param {boolean} props.disabled - Disable input
  * @param {string} props.size - Chakra size: 'sm' | 'md' | 'lg'
  * @param {'dark'|'light'} props.variant - Color scheme for the surface it sits on (default 'dark')
+ * @param {'overlay'|'inline'} props.resultsPlacement - How the results list is positioned (default 'overlay')
  */
 export function UserSearchInput({
   onSelect,
@@ -72,6 +99,7 @@ export function UserSearchInput({
   disabled = false,
   size = 'md',
   variant = 'dark',
+  resultsPlacement = 'overlay',
 }) {
   const {
     searchQuery,
@@ -85,6 +113,7 @@ export function UserSearchInput({
   } = useUserSearch();
 
   const styles = VARIANTS[variant] || VARIANTS.dark;
+  const placement = PLACEMENTS[resultsPlacement] || PLACEMENTS.overlay;
 
   const handleSelect = (result) => {
     if (result && onSelect) {
@@ -123,17 +152,11 @@ export function UserSearchInput({
       {/* Results dropdown */}
       {searchResults.length > 0 && (
         <Box
-          position="absolute"
-          top="100%"
-          left={0}
-          right={0}
-          mt={1}
+          {...placement}
           bg={styles.dropdownBg}
           borderRadius="md"
           border="1px solid"
           borderColor={styles.dropdownBorder}
-          boxShadow="lg"
-          zIndex={20}
           overflow="hidden"
           maxH="260px"
           overflowY="auto"
@@ -141,6 +164,7 @@ export function UserSearchInput({
           {searchResults.map((result) => (
             <HStack
               key={result.address}
+              data-testid="user-search-result"
               p={3}
               cursor="pointer"
               _hover={{ bg: styles.itemHoverBg }}

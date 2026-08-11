@@ -353,14 +353,18 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
     isClosingRef.current = true;
     onClose();
 
-    const { projectId, view } = router.query;
+    // Drop only `task` (that's what closing means) and carry the rest of the
+    // query — `view`, `q`, `filters` — so closing returns you to the exact
+    // board/list/gantt surface, search and filters intact.
+    const { task: _closedTask, ...restQuery } = router.query;
+    const { projectId } = restQuery;
     const safeProjectId = projectId ? encodeURIComponent(decodeURIComponent(projectId)) : '';
 
     // Wait for URL to update before returning - this prevents new modal instances from opening
     await router.push(
       {
         pathname: `/tasks/`,
-        query: { projectId: safeProjectId, org: userDAO, ...(view ? { view } : {}) },
+        query: { ...restQuery, projectId: safeProjectId, org: userDAO },
       },
       undefined,
       { shallow: true }
@@ -791,12 +795,13 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
 
   const handleCloseEditTaskModal = () => {
     setIsEditTaskModalOpen(false);
-    const { projectId, view } = router.query;
+    const { task: _closedTask, ...restQuery } = router.query;
+    const { projectId } = restQuery;
     const safeProjectId = projectId ? encodeURIComponent(decodeURIComponent(projectId)) : '';
     router.push(
       {
         pathname: `/tasks/`,
-        query: { projectId: safeProjectId, org: userDAO, ...(view ? { view } : {}) },
+        query: { ...restQuery, projectId: safeProjectId, org: userDAO },
       },
       undefined,
       { shallow: true },

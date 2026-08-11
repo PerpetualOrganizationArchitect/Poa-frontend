@@ -57,11 +57,14 @@ const TaskCard = ({ task, columnId, onEditTask, onEditTaskMetadata, isMobile, is
   // isMobile prop should always be provided from TaskColumn
   const isCardMobile = isMobile ?? false;
 
+  // Spread the existing query: rebuilding it from scratch dropped `view`, `q`
+  // and `filters`, so opening a card from the Board silently reset the view
+  // mode and cleared any active search/filter. Matches TaskRow / TaskBar.
   const openTask = () => {
     const safeProjectId = encodeURIComponent(decodeURIComponent(projectId));
     router.push({
       pathname: `/tasks/`,
-      query: { org: userDAO, task: id, projectId: safeProjectId },
+      query: { ...router.query, org: userDAO, task: id, projectId: safeProjectId },
     }, undefined, { shallow: true });
   };
 

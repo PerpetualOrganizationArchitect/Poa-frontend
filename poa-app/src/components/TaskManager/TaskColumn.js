@@ -325,9 +325,12 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
         const safeProjectId = item.projectId ? encodeURIComponent(decodeURIComponent(item.projectId)) : '';
 
         // Use the resolved userDAO to maintain consistency
+        // Spread the existing query so a drag doesn't drop `view` / `q` /
+        // `filters` and bounce the user out of the Board they just dragged in.
         router.push({
           pathname: `/tasks/`,
           query: {
+            ...router.query,
             org: userDAO,
             projectId: safeProjectId,
             task: draggedTask.id

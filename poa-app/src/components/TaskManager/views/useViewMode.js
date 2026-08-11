@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/router';
 
 export const VIEW_MODES = ['board', 'list', 'gantt'];
@@ -28,16 +28,44 @@ const readStoredMode = () => {
   return DEFAULT_MODE;
 };
 
-// URL `?view=` is the source of truth; localStorage is a fallback for direct
-// navigations to /tasks without a query param. We read localStorage *inside*
-// the useState initializer so the first render already returns the stored
-// mode — without this, switching projects (which strips `?view=` from the
-// URL) renders the Board for one tick before useEffect catches up.
+// ONE stored mode shared by every useViewMode() caller. This used to be a
+// per-instance `useState(readStoredMode)`, which forked: ViewSwitcher's copy
+// advanced when you picked a view, while TaskBoard's copy kept whatever it read
+// back at mount. The two only agreed through `?view=` in the URL, so any
+// navigation that dropped that param snapped the Board back to the stale mode.
+let sharedMode = null; // read from storage lazily, on first client access
+const listeners = new Set();
+
+const subscribe = (onStoreChange) => {
+  listeners.add(onStoreChange);
+  return () => listeners.delete(onStoreChange);
+};
+
+const getSharedMode = () => {
+  if (sharedMode === null) sharedMode = readStoredMode();
+  return sharedMode;
+};
+
+// We statically export, so these hooks hydrate — and there is no `window`
+// during that pass. useSyncExternalStore re-renders with the real client
+// snapshot immediately after.
+const getServerMode = () => DEFAULT_MODE;
+
+const putSharedMode = (next) => {
+  if (sharedMode === next) return;
+  sharedMode = next;
+  listeners.forEach((fn) => fn());
+};
+
+// URL `?view=` is the source of truth; the shared mode above is the fallback
+// for navigations to /tasks without a query param. It resolves synchronously on
+// first render, so switching projects (which can strip `?view=`) never renders
+// the Board for a tick before catching up.
 export function useViewMode({ allowGantt = true, allowBoard = true } = {}) {
   const router = useRouter();
   const urlMode = router.query.view;
 
-  const [storedMode, setStoredMode] = useState(readStoredMode);
+  const storedMode = useSyncExternalStore(subscribe, getSharedMode, getServerMode);
 
   let rawMode = (isValid(urlMode) && urlMode) || storedMode || DEFAULT_MODE;
   if (!allowGantt && rawMode === 'gantt') rawMode = 'list';
@@ -52,7 +80,7 @@ export function useViewMode({ allowGantt = true, allowBoard = true } = {}) {
           window.localStorage.setItem(STORAGE_KEY, next);
         }
       } catch {}
-      setStoredMode(next);
+      putSharedMode(next);
       const nextQuery = { ...router.query, view: next };
       router.replace({ pathname: router.pathname, query: nextQuery }, undefined, {
         shallow: true,

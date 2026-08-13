@@ -142,6 +142,7 @@ const initialState = {
     roleHatIds: [],
     topHatId: null,
     creatorHatIds: [],
+    votingHatPermissions: { bindingCreators: [], pollCreators: [], pollVoters: [] },
     educationHubEnabled: false,
     zkEmailInvitesEnabled: false,
     hideTreasury: false,
@@ -358,6 +359,12 @@ export const POProvider = ({ children }) => {
             RefreshEvent.MODULE_COMPLETED,
             RefreshEvent.TASK_COMPLETED, // Updates user stats
             RefreshEvent.METADATA_UPDATED, // Updates org metadata (name, description, etc.)
+            // A passed setter proposal can grant or revoke the creator hats in
+            // votingHatPermissions. useVoteCreateGate reads them from here, so
+            // without this the "who can open a vote" rule and the Create button
+            // would hold a stale permission for the rest of the session — the
+            // re-read the on-chain hook used to do for itself.
+            RefreshEvent.PROPOSAL_COMPLETED,
         ],
         handleRefresh,
         [handleRefresh]
@@ -420,6 +427,38 @@ export const POProvider = ({ children }) => {
                 ? (org.roleHatIds || []).filter(h => String(h) !== String(eligibilityAdminHatId))
                 : (org.roleHatIds || []);
 
+            // Who may open votes / vote in polls, straight off the subgraph's
+            // HatPermission rows (backfilled from the contracts' own getters by
+            // subgraph-pop #186). Only `allowed` grants count — a revoke writes
+            // a row with allowed:false rather than deleting it.
+            // NB HybridVoting "Voter" rows are deliberately NOT read: HybridVoting
+            // has no votingHats() getter, and handleHatToggled mislabels every
+            // toggled creator hat as a Voter. Binding-vote eligibility is
+            // class-based (VotingContext's votingClasses).
+            const hatPerms = org.hatPermissions || [];
+            // The query asks for the max page size. Hitting it exactly means the
+            // list was almost certainly cut off — and because HatPermission ids
+            // sort by contract address, the missing rows are whole contracts,
+            // not a random sample. Silently that reads as "these roles have no
+            // permissions": the create gate would fail open and the rules panel
+            // would announce that nobody can open a vote. Say so instead.
+            if (hatPerms.length >= 1000) {
+                console.warn(
+                    `[POContext] hatPermissions hit the 1000-row page cap for org ${org.id}. `
+                    + 'Permission rows are likely truncated — paginate the query.'
+                );
+            }
+            const permHats = (contractType, permissionRole) => hatPerms
+                .filter(p => p.allowed
+                    && p.contractType === contractType
+                    && p.permissionRole === permissionRole)
+                .map(p => String(p.hatId));
+            const votingHatPermissions = {
+                bindingCreators: permHats('HybridVoting', 'Creator'),
+                pollCreators: permHats('DirectDemocracyVoting', 'Creator'),
+                pollVoters: permHats('DirectDemocracyVoting', 'Voter'),
+            };
+
             let poDescription = 'No description provided or IPFS content still being indexed';
             let poLinks = [];
             if (org.metadata) {
@@ -466,6 +505,7 @@ export const POProvider = ({ children }) => {
                     metadataAdminHatId: adminHat && adminHat !== '0' ? adminHat : null,
                     eligibilityModuleAdminHat: eligibilityAdminHatId,
                     creatorHatIds: org.taskManager?.creatorHatIds || [],
+                    votingHatPermissions,
                     // organizerHatIds is on TaskManager; foldersRoot is on
                     // Organization (per subgraph-pop PR #177). Both fall back
                     // to lens reads via useTaskManagerV4State until the PR
@@ -707,6 +747,7 @@ export const POProvider = ({ children }) => {
         roleHatIds: state.roleHatIds,
         topHatId: state.topHatId,
         creatorHatIds: state.creatorHatIds,
+        votingHatPermissions: state.votingHatPermissions,
         organizerHatIds: state.organizerHatIds,
         foldersRoot: state.foldersRoot,
         educationHubEnabled: state.educationHubEnabled,

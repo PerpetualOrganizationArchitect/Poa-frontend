@@ -11,7 +11,6 @@ import { useIPFScontext } from '../context/ipfsContext';
 import { usePOContext } from '../context/POContext';
 import { formatTokenAmount } from '../util/formatToken';
 import { useSubgraphClient } from '../util/apolloClient';
-import { useOnchainCreatorHats } from './useOnchainCreatorHats';
 
 /**
  * Permission type mapping for display
@@ -341,7 +340,7 @@ function groupMembersByRole(users, roles) {
  * @returns {Object} Org structure data and utilities
  */
 export function useOrgStructure() {
-  const { orgId, roleHatIds, topHatId, subgraphUrl, orgChainId } = usePOContext();
+  const { orgId, roleHatIds, topHatId, subgraphUrl } = usePOContext();
   const { safeFetchFromIpfs, safeFetchImageFromIpfs } = useIPFScontext();
 
   // State for IPFS metadata
@@ -369,17 +368,19 @@ export function useOrgStructure() {
 
   const org = data?.organization;
 
-  // Creator/voting hats that the subgraph can't index — set in the voting
-  // contracts' initialize() without emitting events (see poa-box/POP#171), and
-  // TaskManager project-creators are only exposed via a lens call — are read
-  // straight from chain (current block, any RPC) so the matrix shows the real
-  // creators now, independent of subgraph state.
-  const { onchainCreatorRows } = useOnchainCreatorHats({
-    hybridVoting: org?.hybridVoting?.id,
-    directDemocracyVoting: org?.directDemocracyVoting?.id,
-    taskManager: org?.taskManager?.id,
-    chainId: orgChainId,
-  });
+  // The matrix used to supplement these subgraph rows with four live eth_calls,
+  // because creator/voting hats seeded inside initialize() emitted no events.
+  // That is fixed upstream: subgraph-pop #186 backfills the HybridVoting and
+  // DirectDemocracyVoting hats at Initialized, and #206 sources TaskManager's
+  // from HatSet. Verified 2026-08-13 — HV Creator, DDV Creator, DDV Voter and
+  // TaskManager CreateProject all match the contracts' own getters exactly on
+  // every live org. The reads were dropped rather than kept as belt-and-braces:
+  // they cost an RPC round trip per mount and could only ever agree.
+  //
+  // EducationHub is the one hat set still NOT backfilled (education-hub.ts has
+  // no equivalent — Decentral Park's deploy-time hub creator is missing from
+  // the subgraph), and useEducationCreateGate still reads it on-chain. This
+  // matrix has never shown an EducationHub column, so nothing is lost here.
 
   // Load org metadata from subgraph (preferred) or IPFS (fallback)
   useEffect(() => {
@@ -527,21 +528,18 @@ export function useOrgStructure() {
 
   const mergedHatPermissions = useMemo(() => {
     const base = org?.hatPermissions || [];
-    // onchainCreatorRows are read live from the contracts and supplement the
-    // subgraph rows (buildPermissionsMatrix ORs them in), so deploy-time
-    // creators the subgraph never indexed still light up. Idempotent once the
-    // subgraph catches up.
+    // The TaskManager rows are reshaped from org.taskManager (TaskPerm bits and
+    // creatorHatIds) into HatPermission shape; buildPermissionsMatrix ORs the
+    // lot together.
     return [
       ...base,
       ...taskManagerHatPermissions,
       ...taskManagerCreatorHatPermissions,
-      ...onchainCreatorRows,
     ];
   }, [
     org?.hatPermissions,
     taskManagerHatPermissions,
     taskManagerCreatorHatPermissions,
-    onchainCreatorRows,
   ]);
 
   // Build permissions matrix

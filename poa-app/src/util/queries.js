@@ -192,6 +192,28 @@ export const FETCH_ORG_FULL_DATA = gql`
         thresholdPct
         quorum
       }
+      # Who may open votes / vote in polls. Creator + DDV voting hats are seeded
+      # inside initialize() without events, but subgraph-pop #186 backfills them
+      # at Initialized, so these rows match the contracts' own getters. Consumed
+      # by useVoteCreateGate and the "Who can open a vote" rules section.
+      #
+      # first: 1000 (the max page size) is NOT decorative. Nested collections
+      # default to 100, and HatPermission ids start with the CONTRACT ADDRESS,
+      # so the default ordering (id asc) truncates in contract-sized blocks
+      # rather than sampling evenly — one org's whole HybridVoting creator set
+      # disappears while another's survives, purely on address sort order. At
+      # ~3.2 rows per role that cap is reached around 32 roles. Losing those
+      # rows would fail useVoteCreateGate OPEN (every member offered a Create
+      # button that reverts Unauthorized) and make the rules panel claim only a
+      # passed vote can open one. Keep the argument identical in
+      # FETCH_ORG_STRUCTURE_DATA: Apollo keys cache fields by args, so matching
+      # them lets both queries share one Organization.hatPermissions entry.
+      hatPermissions(first: 1000) {
+        hatId
+        permissionRole
+        contractType
+        allowed
+      }
       taskManager {
         id
         creatorHatIds
@@ -932,7 +954,10 @@ export const FETCH_ORG_STRUCTURE_DATA = gql`
         quorum
       }
 
-      hatPermissions {
+      # first: 1000 must stay identical to FETCH_ORG_FULL_DATA's — see the note
+      # there. Nested collections default to 100 and truncate in whole-contract
+      # blocks, which would silently drop entire columns from this matrix.
+      hatPermissions(first: 1000) {
         hatId
         permissionRole
         contractType

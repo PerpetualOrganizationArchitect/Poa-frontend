@@ -231,7 +231,7 @@ export function userEligibleInClasses(classes, userHatIds = [], userBalanceWei =
  *    ineligible in EVERY class doesn't revert, but records a permanently
  *    weightless vote and burns their hasVoted flag
  *
- * `ddVotingHats` null = unknown (RPC loading/failure), `classBreakdown`
+ * `ddVotingHats` null = unknown (org query loading/failed), `classBreakdown`
  * null = classes still loading, and `userDataReady` false = the viewer's own
  * hats/balance haven't loaded yet; all fail OPEN (indeterminate: true) so a
  * transient outage never bricks the ballot — the contract stays the enforcer.

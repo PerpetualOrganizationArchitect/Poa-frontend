@@ -7,8 +7,6 @@ import {
     FETCH_PROPOSAL_BY_ID_WITH_PROPOSER,
 } from '../util/queries';
 import { hasProposerField, peekCapability, CAPABILITY } from '../util/subgraphCapabilities';
-import { createChainClients } from '../services/web3/utils/chainClients';
-import DirectDemocracyVotingABI from '../../abi/DirectDemocracyVotingNew.json';
 import { usePOContext } from './POContext';
 import { useRefreshSubscription, useRefreshEmit, RefreshEvent } from './RefreshContext';
 import { useSubgraphClient } from '../util/apolloClient';
@@ -316,17 +314,18 @@ function votingReducer(state, action) {
 export const VotingProvider = ({ children }) => {
     const [state, dispatch] = useReducer(votingReducer, initialVotingState);
 
-    const { orgId, subgraphUrl, directDemocracyVotingContractAddress, orgChainId } = usePOContext();
+    const {
+        orgId,
+        subgraphUrl,
+        directDemocracyVotingContractAddress,
+        votingHatPermissions,
+        poContextLoading,
+        error: orgError,
+    } = usePOContext();
     const client = useSubgraphClient(subgraphUrl);
     const isActive = useUserActive();
     const { accountAddress } = useAuth();
 
-    // Contract-level DirectDemocracy voting hats — who may VOTE on polls.
-    // Seeded at initialize() without events, so the subgraph cannot supply
-    // them (POP#171); read once per org from the contract. null = unknown
-    // (loading / RPC failure) and MUST stay distinct from []: on-chain, an
-    // empty votingHats array means NOBODY can vote, while "unknown" fails
-    // open to today's membership-only gating.
     // Remote-finalization detector state: last seen ongoing proposal ids per
     // org, plus a ref-stable emit so the data effect can re-broadcast
     // PROPOSAL_COMPLETED when POLLED data shows a proposal completing.
@@ -335,40 +334,23 @@ export const VotingProvider = ({ children }) => {
     emitRef.current = emit;
     const prevOngoingRef = useRef({ orgId: null, ongoing: new Set() });
 
-    const [ddVotingHats, setDdVotingHats] = useState(null);
-    const ddHatsSeqRef = useRef(0);
-    const loadDdVotingHats = useCallback((reset = false) => {
-        const seq = ++ddHatsSeqRef.current;
-        if (reset) setDdVotingHats(null);
-        if (!directDemocracyVotingContractAddress || !orgChainId) return;
-        const pc = createChainClients(orgChainId)?.publicClient;
-        if (!pc) return;
-        pc.readContract({
-            address: directDemocracyVotingContractAddress,
-            abi: DirectDemocracyVotingABI,
-            functionName: 'votingHats',
-        })
-            .then((res) => {
-                if (seq === ddHatsSeqRef.current) setDdVotingHats((res || []).map((id) => id.toString()));
-            })
-            .catch(() => {
-                // RPC error → unknown, NOT [] — but only clobber on a reset
-                // load; a failed refresh keeps the previous known value.
-                if (seq === ddHatsSeqRef.current && reset) setDdVotingHats(null);
-            });
-    }, [directDemocracyVotingContractAddress, orgChainId]);
-
-    useEffect(() => {
-        loadDdVotingHats(true);
-    }, [loadDdVotingHats]);
-
-    // A passed setter proposal can change the voting hats; re-read after any
-    // count-the-votes so verdicts don't stay stale for the session.
-    useRefreshSubscription(
-        [RefreshEvent.PROPOSAL_COMPLETED],
-        () => loadDdVotingHats(false),
-        [loadDdVotingHats]
-    );
+    // Contract-level DirectDemocracy voting hats — who may VOTE on polls.
+    //
+    // Seeded at initialize() without events, so this used to be a direct
+    // readContract; subgraph-pop #186 backfills them at Initialized and the
+    // DDV Voter rows match votingHats() exactly on every live org, so it now
+    // comes from POContext's org query for free. POContext refetches on
+    // PROPOSAL_COMPLETED, so a passed setter still can't leave it stale.
+    //
+    // null = unknown and MUST stay distinct from []: on-chain, an empty
+    // votingHats array means NOBODY can vote, while "unknown" fails open to
+    // membership-only gating. An org with no DDV deployed, a query still in
+    // flight, and a failed query are all unknown — never [].
+    const ddVotingHats = useMemo(() => {
+        if (!directDemocracyVotingContractAddress) return null;
+        if (poContextLoading || orgError) return null;
+        return votingHatPermissions?.pollVoters || null;
+    }, [directDemocracyVotingContractAddress, poContextLoading, orgError, votingHatPermissions]);
 
     // Proposer attribution self-enables: probe the serving subgraph's schema
     // once (cached) and upgrade to the richer query only when the field exists

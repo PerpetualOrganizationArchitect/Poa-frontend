@@ -77,6 +77,9 @@ const VotingPage = () => {
     eligibilityModuleAddress,
     participationTokenAddress,
     zkEmailInvitesAddress,
+    roleManagerAddress,
+    roleManagerEnabled,
+    roleGroups,
     poContextLoading,
     roleNames,
     leaderboardData,
@@ -168,6 +171,10 @@ const VotingPage = () => {
       // Forward human-readable action previews so the metadata JSON carries
       // them (useProposalForm emits this; the old VotingPage dropped it).
       actionSummaries: proposalData.actionSummaries || [],
+      // createProposalV2 config — only set on restricted proposals. VotingService
+      // feature-detects the V2 selector per instance and falls back to V1.
+      quorumOverride: proposalData.quorumOverride || 0,
+      equalWeight: Boolean(proposalData.equalWeight),
     };
 
     const isExecutionProposal =
@@ -203,6 +210,9 @@ const VotingPage = () => {
     handleTransferAmountChange,
     handleRestrictedToggle,
     toggleRestrictedRole,
+    handleRestrictedRolesChange,
+    setQuorumOverride,
+    setEqualWeight,
     handleSetterChange,
     handleSubmit,
     restoreProposal,
@@ -220,7 +230,9 @@ const VotingPage = () => {
     executorContractAddress,
     participationTokenAddress,
     zkEmailInvitesAddress,
-  }), [votingContractAddress, directDemocracyVotingContractAddress, taskManagerContractAddress, executorContractAddress, participationTokenAddress, zkEmailInvitesAddress]);
+    eligibilityModuleAddress,
+    roleManagerAddress,
+  }), [votingContractAddress, directDemocracyVotingContractAddress, taskManagerContractAddress, executorContractAddress, participationTokenAddress, zkEmailInvitesAddress, eligibilityModuleAddress, roleManagerAddress]);
 
   const handlePollCreated = useCallback(() => {
     return handleSubmit(eligibilityModuleAddress, contractAddresses);
@@ -473,6 +485,9 @@ const VotingPage = () => {
             handleTransferAmountChange={handleTransferAmountChange}
             handleRestrictedToggle={handleRestrictedToggle}
             toggleRestrictedRole={toggleRestrictedRole}
+            handleRestrictedRolesChange={handleRestrictedRolesChange}
+            setQuorumOverride={setQuorumOverride}
+            setEqualWeight={setEqualWeight}
             handleSetterChange={handleSetterChange}
             handlePollCreated={handlePollCreated}
             loadingSubmit={loadingSubmit}

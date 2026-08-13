@@ -22,6 +22,7 @@ import {
 /** Every id the create-a-vote wizard can reach today. */
 const TEMPLATE_IDS = [
   'email-invites',
+  'create-group',
   'change-threshold-hybrid',
   'change-threshold-dd',
   'change-quorum-hybrid',
@@ -153,6 +154,7 @@ describe('setter template wiring', () => {
       participationToken: 'ParticipationToken.json',
       hybridVoting: 'HybridVotingNew.json',
       directDemocracyVoting: 'DirectDemocracyVotingNew.json',
+      roleManager: 'RoleManager.json',
     };
     const abiDir = fileURLToPath(new URL('../../abi/', import.meta.url));
 
@@ -473,9 +475,10 @@ describe('template-only raw functions', () => {
   it('leaves every other raw function callable', () => {
     const raw = Object.values(RAW_FUNCTIONS).flat().filter(f => !f.templateOnly);
     expect(raw.length).toBeGreaterThan(0);
-    // Only the email one is restricted today; a new restriction should be deliberate.
+    // Restricted (template-only) raw calls: the email allowlist activation and
+    // the RoleManager createGroup (its RoleWiring tuple must not be hand-encoded).
     const restricted = Object.values(RAW_FUNCTIONS).flat().filter(f => f.templateOnly);
-    expect(restricted.map(f => f.name)).toEqual(['setActiveAllowlist']);
+    expect(restricted.map(f => f.name).sort()).toEqual(['createGroup', 'setActiveAllowlist']);
   });
 });
 

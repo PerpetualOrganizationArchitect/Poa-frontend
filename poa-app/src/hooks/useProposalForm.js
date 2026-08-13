@@ -33,6 +33,8 @@ import {
   DESCRIPTION_PREFIX as CREATE_ROLE_DESCRIPTION_PREFIX,
   defaultRoleConfig,
 } from '@/components/voting/RoleConfigurator';
+import { encodeCreateRole } from '@/lib/roleManager/encoding';
+import { resolveWiring } from '@/lib/roleManager/wiring';
 
 const defaultProposal = {
   name: "",
@@ -63,6 +65,10 @@ const defaultProposal = {
   // Voting restriction fields
   isRestricted: false,    // Whether to restrict who can vote
   restrictedHatIds: [],   // Hat IDs that can vote (if restricted)
+  // createProposalV2 config (restricted proposals only). Executable proposals
+  // floor the quorum at max(org, override); signal-only polls may lower it.
+  quorumOverride: 0,      // 0 = use the org quorum unchanged
+  equalWeight: false,     // HV only: tally every eligible voter equally
   // Setter fields (for contract settings changes)
   setterMode: "template", // "template" or "advanced"
   setterTemplate: "",     // Template ID if using template mode
@@ -233,11 +239,23 @@ export function useProposalForm({ onSubmit }) {
       ...prev,
       isRestricted,
       restrictedHatIds: isRestricted ? prev.restrictedHatIds : [],
+      // Override / equalWeight are only valid on restricted proposals — clear
+      // them when restriction is turned off so the submit always sends 0/false.
+      quorumOverride: isRestricted ? prev.quorumOverride : 0,
+      equalWeight: isRestricted ? prev.equalWeight : false,
     }));
   }, []);
 
   const handleRestrictedRolesChange = useCallback((hatIds) => {
     setProposal(prev => ({ ...prev, restrictedHatIds: hatIds }));
+  }, []);
+
+  const setQuorumOverride = useCallback((value) => {
+    setProposal(prev => ({ ...prev, quorumOverride: Math.max(0, Number(value) || 0) }));
+  }, []);
+
+  const setEqualWeight = useCallback((value) => {
+    setProposal(prev => ({ ...prev, equalWeight: Boolean(value) }));
   }, []);
 
   const toggleRestrictedRole = useCallback((hatId) => {
@@ -385,9 +403,8 @@ export function useProposalForm({ onSubmit }) {
       return false;
     };
 
-    if (!rc.parentHatId || String(rc.parentHatId).trim() === '') {
-      return fail('No Parent Role Selected', 'Pick which role this new role should sit under.');
-    }
+    // RoleManager creates the identity hat itself (flat child of the
+    // eligibility-admin hat) — there is no caller-chosen parent any more.
     if (!rc.name || rc.name.trim() === '') {
       return fail('Missing Role Name', 'Give the new role a name.');
     }
@@ -404,6 +421,13 @@ export function useProposalForm({ onSubmit }) {
       if (!rc.vouching.selfVouch && (!rc.vouching.voucherHatId || String(rc.vouching.voucherHatId).trim() === '')) {
         return fail('Missing Voucher Role', 'Pick the role whose members can vouch, or toggle on self-vouching.');
       }
+    }
+
+    // Mirror the contract's WiringIncompatible guards up-front so an invalid
+    // proposal never reaches announceWinner (where a revert silently no-ops).
+    const { error: wiringError } = resolveWiring(rc, { defaultEligible: false });
+    if (wiringError) {
+      return fail('Role settings can’t be combined', wiringError);
     }
 
     const wearers = rc.initialWearers || [];
@@ -939,185 +963,45 @@ export function useProposalForm({ onSubmit }) {
         numOptions = optionNames.length;
       }
     } else if (proposal.type === "createRole") {
-      // Create-role proposal — a single winning batch that calls:
-      //   1. EligibilityModule.createHatWithEligibility(params)
-      //   2. EligibilityModule.configureVouching(predictedHatId, ...)        (optional)
-      //   3. HybridVoting.setCreatorHatAllowed(predictedHatId, true)         (optional)
-      //   4. TaskManager.setProjectRolePerm(pid, predictedHatId, mask)       (per project)
-      //   5. TaskManager.setConfig(ROLE_PERM/CREATOR_HAT/ORGANIZER_HAT, ...) (org-wide)
-      //   6. EligibilityModule.updateHatMetadata(predictedHatId, name, cid)  (if description)
+      // Create-role proposal — ONE RoleManager.createRole(RoleParams) call.
       //
-      // predictedRoleHatId is pre-computed in handleSubmit via Hats.getNextId.
-      // Race condition: a sibling hat created under the same parent between
-      // submit and execution shifts the real id; ALL downstream calls (2-6)
-      // then point at the wrong hat. The configurator surfaces a warning when
-      // another active createRole proposal targets the same parent.
+      // RoleManager creates the identity hat in-call (real hatId is known
+      // on-chain, so the old off-chain Hats.getNextId prediction + race warning
+      // is gone), then applies the typed permission fan-out (vouching, task
+      // perms, HV/DD creator, PT/Edu membership, group joins, budget) and routes
+      // initialGrants through the consent model. All downstream wiring that used
+      // to be 5+ separate Executor calls against the predicted hat id is now the
+      // RoleManager's job — the frontend just describes the target state.
+      //
+      // metadataCIDBytes32 (name + description uploaded to IPFS in handleSubmit)
+      // is passed straight through as RoleParams.metadataCID — no separate
+      // updateHatMetadata call.
       const rc = proposal.roleConfig || {};
-      const wearers = rc.initialWearers || [];
-      const projectPerms = rc.projectPerms || [];
+      const roleManagerAddr = contractAddresses?.roleManagerAddress;
+      if (!roleManagerAddr) {
+        throw new Error('This organization has not adopted the Role Manager, so roles can’t be created by vote yet.');
+      }
 
-      const hatParams = [
-        rc.parentHatId,
-        rc.name || '',
-        Number(rc.maxSupply) || 1,
-        Boolean(rc.mutable),
-        rc.imageURI || '',
-        Boolean(rc.defaultEligible),
-        Boolean(rc.defaultStanding),
-        wearers.map(w => w.address),
-        wearers.map(w => Boolean(w.eligible ?? rc.defaultEligible)),
-        wearers.map(w => Boolean(w.standing ?? rc.defaultStanding)),
-      ];
+      // resolveWiring maps the config's permission section onto the RoleWiring
+      // struct and applies the same guards the contract enforces. New roles are
+      // always default-eligible=false on-chain, so quickJoinAutoMint stays off.
+      const { wiring, error: wiringError } = resolveWiring(rc, { defaultEligible: false });
+      if (wiringError) {
+        throw new Error(wiringError);
+      }
 
-      const elIface = new utils.Interface([
-        {
-          type: 'function',
-          name: 'createHatWithEligibility',
-          stateMutability: 'nonpayable',
-          inputs: [{
-            name: 'params',
-            type: 'tuple',
-            components: [
-              { name: 'parentHatId', type: 'uint256' },
-              { name: 'details', type: 'string' },
-              { name: 'maxSupply', type: 'uint32' },
-              { name: '_mutable', type: 'bool' },
-              { name: 'imageURI', type: 'string' },
-              { name: 'defaultEligible', type: 'bool' },
-              { name: 'defaultStanding', type: 'bool' },
-              { name: 'mintToAddresses', type: 'address[]' },
-              { name: 'wearerEligibleFlags', type: 'bool[]' },
-              { name: 'wearerStandingFlags', type: 'bool[]' },
-            ],
-          }],
-          outputs: [{ name: 'newHatId', type: 'uint256' }],
-        },
-        'function configureVouching(uint256 hatId, uint32 quorum, uint256 membershipHatId, bool combineWithHierarchy)',
-        'function updateHatMetadata(uint256 hatId, string name, bytes32 metadataCID)',
-      ]);
-
-      const hvIface = new utils.Interface([
-        'function setCreatorHatAllowed(uint256 h, bool ok)',
-      ]);
-
-      const tmIface = new utils.Interface([
-        'function setProjectRolePerm(bytes32 pid, uint256 hatId, uint8 mask)',
-        'function setConfig(uint8 key, bytes value)',
-      ]);
-
-      const batch = [];
-
-      // 1. Create the hat
-      batch.push({
-        target: eligibilityModuleAddress,
-        value: '0',
-        data: elIface.encodeFunctionData('createHatWithEligibility', [hatParams]),
+      const roleCall = encodeCreateRole(roleManagerAddr, {
+        name: rc.name || '',
+        metadataCID: metadataCIDBytes32 || undefined,
+        imageURI: rc.imageURI || '',
+        maxSupply: Number(rc.maxSupply) || 1,
+        mutableHat: Boolean(rc.mutable),
+        groupIds: rc.groupIds || [],
+        wiring,
+        initialGrants: (rc.initialWearers || []).map(w => w.address),
       });
 
-      // 2. Vouching config (downstream calls need the predicted hatId)
-      if (rc.vouching?.enabled && predictedRoleHatId) {
-        const voucherHatId = rc.vouching.selfVouch ? predictedRoleHatId : rc.vouching.voucherHatId;
-        batch.push({
-          target: eligibilityModuleAddress,
-          value: '0',
-          data: elIface.encodeFunctionData('configureVouching', [
-            predictedRoleHatId,
-            Number(rc.vouching.quorum) || 1,
-            voucherHatId,
-            Boolean(rc.vouching.combineWithHierarchy),
-          ]),
-        });
-      }
-
-      // 3. Proposal-creator permission on HybridVoting
-      if (rc.canVote && predictedRoleHatId) {
-        const hybridAddr = contractAddresses?.votingContractAddress
-          || contractAddresses?.hybridVotingContractAddress;
-        if (hybridAddr) {
-          batch.push({
-            target: hybridAddr,
-            value: '0',
-            data: hvIface.encodeFunctionData('setCreatorHatAllowed', [predictedRoleHatId, true]),
-          });
-        }
-      }
-
-      const taskManagerAddr = contractAddresses?.taskManagerContractAddress;
-
-      // 4. Per-project permission overrides
-      if (projectPerms.length > 0 && predictedRoleHatId && taskManagerAddr) {
-        for (const p of projectPerms) {
-          batch.push({
-            target: taskManagerAddr,
-            value: '0',
-            data: tmIface.encodeFunctionData('setProjectRolePerm', [
-              p.projectId,
-              predictedRoleHatId,
-              Number(p.mask) || 0,
-            ]),
-          });
-        }
-      }
-
-      // 5. Org-wide task-system grants via TaskManager.setConfig.
-      //    Mirrors setterDefinitions.js: ROLE_PERM (global mask), CREATOR_HAT_ALLOWED
-      //    (create projects/tasks), ORGANIZER_HAT_ALLOWED (reorganize folder tree).
-      if (taskManagerAddr && predictedRoleHatId) {
-        const ROLE_PERM_KEY = 2;       // TaskManager ConfigKey.ROLE_PERM
-        const CREATOR_HAT_KEY = 1;     // TaskManager ConfigKey.CREATOR_HAT_ALLOWED
-        const ORGANIZER_HAT_KEY = 7;   // TaskManager ConfigKey.ORGANIZER_HAT_ALLOWED
-
-        const globalPerms = Number(rc.globalPerms) || 0;
-        if (globalPerms > 0) {
-          batch.push({
-            target: taskManagerAddr,
-            value: '0',
-            data: tmIface.encodeFunctionData('setConfig', [
-              ROLE_PERM_KEY,
-              utils.defaultAbiCoder.encode(['uint256', 'uint8'], [predictedRoleHatId, globalPerms]),
-            ]),
-          });
-        }
-        if (rc.canCreateTasks) {
-          batch.push({
-            target: taskManagerAddr,
-            value: '0',
-            data: tmIface.encodeFunctionData('setConfig', [
-              CREATOR_HAT_KEY,
-              utils.defaultAbiCoder.encode(['uint256', 'bool'], [predictedRoleHatId, true]),
-            ]),
-          });
-        }
-        if (rc.canOrganizeFolders) {
-          batch.push({
-            target: taskManagerAddr,
-            value: '0',
-            data: tmIface.encodeFunctionData('setConfig', [
-              ORGANIZER_HAT_KEY,
-              utils.defaultAbiCoder.encode(['uint256', 'bool'], [predictedRoleHatId, true]),
-            ]),
-          });
-        }
-      }
-
-      // 6. Role metadata — set name + description on-chain via Hats metadata.
-      //    updateHatMetadata stores the IPFS CID in the hat details (requires a
-      //    mutable hat) and emits HatMetadataUpdated, which the subgraph indexes
-      //    into hat.name + hat.metadata.description. No contract changes needed.
-      //    metadataCIDBytes32 is computed in handleSubmit (IPFS upload).
-      if (metadataCIDBytes32 && predictedRoleHatId) {
-        batch.push({
-          target: eligibilityModuleAddress,
-          value: '0',
-          data: elIface.encodeFunctionData('updateHatMetadata', [
-            predictedRoleHatId,
-            rc.name || '',
-            metadataCIDBytes32,
-          ]),
-        });
-      }
-
-      batches = [batch, []];   // Yes wins: create + configure. No wins: nothing.
+      batches = [[roleCall], []];   // Yes wins: create role. No wins: nothing.
       numOptions = 2;
       optionNames = ['Create role', 'Reject'];
     } else if (proposal.type === "setter") {
@@ -1382,63 +1266,22 @@ export function useProposalForm({ onSubmit }) {
 
       const hatsProtocolAddress = getInfrastructureAddress(CONTRACT_NAMES.HATS_PROTOCOL, orgChainId) || null;
 
-      // Pre-compute the new role's hat ID via Hats.getNextId(parent). This
-      // lets the same batch chain configureVouching / setCreatorHatAllowed /
-      // setProjectRolePerm against the new role. The id is deterministic
-      // (parent || childIndex bit-packing), so as long as no sibling hat is
-      // created under the same parent between submit and execution, the
-      // prediction is accurate. The configurator warns when a concurrent
-      // createRole proposal targets the same parent.
-      let predictedRoleHatId = null;
-      if (proposal.type === 'createRole') {
-        const parentHatId = proposal.roleConfig?.parentHatId;
-        if (hatsProtocolAddress && orgNetwork?.rpcUrl && orgChainId && parentHatId) {
-          try {
-            const readProvider = new ethersProviders.JsonRpcProvider(
-              orgNetwork.rpcUrl,
-              { chainId: orgChainId, name: orgNetwork.name || `chain-${orgChainId}` }
-            );
-            const hats = createHatsService(readProvider);
-            const nextId = await hats.getNextId(hatsProtocolAddress, parentHatId);
-            predictedRoleHatId = nextId.toString();
-          } catch (err) {
-            console.error('[useProposalForm] Hats.getNextId failed:', err);
-            toast({
-              title: "Cannot predict new role's hat ID",
-              description: "Could not read Hats Protocol to pre-compute the new role's ID. Please try again.",
-              status: "error",
-              duration: 5000,
-              isClosable: true,
-            });
-            setLoadingSubmit(false);
-            return;
-          }
-        } else {
-          toast({
-            title: "Missing infrastructure config",
-            description: "Hats Protocol address or RPC is not configured for this chain.",
-            status: "error",
-            duration: 5000,
-            isClosable: true,
-          });
-          setLoadingSubmit(false);
-          return;
-        }
-      }
+      // RoleManager creates the identity hat in-call, so the real hat id is
+      // known on-chain — no off-chain Hats.getNextId prediction (and its
+      // sibling-hat race) is needed any more. Kept null for buildProposalData's
+      // legacy signature; the createRole branch no longer reads it.
+      const predictedRoleHatId = null;
 
       // Create-role only: persist the role's name + description on-chain via the
-      // Hats metadata pattern. Upload { name, description } to IPFS, encode the CID
-      // to bytes32, and let buildProposalData append an updateHatMetadata call (the
-      // subgraph indexes it into hat.name + hat.metadata.description).
-      // Gated on description only: the hat image is already stored via
-      // createHatWithEligibility's imageURI, and the subgraph metadata parser reads
-      // name + description only — so an image would add on-chain cost for no effect.
-      // updateHatMetadata calls changeHatDetails, which requires a mutable hat — so
-      // only attempt it when the role is mutable.
+      // RoleManager RoleParams.metadataCID field. Upload { name, description } to
+      // IPFS and encode the CID to bytes32; the subgraph indexes it into
+      // hat.name + hat.metadata.description. RoleManager sets the metadata at
+      // creation (no separate, mutable-only updateHatMetadata call), so this is
+      // no longer gated on the hat being mutable.
       let metadataCIDBytes32 = null;
       if (proposal.type === 'createRole') {
         const rc = proposal.roleConfig || {};
-        if (rc.description?.trim() && rc.mutable) {
+        if (rc.description?.trim() || rc.name?.trim()) {
           try {
             const result = await addToIpfs(JSON.stringify({
               name: rc.name || '',
@@ -1526,6 +1369,11 @@ export function useProposalForm({ onSubmit }) {
         predictedRoleHatId,
         // Voting restrictions
         hatIds: proposal.isRestricted ? proposal.restrictedHatIds : [],
+        // createProposalV2 config — only meaningful when restricted (the
+        // contract rejects overrides on unrestricted proposals). Cleared
+        // otherwise so an unrestricted proposal always sends 0 / false.
+        quorumOverride: proposal.isRestricted ? (Number(proposal.quorumOverride) || 0) : 0,
+        equalWeight: proposal.isRestricted ? Boolean(proposal.equalWeight) : false,
       });
 
       setLoadingSubmit(false);
@@ -1659,6 +1507,8 @@ export function useProposalForm({ onSubmit }) {
     handleRestrictedToggle,
     handleRestrictedRolesChange,
     toggleRestrictedRole,
+    setQuorumOverride,
+    setEqualWeight,
     handleSetterChange,
     handleSubmit,
     resetForm,

@@ -32,6 +32,8 @@ import {
   RoleHierarchyTree,
   PermissionsMatrix,
   MembersSection,
+  GroupsSection,
+  RoleOffersSection,
   GovernanceConfigSection,
   DeveloperInfoSection,
   VouchingSection,
@@ -233,6 +235,9 @@ const OrgStructurePage = () => {
             />
           </Box>
 
+          {/* Role offers to the current user — RoleManager only; self-gates */}
+          <RoleOffersSection />
+
           {/* Role Hierarchy Section */}
           <Box as="section" data-tour="org-roles">
             <Heading size="lg" color="warmGray.900" mb={4}>
@@ -258,6 +263,9 @@ const OrgStructurePage = () => {
               onWithdrawApplication={handleWithdrawApplication}
             />
           </Box>
+
+          {/* Groups Section — RoleManager only; self-gates to null otherwise */}
+          <GroupsSection />
 
           {/* Permissions Matrix Section */}
           <Box as="section">

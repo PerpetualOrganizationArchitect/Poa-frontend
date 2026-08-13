@@ -234,6 +234,32 @@
   },
   {
     "type": "function",
+    "name": "claimHat",
+    "inputs": [
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claimHats",
+    "inputs": [
+      {
+        "name": "hatIds",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "claimVouchedHat",
     "inputs": [
       {
@@ -419,6 +445,82 @@
   },
   {
     "type": "function",
+    "name": "createHatWithEligibilityChecked",
+    "inputs": [
+      {
+        "name": "params",
+        "type": "tuple",
+        "internalType": "struct EligibilityModule.CreateHatParams",
+        "components": [
+          {
+            "name": "parentHatId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "details",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "maxSupply",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "_mutable",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "imageURI",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "defaultEligible",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "defaultStanding",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "mintToAddresses",
+            "type": "address[]",
+            "internalType": "address[]"
+          },
+          {
+            "name": "wearerEligibleFlags",
+            "type": "bool[]",
+            "internalType": "bool[]"
+          },
+          {
+            "name": "wearerStandingFlags",
+            "type": "bool[]",
+            "internalType": "bool[]"
+          }
+        ]
+      },
+      {
+        "name": "expectedHatId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "newHatId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "currentVouchCount",
     "inputs": [
       {
@@ -543,6 +645,25 @@
         "name": "standing",
         "type": "bool",
         "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getGroupMemberHats",
+    "inputs": [
+      {
+        "name": "groupHatId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
       }
     ],
     "stateMutability": "view"
@@ -715,6 +836,24 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "grantWearerEligibility",
+    "inputs": [
+      {
+        "name": "wearer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -995,6 +1134,19 @@
   },
   {
     "type": "function",
+    "name": "roleManager",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "setBulkWearerEligibility",
     "inputs": [
       {
@@ -1077,12 +1229,43 @@
   },
   {
     "type": "function",
+    "name": "setGroupEligibility",
+    "inputs": [
+      {
+        "name": "groupHatId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "memberHats",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setMaxDailyVouches",
     "inputs": [
       {
         "name": "maxVouches",
         "type": "uint32",
         "internalType": "uint32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setRoleManager",
+    "inputs": [
+      {
+        "name": "rm",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -1203,6 +1386,24 @@
     "type": "function",
     "name": "unpause",
     "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "updateHatConfig",
+    "inputs": [
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "newMaxSupply",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
@@ -1508,6 +1709,25 @@
   },
   {
     "type": "event",
+    "name": "GroupEligibilitySet",
+    "inputs": [
+      {
+        "name": "groupHatId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "memberHats",
+        "type": "uint256[]",
+        "indexed": false,
+        "internalType": "uint256[]"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "HatClaimed",
     "inputs": [
       {
@@ -1521,6 +1741,25 @@
         "type": "uint256",
         "indexed": true,
         "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "HatConfigUpdated",
+    "inputs": [
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "newMaxSupply",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
       }
     ],
     "anonymous": false
@@ -1682,6 +1921,19 @@
       },
       {
         "name": "applicant",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RoleManagerSet",
+    "inputs": [
+      {
+        "name": "roleManager",
         "type": "address",
         "indexed": true,
         "internalType": "address"
@@ -1854,6 +2106,31 @@
   },
   {
     "type": "event",
+    "name": "WearerEligibilityCleared",
+    "inputs": [
+      {
+        "name": "wearer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "hatId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "admin",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "WearerEligibilityUpdated",
     "inputs": [
       {
@@ -1921,6 +2198,11 @@
   },
   {
     "type": "error",
+    "name": "AlreadyWearingHat",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "ApplicationAlreadyExists",
     "inputs": []
   },
@@ -1937,6 +2219,11 @@
   {
     "type": "error",
     "name": "DefaultEligibilityConflictsWithVouch",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DerivedConflictsWithVouch",
     "inputs": []
   },
   {
@@ -1986,6 +2273,11 @@
   },
   {
     "type": "error",
+    "name": "NestedDerivedHat",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NewUserVouchingRestricted",
     "inputs": []
   },
@@ -2006,12 +2298,32 @@
   },
   {
     "type": "error",
+    "name": "NotClaimableHat",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NotInitializing",
     "inputs": []
   },
   {
     "type": "error",
     "name": "NotSuperAdmin",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotSuperAdminOrRoleManager",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TooManyClaims",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UnexpectedHatId",
     "inputs": []
   },
   {
@@ -2027,11 +2339,6 @@
   {
     "type": "error",
     "name": "ZeroAddress",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotAuthorizedAdmin",
     "inputs": []
   }
 ]

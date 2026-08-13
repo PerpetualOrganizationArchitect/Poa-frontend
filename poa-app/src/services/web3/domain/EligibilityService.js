@@ -42,6 +42,41 @@ export class EligibilityService {
   }
 
   /**
+   * Accept a role offer — mint the identity hat plus every group marker hat in
+   * ONE tx (EligibilityModule.claimHats). The identity hat MUST come first: it
+   * is minted first, which makes the caller derived-eligible for the markers
+   * within the same call (see lib/roleManager/claims.deriveClaimHats).
+   *
+   * Sponsored for passkey users via the DefaultGlobalRules claimHats entry.
+   * Wraps the Hats tree-walk (eligibility + toggle chains) so it gets the same
+   * 3x callGasLimit buffer as announceWinner batches.
+   *
+   * @param {string} contractAddress - EligibilityModule contract address
+   * @param {Array<string|number>} hatIds - [identityHatId, ...markerHatIds]
+   * @param {Object} [options={}] - Transaction options
+   * @returns {Promise<TransactionResult>}
+   */
+  async claimHats(contractAddress, hatIds, options = {}) {
+    requireAddress(contractAddress, 'EligibilityModule contract address');
+
+    if (!Array.isArray(hatIds) || hatIds.length === 0) {
+      throw new Error('At least one hat ID is required');
+    }
+    if (hatIds.length > 20) {
+      throw new Error('Too many hats to claim at once (max 20).');
+    }
+
+    const contract = this.factory.createWritable(contractAddress, EligibilityModuleABI);
+    const ids = hatIds.map((h) => String(h));
+
+    console.log('[EligibilityService] Claiming hats (accept role offer):', ids);
+    return this.txManager.execute(contract, 'claimHats', [ids], {
+      callGasLimitMultiplier: 3n,
+      ...options,
+    });
+  }
+
+  /**
    * Vouch for a user to help them claim a hat
    * @param {string} contractAddress - EligibilityModule contract address
    * @param {string} wearerAddress - Address of the user to vouch for

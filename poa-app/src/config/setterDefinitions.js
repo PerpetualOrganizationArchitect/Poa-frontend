@@ -7,6 +7,17 @@
  */
 
 import { utils } from 'ethers';
+import { buildRoleWiring } from '@/lib/roleManager/wiring';
+import RoleManagerABI from '../../abi/RoleManager.json';
+
+const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+// Pull the exact createGroup ABI fragment from the vendored RoleManager ABI so
+// the RoleWiring tuple never drifts from the on-chain layout (the fragment
+// encodes/validates in one place — see setterDefinitions.test.js cross-check).
+const CREATE_GROUP_FRAGMENT = RoleManagerABI.find(
+  (e) => e.type === 'function' && e.name === 'createGroup'
+);
 
 // ============================================================================
 // VALUE HELPERS
@@ -117,6 +128,11 @@ export const CONTRACT_MAP = {
     contextKey: 'zkEmailInvitesAddress',
     displayName: 'Email Invites',
     description: 'ZK email allowlist module (claim roles by proving your email)'
+  },
+  roleManager: {
+    contextKey: 'roleManagerAddress',
+    displayName: 'Role Manager',
+    description: 'Creates and customizes roles and groups by vote'
   }
 };
 
@@ -189,6 +205,73 @@ export const SETTER_TEMPLATES = [
     // replaces the whole list. Null until then, so the preview line stands in.
     // Applied through applyAutoCopy, so an edited description is never clobbered.
     describe: (values) => values.details || null
+  },
+  // ===== ROLE GROUPS (RoleManager) =====
+  {
+    id: 'create-group',
+    category: 'permissions',
+    name: 'Create a role group',
+    autoTitle: 'Create a role group',
+    description:
+      'Create a group (e.g. “Executives”) that bundles shared permissions. Roles join the group when they are created or edited, and every member gets the group’s permissions at once.',
+    contract: 'roleManager',
+    functionName: 'createGroup',
+    inputs: [
+      {
+        name: 'groupName',
+        label: 'Group name',
+        type: 'string',
+        placeholder: 'e.g. Executives',
+        helpText: 'A group marker that carries shared permissions.'
+      },
+      {
+        name: 'sharedPerms',
+        label: 'Shared task permissions',
+        type: 'permissionMask',
+        optional: true,
+        options: [
+          { value: 1, label: 'CREATE - Create new tasks' },
+          { value: 2, label: 'CLAIM - Claim tasks' },
+          { value: 4, label: 'REVIEW - Review completed tasks' },
+          { value: 8, label: 'ASSIGN - Assign tasks to others' },
+          { value: 16, label: 'SELF_REVIEW - Complete your own task' },
+          { value: 32, label: 'BUDGET - Edit project budgets' },
+          { value: 64, label: 'EDIT_META - Edit task title / metadata' },
+          { value: 128, label: 'EDIT_FULL - Edit task payout, bounty & metadata' }
+        ],
+        helpText: 'Every member role inherits these task permissions.'
+      },
+      {
+        name: 'canPropose',
+        label: 'Members can create governance proposals',
+        type: 'toggle',
+        optional: true,
+        helpText: 'Lets everyone in the group start a blended vote.'
+      }
+    ],
+    // createGroup(name, metadataCID, imageURI, memberRoleIds[], sharedWiring).
+    // Members are added afterward by creating/editing roles with this group
+    // selected (RoleConfigurator), so the initial member list is empty — this
+    // sidesteps the roleSelect-returns-hatId vs RoleManager-roleId mismatch.
+    encode: (values) => {
+      const mask = Array.isArray(values.sharedPerms)
+        ? values.sharedPerms.reduce((acc, v) => acc | Number(v), 0)
+        : Number(values.sharedPerms) || 0;
+      const wiring = buildRoleWiring({ globalPerms: mask, hvCreator: Boolean(values.canPropose) });
+      return [String(values.groupName || ''), ZERO_BYTES32, '', [], wiring];
+    },
+    validate: (values) => (
+      (values.groupName || '').trim() ? null : 'Give the group a name.'
+    ),
+    preview: (values) => {
+      const bits = [];
+      const has = (v) => values.sharedPerms?.includes(v) || values.sharedPerms?.includes(String(v));
+      ['CREATE', 'CLAIM', 'REVIEW', 'ASSIGN', 'SELF_REVIEW', 'BUDGET', 'EDIT_META', 'EDIT_FULL']
+        .forEach((label, i) => { if (has(1 << i)) bits.push(label); });
+      const perms = bits.length ? ` with ${bits.join(', ')}` : '';
+      const prop = values.canPropose ? ', can create proposals' : '';
+      return `Create group “${values.groupName || 'group'}”${perms}${prop}`;
+    }
   },
   // ===== VOTING RULES =====
   {
@@ -807,6 +890,23 @@ export const RAW_FUNCTIONS = {
         { name: 'cid', type: 'bytes32', label: 'Allowlist CID (bytes32)' }
       ],
       description: 'Make a staged email allowlist live'
+    }
+  ],
+  roleManager: [
+    {
+      name: 'createGroup',
+      // TEMPLATE-ONLY: the RoleWiring tuple is not something to hand-encode as a
+      // raw call — it goes through the create-group template + buildRoleWiring.
+      templateOnly: true,
+      signature: CREATE_GROUP_FRAGMENT,
+      params: [
+        { name: 'name', type: 'string', label: 'Group name' },
+        { name: 'metadataCID', type: 'bytes32', label: 'Metadata CID' },
+        { name: 'imageURI', type: 'string', label: 'Image URI' },
+        { name: 'memberRoleIds', type: 'uint256[]', label: 'Member role IDs' },
+        { name: 'sharedWiring', type: 'tuple', label: 'Shared wiring' }
+      ],
+      description: 'Create a role group with shared permissions'
     }
   ]
 };

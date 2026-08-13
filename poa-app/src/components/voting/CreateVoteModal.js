@@ -30,6 +30,11 @@ import {
   Tag,
   TagLabel,
   Link,
+  NumberInput,
+  NumberInputField,
+  NumberInputStepper,
+  NumberIncrementStepper,
+  NumberDecrementStepper,
 } from "@chakra-ui/react";
 import { InfoOutlineIcon, AddIcon, CloseIcon } from "@chakra-ui/icons";
 import { useRoleNames } from "@/hooks";
@@ -39,7 +44,7 @@ import { getNetworkByChainId } from "../../config/networks";
 import { getBountyTokenOptions } from "@/util/tokens";
 import SetterActionSelector from "./SetterActionSelector";
 import ElectionConfigurator from "./ElectionConfigurator";
-import RoleConfigurator, { parseAutoTitle as parseRoleAutoTitle } from "./RoleConfigurator";
+import RoleConfigurator from "./RoleConfigurator";
 import { inputStyles } from '@/components/shared/glassStyles';
 import IntentGallery, { INTENT_OPTIONS } from "./create/IntentGallery";
 import DurationField from "./create/DurationField";
@@ -57,6 +62,7 @@ import {
 } from "./create/wizardSteps";
 import { configError as computeConfigError, isComplete } from "@/lib/voting/proposalChecks";
 import { applyAutoCopy, backfillProvenance } from "./create/autoCopy";
+import { buildRestrictionPresets, validateProposalV2Config } from "@/lib/voting/proposalV2";
 
 const glassLayerStyle = {
   position: "absolute",
@@ -104,6 +110,9 @@ const CreateVoteModal = ({
   handleTransferAmountChange,
   handleRestrictedToggle,
   toggleRestrictedRole,
+  handleRestrictedRolesChange,
+  setQuorumOverride,
+  setEqualWeight,
   handleSetterChange,
   handlePollCreated,
   loadingSubmit,
@@ -127,7 +136,7 @@ const CreateVoteModal = ({
   canCreateProposal = true,
 }) => {
   const { allRoles } = useRoleNames();
-  const { orgChainId } = usePOContext();
+  const { orgChainId, roleGroups = [], roleManagerEnabled } = usePOContext();
   const { projectsData } = useProjectContext() || {};
   const orgNetwork = getNetworkByChainId(orgChainId);
   const nativeCurrencySymbol = orgNetwork?.nativeCurrency?.symbol || 'ETH';
@@ -283,28 +292,6 @@ const CreateVoteModal = ({
     [proposal.type],
   );
 
-  // Build a list of currently-active createRole proposals, keyed by parent
-  // hatId. We parse the auto-title sentinel "Create role: <name> (under <parent>)"
-  // and resolve the parent NAME back to its hatId via allRoles. This is what
-  // gates concurrent role creation under the same parent (which would race
-  // on Hats.getNextId — see useProposalForm createRole branch).
-  const activeCreateRoleProposals = useMemo(() => {
-    const out = [];
-    for (const p of (ongoingProposals || [])) {
-      const parsed = parseRoleAutoTitle(p.title);
-      if (!parsed) continue;
-      const parentRole = allRoles.find(r => r.name === parsed.parentName);
-      if (!parentRole) continue;
-      out.push({
-        proposalId: p.proposalId ?? p.id,
-        name: parsed.name,
-        parentName: parsed.parentName,
-        parentHatId: String(parentRole.hatId),
-        title: p.title,
-      });
-    }
-    return out;
-  }, [ongoingProposals, allRoles]);
 
   // ---- Inline validation (mirrors useProposalForm.fieldErrors; kept local so
   // this component stays compatible with the current VotingPage prop set) ----
@@ -694,9 +681,9 @@ const CreateVoteModal = ({
                         proposal={proposal}
                         onChange={handleSetterChange}
                         allRoles={allRoles}
+                        allGroups={roleGroups}
                         allProjects={allProjects}
                         leaderboardData={leaderboardData}
-                        activeCreateRoleProposals={activeCreateRoleProposals}
                       />
                     )}
 
@@ -839,6 +826,30 @@ const CreateVoteModal = ({
                             borderRadius="md"
                             border="1px solid rgba(148, 115, 220, 0.3)"
                           >
+                            {/* Group presets — one click selects the group's
+                                marker hat (a single id restricts to the whole
+                                group). Only shown when the org has RoleManager
+                                groups. */}
+                            {roleManagerEnabled && buildRestrictionPresets(roleGroups).length > 0 && (
+                              <Wrap spacing={2} mb={3}>
+                                {buildRestrictionPresets(roleGroups).map((preset) => {
+                                  const active = (proposal.restrictedHatIds || []).length === 1
+                                    && String(proposal.restrictedHatIds[0]) === preset.hatIds[0];
+                                  return (
+                                    <WrapItem key={preset.id}>
+                                      <Button
+                                        size="xs"
+                                        variant={active ? 'solid' : 'outline'}
+                                        colorScheme="purple"
+                                        onClick={() => handleRestrictedRolesChange(preset.hatIds)}
+                                      >
+                                        {preset.label}
+                                      </Button>
+                                    </WrapItem>
+                                  );
+                                })}
+                              </Wrap>
+                            )}
                             <Text fontSize="sm" color="gray.300" fontWeight="medium" mb={3}>
                               Select which roles can vote:
                             </Text>
@@ -860,6 +871,59 @@ const CreateVoteModal = ({
                               <FormErrorMessage>{visibleErrors.restrictedHatIds}</FormErrorMessage>
                             )}
                           </Box>
+
+                          {/* createProposalV2 — quorum override for restricted
+                              polls. Executable proposals floor the quorum at
+                              max(org, override); signal-only polls may lower it. */}
+                          {roleManagerEnabled && typeof setQuorumOverride === 'function' && (
+                            <Box mt={3} p={4} bg="whiteAlpha.50" borderRadius="md" border="1px solid rgba(148, 115, 220, 0.3)">
+                              <HStack justify="space-between" align="center">
+                                <Box>
+                                  <Text fontSize="sm" color="gray.200" fontWeight="medium">Custom quorum for this poll</Text>
+                                  <Text fontSize="xs" color="gray.500">
+                                    Minimum voters. Executable proposals never drop below the org quorum — this only raises it. Signal-only polls can set a lower bar.
+                                  </Text>
+                                </Box>
+                                <NumberInput
+                                  size="sm"
+                                  maxW="110px"
+                                  min={0}
+                                  value={proposal.quorumOverride || 0}
+                                  onChange={(_, v) => setQuorumOverride(Number.isFinite(v) ? v : 0)}
+                                >
+                                  <NumberInputField {...inputStyles} />
+                                  <NumberInputStepper>
+                                    <NumberIncrementStepper color="gray.300" />
+                                    <NumberDecrementStepper color="gray.300" />
+                                  </NumberInputStepper>
+                                </NumberInput>
+                              </HStack>
+                              {isBinding && typeof setEqualWeight === 'function' && (
+                                <HStack justify="space-between" mt={3}>
+                                  <Box>
+                                    <Text fontSize="sm" color="gray.200" fontWeight="medium">Everyone counts equally</Text>
+                                    <Text fontSize="xs" color="gray.500">Ignore share balances — one eligible voter, one vote.</Text>
+                                  </Box>
+                                  <Switch
+                                    colorScheme="purple"
+                                    isChecked={Boolean(proposal.equalWeight)}
+                                    onChange={(e) => setEqualWeight(e.target.checked)}
+                                  />
+                                </HStack>
+                              )}
+                              {(() => {
+                                const v2err = validateProposalV2Config({
+                                  isRestricted: proposal.isRestricted,
+                                  quorumOverride: proposal.quorumOverride,
+                                  equalWeight: proposal.equalWeight,
+                                  isHybrid: isBinding,
+                                });
+                                return v2err ? (
+                                  <Text fontSize="xs" color="red.300" mt={2}>{v2err}</Text>
+                                ) : null;
+                              })()}
+                            </Box>
+                          )}
                         </FormControl>
                       )}
                     </VStack>

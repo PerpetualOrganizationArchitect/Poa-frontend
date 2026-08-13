@@ -272,6 +272,85 @@ export const FETCH_ORG_FULL_DATA = gql`
   }
 `;
 
+/**
+ * RoleManager phase-2 data (address + groups + open role offers).
+ *
+ * SELECTS FIELDS THAT ONLY EXIST ON THE RoleManager-WAVE SUBGRAPH — every field
+ * here is gated behind CAPABILITY.ROLE_MANAGER (util/subgraphCapabilities). Only
+ * run it after `hasCapability(url, CAPABILITY.ROLE_MANAGER)` resolves true, or
+ * one unknown field fails the whole document (the org-metadata ordering rule).
+ * Orgs on the old subgraph (or with no RoleManager — roleManager == null) skip
+ * this query entirely and render the current UI unchanged.
+ */
+export const FETCH_ORG_ROLE_MANAGER = gql`
+  query FetchOrgRoleManager($orgId: Bytes!) {
+    organization(id: $orgId) {
+      id
+      roleManager {
+        id
+        roleCount
+        groupCount
+      }
+      roleGroups {
+        id
+        groupId
+        name
+        metadataCID
+        markerHatId
+        isExisting
+        markerRole {
+          id
+          hatId
+          name
+        }
+        memberships(where: { isActive: true }) {
+          id
+          roleManagerRoleId
+          isActive
+          role {
+            id
+            hatId
+            name
+          }
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * Open role offers targeting a specific user (profile / team "Accept role"
+ * surface). Gated behind CAPABILITY.ROLE_MANAGER. `status: Offered` filters out
+ * already-accepted offers. Marker hats to claim are derived on the client from
+ * the role's group memberships (see lib/roleManager/claims).
+ */
+export const FETCH_ROLE_OFFERS_FOR_USER = gql`
+  query FetchRoleOffersForUser($orgId: Bytes!, $user: Bytes!) {
+    roleOffers(where: { organization: $orgId, user: $user, status: Offered }) {
+      id
+      roleManagerRoleId
+      hatId
+      user
+      status
+      offeredAt
+      role {
+        id
+        hatId
+        name
+        groupMemberships(where: { isActive: true }) {
+          id
+          group {
+            id
+            groupId
+            name
+            markerHatId
+          }
+        }
+      }
+    }
+  }
+`;
+
 // Fetch voting data (proposals for both hybrid and DD voting)
 export const FETCH_VOTING_DATA_NEW = gql`
   query FetchVotingDataNew($orgId: Bytes!, $first: Int!, $hybridBefore: BigInt!, $ddBefore: BigInt!) {

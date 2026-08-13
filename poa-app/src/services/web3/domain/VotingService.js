@@ -24,6 +24,26 @@ export const VotingType = {
 };
 
 /**
+ * Heuristic: does this error look like calling a function the deployed contract
+ * doesn't implement (a Static org that never upgraded to the V2 selector)?
+ * Deliberately conservative — a genuine revert (e.g. the contract's own
+ * quorum-rule guard) must NOT be swallowed as "unsupported", so we only match
+ * the ethers/RPC shapes for an unrecognised selector / empty return data.
+ */
+export function isMissingSelectorError(err) {
+  const msg = String(err?.message || err?.reason || err || '').toLowerCase();
+  const data = err?.data ?? err?.error?.data;
+  const noReturnData = data === '0x' || data === null || data === undefined;
+  return (
+    msg.includes('function selector was not recognized') ||
+    msg.includes('no matching function') ||
+    msg.includes('is not a function') ||
+    msg.includes('unrecognized selector') ||
+    (msg.includes('call revert exception') && noReturnData)
+  );
+}
+
+/**
  * VotingService - Proposal creation and voting operations
  */
 export class VotingService {
@@ -71,6 +91,8 @@ export class VotingService {
       batches = [],
       hatIds = [],
       actionSummaries = [],
+      quorumOverride = 0,
+      equalWeight = false,
     } = proposalData;
 
     const contract = this.factory.createWritable(contractAddress, HybridVotingABI);
@@ -85,12 +107,49 @@ export class VotingService {
       label: 'Hybrid',
     });
 
-    return this.txManager.execute(
-      contract,
-      'createProposal',
-      [titleBytes, descriptionHash, duration, numOptions, batches, hatIds],
-      options
+    const v1Args = [titleBytes, descriptionHash, duration, numOptions, batches, hatIds];
+    // createProposalV2 (quorumOverride + equalWeight) is only valid on restricted
+    // proposals and only exists on upgraded instances — feature-detected per
+    // instance, falling back to V1 for Static orgs that never upgrade.
+    if ((Number(quorumOverride) || 0) > 0 || equalWeight) {
+      return this._createProposalV2WithFallback(contract, {
+        v1Fn: 'createProposal',
+        v1Args,
+        v2Args: [...v1Args, Number(quorumOverride) || 0, Boolean(equalWeight)],
+        options,
+      });
+    }
+
+    return this.txManager.execute(contract, 'createProposal', v1Args, options);
+  }
+
+  /**
+   * Try createProposalV2; if the deployed instance predates the V2 selector
+   * (Static org that never upgraded), fall back to the legacy createProposal —
+   * the quorum override / equal-weight config is simply not applied there.
+   * @private
+   */
+  async _createProposalV2WithFallback(contract, { v1Fn, v1Args, v2Args, options }) {
+    // If the vendored ABI itself lacks V2 (shouldn't happen post-ABI-freeze),
+    // skip straight to V1.
+    const hasV2 = contract.interface.fragments.some(
+      (f) => f.type === 'function' && f.name === 'createProposalV2'
     );
+    if (!hasV2) {
+      return this.txManager.execute(contract, v1Fn, v1Args, options);
+    }
+    try {
+      return await this.txManager.execute(contract, 'createProposalV2', v2Args, options);
+    } catch (err) {
+      if (isMissingSelectorError(err)) {
+        console.warn(
+          '[VotingService] createProposalV2 unsupported on this instance — ' +
+            'falling back to createProposal (quorum override / equal-weight not applied).'
+        );
+        return this.txManager.execute(contract, v1Fn, v1Args, options);
+      }
+      throw err;
+    }
   }
 
   /**
@@ -229,6 +288,7 @@ export class VotingService {
       batches = [],
       hatIds = [],
       actionSummaries = [],
+      quorumOverride = 0,
     } = proposalData;
 
     const contract = this.factory.createWritable(contractAddress, DirectDemocracyVotingABI);
@@ -243,12 +303,18 @@ export class VotingService {
       label: 'DD',
     });
 
-    return this.txManager.execute(
-      contract,
-      'createProposal',
-      [titleBytes, descriptionHash, duration, numOptions, batches, hatIds],
-      options
-    );
+    const v1Args = [titleBytes, descriptionHash, duration, numOptions, batches, hatIds];
+    // DD createProposalV2 carries only quorumOverride (no equalWeight — HV-only).
+    if ((Number(quorumOverride) || 0) > 0) {
+      return this._createProposalV2WithFallback(contract, {
+        v1Fn: 'createProposal',
+        v1Args,
+        v2Args: [...v1Args, Number(quorumOverride) || 0],
+        options,
+      });
+    }
+
+    return this.txManager.execute(contract, 'createProposal', v1Args, options);
   }
 
   /**

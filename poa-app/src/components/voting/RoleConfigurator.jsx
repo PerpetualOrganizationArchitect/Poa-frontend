@@ -49,6 +49,7 @@ import { AddIcon, DeleteIcon, InfoOutlineIcon } from '@chakra-ui/icons';
 import { utils } from 'ethers';
 import { inputStyles } from '@/components/shared/glassStyles';
 import { applyAutoCopy } from '@/components/voting/create/autoCopy';
+import { resolveWiring } from '@/lib/roleManager/wiring';
 
 export const TITLE_PREFIX = 'Create role: ';
 export const DESCRIPTION_PREFIX = 'New role ';
@@ -88,28 +89,40 @@ function maskLabels(mask) {
 }
 
 export const defaultRoleConfig = {
+  // parentHatId is legacy — RoleManager creates identity hats as flat children of
+  // the eligibility-admin hat (no caller-chosen parent), so it is no longer
+  // collected. Kept in the shape for draft back-compat only.
   parentHatId: '',
   name: '',
   description: '',
   imageURI: '',
   maxSupply: 100,
   mutable: true,
-  defaultEligible: true,
-  defaultStanding: true,
-  canVote: false,
+  // Group memberships this role joins on creation (RoleParams.groupIds). Members
+  // of a group inherit its shared permissions.
+  groupIds: [],
+  canVote: false,            // hvCreator — can create governance (blended) proposals
+  // Additional module access (RoleWiring flags):
+  ddVoter: false,            // eligible to vote in direct-democracy proposals
+  ptMember: false,           // can hold / receive participation shares
+  ptApprover: false,         // can approve share requests
+  eduCreator: false,         // can create education modules
+  eduMember: false,          // can complete education modules
   // Task-system grants (all additive — encoder appends nothing when untouched):
-  globalPerms: 0,            // org-wide TaskPerm mask via setConfig(ROLE_PERM)
-  canCreateTasks: false,     // setConfig(CREATOR_HAT_ALLOWED) — create projects/tasks
-  canOrganizeFolders: false, // setConfig(ORGANIZER_HAT_ALLOWED) — reorganize folder tree
+  globalPerms: 0,            // org-wide TaskPerm mask (RoleWiring.taskPermMask)
+  canCreateTasks: false,     // create projects/tasks
+  canOrganizeFolders: false, // reorganize folder tree
   vouching: {
     enabled: false,
     quorum: 1,
     voucherHatId: '',
     selfVouch: false,
-    combineWithHierarchy: false,
+    // RoleManager requires combine=true when vouching is on (consent model), so
+    // it defaults on and the guard blocks turning it off while vouching.
+    combineWithHierarchy: true,
   },
-  initialWearers: [],   // [{ address, name, eligible, standing }]
-  projectPerms: [],     // [{ projectId, projectName, mask }]
+  initialWearers: [],   // addresses granted via the consent model (RoleParams.initialGrants)
+  projectPerms: [],     // legacy per-project overrides — not part of RoleManager createRole
 };
 
 /**
@@ -120,14 +133,13 @@ export const defaultRoleConfig = {
  * Returns '' until the role has a name, and drops the tail while the parent is
  * unpicked (or names haven't loaded yet).
  */
-function buildRoleTitle(rc, allRoles) {
+function buildRoleTitle(rc, allGroups) {
   if (!rc?.name) return '';
-  const parent = rc.parentHatId
-    ? (allRoles || []).find(x => String(x.hatId) === String(rc.parentHatId))
-    : null;
-  const parentName = parent?.name || '';
-  return parentName
-    ? `${TITLE_PREFIX}${rc.name} (under ${parentName})`
+  const groups = (rc.groupIds || [])
+    .map(id => (allGroups || []).find(g => String(g.groupId) === String(id))?.name)
+    .filter(Boolean);
+  return groups.length
+    ? `${TITLE_PREFIX}${rc.name} (in ${groups.join(', ')})`
     : `${TITLE_PREFIX}${rc.name}`;
 }
 
@@ -241,12 +253,12 @@ const RoleConfigurator = ({
   proposal,
   onChange,
   allRoles = [],
+  allGroups = [],                   // RoleManager groups the new role can join
   allProjects = [],
   leaderboardData = [],
-  activeCreateRoleProposals = [],   // optional: [{ parentHatId, name }] from voting page
 }) => {
   const rc = proposal.roleConfig || defaultRoleConfig;
-  const [step, setStep] = useState(rc.parentHatId ? 2 : 1);
+  const [step, setStep] = useState(rc.name ? 2 : 1);
   const [memberSearch, setMemberSearch] = useState('');
   const [manualName, setManualName] = useState('');
   const [manualAddress, setManualAddress] = useState('');
@@ -267,29 +279,39 @@ const RoleConfigurator = ({
       onChange({
         roleConfig: nextRc,
         ...applyAutoCopy(proposal, {
-          title: buildRoleTitle(nextRc, allRoles),
+          title: buildRoleTitle(nextRc, allGroups),
           description: buildRoleDescription(nextRc),
         }),
       });
     },
-    [rc, proposal, onChange, allRoles]
+    [rc, proposal, onChange, allGroups]
   );
+
+  const toggleGroup = useCallback((groupId) => {
+    const cur = (rc.groupIds || []).map(String);
+    const key = String(groupId);
+    update({
+      groupIds: cur.includes(key) ? cur.filter(g => g !== key) : [...cur, key],
+    });
+  }, [rc.groupIds, update]);
 
   const updateVouching = useCallback(
     (changes) => update({ vouching: { ...rc.vouching, ...changes } }),
     [update, rc.vouching]
   );
 
-  // Parent-role options. Exclude the top hat (it isn't admin-reachable by the
-  // EligibilityModule — see Deployer.sol:421-448). Every other role lives
-  // under eligibilityAdminHat, which EligibilityModule wears.
-  const parentRoleOptions = useMemo(() => allRoles, [allRoles]);
+  const selectedGroupNames = useMemo(() => (
+    (rc.groupIds || [])
+      .map(id => (allGroups || []).find(g => String(g.groupId) === String(id))?.name)
+      .filter(Boolean)
+  ), [rc.groupIds, allGroups]);
 
-  const parentRoleName = useMemo(() => {
-    if (!rc.parentHatId) return '';
-    const r = parentRoleOptions.find(x => String(x.hatId) === String(rc.parentHatId));
-    return r?.name || '';
-  }, [rc.parentHatId, parentRoleOptions]);
+  // Mirror the contract's WiringIncompatible guards live (new roles are always
+  // default-eligible=false on-chain).
+  const wiringError = useMemo(
+    () => resolveWiring(rc, { defaultEligible: false }).error,
+    [rc]
+  );
 
   const voucherRoleName = useMemo(() => {
     if (rc.vouching?.selfVouch) return rc.name || 'this role';
@@ -297,13 +319,6 @@ const RoleConfigurator = ({
     const r = allRoles.find(x => String(x.hatId) === String(rc.vouching.voucherHatId));
     return r?.name || '';
   }, [rc.vouching, rc.name, allRoles]);
-
-  const concurrentProposalForParent = useMemo(() => {
-    if (!rc.parentHatId) return null;
-    return (activeCreateRoleProposals || []).find(
-      p => String(p.parentHatId) === String(rc.parentHatId)
-    );
-  }, [activeCreateRoleProposals, rc.parentHatId]);
 
   // Members eligible to be added as initial wearers
   const availableMembers = useMemo(() => {
@@ -408,31 +423,38 @@ const RoleConfigurator = ({
         />
       </FormControl>
 
-      <FormControl isRequired>
+      <FormControl>
         <FormLabel color="gray.200" fontSize="sm">
-          Parent Role
+          Groups (optional)
           <Tooltip
-            label="Members of the parent role become admins of the new role's wearers — they can revoke or transfer the hat."
+            label="Members of a group share its permissions. Add this role to a group and everyone in it gets the group's access at once."
             placement="top"
             hasArrow
           >
             <Icon as={InfoOutlineIcon} color="gray.400" boxSize={3} ml={1} mb={0.5} />
           </Tooltip>
         </FormLabel>
-        <Select
-          placeholder="Select parent role"
-          value={rc.parentHatId || ''}
-          onChange={(e) => update({ parentHatId: e.target.value })}
-          {...inputStyles}
-        >
-          {parentRoleOptions.map(role => (
-            <option key={role.hatId} value={role.hatId} style={{ background: '#1a1a2e' }}>
-              {role.name}
-            </option>
-          ))}
-        </Select>
+        {(allGroups || []).length === 0 ? (
+          <EmptyBox>
+            No groups yet. Create one first with the “Create a role group” action, then roles can join it.
+          </EmptyBox>
+        ) : (
+          <VStack align="stretch" spacing={1}>
+            {(allGroups || []).map(group => (
+              <Checkbox
+                key={group.groupId}
+                isChecked={(rc.groupIds || []).map(String).includes(String(group.groupId))}
+                colorScheme="purple"
+                size="sm"
+                onChange={() => toggleGroup(group.groupId)}
+              >
+                <Text fontSize="sm" color="gray.200">{group.name || `Group ${group.groupId}`}</Text>
+              </Checkbox>
+            ))}
+          </VStack>
+        )}
         <FormHelperText color="gray.500">
-          The new role becomes a child hat in the Hats tree under this role.
+          Joining a group grants this role the group’s shared permissions.
         </FormHelperText>
       </FormControl>
 
@@ -476,28 +498,12 @@ const RoleConfigurator = ({
         />
       </HStack>
 
-      {concurrentProposalForParent ? (
-        <Alert status="warning" borderRadius="md" variant="left-accent">
-          <AlertIcon />
-          <Box>
-            <Text fontSize="sm" fontWeight="bold">
-              Concurrent role-creation under the same parent
-            </Text>
-            <Text fontSize="xs">
-              "{concurrentProposalForParent.name || 'Another'}" is already pending under{' '}
-              <b>{parentRoleName}</b>. If both votes pass, this proposal may misconfigure the
-              new role. Wait for that one to resolve, or pick a different parent.
-            </Text>
-          </Box>
-        </Alert>
-      ) : null}
-
       <HStack justify="flex-end">
         <Button
           rightIcon={<FiChevronRight />}
           colorScheme="purple"
           size="sm"
-          isDisabled={!rc.parentHatId || !rc.name?.trim() || Number(rc.maxSupply) < 1}
+          isDisabled={!rc.name?.trim() || Number(rc.maxSupply) < 1}
           onClick={() => setStep(2)}
         >
           Next: Permissions
@@ -674,6 +680,7 @@ const RoleConfigurator = ({
 
       {/*──────────────── MEMBERSHIP & VOUCHING ────────────────*/}
       <SectionLabel>Membership &amp; vouching</SectionLabel>
+      <SectionLabel>Module access</SectionLabel>
       <Box
         p={4}
         borderRadius="md"
@@ -681,30 +688,34 @@ const RoleConfigurator = ({
         border="1px solid rgba(148, 115, 220, 0.2)"
       >
         <VStack align="stretch" spacing={3}>
-          <HStack justify="space-between">
-            <Box>
-              <Text color="gray.200" fontSize="sm" fontWeight="medium">Default eligible</Text>
-              <Text color="gray.500" fontSize="xs">Wearers start eligible to hold the hat.</Text>
-            </Box>
-            <Switch
-              colorScheme="purple"
-              isChecked={Boolean(rc.defaultEligible)}
-              onChange={(e) => update({ defaultEligible: e.target.checked })}
-            />
-          </HStack>
-          <HStack justify="space-between">
-            <Box>
-              <Text color="gray.200" fontSize="sm" fontWeight="medium">Default in good standing</Text>
-              <Text color="gray.500" fontSize="xs">Wearers start with good standing flag set.</Text>
-            </Box>
-            <Switch
-              colorScheme="purple"
-              isChecked={Boolean(rc.defaultStanding)}
-              onChange={(e) => update({ defaultStanding: e.target.checked })}
-            />
-          </HStack>
+          {[
+            { key: 'ddVoter', title: 'Can vote in direct-democracy proposals', sub: 'Adds the role to the one-person-one-vote allowlist.' },
+            { key: 'ptMember', title: 'Can hold shares', sub: 'Eligible to receive participation shares.' },
+            { key: 'ptApprover', title: 'Can approve share requests', sub: 'Review and approve members’ share requests.' },
+            { key: 'eduCreator', title: 'Can create learning modules', sub: 'Publish education modules.' },
+            { key: 'eduMember', title: 'Can complete learning modules', sub: 'Earn shares by completing modules.' },
+          ].map(({ key, title, sub }) => (
+            <HStack key={key} justify="space-between">
+              <Box>
+                <Text color="gray.200" fontSize="sm" fontWeight="medium">{title}</Text>
+                <Text color="gray.500" fontSize="xs">{sub}</Text>
+              </Box>
+              <Switch
+                colorScheme="purple"
+                isChecked={Boolean(rc[key])}
+                onChange={(e) => update({ [key]: e.target.checked })}
+              />
+            </HStack>
+          ))}
         </VStack>
       </Box>
+
+      {wiringError ? (
+        <Alert status="error" borderRadius="md" variant="left-accent">
+          <AlertIcon />
+          <Text fontSize="xs">{wiringError}</Text>
+        </Alert>
+      ) : null}
 
       <Box
         p={4}
@@ -778,12 +789,13 @@ const RoleConfigurator = ({
                 <Box>
                   <Text color="gray.200" fontSize="sm" fontWeight="medium">Combine with hierarchy</Text>
                   <Text color="gray.500" fontSize="xs">
-                    OR vouching with the existing hat-admin chain (recommended off).
+                    Required for vouched roles so they can still be granted or offered.
                   </Text>
                 </Box>
                 <Switch
                   colorScheme="purple"
                   isChecked={Boolean(rc.vouching.combineWithHierarchy)}
+                  isDisabled
                   onChange={(e) => updateVouching({ combineWithHierarchy: e.target.checked })}
                 />
               </HStack>
@@ -973,11 +985,12 @@ const RoleConfigurator = ({
 
   /*════════════════════════════ LIVE PREVIEW ════════════════════════════*/
   const renderPreview = () => {
-    if (!rc.name || !rc.parentHatId) return null;
+    if (!rc.name) return null;
     const lines = [];
     lines.push(
       <Text key="create" fontSize="sm" color="green.300">
-        ✓ Create role <b>{rc.name}</b> under <b>{parentRoleName || `hat ${rc.parentHatId.slice?.(0, 8) || rc.parentHatId}`}</b> (max {rc.maxSupply})
+        ✓ Create role <b>{rc.name}</b> (max {rc.maxSupply})
+        {selectedGroupNames.length ? <> in <b>{selectedGroupNames.join(', ')}</b></> : null}
       </Text>
     );
     if (rc.vouching?.enabled) {

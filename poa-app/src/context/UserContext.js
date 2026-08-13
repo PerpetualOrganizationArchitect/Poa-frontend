@@ -19,7 +19,7 @@ export const UserProvider = ({ children }) => {
     const { accountAddress: authAddress } = useAuth();
     const router = useRouter();
     const userDAO = useOrgName();
-    const { orgId, roleHatIds, participationTokenAddress, subgraphUrl } = usePOContext();
+    const { orgId, roleHatIds, participationTokenAddress, subgraphUrl, roleGroups } = usePOContext();
 
     const [userData, setUserData] = useState({});
     const [graphUsername, setGraphUsername] = useState('');
@@ -96,20 +96,28 @@ export const UserProvider = ({ children }) => {
         return !!(user && user.membershipStatus === 'Active');
     }, [data, optimisticRoles]);
 
-    // NOTE: roleHatIds[1] is a positional guess at the "executive" role (wrong
-    // on orgs whose senior role deployed first, e.g. Argus). Authority-accurate
-    // gates exist where the harm was real: treasury "Propose a payout" and the
-    // create-vote entry points check the voting contracts' on-chain creator
-    // hats via useVoteCreateGate. Deriving a true exec set for the remaining
-    // consumers (task assign/review bypass, learn, tour) needs per-surface
-    // authority mapping — TaskManager creator hats are NOT it (the default
-    // template makes every Member a task creator).
+    // Group marker hats (RoleManager). When an org has groups, "elevated
+    // authority" is best expressed as wearing ANY group's marker hat (a group
+    // bundles the shared elevated permissions) — this replaces the positional
+    // roleHatIds[1] guess with real, permission-derived authority.
+    const groupMarkerHatIds = useMemo(
+        () => (roleGroups || []).map((g) => String(g.markerHatId)).filter(Boolean),
+        [roleGroups]
+    );
+
+    // hasExecRole: group-derived when the org has RoleManager groups, otherwise
+    // the legacy positional heuristic (roleHatIds[1]) so non-RoleManager orgs are
+    // unchanged. The positional guess was wrong on orgs whose senior role
+    // deployed first (e.g. Argus); group membership fixes that where available.
     const hasExecRole = useMemo(() => {
         if (optimisticRoles?.hasExecRole) return true;
-        const userHatIds = data?.user?.currentHatIds || [];
-        const execHatId = roleHatIds?.[1];
+        const userHatIds = (data?.user?.currentHatIds || []).map(String);
+        if (groupMarkerHatIds.length > 0) {
+            return groupMarkerHatIds.some((hatId) => userHatIds.includes(hatId));
+        }
+        const execHatId = roleHatIds?.[1] != null ? String(roleHatIds[1]) : null;
         return !!(execHatId && userHatIds.includes(execHatId));
-    }, [data, roleHatIds, optimisticRoles]);
+    }, [data, roleHatIds, optimisticRoles, groupMarkerHatIds]);
 
     const hasApproverRole = useMemo(() => {
         const userHatIds = data?.user?.currentHatIds || [];

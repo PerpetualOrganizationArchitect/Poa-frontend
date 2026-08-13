@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useMemo, useCallback, useState } from 'react';
 import { useQuery } from '@apollo/client';
-import { FETCH_ORG_FULL_DATA } from '../util/queries';
+import { FETCH_ORG_FULL_DATA, FETCH_ORG_ROLE_MANAGER } from '../util/queries';
+import { CAPABILITY, peekCapability, hasCapability } from '../util/subgraphCapabilities';
 import { useRouter } from 'next/router';
 import { formatTokenAmount } from '../util/formatToken';
 import { resolveTokenLabel, DEFAULT_TOKEN_LABEL } from '../util/tokenLabel';
@@ -338,17 +339,55 @@ export const POProvider = ({ children }) => {
         client,
     });
 
+    // ── RoleManager phase-2 data (opt-in, capability-gated) ──────────────
+    // Runs a SEPARATE lightweight query so the main FETCH_ORG_FULL_DATA stays
+    // byte-identical for orgs on the old subgraph. Gated two ways: only when the
+    // serving endpoint advertises the RoleManager schema (CAPABILITY.ROLE_MANAGER)
+    // AND — for the negative case — re-probed per session. peekCapability gives a
+    // synchronous seed so a known-capable endpoint skips straight to the query.
+    const [rmCapable, setRmCapable] = React.useState(
+        () => peekCapability(subgraphUrl, CAPABILITY.ROLE_MANAGER) === true
+    );
+    React.useEffect(() => {
+        let cancelled = false;
+        const seed = peekCapability(subgraphUrl, CAPABILITY.ROLE_MANAGER);
+        if (seed === true) { setRmCapable(true); return undefined; }
+        if (subgraphUrl && state.orgId) {
+            hasCapability(subgraphUrl, CAPABILITY.ROLE_MANAGER).then((ok) => {
+                if (!cancelled) setRmCapable(Boolean(ok));
+            });
+        }
+        return () => { cancelled = true; };
+    }, [subgraphUrl, state.orgId]);
+
+    const { data: roleManagerData, refetch: refetchRoleManager } = useQuery(FETCH_ORG_ROLE_MANAGER, {
+        variables: { orgId: state.orgId },
+        skip: !state.orgId || !rmCapable,
+        fetchPolicy: 'cache-first',
+        client,
+    });
+
+    const roleManagerAddress = roleManagerData?.organization?.roleManager?.id || '';
+    const roleManagerEnabled = Boolean(roleManagerAddress && roleManagerAddress !== ZERO_ADDRESS);
+    const roleGroups = React.useMemo(
+        () => roleManagerData?.organization?.roleGroups || [],
+        [roleManagerData]
+    );
+
     // Ref-stabilize refetch so callbacks don't re-create when Apollo returns a new reference
     const refetchRef = React.useRef(refetchOrgData);
     refetchRef.current = refetchOrgData;
 
     // Refetch immediately — executeWithNotification already waited for the
     // subgraph to index the transaction block before emitting the event.
+    const rmRefetchRef = React.useRef(refetchRoleManager);
+    rmRefetchRef.current = refetchRoleManager;
     const handleRefresh = useCallback(() => {
         if (state.orgId) {
             refetchRef.current();
+            if (rmCapable) rmRefetchRef.current?.();
         }
-    }, [state.orgId]);
+    }, [state.orgId, rmCapable]);
 
     // Subscribe to relevant events
     useRefreshSubscription(
@@ -692,6 +731,11 @@ export const POProvider = ({ children }) => {
         eligibilityModuleAdminHat: state.eligibilityModuleAdminHat,
         participationTokenAddress: state.participationTokenAddress,
         paymentManagerAddress: state.paymentManagerAddress,
+        // RoleManager (opt-in, capability-gated). Empty/false for orgs that
+        // never adopted it or run on the pre-RoleManager subgraph.
+        roleManagerAddress,
+        roleManagerEnabled,
+        roleGroups,
 
         // Derived data
         loading,
@@ -725,7 +769,7 @@ export const POProvider = ({ children }) => {
         tokenLabel: state.tokenLabel,
         roleNames: state.roleNames,
         roleCanVoteMap: state.roleCanVoteMap,
-    }), [state, loading, errorMessage, leaderboardDisplayData, avatarMap, subgraphUrl, poName, orgStatus]);
+    }), [state, loading, errorMessage, leaderboardDisplayData, avatarMap, subgraphUrl, poName, orgStatus, roleManagerAddress, roleManagerEnabled, roleGroups]);
 
     return (
         <POContext.Provider value={contextValue}>

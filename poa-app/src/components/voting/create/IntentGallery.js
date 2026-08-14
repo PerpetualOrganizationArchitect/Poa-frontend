@@ -49,10 +49,13 @@ export const INTENT_OPTIONS = [
     binding: true,
   },
   {
+    // NOTE: `createRole` is the intent id; the action can also join the new role
+    // to groups. Groups themselves are created via the "Change the group's rules"
+    // (setter) → "Create a role group" action.
     type: 'createRole',
     icon: FiPlusCircle,
-    title: 'Create a new role',
-    description: 'Add a role and set what it can do.',
+    title: 'Create a role',
+    description: 'Add a role, set what it can do, and add it to groups.',
     binding: true,
   },
   {

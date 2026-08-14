@@ -32,7 +32,7 @@ function getFallbackRoleName(index) {
  * @returns {Object} { roleNames, getRoleName, isLoading }
  */
 export function useRoleNames() {
-  const { roleHatIds, roleNames: contextRoleNames, roleCanVoteMap } = usePOContext();
+  const { roleHatIds, roleNames: contextRoleNames, roleCanVoteMap, roleGroups } = usePOContext();
 
   // Build normalized role names map from POContext data
   const roleNames = useMemo(() => {
@@ -115,6 +115,36 @@ export function useRoleNames() {
     return allRoles.filter(role => roleCanVoteMap?.[role.hatId] !== false);
   }, [allRoles, roleCanVoteMap]);
 
+  // hatId (identity) -> [group summaries] via RoleManager group memberships.
+  // Empty for orgs without RoleManager (roleGroups is []), so callers fall back
+  // to the plain role UI unchanged.
+  const groupsByRoleHatId = useMemo(() => {
+    const map = new Map();
+    for (const group of roleGroups || []) {
+      for (const m of group.memberships || []) {
+        if (m?.isActive === false) continue;
+        const memberHat = normalizeHatId(m?.role?.hatId);
+        if (!memberHat) continue;
+        const entry = { groupId: group.groupId, name: group.name, markerHatId: group.markerHatId };
+        const list = map.get(memberHat) || [];
+        list.push(entry);
+        map.set(memberHat, list);
+      }
+    }
+    return map;
+  }, [roleGroups]);
+
+  /**
+   * Groups an identity-hat role belongs to (RoleManager). Returns [] when the
+   * org has no RoleManager or the role is in no group.
+   * @param {string|number} hatId
+   * @returns {Array<{groupId, name, markerHatId}>}
+   */
+  const getGroupForRole = useCallback(
+    (hatId) => groupsByRoleHatId.get(normalizeHatId(hatId)) || [],
+    [groupsByRoleHatId]
+  );
+
   return {
     roleNames,
     getRoleName,
@@ -122,6 +152,8 @@ export function useRoleNames() {
     getRoleNamesString,
     allRoles,
     votingEligibleRoles,
+    getGroupForRole,
+    roleGroups: roleGroups || [],
     isLoading: false,
   };
 }

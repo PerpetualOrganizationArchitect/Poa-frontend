@@ -55,6 +55,38 @@ export const CAPABILITY = {
       { type: 'TaskRelease' },
     ],
   },
+  /**
+   * RoleManager phase-2 role/group model (subgraph-pop RoleManager wave). Gates
+   * the whole set of fields the org-structure + role queries newly select — one
+   * unknown field fails the entire document, so orgs whose endpoint hasn't been
+   * republished (or that never adopted RoleManager) must read this as "absent"
+   * and fall back to the pre-RoleManager UI unchanged.
+   */
+  ROLE_MANAGER: {
+    id: 'roleManager',
+    require: [
+      { type: 'Organization', field: 'roleManager' },
+      { type: 'Organization', field: 'roleGroups' },
+      { type: 'Role', field: 'isGroupMarker' },
+      { type: 'Role', field: 'groupMemberships' },
+      { type: 'RoleGroup' },
+      { type: 'RoleGroupMembership' },
+      { type: 'RoleOffer' },
+    ],
+  },
+  /**
+   * createProposalV2 config (quorumOverride / equalWeight) on Proposal +
+   * DDVProposal. Only lights the V2 restricted-poll UI when the serving
+   * subgraph can render the resulting fields; the on-chain selector is
+   * feature-detected separately per module instance (VotingService).
+   */
+  PROPOSAL_V2: {
+    id: 'proposalV2',
+    require: [
+      { type: 'Proposal', field: 'quorumOverride' },
+      { type: 'Proposal', field: 'equalWeight' },
+    ],
+  },
 };
 
 /**

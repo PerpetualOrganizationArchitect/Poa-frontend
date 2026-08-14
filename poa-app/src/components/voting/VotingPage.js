@@ -105,7 +105,10 @@ const VotingPage = () => {
   // On-chain creator-hat gate: membership alone is NOT enough to create votes —
   // createProposal reverts Unauthorized for members without a creator hat,
   // after they've walked the whole wizard and uploaded metadata to IPFS.
-  const { canCreatePoll, canCreateProposal, canCreateAny, creatorGateLoading } = useVoteCreateGate();
+  // Kept whole as well as destructured: OrgConstitution describes the creator
+  // sets this same read resolved, so the copy can't drift from the button.
+  const voteGate = useVoteCreateGate();
+  const { canCreatePoll, canCreateProposal, canCreateAny, creatorGateLoading } = voteGate;
 
   // Derived lifecycle lanes (shared definitions with /votes + dashboard).
   const { lanes, loading, error } = useVoteLanes();
@@ -451,11 +454,12 @@ const VotingPage = () => {
             />
           </Box>
 
-          {/* Constitution — "Our rules" (collapsible, below the board).
-              Rule changes are HybridVoting setter proposals, so the propose
-              rows follow the proposal-creator gate, not bare membership. */}
+          {/* Constitution — "Our rules" (collapsible, below the board). Takes
+              the whole gate: the propose rows follow the proposal-creator hat
+              rather than bare membership, and the "who can open a vote" section
+              describes the same creator sets that enable the Create button. */}
           <OrgConstitution
-            hasMemberRole={canCreateProposal}
+            voteGate={voteGate}
             onProposeRuleChange={handleProposeRuleChange}
           />
 

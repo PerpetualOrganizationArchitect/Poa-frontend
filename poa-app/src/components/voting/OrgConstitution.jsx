@@ -12,12 +12,22 @@
  *   WHAT IT TAKES TO PASS— binding votes + polls, each with support-to-pass and
  *                          quorum phrased with the same fraction-of-members copy
  *                          the live meters use.
- *   WHO CAN PROPOSE      — honest partial data: the subgraph under-reports
- *                          creator hats set at initialize, so we never fabricate
- *                          a role list — the caveat line is always shown.
+ *   WHO CAN OPEN A VOTE  — the group's actual creator roles, named. The two
+ *                          creator sets come from useVoteCreateGate — the SAME
+ *                          arrays that enable the Create-vote button, so the
+ *                          rule and the affordance can never disagree.
+ *                          describeVoteOpenRights (src/lib/voting) owns every
+ *                          branch; this file only maps icon keys to components.
  *
- * Each rule row exposes "Propose a change" (members only) wired to the matching
- * setter template via onProposeRuleChange(templateId).
+ * That section used to guess ("polls are open more widely") and then apologise
+ * for guessing ("creator roles set at deployment may not be listed"). Both were
+ * wrong: across every live group the poll set is equal to or NARROWER than the
+ * binding set — never wider — and the deploy-time creator hats the caveat
+ * hedged about have been indexed since subgraph-pop #186. Nothing here states a
+ * relationship between the two tracks; it renders both and lets them speak.
+ *
+ * Each rule row exposes "Propose a change" (creators only) wired to the matching
+ * setter template via onProposeRuleChange(templateId, templateValues).
  *
  * Glass: parent position=relative + zIndex + <GlassBack /> child (never bare
  * glassLayerStyle, never backdrop-filter).
@@ -44,6 +54,10 @@ import {
   PiSquareHalfFill,
   PiGavel,
   PiPencilSimpleLine,
+  PiKey,
+  PiLockKey,
+  PiHourglass,
+  PiWarningCircle,
 } from 'react-icons/pi';
 import GlassBack from './GlassBack';
 import { useVotingContext } from '@/context/VotingContext';
@@ -54,6 +68,7 @@ import {
   sliceBadge,
   passRuleCopy,
 } from '@/config/votingVocabulary';
+import { describeVoteOpenRights } from '@/lib/voting/voteOpenRights';
 import { VOTE_PALETTE } from './votingDisplay';
 
 const { amethyst, leaderText, amethystSoft, amethystBorder } = VOTE_PALETTE;
@@ -80,8 +95,20 @@ function formatMinShares(minBalanceWei) {
   }
 }
 
-/** Small "Propose a change" affordance shown on editable rule rows. */
-function ProposeChange({ templateId, canPropose, onProposeRuleChange, label = 'Propose a change' }) {
+/**
+ * Small "Propose a change" affordance shown on editable rule rows.
+ *
+ * `templateValues` prefills inputs the template gives no default (the
+ * direct-democracy permission setter writes either the voting list or the
+ * creator list and picks neither on its own).
+ */
+function ProposeChange({
+  templateId,
+  templateValues = null,
+  canPropose,
+  onProposeRuleChange,
+  label = 'Propose a change',
+}) {
   if (!canPropose || !onProposeRuleChange || !templateId) return null;
   return (
     <Button
@@ -91,13 +118,23 @@ function ProposeChange({ templateId, canPropose, onProposeRuleChange, label = 'P
       color={leaderText}
       leftIcon={<Icon as={PiPencilSimpleLine} boxSize={3.5} />}
       _hover={{ bg: 'whiteAlpha.100', color: 'white' }}
-      onClick={() => onProposeRuleChange(templateId)}
+      onClick={() => onProposeRuleChange(templateId, templateValues)}
       flexShrink={0}
     >
       {label}
     </Button>
   );
 }
+
+/** Icon key from describeVoteOpenRights → component. */
+const OPEN_RIGHTS_ICON = {
+  both: PiKey,
+  binding: PiGavel,
+  poll: PiUsers,
+  closed: PiLockKey,
+  pending: PiHourglass,
+  failed: PiWarningCircle,
+};
 
 /** Icon for a voting class by strategy + quadratic. */
 function classIcon(cls) {
@@ -176,10 +213,17 @@ function SectionLabel({ icon, children }) {
   );
 }
 
+/**
+ * @param {Object}  props
+ * @param {boolean} props.defaultOpen — /rules renders the panel already open
+ * @param {Function} props.onProposeRuleChange — (templateId, templateValues)
+ * @param {Object}  props.voteGate — the whole useVoteCreateGate result, so the
+ *   rule rows and the Create-vote button are driven by one read
+ */
 export function OrgConstitution({
   defaultOpen = false,
   onProposeRuleChange,
-  hasMemberRole = false,
+  voteGate = {},
 }) {
   const {
     votingClasses,
@@ -188,7 +232,7 @@ export function OrgConstitution({
     ddThresholdPct,
     ddQuorum,
   } = useVotingContext();
-  const { orgId, poMembers } = usePOContext();
+  const { orgId, poMembers, roleHatIds, roleNames } = usePOContext();
   const { getRoleNames } = useRoleNames();
 
   // undefined = not yet resolved from storage. defaultOpen (the /rules page)
@@ -228,8 +272,26 @@ export function OrgConstitution({
     }
   };
 
-  const canPropose = hasMemberRole;
+  // Rule changes are setter proposals on HybridVoting, so the propose rows
+  // follow the binding-vote creator gate, not bare membership.
+  const canPropose = !!voteGate.canCreateProposal;
   const eligible = poMembers || 0;
+
+  // Who may open each track — computed, never assumed. See voteOpenRights.js.
+  const openRights = useMemo(() => describeVoteOpenRights({
+    bindingHatIds: voteGate.bindingCreatorHatIds,
+    pollHatIds: voteGate.pollCreatorHatIds,
+    roleHatIds,
+    roleNames,
+    hasBinding: voteGate.hasBinding,
+    hasPolls: voteGate.hasPolls,
+    settled: voteGate.creatorGateSettled,
+    bindingFailed: voteGate.bindingReadFailed,
+    pollFailed: voteGate.pollReadFailed,
+    canOpenBinding: voteGate.canCreateProposal,
+    canOpenPoll: voteGate.canCreatePoll,
+    isMember: voteGate.isMember,
+  }), [voteGate, roleHatIds, roleNames]);
 
   // Resolve DIRECT-class gating hats to role names for a specific label.
   const classRows = useMemo(() => {
@@ -404,21 +466,54 @@ export function OrgConstitution({
               />
             </VStack>
 
-            <Divider borderColor="whiteAlpha.200" />
+            {/* ── WHO CAN OPEN A VOTE ── (the org's real creator hats) */}
+            {openRights.rows.length > 0 && (
+              <>
+                <Divider borderColor="whiteAlpha.200" />
 
-            {/* ── WHO CAN PROPOSE ── (honest partial data) */}
-            <VStack align="stretch" spacing={3}>
-              <SectionLabel icon={PiPencilSimpleLine}>Who can propose</SectionLabel>
-              <RuleRow
-                icon={PiPencilSimpleLine}
-                title="Members with a creator role"
-                detail="Members holding a proposal-creator role can open binding votes; polls are open more widely."
-              />
-              <Text fontSize="xs" color="gray.400" fontStyle="italic" px={1}>
-                Creator roles set at deployment may not be listed — check with your
-                org admin.
-              </Text>
-            </VStack>
+                <VStack align="stretch" spacing={3}>
+                  <SectionLabel icon={PiKey}>Who can open a vote</SectionLabel>
+
+                  {openRights.rows.map((row) => (
+                    <RuleRow
+                      key={row.key}
+                      icon={OPEN_RIGHTS_ICON[row.icon] || PiKey}
+                      title={row.title}
+                      badges={row.badges}
+                      detail={row.detail}
+                      right={row.actions.length > 0 ? (
+                        <VStack align="end" spacing={1} flexShrink={0}>
+                          {row.actions.map((action) => (
+                            <ProposeChange
+                              key={action.templateId}
+                              templateId={action.templateId}
+                              templateValues={action.templateValues}
+                              canPropose={canPropose}
+                              onProposeRuleChange={onProposeRuleChange}
+                              {...(action.label ? { label: action.label } : {})}
+                            />
+                          ))}
+                        </VStack>
+                      ) : null}
+                    >
+                      {/* Answers "is that me?" out loud — an absent chip reads
+                          the same to an excluded member and to a visitor. */}
+                      {row.youLine && (
+                        <Text fontSize="xs" color="gray.400" lineHeight="1.5">
+                          {row.youLine}
+                        </Text>
+                      )}
+                    </RuleRow>
+                  ))}
+
+                  {openRights.note && (
+                    <Text fontSize="xs" color="gray.400" px={1} lineHeight="1.6">
+                      {openRights.note}
+                    </Text>
+                  )}
+                </VStack>
+              </>
+            )}
           </VStack>
         </Box>
       </Collapse>

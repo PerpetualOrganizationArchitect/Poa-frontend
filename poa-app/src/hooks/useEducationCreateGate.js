@@ -3,7 +3,11 @@
  *
  * Who may CREATE learning modules — the gate EducationHub.createModule
  * enforces on-chain (creatorHatIds, seeded at initialize() without events, so
- * the subgraph cannot supply them — poa-box/POP#171). Mirrors useVoteCreateGate:
+ * the subgraph cannot supply them). Unlike the voting contracts, this gap is
+ * still OPEN: subgraph-pop #186 added an Initialized backfill for HybridVoting
+ * and DirectDemocracyVoting only, and education-hub.ts has no equivalent —
+ * Decentral Park's hub creator is set at deploy and the subgraph shows zero
+ * EducationHub Creator rows for it. Mirrors useVoteCreateGate:
  * chain-routed public client via useOnchainCreatorHats (cached across mounts),
  * failing OPEN to the legacy hasExecRole heuristic while the read is in
  * flight or unavailable so an RPC hiccup never hides the button from real

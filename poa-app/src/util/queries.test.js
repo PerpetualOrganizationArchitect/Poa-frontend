@@ -139,3 +139,50 @@ describe('projects query — v7 claim-release gating', () => {
     }
   });
 });
+
+/**
+ * Nested collections default to 100 on The Graph, and HatPermission ids begin
+ * with the CONTRACT ADDRESS — so the default ordering truncates in whole-
+ * contract blocks rather than sampling evenly. An org that crosses the cap can
+ * lose its entire HybridVoting creator set while keeping every token row.
+ *
+ * That is not a cosmetic loss. useVoteCreateGate fails OPEN on an empty creator
+ * array, so every member would be offered a "Create vote" button whose tx
+ * reverts Unauthorized after the whole wizard; and the "Who can open a vote"
+ * panel would announce that only a passed vote can open one. At ~3.2 rows per
+ * role the cap lands around 32 roles, which is within the supported range.
+ */
+describe('hatPermissions pagination', () => {
+  /** Args printed for the first field named `name`, e.g. '(first: 1000)'. */
+  function argsOf(doc, name) {
+    let found = null;
+    const walk = (node) => {
+      if (found || !node || typeof node !== 'object') return;
+      if (node.kind === 'Field' && node.name?.value === name) {
+        found = (node.arguments || []).map((a) => print(a)).join(', ');
+        return;
+      }
+      for (const key of Object.keys(node)) {
+        const child = node[key];
+        if (Array.isArray(child)) child.forEach(walk);
+        else if (child && typeof child === 'object') walk(child);
+      }
+    };
+    walk(doc);
+    return found;
+  }
+
+  it.each([
+    ['FETCH_ORG_FULL_DATA', FETCH_ORG_FULL_DATA],
+    ['FETCH_ORG_STRUCTURE_DATA', FETCH_ORG_STRUCTURE_DATA],
+  ])('%s raises hatPermissions past the default 100', (_label, doc) => {
+    expect(argsOf(doc, 'hatPermissions')).toBe('first: 1000');
+  });
+
+  it('uses identical args in both, so Apollo shares one cached field', () => {
+    // InMemoryCache keys a field by name + args. Differing args would store two
+    // Organization.hatPermissions entries and refetch the same rows per page.
+    expect(argsOf(FETCH_ORG_FULL_DATA, 'hatPermissions'))
+      .toBe(argsOf(FETCH_ORG_STRUCTURE_DATA, 'hatPermissions'));
+  });
+});

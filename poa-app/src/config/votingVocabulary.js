@@ -158,6 +158,9 @@ export const STATUS_AWAITING_COUNT = 'VOTING ENDED';
 /** "You already voted" affordance. */
 export const YOU_VOTED_CHIP = 'You voted ✓';
 
+/** "This rule includes you" chip on the Our-rules who-can-open rows. */
+export const YOU_CAN_OPEN_CHIP = 'You can ✓';
+
 // ---------------------------------------------------------------------------
 // Completed-poll execution-status taxonomy (preserved from CompletedPollModal)
 // with plain-language explanations. `label` is the chip; `explain` is one line.
@@ -430,6 +433,7 @@ export default {
   STATUS_CLOSING_SOON,
   STATUS_AWAITING_COUNT,
   YOU_VOTED_CHIP,
+  YOU_CAN_OPEN_CHIP,
   executionStatus,
   outcomeHeadline,
   outcomeProblem,

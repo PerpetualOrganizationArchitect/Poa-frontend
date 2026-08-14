@@ -4,8 +4,8 @@
  * Thin wrapper: Navbar + the OrgConstitution panel (opened by default). Org
  * context resolves from ?userDAO exactly like /votes and /voting (POContext
  * reads router.query.userDAO). "Propose a change" deep-links back to the board
- * at /voting?propose=<templateId>, which opens the create modal with that rule
- * template preselected.
+ * at /voting?propose=<templateId>[&prefill_<input>=…], which opens the create
+ * modal with that rule template preselected and those inputs already filled.
  */
 
 import React, { useCallback } from "react";
@@ -27,13 +27,20 @@ const RulesPage = () => {
   const orgGate = useOrgGate();
   const { poContextLoading } = usePOContext();
   // Rule changes are HybridVoting setter proposals — gate the propose rows on
-  // the on-chain proposal-creator hat, matching /voting's constitution panel.
-  const { canCreateProposal } = useVoteCreateGate();
+  // the proposal-creator hat, matching /voting's constitution panel.
+  // The whole gate goes down so the panel can also describe the creator sets.
+  const voteGate = useVoteCreateGate();
   const { pageBackground } = useOrgTheme();
 
-  const handleProposeRuleChange = useCallback((templateId) => {
+  const handleProposeRuleChange = useCallback((templateId, templateValues = null) => {
+    // Template inputs with no default (the direct-democracy permission setter
+    // picks neither its voting nor its creator list) ride along as
+    // ?prefill_<input>=, which /voting already parses back into the wizard.
+    const prefill = Object.entries(templateValues || {})
+      .map(([name, value]) => `&prefill_${encodeURIComponent(name)}=${encodeURIComponent(value)}`)
+      .join("");
     router.push(
-      `/voting?userDAO=${encodeURIComponent(userDAO || "")}&propose=${encodeURIComponent(templateId)}`
+      `/voting?userDAO=${encodeURIComponent(userDAO || "")}&propose=${encodeURIComponent(templateId)}${prefill}`
     );
   }, [router, userDAO]);
 
@@ -61,7 +68,7 @@ const RulesPage = () => {
           <Container maxW="1400px" mx="auto">
             <OrgConstitution
               defaultOpen
-              hasMemberRole={canCreateProposal}
+              voteGate={voteGate}
               onProposeRuleChange={handleProposeRuleChange}
             />
           </Container>

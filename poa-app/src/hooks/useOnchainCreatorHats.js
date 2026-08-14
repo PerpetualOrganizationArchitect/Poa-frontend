@@ -1,16 +1,21 @@
 /**
  * useOnchainCreatorHats
  *
- * Reads the creator / voting hats straight from the voting + task-manager
- * contracts, for the org permissions matrix.
+ * Reads creator / voting hats straight from the contracts, for hats the
+ * subgraph does not index.
  *
- * Why: HybridVoting / DirectDemocracyVoting seed their creator hats (and DDV its
- * voting hats) inside initialize() WITHOUT emitting events, so the subgraph can't
- * index them (see poa-box/POP#171). TaskManager's project-creator hats are only
- * exposed via a lens call, not indexed cleanly either. Until those contract
- * events land + a re-sync, we read them on-chain so the matrix shows the real
- * creators now — at the CURRENT block, which any RPC serves (no archive node, no
- * subgraph dependency).
+ * Why: these arrays are seeded inside initialize() WITHOUT emitting events, so
+ * the event-driven handlers never saw grants made at DEPLOYMENT.
+ *
+ * MOSTLY FIXED UPSTREAM — as of 2026-08-13 the only caller is
+ * useEducationCreateGate. subgraph-pop #186 backfills the HybridVoting and
+ * DirectDemocracyVoting hats at Initialized, and #206 sources TaskManager's
+ * from HatSet; all four verified to match these getters exactly on every live
+ * org, so useVoteCreateGate and useOrgStructure now read the subgraph instead.
+ * EducationHub is the straggler: education-hub.ts has no equivalent backfill
+ * (Decentral Park's deploy-time hub creator is missing from the subgraph
+ * entirely), so its gate still reads on-chain — at the CURRENT block, which any
+ * RPC serves. The other getters stay wired here for when a new gap appears.
  *
  * Mirrors useTaskManagerV4State: a chain-specific public client (works for
  * unauthenticated visitors), a sequence guard so an org-switch mid-load can't
@@ -36,7 +41,7 @@ const TM_CREATOR_HATS_LENS_KEY = 5;
 // Session cache of resolved rows per input set. Creator/voting hats change
 // only via governance, so serving the last successful read synchronously on
 // remount removes the enabled→disabled first-paint flicker on gates that
-// consume these rows (useVoteCreateGate); a background refresh still runs.
+// consume these rows (useEducationCreateGate); a background refresh still runs.
 const rowsCache = new Map();
 const cacheKey = ({ hybridVoting, directDemocracyVoting, taskManager, educationHub, chainId }) =>
   `${chainId}:${hybridVoting || ''}:${directDemocracyVoting || ''}:${taskManager || ''}:${educationHub || ''}`;

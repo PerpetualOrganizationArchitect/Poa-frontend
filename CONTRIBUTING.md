@@ -103,8 +103,10 @@ src/services/web3/utils/        encoding.js (CID + ID parsing), chainClients.js
 
 Task permissions are hat-based (Hats Protocol), tracking the contract-side `TaskPerm.sol`. Use the helpers in `src/util/permissions.js`:
 
-- `userHasProjectPermission(userHatIds, projectRolePermissions, permType)`
-- Convenience wrappers: `userCanCreateTask`, `userCanClaimTask`, `userCanReviewTask`, `userCanAssignTask`.
+- `projectTaskPermissions(project, userHatIds, address)` — resolves every bit for one project, mirroring TaskManager's `_checkPerm` (the per-hat mask, where a non-zero project mask *replaces* the hat's global mask, OR being one of that project's managers).
+- `taskEditRights(perms, columnId)` — the status half of `updateTask` / `updateTaskMetadata`.
+- `BUDGET` is the one permission with **no** project-manager bypass (`_requireBudgetEditor`).
+- Never gate on a `roleHatIds` index. Role order carries no authority — on an org whose senior role deployed first, `roleHatIds[1]` is the *junior* role.
 
 ### Styling
 

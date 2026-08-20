@@ -56,10 +56,9 @@ import { useProjectContext } from '@/context/ProjectContext';
 import { UserSearchInput } from '@/components/common';
 import UserIdentity from '@/components/common/UserIdentity';
 import {
-  userCanReviewTask,
-  userCanAssignTask,
-  userCanEditTaskFull,
-  userCanEditTaskMetadata,
+  projectTaskPermissions,
+  taskEditRights,
+  PERMISSION_MESSAGES,
 } from '../../util/permissions';
 import { useOrgName } from '@/hooks/useOrgName';
 import UsernameLink from '@/components/common/UsernameLink';
@@ -109,7 +108,7 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const [isAssigning, setIsAssigning] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const { moveTask, deleteTask, applyForTask, approveApplication, assignTask, takeOverTask, releaseTask, rejectTask } = useTaskBoard();
-  const { hasExecRole, hasMemberRole, address: account, fetchUserDetails, userData } = useUserContext();
+  const { hasMemberRole, address: account, fetchUserDetails, userData } = useUserContext();
   const { projectsData, releasesSupported } = useProjectContext();
   const { getUsernameByAddress, setSelectedProject, projects } = useDataBaseContext();
   const { safeFetchFromIpfs } = useIPFScontext();
@@ -140,56 +139,33 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const [applicationContents, setApplicationContents] = useState({});
   const [applicationsLoading, setApplicationsLoading] = useState(false);
 
-  // Project-level review permission (matches TaskColumn.js pattern)
-  const userHatIds = userData?.hatIds || [];
+  const userHatIds = useMemo(() => userData?.hatIds || [], [userData]);
   const currentProject = useMemo(() => {
     return projectsData?.find(p => p.id === task?.projectId);
   }, [projectsData, task?.projectId]);
-  const projectRolePermissions = currentProject?.rolePermissions || [];
-  // Org-wide ROLE_PERM grants — mirrors the contract's _permMask global fallback so hats
-  // granted EDIT_FULL via setConfig(ROLE_PERM, ...) (e.g. Test6 governance proposal) are
-  // visible to the frontend even when no per-project mask exists.
-  const globalRolePermissions = currentProject?.globalRolePermissions || [];
 
-  const canReviewTask = useMemo(() => {
-    const hasPermission = userCanReviewTask(userHatIds, projectRolePermissions, globalRolePermissions);
-    if (hasPermission) return true;
-    if (!projectRolePermissions?.length && hasExecRole) return true;
-    return false;
-  }, [userHatIds, projectRolePermissions, globalRolePermissions, hasExecRole]);
+  // Every TaskManager gate for this project, resolved exactly as the contract does:
+  // the per-hat mask (project mask shadows global, else global) OR being one of this
+  // project's managers. `account` is the tx's msg.sender under both auth types —
+  // the ERC-4337 smart account for passkey users, the EOA otherwise.
+  const perms = useMemo(
+    () => projectTaskPermissions(currentProject, userHatIds, account),
+    [currentProject, userHatIds, account],
+  );
 
-  // Project-level assign permission (for approving applications)
-  // Contract's approveApplication requires ASSIGN permission or project manager
-  const canAssign = useMemo(() => {
-    const hasPermission = userCanAssignTask(userHatIds, projectRolePermissions, globalRolePermissions);
-    if (hasPermission) return true;
-    if (!projectRolePermissions?.length && hasExecRole) return true;
-    return false;
-  }, [userHatIds, projectRolePermissions, globalRolePermissions, hasExecRole]);
+  const canReviewTask = perms.canReview;
+  const canAssign = perms.canAssign;
 
-  // TaskManager v5: post-claim editing.
-  // - EDIT_FULL allows editing payout + bounty + metadata on CLAIMED / SUBMITTED tasks
-  // - EDIT_META allows editing only title + metadata (routes through updateTaskMetadata)
-  // Terminal states (COMPLETED / CANCELLED) stay locked. PM/executive bypass via hasExecRole
-  // mirrors the contract's `_isPM` bypass.
-  const canEditTaskFull = useMemo(() => {
-    const hasPermission = userCanEditTaskFull(userHatIds, projectRolePermissions, globalRolePermissions);
-    if (hasPermission) return true;
-    if (!projectRolePermissions?.length && hasExecRole) return true;
-    return false;
-  }, [userHatIds, projectRolePermissions, globalRolePermissions, hasExecRole]);
+  // Status-dependent edit rights: terminal tasks are immutable; EDIT_FULL works in any
+  // non-terminal status; a CREATE hat may still edit while the task is UNCLAIMED.
+  const { canEditFull: canEditTaskFull, canEditMeta: canEditTaskMetadata } = useMemo(
+    () => taskEditRights(perms, columnId),
+    [perms, columnId],
+  );
 
-  // True if the user has EDIT_META or EDIT_FULL (EDIT_FULL is a strict superset).
-  const canEditTaskMetadata = useMemo(() => {
-    const hasPermission = userCanEditTaskMetadata(userHatIds, projectRolePermissions, globalRolePermissions);
-    if (hasPermission) return true;
-    if (!projectRolePermissions?.length && hasExecRole) return true;
-    return false;
-  }, [userHatIds, projectRolePermissions, globalRolePermissions, hasExecRole]);
-
-  // True if the user has EDIT_META but NOT EDIT_FULL — used to route the modal through
-  // updateTaskMetadata (which only takes title + metadataHash) instead of the full updateTask.
-  const isMetadataOnlyEditor = canEditTaskMetadata && !canEditTaskFull && !hasExecRole;
+  // EDIT_META without EDIT_FULL routes the save through updateTaskMetadata
+  // (title + metadataHash only) instead of the full updateTask.
+  const isMetadataOnlyEditor = canEditTaskMetadata && !canEditTaskFull;
 
   // Check if current user has already applied for this task
   const userApplication = useMemo(() => {
@@ -203,6 +179,10 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const now = useNow(15000);
   const isClaimer = !!account && task?.claimedBy?.toLowerCase() === account?.toLowerCase();
   const claimExpired = columnId === 'inProgress' && isClaimExpired(task, now);
+  // `completeTask` additionally requires SELF_REVIEW when the reviewer is the claimer
+  // (project managers are exempt, which `perms.canSelfReview` already folds in).
+  // Rejecting only needs REVIEW, so it keeps using `canReviewTask`.
+  const canCompleteReview = canReviewTask && (!isClaimer || perms.canSelfReview);
   // v7 claim release. The gate lives in util/releaseGate so the contract's two
   // routes (claimer always; ASSIGN holder only once expired) are decided in one
   // pure, tested place. `now` is threaded in so the button re-evaluates on the
@@ -445,10 +425,10 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   // The assignee is chosen via UserSearchInput, which already resolved the
   // typed username/address to a concrete { address, username } object.
   const handleAssignTask = async () => {
-    if (!hasExecRole) {
+    if (!canAssign) {
       toast({
         title: 'Permission Required',
-        description: 'You must be an executive to assign tasks.',
+        description: PERMISSION_MESSAGES.REQUIRE_ASSIGN,
         status: 'warning',
         duration: 4000,
         isClosable: true,
@@ -678,24 +658,12 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
     }
 
     if (columnId === 'inReview') {
-      if (!canReviewTask) {
+      if (!canCompleteReview) {
         toast({
           title: 'Permission Required',
-          description: 'You must have review permissions to complete the review.',
-          status: 'warning',
-          duration: 4000,
-          isClosable: true,
-          position: 'top',
-        });
-        return;
-      }
-    }
-
-    if (columnId === 'completed') {
-      if (!hasExecRole) {
-        toast({
-          title: 'Permission Required',
-          description: 'You must be an executive to delete a task.',
+          description: canReviewTask
+            ? PERMISSION_MESSAGES.REQUIRE_SELF_REVIEW
+            : PERMISSION_MESSAGES.REQUIRE_REVIEW,
           status: 'warning',
           duration: 4000,
           isClosable: true,
@@ -731,12 +699,6 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
       });
     }
 
-    if (columnId === 'completed') {
-      // Delete task
-      deleteTask(task.id, columnId).catch(error => {
-        console.error("Error deleting task:", error);
-      });
-    }
   };
 
 
@@ -755,8 +717,6 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
         return 'Submit';
       case 'inReview':
         return 'Complete Review';
-      case 'completed':
-        return <CheckIcon />;
       default:
         return '';
     }
@@ -764,17 +724,10 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
 
   const [isEditTaskModalOpen, setIsEditTaskModalOpen] = useState(false);
 
-  // Edit gating:
-  // - Pre-claim (`open` column): existing hasExecRole bypass (CREATE-perm hats already pass).
-  // - Post-claim (`inProgress` / `inReview`): EDIT_META or EDIT_FULL grants edit access.
-  //   EDIT_META-only callers go through updateTaskMetadata (no payout/bounty changes).
-  // - Terminal (`completed`): never editable.
-  const isPostClaimColumn = columnId === 'inProgress' || columnId === 'inReview';
-  const canShowEditButton = (
-    columnId === 'open' && hasExecRole
-  ) || (
-    isPostClaimColumn && (hasExecRole || canEditTaskMetadata)
-  );
+  // Edit gating is entirely `taskEditRights` (which already encodes the contract's
+  // status rules): terminal tasks never editable; EDIT_META / EDIT_FULL in any
+  // non-terminal status; CREATE while still UNCLAIMED.
+  const canShowEditButton = canEditTaskMetadata;
 
   const handleOpenEditTaskModal = () => {
     if (canShowEditButton) {
@@ -782,9 +735,7 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
     } else {
       toast({
         title: 'Permission Required',
-        description: isPostClaimColumn
-          ? 'You need EDIT_META or EDIT_FULL permission (or executive role) to edit a task after it has been claimed.'
-          : 'You must be an executive to edit a task.',
+        description: PERMISSION_MESSAGES.REQUIRE_EDIT,
         status: 'warning',
         duration: 4000,
         isClosable: true,
@@ -1208,7 +1159,7 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                   )}
 
                   {/* Assign Section (Executives) */}
-                  {columnId === 'open' && hasExecRole && showAssignSection && (
+                  {columnId === 'open' && canAssign && showAssignSection && (
                     <Box w="100%" p={4} bg="whiteAlpha.50" borderRadius="lg" border="1px solid" borderColor="whiteAlpha.100">
                       <SectionHeader>Assign Task</SectionHeader>
 
@@ -1341,7 +1292,7 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                 >
                   Share
                 </Button>
-                {!task.isIndexing && columnId === 'open' && hasExecRole && (
+                {!task.isIndexing && columnId === 'open' && canAssign && (
                   <Button
                     variant="ghost"
                     onClick={() => {
@@ -1394,6 +1345,10 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                     </Button>
                   </Tooltip>
                 )}
+                {/* Completed is terminal on-chain: cancelTask is UNCLAIMED-only, so the
+                    old delete button here reverted BadStatus for every caller, including
+                    project managers and the executor. No primary action exists. */}
+                {columnId !== 'completed' && (
                 <Tooltip
                   label={`Only ${task.claimerUsername || 'the current claimer'} can submit this task.`}
                   isDisabled={!(columnId === 'inProgress' && !isClaimer && !claimExpired)}
@@ -1413,6 +1368,7 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                     {buttonText()}
                   </Button>
                 </Tooltip>
+                )}
               </HStack>
             </HStack>
           </ModalFooter>
@@ -1429,7 +1385,8 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
           metadataOnly={isMetadataOnlyEditor}
           task={task}
           onDeleteTask={(taskId) => deleteTask(taskId, columnId)}
-          allowDelete={columnId === 'open'}
+          // cancelTask is gated on CREATE (or project manager) and reverts unless UNCLAIMED.
+          allowDelete={columnId === 'open' && perms.canCreate}
         />
       )}
 

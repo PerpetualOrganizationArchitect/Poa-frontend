@@ -83,11 +83,10 @@ const EducationHub = () => {
   const [correctAnswerIndex, setCorrectAnswerIndex] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Module creation follows the EducationHub's on-chain creator hats — the
-  // gate createModule actually enforces. hasExecRole (positional guess) is
-  // only the fail-open fallback inside the hook.
+  // Module creation follows the EducationHub's on-chain creator hats — the gate
+  // createModule actually enforces. The hook falls open to plain membership only
+  // while that read is in flight or unavailable.
   const { canCreateModule } = useEducationCreateGate();
-  const isExecutive = canCreateModule;
 
   const handleAddModule = useCallback(async () => {
     if (!education) return;
@@ -223,7 +222,7 @@ const EducationHub = () => {
             </Box>
 
 
-            {isExecutive && (
+            {canCreateModule && (
               <Button
                 onClick={onOpen}
                 colorScheme="blue"

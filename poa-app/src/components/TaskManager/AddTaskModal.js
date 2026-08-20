@@ -34,7 +34,6 @@ import {
 } from '@chakra-ui/react';
 import { InfoIcon, CloseIcon, ExternalLinkIcon } from '@chakra-ui/icons';
 import { getBountyTokenOptions, BOUNTY_TOKENS } from '../../util/tokens';
-import { useUserContext } from '../../context/UserContext';
 import { usePOContext } from '../../context/POContext';
 import { UserSearchInput } from '@/components/common';
 import UserIdentity from '@/components/common/UserIdentity';
@@ -172,11 +171,15 @@ const AddTaskModal = ({
   onSubmitDrafts,
   isSubmittingDrafts = false,
   initialEditingDraftId = null,
+  // Whether to offer an assignee. Naming one routes the submit through
+  // `createAndAssignTask`, which requires CREATE **and** ASSIGN together — so
+  // parents pass the conjunction (`perms.canCreateAndAssign`), not just ASSIGN.
+  // This component has no project in scope; both mount points resolve one.
+  canAssign = false,
 }) => {
-  const { hasExecRole } = useUserContext();
   const { orgChainId, tokenLabel, taskPayoutHoursOnly, taskPayoutHourlyRate } = usePOContext();
   const isDraftMode = mode === 'draft';
-  const showAssign = !isDraftMode && hasExecRole;
+  const showAssign = !isDraftMode && canAssign;
 
   const tokenOptions = useMemo(() => getBountyTokenOptions(orgChainId), [orgChainId]);
 
@@ -713,7 +716,7 @@ const AddTaskModal = ({
           Assignment
         </Text>
 
-        {isDraftMode && hasExecRole && (
+        {isDraftMode && canAssign && (
           <Text fontSize="xs" color="gray.500" mb={3}>
             Per-task assignment isn&apos;t available when batching yet. Use
             &quot;Add immediately&quot; if you need to assign a specific user.

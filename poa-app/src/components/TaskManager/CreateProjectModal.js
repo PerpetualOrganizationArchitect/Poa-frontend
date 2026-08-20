@@ -151,13 +151,15 @@ const CreateProjectModal = ({ isOpen, onClose, onCreateProject, roleHatIds = [],
     if (isOpen && roleHatIds.length > 0) {
       const creatorSet = new Set(creatorHatIds.map(String));
 
-      // CREATE: roles in creatorHatIds (they can create projects, so they should create tasks)
-      // If no creatorHatIds, fall back to non-member roles (index 1+)
+      // CREATE: roles in creatorHatIds (they can create projects, so they should create
+      // tasks). With no creatorHatIds indexed, pre-check every role rather than guessing
+      // by deploy order — role index carries no authority, and these boxes seed a real
+      // on-chain permission set. The admin can uncheck what they don't want.
       let defaultCreate;
       if (creatorSet.size > 0) {
         defaultCreate = new Set(roleHatIds.filter(id => creatorSet.has(String(id))));
       } else {
-        defaultCreate = new Set(roleHatIds.slice(1));
+        defaultCreate = new Set(roleHatIds);
       }
       // If still empty, give all roles create permission
       if (defaultCreate.size === 0) defaultCreate = new Set(roleHatIds);
@@ -707,7 +709,7 @@ const CreateProjectModal = ({ isOpen, onClose, onCreateProject, roleHatIds = [],
                             </VStack>
                           ) : (
                             <Text fontSize="xs" color="gray.500">
-                              No org-wide task permissions are configured; executive and higher roles manage tasks by default.
+                              No org-wide task permissions are configured, so only this project&apos;s own role permissions (and its managers) grant task access.
                             </Text>
                           )}
                         </Box>

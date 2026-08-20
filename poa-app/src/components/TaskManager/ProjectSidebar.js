@@ -26,7 +26,7 @@ import { useProjectContext } from '@/context/ProjectContext';
 import { useAuth } from '@/context/AuthContext';
 import { AddIcon, SearchIcon, ChevronLeftIcon, EditIcon } from '@chakra-ui/icons';
 import { FiLayers, FiBriefcase } from 'react-icons/fi';
-import { PERMISSION_MESSAGES, ROLE_INDICES } from '../../util/permissions';
+import { PERMISSION_MESSAGES, userWearsAnyHat } from '../../util/permissions';
 import { isTaskMine, taskNeedsReview } from '@/util/taskIndicators';
 
 const glassLayerStyle = {
@@ -68,13 +68,13 @@ const ProjectSidebar = ({
   }, [projects]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const { userData, graphUsername, hasExecRole } = useUserContext();
+  const { userData, graphUsername } = useUserContext();
   const { projectsData } = useProjectContext();
   const { accountAddress } = useAuth() || {};
   const { task: taskService, executeWithNotification } = useWeb3();
   const toast = useToast();
 
-  const { taskManagerContractAddress, roleHatIds, creatorHatIds } = usePOContext();
+  const { taskManagerContractAddress, creatorHatIds } = usePOContext();
 
   // Get user's current hat IDs for permission checking
   const userHatIds = userData?.hatIds || [];
@@ -93,7 +93,7 @@ const ProjectSidebar = ({
           } else if (
             c.id === 'inReview' &&
             !isTaskMine(t, address, graphUsername) &&
-            taskNeedsReview(c.id, p, userHatIds, hasExecRole)
+            taskNeedsReview(c.id, p, userHatIds, address, t)
           ) {
             needsYou += 1;
           }
@@ -101,7 +101,7 @@ const ProjectSidebar = ({
       }
     }
     return { myWorkActive: active, myWorkNeedsYou: needsYou };
-  }, [projectsData, accountAddress, userData, graphUsername, userHatIds, hasExecRole]);
+  }, [projectsData, accountAddress, userData, graphUsername, userHatIds]);
 
   const myWorkSubtitle =
     myWorkActive > 0 || myWorkNeedsYou > 0
@@ -110,39 +110,17 @@ const ProjectSidebar = ({
           .join(' · ')
       : 'Nothing assigned yet';
 
-  // Normalize hat IDs for comparison
-  const normalizeHatId = (id) => String(id).trim();
-
-  // Check if user can create projects
-  // Project creation requires one of the creatorHatIds from the TaskManager
+  // Who may create a project. `createProject` is gated by `_requireCreator()`:
+  // a wearer of one of the TaskManager's creatorHatIds, or the executor. There is
+  // no role-order component to it — the old `roleHatIds.slice(EXECUTIVE)` fallback
+  // was a guess and is gone.
   const canManageProjects = useMemo(() => {
     if (!userHatIds.length) return false;
-
-    const normalizedUserHats = userHatIds.map(normalizeHatId);
-
-    // Check if user has one of the creatorHatIds from TaskManager
-    if (creatorHatIds && creatorHatIds.length > 0) {
-      const hasCreatorHat = creatorHatIds.some(creatorHatId =>
-        normalizedUserHats.includes(normalizeHatId(creatorHatId))
-      );
-      if (hasCreatorHat) return true;
-    }
-
-    // Fallback: Check if user has a non-member role (executive or higher)
-    if (roleHatIds && roleHatIds.length > 1 && (!creatorHatIds || creatorHatIds.length === 0)) {
-      const nonMemberRoles = roleHatIds.slice(ROLE_INDICES.EXECUTIVE);
-      if (nonMemberRoles.some(roleId => normalizedUserHats.includes(normalizeHatId(roleId)))) {
-        return true;
-      }
-    }
-
-    // If no creatorHatIds configured and no projects exist, allow members to create first project
-    if ((!creatorHatIds || creatorHatIds.length === 0) && !projectsData?.length && userHatIds.length > 0) {
-      return true;
-    }
-
-    return false;
-  }, [userHatIds, projectsData, roleHatIds, creatorHatIds]);
+    if (creatorHatIds?.length) return userWearsAnyHat(userHatIds, creatorHatIds);
+    // No creator hats indexed yet: fail open only for the very first project, so a
+    // brand-new org is never bricked by a subgraph that has not caught up.
+    return !projectsData?.length;
+  }, [userHatIds, projectsData, creatorHatIds]);
 
   const handleCreateProject = () => {
     if (canManageProjects) {
@@ -150,7 +128,7 @@ const ProjectSidebar = ({
     } else {
       toast({
         title: 'Permission Required',
-        description: PERMISSION_MESSAGES.PROJECT_MANAGE_EXEC,
+        description: PERMISSION_MESSAGES.REQUIRE_PROJECT_CREATOR,
         status: 'warning',
         duration: 4000,
         isClosable: true,
@@ -164,7 +142,9 @@ const ProjectSidebar = ({
     if (!canManageProjects) {
       toast({
         title: 'Permission Required',
-        description: PERMISSION_MESSAGES.REQUIRE_CREATE,
+        // deleteProject is _requireCreator() — a creator hat or the executor. Being a
+        // project MANAGER does not help here, so don't use the create/claim copy.
+        description: PERMISSION_MESSAGES.REQUIRE_PROJECT_CREATOR,
         status: 'warning',
         duration: 4000,
         isClosable: true,

@@ -85,14 +85,13 @@ export function usePermissionToast() {
 
         // Specific permission error shortcuts
         requireMember: () => showPermissionError(PERMISSION_MESSAGES.REQUIRE_MEMBER),
-        requireExecutive: () => showPermissionError(PERMISSION_MESSAGES.REQUIRE_EXECUTIVE),
         requireMemberClaim: () => showPermissionError(PERMISSION_MESSAGES.TASK_CLAIM_MEMBER),
         requireMemberSubmit: () => showPermissionError(PERMISSION_MESSAGES.TASK_SUBMIT_MEMBER),
-        requireExecReview: () => showPermissionError(PERMISSION_MESSAGES.TASK_REVIEW_EXEC),
-        requireExecCreate: () => showPermissionError(PERMISSION_MESSAGES.TASK_CREATE_EXEC),
-        requireExecDelete: () => showPermissionError(PERMISSION_MESSAGES.TASK_DELETE_EXEC),
-        requireExecEdit: () => showPermissionError(PERMISSION_MESSAGES.TASK_EDIT_EXEC),
-        requireExecProject: () => showPermissionError(PERMISSION_MESSAGES.PROJECT_MANAGE_EXEC),
+        requireCreate: () => showPermissionError(PERMISSION_MESSAGES.REQUIRE_CREATE),
+        requireClaim: () => showPermissionError(PERMISSION_MESSAGES.REQUIRE_CLAIM),
+        requireReview: () => showPermissionError(PERMISSION_MESSAGES.REQUIRE_REVIEW),
+        requireAssign: () => showPermissionError(PERMISSION_MESSAGES.REQUIRE_ASSIGN),
+        requireProjectCreator: () => showPermissionError(PERMISSION_MESSAGES.REQUIRE_PROJECT_CREATOR),
         cannotMoveCompleted: () => showPermissionError(PERMISSION_MESSAGES.CANNOT_MOVE_COMPLETED),
     };
 }

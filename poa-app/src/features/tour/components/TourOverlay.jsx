@@ -287,11 +287,13 @@ function TooltipCard({ step, stepIndex, totalSteps, StepIcon, isFirst, isLast, i
   const { hasCopied, onCopy } = useClipboard(inviteLink);
 
   // Adaptive description for completion step
+  // Must stay in step with the invite-link gate below (hasMemberRole) — promising a
+  // link that does not render is how the old positional gate read to non-members.
   const description = step.id === 'complete'
-    ? (tourCtx?.isAuthenticated && tourCtx?.hasExecRole
-        ? 'Your organization is set up and ready for action. Share the invite link below to bring in members and start collaborating.'
+    ? (tourCtx?.hasMemberRole
+        ? 'You\'re all set. Share the invite link below to bring in members, then head to the task board or the voting page.'
         : tourCtx?.isAuthenticated
-          ? 'You\'re all set. Head to the task board to find tasks to claim, or check the voting page to participate in governance.'
+          ? 'You\'re all set. Head to the task board to find tasks to claim, or the voting page to take part in governance.'
           : 'Thanks for exploring. Connect your wallet to join this organization and start participating.')
     : step.description;
 
@@ -342,8 +344,10 @@ function TooltipCard({ step, stepIndex, totalSteps, StepIcon, isFirst, isLast, i
           {description}
         </Text>
 
-        {/* Invite link on completion for admins */}
-        {isLast && inviteLink && tourCtx?.hasExecRole && (
+        {/* Invite link on completion. A /join URL is public and confers no on-chain
+            authority, so there is no contract-side notion of who may share it —
+            gating it on a positional hat hid it from every member of some orgs. */}
+        {isLast && inviteLink && tourCtx?.hasMemberRole && (
           <InputGroup size="sm" mt={1}>
             <Input
               value={inviteLink}

@@ -34,7 +34,8 @@ const NUDGE_DISMISS_KEY = (address) => `poa:profileNudgeDismissed:${address?.toL
  * @param {string} props.address
  * @param {string} [props.avatarUrl]
  * @param {Object[]} [props.userRoles]
- * @param {boolean} [props.isExec]
+ * @param {boolean} [props.canApproveRequests] - Wears one of the participation token's
+ *   approver hats; the only authority behind the menu this button opens.
  * @param {Object} [props.profileMetadata] - { bio, avatar, github, twitter, website }
  * @param {boolean} [props.canEdit] - Whether to show edit button + nudge
  * @param {() => void} [props.onEditProfileClick]
@@ -46,7 +47,7 @@ export function ProfileHeader({
   address,
   avatarUrl,
   userRoles = [],
-  isExec,
+  canApproveRequests,
   profileMetadata,
   canEdit = false,
   onEditProfileClick,
@@ -229,13 +230,13 @@ export function ProfileHeader({
             _hover={{ bg: 'whiteAlpha.300' }}
           />
 
-          {isExec && (
+          {canApproveRequests && (
             <Button
               size="sm"
               colorScheme="teal"
               onClick={onExecutiveMenuClick}
             >
-              Executive Menu
+              Approvals & Roles
             </Button>
           )}
         </HStack>

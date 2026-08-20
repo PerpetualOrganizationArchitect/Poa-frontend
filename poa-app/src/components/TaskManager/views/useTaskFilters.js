@@ -54,7 +54,6 @@ export function TaskFilterProvider({ children }) {
     address: ctxAddress,
     graphUsername,
     userData,
-    hasExecRole,
   } = useUserContext() || {};
   const { projectsData } = useProjectContext() || {};
 
@@ -145,8 +144,8 @@ export function TaskFilterProvider({ children }) {
 
   // Chip/section gate: is review possible anywhere for this user?
   const canReviewAnywhere = useMemo(
-    () => userCanReviewAnywhere(projectsData, userHatIds, hasExecRole),
-    [projectsData, userHatIds, hasExecRole],
+    () => userCanReviewAnywhere(projectsData, userHatIds, address),
+    [projectsData, userHatIds, address],
   );
 
   const projectById = useMemo(() => {
@@ -177,7 +176,7 @@ export function TaskFilterProvider({ children }) {
             if (!isTaskMine(task, address, graphUsername)) return false;
             break;
           case 'needs-review':
-            if (!taskNeedsReview(col, projectById.get(task.projectId), userHatIds, hasExecRole))
+            if (!taskNeedsReview(col, projectById.get(task.projectId), userHatIds, address, task))
               return false;
             break;
           case 'open':
@@ -195,7 +194,7 @@ export function TaskFilterProvider({ children }) {
       }
       return true;
     },
-    [q, activeFilters, address, graphUsername, projectById, userHatIds, hasExecRole],
+    [q, activeFilters, address, graphUsername, projectById, userHatIds],
   );
 
   const isFiltering = q.trim() !== '' || activeFilters.size > 0;

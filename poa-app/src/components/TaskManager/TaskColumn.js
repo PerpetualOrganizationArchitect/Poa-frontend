@@ -14,7 +14,7 @@ import { useUserContext } from '@/context/UserContext';
 import { useOrgName } from '@/hooks/useOrgName';
 import { useTaskDrafts } from '@/hooks/useTaskDrafts';
 import { calculatePayout } from '../../util/taskUtils';
-import { userCanCreateTask, userCanReviewTask, PERMISSION_MESSAGES, ROLE_INDICES } from '../../util/permissions';
+import { projectTaskPermissions, PERMISSION_MESSAGES } from '../../util/permissions';
 import { useTaskFilters } from './views/useTaskFilters';
 import { FilteredEmptyState } from './views/TaskFilterBar';
 
@@ -40,7 +40,7 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   const [isSubmittingDrafts, setIsSubmittingDrafts] = useState(false);
   const { draftsForProject, addDraft, replaceDraft, removeDraft, clearProjectDrafts } = useTaskDrafts();
   const { accountAddress: account } = useAuth();
-  const { taskManagerContractAddress, roleHatIds } = usePOContext();
+  const { taskManagerContractAddress } = usePOContext();
   const { taskCount, projectsData } = useProjectContext();
   const toast = useToast();
   const { graphUsername, hasMemberRole: userHasMemberRole, userData } = useUserContext();
@@ -49,56 +49,27 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   const { predicate, isFiltering } = useTaskFilters();
 
   // Get user's current hat IDs for permission checking
-  const userHatIds = userData?.hatIds || [];
-
-  // Normalize hat IDs for comparison
-  const normalizeHatId = (id) => String(id).trim();
+  const userHatIds = useMemo(() => userData?.hatIds || [], [userData]);
 
   // Find the current project's role permissions
   const currentProject = useMemo(() => {
     return projectsData?.find(p => p.name === projectName || p.title === projectName);
   }, [projectsData, projectName]);
 
-  const projectRolePermissions = currentProject?.rolePermissions || [];
-  // Org-wide ROLE_PERM grants — the fallback when a hat has no per-project mask, mirroring the
-  // contract's _permMask (project mask wins if non-zero, else global). Without this, hats granted
-  // CREATE only via setConfig(ROLE_PERM, ...) are invisible to the frontend.
-  const globalRolePermissions = currentProject?.globalRolePermissions || [];
+  // Every TaskManager gate for this project, resolved as the contract does: the
+  // per-hat mask (project shadows global) OR being one of this project's managers.
+  const perms = useMemo(
+    () => projectTaskPermissions(currentProject, userHatIds, account),
+    [currentProject, userHatIds, account],
+  );
   const currentProjectId = currentProject?.id;
   const projectDrafts = useMemo(
     () => (currentProjectId ? draftsForProject(currentProjectId) : []),
     [currentProjectId, draftsForProject]
   );
 
-  // Check if user has a non-member role (executive+)
-  const hasNonMemberRole = useMemo(() => {
-    if (!userHatIds.length || !roleHatIds?.length) return false;
-    const normalizedUserHats = userHatIds.map(normalizeHatId);
-    // roleHatIds[0] = member, roleHatIds[1] = executive, etc.
-    if (roleHatIds.length > 1) {
-      const nonMemberRoles = roleHatIds.slice(ROLE_INDICES.EXECUTIVE);
-      return nonMemberRoles.some(roleId =>
-        normalizedUserHats.includes(normalizeHatId(roleId))
-      );
-    }
-    return false;
-  }, [userHatIds, roleHatIds]);
-
-  // Check if user can create tasks in this project
-  // Falls back to executive+ role ONLY when NEITHER project nor global permissions are configured
-  const canCreateTask = useMemo(() => {
-    if (userCanCreateTask(userHatIds, projectRolePermissions, globalRolePermissions)) return true;
-    if (!projectRolePermissions?.length && !globalRolePermissions?.length && hasNonMemberRole) return true;
-    return false;
-  }, [userHatIds, projectRolePermissions, globalRolePermissions, hasNonMemberRole]);
-
-  // Check if user can review tasks in this project
-  // Falls back to executive+ role ONLY when NEITHER project nor global permissions are configured
-  const canReviewTask = useMemo(() => {
-    if (userCanReviewTask(userHatIds, projectRolePermissions, globalRolePermissions)) return true;
-    if (!projectRolePermissions?.length && !globalRolePermissions?.length && hasNonMemberRole) return true;
-    return false;
-  }, [userHatIds, projectRolePermissions, globalRolePermissions, hasNonMemberRole]);
+  const canCreateTask = perms.canCreate;
+  const canReviewTask = perms.canReview;
 
   // Empty state icons and messages, moved from TaskBoard for consistency
   const emptyStateIcons = {
@@ -117,7 +88,10 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
 
   let hasMemberRole = userHasMemberRole;
   const hasMemberRoleRef = useRef(hasMemberRole);
+  // useDrop's spec is memoised once, so the drop handler reads authority through refs.
   const canReviewTaskRef = useRef(canReviewTask);
+  const canSelfReviewRef = useRef(perms.canSelfReview);
+  const accountRef = useRef(account);
 
   // Expose methods via ref
   useImperativeHandle(ref, () => ({
@@ -146,6 +120,14 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   useEffect(() => {
     canReviewTaskRef.current = canReviewTask;
   }, [canReviewTask]);
+
+  useEffect(() => {
+    canSelfReviewRef.current = perms.canSelfReview;
+  }, [perms.canSelfReview]);
+
+  useEffect(() => {
+    accountRef.current = account;
+  }, [account]);
 
   // Auto-open the AddTaskModal in draft mode when navigated here with
   // ?openDrafts=1 (set by NavBar's "Open <project> drafts" button). Only the
@@ -273,6 +255,23 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
         toast({
           title: 'Permission Required',
           description: PERMISSION_MESSAGES.REQUIRE_REVIEW,
+          status: 'warning',
+          duration: 4000,
+          isClosable: true,
+          position: 'top',
+        });
+        return;
+      }
+      // completeTask needs SELF_REVIEW when the reviewer is the claimer (PMs exempt).
+      else if (
+        title === 'Completed' &&
+        item.claimedBy && accountRef.current &&
+        item.claimedBy.toLowerCase() === accountRef.current.toLowerCase() &&
+        !canSelfReviewRef.current
+      ) {
+        toast({
+          title: 'Permission Required',
+          description: PERMISSION_MESSAGES.REQUIRE_SELF_REVIEW,
           status: 'warning',
           duration: 4000,
           isClosable: true,
@@ -563,6 +562,10 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
 
       {title === 'Open' && (
         <AddTaskModal
+          // createAndAssignTask checks CREATE **and** ASSIGN together, so offering the
+          // assignee field to a CREATE-only hat would lose the whole task, not just the
+          // assignment.
+          canAssign={perms.canCreateAndAssign}
           isOpen={isAddTaskModalOpen}
           onClose={handleCloseAddTaskModal}
           onAddTask={handleAddTask}

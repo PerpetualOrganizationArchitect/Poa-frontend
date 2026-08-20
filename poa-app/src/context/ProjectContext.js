@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery } from '@apollo/client';
-import { FETCH_PROJECTS_DATA_NEW, FETCH_PROJECTS_DATA_WITH_RELEASES } from '../util/queries';
+import { FETCH_PROJECTS_DATA_NEW, FETCH_PROJECTS_DATA_WITH_RELEASES, FETCH_PROJECT_MANAGERS } from '../util/queries';
 import { usePOContext } from './POContext';
 import { useRefreshSubscription, RefreshEvent } from './RefreshContext';
 import { formatTokenAmount } from '../util/formatToken';
@@ -70,6 +70,27 @@ export const ProjectProvider = ({ children }) => {
         client,
     });
 
+    // Project managers ride in a SEPARATE document so an endpoint that lacks
+    // `Project.managers` degrades to "no manager bypass" instead of blanking the
+    // board (see FETCH_PROJECT_MANAGERS). Managers only change via createProject
+    // or the executor-only setConfig(PROJECT_MANAGER, ...), so no poll — the
+    // refresh subscription below (plus the tab-return refetch) covers both, and is
+    // also how a failed initial fetch recovers.
+    const { data: managersData, refetch: refetchManagers } = useQuery(FETCH_PROJECT_MANAGERS, {
+        variables: { orgId: orgId },
+        skip: !orgId,
+        fetchPolicy: 'cache-first',
+        client,
+    });
+
+    const managersByProjectId = useMemo(() => {
+        const map = new Map();
+        (managersData?.organization?.taskManager?.projects || []).forEach((p) => {
+            map.set(p.id, (p.managers || []).map((m) => String(m.manager).toLowerCase()));
+        });
+        return map;
+    }, [managersData]);
+
     // Reset the board the moment the org changes — otherwise the previous org's
     // projects survive until (and unless) the new org's query answers with a
     // taskManager, and actions would pair the new org's TaskManager address
@@ -94,6 +115,8 @@ export const ProjectProvider = ({ children }) => {
     // Ref-stabilize refetch so callbacks don't re-create when Apollo returns a new reference
     const refetchRef = useRef(refetch);
     refetchRef.current = refetch;
+    const refetchManagersRef = useRef(refetchManagers);
+    refetchManagersRef.current = refetchManagers;
 
     // When the user returns (tab visible / mouse moves), refetch immediately
     // so stale data doesn't persist until the next poll tick.
@@ -101,6 +124,10 @@ export const ProjectProvider = ({ children }) => {
     useEffect(() => {
         if (isActive && !wasActiveRef.current && orgId) {
             refetchRef.current();
+            // The managers document has no poll of its own, so this is also how a
+            // failed initial fetch recovers — without it, one bad response would
+            // disable the project-manager bypass for the rest of the session.
+            refetchManagersRef.current();
         }
         wasActiveRef.current = isActive;
     }, [isActive, orgId]);
@@ -113,10 +140,31 @@ export const ProjectProvider = ({ children }) => {
         }
     }, [orgId]);
 
+    // Creating or deleting a project also changes its manager set (the creator is
+    // auto-added on-chain), so those two events refresh the managers document too.
+    const handleProjectSetChange = useCallback(() => {
+        if (orgId) {
+            refetchRef.current();
+            refetchManagersRef.current();
+        }
+    }, [orgId]);
+
     useRefreshSubscription(
         [
             RefreshEvent.PROJECT_CREATED,
             RefreshEvent.PROJECT_DELETED,
+            // setConfig(PROJECT_MANAGER, ...) is executor-only, i.e. it only happens
+            // when a proposal executes — the one other event that changes managers.
+            RefreshEvent.PROPOSAL_COMPLETED,
+        ],
+        handleProjectSetChange,
+        [handleProjectSetChange]
+    );
+
+    useRefreshSubscription(
+        [
+            // PROJECT_CREATED / PROJECT_DELETED are handled by handleProjectSetChange
+            // above, which also refreshes the managers document.
             RefreshEvent.PROJECT_BUDGET_UPDATED,
             RefreshEvent.TASK_CREATED,
             RefreshEvent.TASK_CLAIMED,
@@ -163,6 +211,9 @@ export const ProjectProvider = ({ children }) => {
                     bountyCaps: project.bountyCaps || [],
                     rolePermissions: project.rolePermissions || [],
                     globalRolePermissions: globalPerms,
+                    // Active project managers (lowercased). The contract's `_isPM` bypass —
+                    // arrives from its own document, so it may be [] for a beat on first paint.
+                    managers: managersByProjectId.get(project.id) || [],
                     columns: [
                         { id: 'open', title: 'Open', tasks: [] },
                         { id: 'inProgress', title: 'In Progress', tasks: [] },
@@ -268,7 +319,9 @@ export const ProjectProvider = ({ children }) => {
 
             setProjectsData(transformedProjects);
         }
-    }, [data]);
+        // managersByProjectId is a dep so the board re-transforms when the (separate,
+        // usually slower) managers document lands and PM affordances appear without a reload.
+    }, [data, managersByProjectId]);
 
     // Derive taskCount from projectsData (correctly excludes cancelled tasks)
     const taskCount = useMemo(() => {

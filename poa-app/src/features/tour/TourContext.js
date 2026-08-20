@@ -5,6 +5,9 @@ import { useAuth } from '@/context/AuthContext';
 import { usePOContext } from '@/context/POContext';
 import { useUserContext } from '@/context/UserContext';
 import { useDataBaseContext } from '@/context/dataBaseContext';
+import { useProjectContext } from '@/context/ProjectContext';
+import { useVoteCreateGate } from '@/hooks/useVoteCreateGate';
+import { projectTaskPermissions, userWearsAnyHat } from '@/util/permissions';
 import { useOrgName } from '@/hooks/useOrgName';
 import { TOUR_STEPS } from './tourSteps';
 
@@ -65,18 +68,40 @@ export function TourProvider({ children }) {
 
   // Build tour context from app state (used for skip functions)
   const { isAuthenticated } = useAuth();
-  const { hideTreasury, educationHubEnabled, poContextLoading } = usePOContext();
-  const { hasMemberRole, hasExecRole } = useUserContext();
+  const { hideTreasury, educationHubEnabled, poContextLoading, creatorHatIds } = usePOContext();
+  const { hasMemberRole, userData, address } = useUserContext();
   const { projects } = useDataBaseContext();
+  const { projectsData } = useProjectContext();
+  const { canCreateProposal } = useVoteCreateGate();
+
+  const userHatIds = useMemo(() => userData?.hatIds || [], [userData]);
+
+  // The two action steps drive REAL transactions, so they are gated on the two
+  // authorities the contracts actually check — TaskManager's creator hats for
+  // `createProject`, and per-project CREATE (or being a manager) for `createTask`.
+  // A positional role index would either block a real admin or walk a member into
+  // a revert.
+  const canCreateProject = useMemo(
+    () => userWearsAnyHat(userHatIds, creatorHatIds),
+    [userHatIds, creatorHatIds],
+  );
+  const canCreateTaskAnywhere = useMemo(
+    () => (projectsData || []).some(
+      (p) => projectTaskPermissions(p, userHatIds, address).canCreate,
+    ),
+    [projectsData, userHatIds, address],
+  );
 
   const tourCtx = useMemo(() => ({
     isAuthenticated,
     hasMemberRole,
-    hasExecRole,
+    canCreateProject,
+    canCreateTaskAnywhere,
+    canCreateProposal,
     hasProjects: !!(projects && projects.length > 0),
     hideTreasury: !!hideTreasury,
     educationHubEnabled: !!educationHubEnabled,
-  }), [isAuthenticated, hasMemberRole, hasExecRole, projects, hideTreasury, educationHubEnabled]);
+  }), [isAuthenticated, hasMemberRole, canCreateProject, canCreateTaskAnywhere, canCreateProposal, projects, hideTreasury, educationHubEnabled]);
 
   // Reactively compute effective steps from tourCtx, but pin the user's current
   // step so a mid-tour skip-rule flip (e.g. hasProjects becoming true after the

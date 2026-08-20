@@ -18,6 +18,7 @@ import {
   FETCH_PROJECTS_DATA_WITH_RELEASES,
   FETCH_ORG_FULL_DATA,
   FETCH_ORG_STRUCTURE_DATA,
+  FETCH_PROJECT_MANAGERS,
 } from './queries';
 
 /** Print the selection set of the first field named `name` (by field name, not alias). */
@@ -184,5 +185,28 @@ describe('hatPermissions pagination', () => {
     // Organization.hatPermissions entries and refetch the same rows per page.
     expect(argsOf(FETCH_ORG_FULL_DATA, 'hatPermissions'))
       .toBe(argsOf(FETCH_ORG_STRUCTURE_DATA, 'hatPermissions'));
+  });
+});
+
+/**
+ * `Project.managers` is the `_isPM` half of TaskManager's permission check. It rides
+ * in its OWN document on purpose: one unknown field fails the WHOLE document, and
+ * the projects document backs the entire task board. Isolated, an endpoint that
+ * lacks the field degrades to "no manager bypass" instead of a blank board.
+ */
+describe('FETCH_PROJECT_MANAGERS isolation', () => {
+  it('selects the project id (the merge key) and only active managers', () => {
+    const printed = print(FETCH_PROJECT_MANAGERS).replace(/\s+/g, ' ');
+    expect(printed).toContain('managers(where: {isActive: true})');
+    expect(printed).toContain('manager');
+    // `id` is load-bearing: ProjectContext keys the merge into projectsData by it.
+    expect(selectionOf(FETCH_PROJECT_MANAGERS, 'projects')).toMatch(/^\{ id /);
+  });
+
+  it.each([
+    ['FETCH_PROJECTS_DATA_NEW', FETCH_PROJECTS_DATA_NEW],
+    ['FETCH_PROJECTS_DATA_WITH_RELEASES', FETCH_PROJECTS_DATA_WITH_RELEASES],
+  ])('%s does NOT select managers (would risk blanking the board)', (_label, doc) => {
+    expect(print(doc)).not.toContain('managers');
   });
 });

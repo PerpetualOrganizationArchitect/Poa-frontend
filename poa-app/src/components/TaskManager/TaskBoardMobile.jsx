@@ -12,14 +12,12 @@ import { useSwipeNavigation } from '../../hooks/useSwipeNavigation';
 import { mobileGlassStyle, TAB_BAR_HEIGHT_PX } from './styles/taskBoardStyles';
 import { useUserContext } from '@/context/UserContext';
 import { useProjectContext } from '@/context/ProjectContext';
-import { usePOContext } from '@/context/POContext';
-import { userCanCreateTask, ROLE_INDICES } from '@/util/permissions';
+import { projectTaskPermissions } from '@/util/permissions';
 import { isClaimExpired } from '@/util/deadlineUtils';
 import { useNow } from '@/hooks/useNow';
 import { useTaskFilters } from './views/useTaskFilters';
 import { FilteredEmptyState } from './views/TaskFilterBar';
 
-const normalizeHatId = (id) => String(id).trim();
 
 const SAFE_INSET = 'env(safe-area-inset-bottom, 0px)';
 const TAB_BAR_RESERVE = `calc(${TAB_BAR_HEIGHT_PX}px + ${SAFE_INSET})`;
@@ -41,37 +39,21 @@ const TaskBoardMobile = forwardRef(({
     initialIndex: 0,
   });
 
-  const { userData } = useUserContext();
+  const { userData, address } = useUserContext();
   const { projectsData } = useProjectContext();
-  const { roleHatIds } = usePOContext();
 
-  const userHatIds = userData?.hatIds || [];
+  const userHatIds = useMemo(() => userData?.hatIds || [], [userData]);
 
   const currentProject = useMemo(() => {
     return projectsData?.find(p => p.name === projectName || p.title === projectName);
   }, [projectsData, projectName]);
 
-  const projectRolePermissions = currentProject?.rolePermissions || [];
-  // Org-wide ROLE_PERM grants — fallback when a hat has no per-project mask (mirrors _permMask).
-  const globalRolePermissions = currentProject?.globalRolePermissions || [];
-
-  const hasNonMemberRole = useMemo(() => {
-    if (!userHatIds.length || !roleHatIds?.length) return false;
-    const normalizedUserHats = userHatIds.map(normalizeHatId);
-    if (roleHatIds.length > 1) {
-      const nonMemberRoles = roleHatIds.slice(ROLE_INDICES.EXECUTIVE);
-      return nonMemberRoles.some(roleId =>
-        normalizedUserHats.includes(normalizeHatId(roleId))
-      );
-    }
-    return false;
-  }, [userHatIds, roleHatIds]);
-
-  const canCreateTask = useMemo(() => {
-    if (userCanCreateTask(userHatIds, projectRolePermissions, globalRolePermissions)) return true;
-    if (!projectRolePermissions?.length && !globalRolePermissions?.length && hasNonMemberRole) return true;
-    return false;
-  }, [userHatIds, projectRolePermissions, globalRolePermissions, hasNonMemberRole]);
+  // CREATE on this project (or being one of its managers) — the same gate
+  // `createTask` enforces on-chain.
+  const canCreateTask = useMemo(
+    () => projectTaskPermissions(currentProject, userHatIds, address).canCreate,
+    [currentProject, userHatIds, address],
+  );
 
   useImperativeHandle(ref, () => ({
     getActiveIndex: () => activeIndex,

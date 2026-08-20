@@ -3,10 +3,9 @@ import { AddIcon } from '@chakra-ui/icons';
 import { Button, Flex, IconButton, Tooltip, useToast } from '@chakra-ui/react';
 import { useTaskBoard } from '@/context/TaskBoardContext';
 import { useProjectContext } from '@/context/ProjectContext';
-import { usePOContext } from '@/context/POContext';
 import { useUserContext } from '@/context/UserContext';
 import { useTaskDrafts } from '@/hooks/useTaskDrafts';
-import { userCanCreateTask, PERMISSION_MESSAGES, ROLE_INDICES } from '@/util/permissions';
+import { projectTaskPermissions, PERMISSION_MESSAGES } from '@/util/permissions';
 import AddTaskModal from '@/components/TaskManager/AddTaskModal';
 
 // Owns the "create a task" concern for the List view. Mirrors the create/draft
@@ -22,14 +21,11 @@ const TaskCreationContext = createContext(null);
 
 export const useTaskCreationCtx = () => useContext(TaskCreationContext);
 
-const normalizeHatId = (id) => String(id).trim();
-
 export function TaskCreationProvider({ projectName, children }) {
   const toast = useToast();
   const { addTask, addTaskBatch } = useTaskBoard();
   const { projectsData } = useProjectContext();
-  const { roleHatIds } = usePOContext();
-  const { userData } = useUserContext();
+  const { userData, address } = useUserContext();
   const {
     draftsForProject,
     addDraft,
@@ -42,47 +38,25 @@ export function TaskCreationProvider({ projectName, children }) {
   const [mode, setMode] = useState('quick');
   const [isSubmittingDrafts, setIsSubmittingDrafts] = useState(false);
 
-  const userHatIds = userData?.hatIds || [];
+  const userHatIds = useMemo(() => userData?.hatIds || [], [userData]);
 
   const currentProject = useMemo(
     () => projectsData?.find((p) => p.name === projectName || p.title === projectName),
     [projectsData, projectName],
   );
-  const projectRolePermissions = currentProject?.rolePermissions || [];
-  // Org-wide ROLE_PERM grants — the fallback when a hat has no per-project mask
-  // (mirrors the contract's _permMask: project mask wins if non-zero, else
-  // global). Without this, hats granted CREATE only via setConfig(ROLE_PERM, …)
-  // resolve as denied. Kept consistent with TaskColumn's gate (PR #442).
-  const globalRolePermissions = currentProject?.globalRolePermissions || [];
+  // Same resolution as TaskColumn's gate: the contract's `_checkPerm` — the
+  // per-hat mask (project shadows global) OR being one of this project's managers.
+  const perms = useMemo(
+    () => projectTaskPermissions(currentProject, userHatIds, address),
+    [currentProject, userHatIds, address],
+  );
   const currentProjectId = currentProject?.id;
   const projectDrafts = useMemo(
     () => (currentProjectId ? draftsForProject(currentProjectId) : []),
     [currentProjectId, draftsForProject],
   );
 
-  // Whether the user has a non-member (executive+) role; used as a permissive
-  // fallback when a project has no explicit role permissions configured.
-  // NOTE: keep this and `canCreate` below in sync with TaskColumn's gate.
-  const hasNonMemberRole = useMemo(() => {
-    if (!userHatIds.length || !roleHatIds?.length) return false;
-    const normalizedUserHats = userHatIds.map(normalizeHatId);
-    if (roleHatIds.length > 1) {
-      const nonMemberRoles = roleHatIds.slice(ROLE_INDICES.EXECUTIVE);
-      return nonMemberRoles.some((roleId) =>
-        normalizedUserHats.includes(normalizeHatId(roleId)),
-      );
-    }
-    return false;
-  }, [userHatIds, roleHatIds]);
-
-  // Falls back to executive+ role ONLY when NEITHER project nor global perms are
-  // configured (an unconfigured org); otherwise defer to the effective-permission
-  // resolution, which mirrors the contract's _permMask. Matches TaskColumn (#442).
-  const canCreate = useMemo(() => {
-    if (userCanCreateTask(userHatIds, projectRolePermissions, globalRolePermissions)) return true;
-    if (!projectRolePermissions?.length && !globalRolePermissions?.length && hasNonMemberRole) return true;
-    return false;
-  }, [userHatIds, projectRolePermissions, globalRolePermissions, hasNonMemberRole]);
+  const canCreate = perms.canCreate;
 
   const close = () => setIsOpen(false);
 
@@ -144,6 +118,8 @@ export function TaskCreationProvider({ projectName, children }) {
     <TaskCreationContext.Provider value={ctxValue}>
       {children}
       <AddTaskModal
+        // createAndAssignTask needs CREATE **and** ASSIGN together (see TaskColumn).
+        canAssign={perms.canCreateAndAssign}
         isOpen={isOpen}
         onClose={close}
         onAddTask={handleAddTask}

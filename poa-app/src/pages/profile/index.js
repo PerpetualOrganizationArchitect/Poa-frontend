@@ -215,7 +215,7 @@ const UserprofileHub = () => {
     for (const t of flatTasks) m.set(t.id, t);
     return m;
   }, [flatTasks]);
-  const { claimedTasks, userProposals, graphUsername, userDataLoading, error, userData, hasExecRole, hasMemberRole, hasApproverRole } = useUserContext();
+  const { claimedTasks, userProposals, graphUsername, userDataLoading, error, userData, hasMemberRole, hasApproverRole } = useUserContext();
   const poContext = usePOContext();
   const avatarMap = poContext?.avatarMap || {};
   const tokenLabel = poContext?.tokenLabel || 'Shares';
@@ -369,7 +369,7 @@ const UserprofileHub = () => {
                 (profileMetadata?.avatar ? `https://ipfs.io/ipfs/${profileMetadata.avatar}` : undefined)
               }
               userRoles={userRoles}
-              isExec={hasExecRole}
+              canApproveRequests={hasApproverRole}
               profileMetadata={profileMetadata}
               canEdit={!!userAddress}
               onEditProfileClick={() => setEditProfileOpen(true)}

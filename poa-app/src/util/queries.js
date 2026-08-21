@@ -790,6 +790,35 @@ export const FETCH_PROJECTS_DATA_WITH_RELEASES = projectsDataQuery(
   TASK_RELEASE_FIELDS
 );
 
+/**
+ * Per-project managers — the `_isPM` half of TaskManager's permission check
+ * (`_checkPerm` = the hat mask OR being a manager of that project). Managers are
+ * seeded by `createProject` (the creator is auto-added) and by the executor-only
+ * `setConfig(PROJECT_MANAGER, ...)`; `isActive` goes false when one is removed.
+ *
+ * Deliberately its OWN document rather than a field on `projectsDataQuery`: one
+ * unknown field fails the WHOLE document, and that one backs the entire task
+ * board. Isolated, the worst case for an endpoint that lacks `managers` is
+ * `managers: []` — today's behaviour, hat masks only — instead of a blank board.
+ * Verified present on both production gateway endpoints (Arbitrum + Gnosis).
+ */
+export const FETCH_PROJECT_MANAGERS = gql`
+  query FetchProjectManagers($orgId: Bytes!) {
+    organization(id: $orgId) {
+      id
+      taskManager {
+        id
+        projects(where: { deleted: false }, first: 50) {
+          id
+          managers(where: { isActive: true }) {
+            manager
+          }
+        }
+      }
+    }
+  }
+`;
+
 // Fetch user data within an organization
 export const FETCH_USER_DATA_NEW = gql`
   query FetchUserDataNew($orgUserID: String!, $userAddress: Bytes!) {

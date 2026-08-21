@@ -118,7 +118,7 @@ export const TOUR_STEPS = [
     mobileTarget: '[data-tour="create-project-mobile-btn"]',
     placement: 'right',
     forceInteraction: true,
-    skip: (ctx) => !ctx.hasExecRole,
+    skip: (ctx) => !ctx.canCreateProject,
   },
   // create-task requires a project to exist (otherwise the add-task-btn isn't
   // mounted). With current-step pinning in TourContext, the user lands here
@@ -135,7 +135,7 @@ export const TOUR_STEPS = [
     target: '[data-tour="add-task-btn"]',
     placement: 'bottom',
     forceInteraction: true,
-    skip: (ctx) => !ctx.hasExecRole || !ctx.hasProjects,
+    skip: (ctx) => !ctx.canCreateTaskAnywhere || !ctx.hasProjects,
   },
 
   // --- Voting ---
@@ -183,7 +183,7 @@ export const TOUR_STEPS = [
     placement: 'bottom-fixed',
     forceInteraction: false,
     noOverlay: true, // Don't darken the page — the Create Vote modal should stay visible
-    skip: (ctx) => !ctx.isAuthenticated || !ctx.hasExecRole,
+    skip: (ctx) => !ctx.isAuthenticated || !ctx.canCreateProposal,
   },
 
   // --- Treasury (conditional) ---

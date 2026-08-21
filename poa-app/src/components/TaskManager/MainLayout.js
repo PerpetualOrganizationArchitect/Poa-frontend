@@ -372,10 +372,14 @@ const MainLayout = () => {
       throw new Error('Organization roles are still loading. Please wait a moment and try again.');
     }
 
+    // Seed the new project's permission matrix from the TaskManager's creator hats —
+    // the org's own statement of which roles are trusted. With none indexed, seed every
+    // role rather than guessing by deploy order (index 0 is not reliably "the members
+    // role": on orgs whose senior role deployed first it is the opposite).
     const creatorSet = new Set((creatorHatIds || []).map(String));
     const adminRoles = creatorSet.size > 0
       ? roleHatIds.filter(id => creatorSet.has(String(id)))
-      : roleHatIds.slice(1);
+      : roleHatIds;
     // If no admin roles resolved, give all roles full permissions
     const effectiveAdminRoles = adminRoles.length > 0 ? adminRoles : roleHatIds;
 

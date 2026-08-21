@@ -33,29 +33,19 @@ export function hasPermission(mask, permission) {
  */
 export const PERMISSION_MESSAGES = {
     REQUIRE_MEMBER: 'You must be a member to perform this action. Go to user page to join.',
-    REQUIRE_EXECUTIVE: 'You must have the required role to perform this action.',
-    REQUIRE_CLAIM: 'You must have claim permissions for this project.',
-    REQUIRE_CREATE: 'You must have create permissions for this project.',
-    REQUIRE_REVIEW: 'You must have review permissions for this project.',
-    REQUIRE_ASSIGN: 'You must have assign permissions for this project.',
+    REQUIRE_CLAIM: 'You need claim permission on this project, or to be one of its managers.',
+    REQUIRE_CREATE: 'You need create permission on this project, or to be one of its managers.',
+    REQUIRE_REVIEW: 'You need review permission on this project, or to be one of its managers.',
+    REQUIRE_ASSIGN: 'You need assign permission on this project, or to be one of its managers.',
+    REQUIRE_SELF_REVIEW: 'You claimed this task, so approving it needs self-review permission on this project.',
+    REQUIRE_EDIT: 'Editing this task needs edit permission on this project, or to be one of its managers.',
+    // Budget is the one permission with NO project-manager bypass — TaskManager's
+    // _requireBudgetEditor is "executor OR the BUDGET bit", full stop.
     REQUIRE_BUDGET: 'You must hold a role with the BUDGET permission to edit project budgets.',
+    REQUIRE_PROJECT_CREATOR: 'Creating or deleting projects needs a role your organization granted project-creation rights.',
     CANNOT_MOVE_COMPLETED: 'You cannot move tasks from the Completed column.',
     TASK_CLAIM_MEMBER: 'You must be a member to claim this task. Go to user page to join.',
     TASK_SUBMIT_MEMBER: 'You must be a member to submit tasks. Go to user page to join.',
-    TASK_REVIEW_EXEC: 'You must be an executive to review tasks.',
-    TASK_CREATE_EXEC: 'You must be an executive to create tasks.',
-    TASK_DELETE_EXEC: 'You must be an executive to delete tasks.',
-    TASK_EDIT_EXEC: 'You must be an executive to edit tasks.',
-    PROJECT_MANAGE_EXEC: 'You must be an executive to manage projects.',
-};
-
-/**
- * Role indices in the roleHatIds array
- * These correspond to the hat IDs returned from the POContext
- */
-export const ROLE_INDICES = {
-    MEMBER: 0,
-    EXECUTIVE: 1,
 };
 
 /**
@@ -94,34 +84,6 @@ export function userWearsAnyHat(userHatIds, hatIds) {
     if (!userHatIds?.length || !hatIds?.length) return false;
     const normalized = new Set(userHatIds.map(canonicalHatId));
     return hatIds.some((h) => normalized.has(canonicalHatId(h)));
-}
-
-/**
- * Check if a user has a specific permission for a project
- * @param {string[]} userHatIds - Array of hat IDs the user currently holds
- * @param {Array} projectRolePermissions - Array of ProjectRolePermission objects from the subgraph
- * @param {string} permissionType - The permission to check: 'canCreate', 'canClaim', 'canReview', 'canAssign', 'canBudget'
- * @returns {boolean} - True if the user has the permission
- */
-export function userHasProjectPermission(userHatIds, projectRolePermissions, permissionType) {
-    // No user hats means no permissions
-    if (!userHatIds || !userHatIds.length) {
-        return false;
-    }
-
-    // No project permissions configured - this project needs permission setup
-    if (!projectRolePermissions || !projectRolePermissions.length) {
-        return false;
-    }
-
-    // Normalize user hat IDs for comparison
-    const normalizedUserHats = userHatIds.map(normalizeHatId);
-
-    return projectRolePermissions.some(perm => {
-        if (!perm[permissionType]) return false;
-        const permHatId = normalizeHatId(perm.hatId);
-        return normalizedUserHats.includes(permHatId);
-    });
 }
 
 /**
@@ -254,4 +216,102 @@ export function userCanEditTaskFull(userHatIds, projectRolePermissions, globalRo
     return userHasEffectiveTaskPermission(
         userHatIds, projectRolePermissions, globalRolePermissions, 'canEditFull',
     );
+}
+
+/**
+ * Mirror of TaskManager's `_isPM(pid, who)` — the ONLY bypass a human can hold:
+ *
+ *     return (who == l.executor) || l._projects[pid].managers[who];
+ *
+ * `who == executor` is the Executor *contract*, i.e. a passed governance proposal,
+ * never an end user — so only the managers mapping is modelled here. A project's
+ * creator is auto-added as a manager on `createProject`, which is why so many
+ * projects list the Executor itself: governance created them, and no human can
+ * act on them directly.
+ *
+ * @param {Object} project - Transformed project object (needs `managers`)
+ * @param {string} address - The connected account: the smart account for passkey
+ *   users, the EOA otherwise — i.e. the tx's `msg.sender` either way.
+ * @returns {boolean}
+ */
+export function userIsProjectManager(project, address) {
+    if (!project || !address) return false;
+    const target = String(address).toLowerCase();
+    return (project.managers || []).some((m) => String(m).toLowerCase() === target);
+}
+
+/**
+ * Resolve every TaskManager permission for one project, exactly as the contract does:
+ *
+ *     _checkPerm(pid, FLAG) => TaskPerm.has(_permMask(sender, pid), FLAG) || _isPM(pid, sender)
+ *
+ * The mask half is `userHasEffectiveTaskPermission` (already a faithful `_permMask`
+ * mirror, including the per-hat global fallback); this adds the `|| _isPM` half.
+ *
+ * `canBudget` is deliberately the ONE field with no manager term: budget changes go
+ * through `_requireBudgetEditor`, which is "executor OR the BUDGET bit" and has no
+ * project-manager bypass.
+ *
+ * There is no hat-based "executive" in TaskManager — do not reintroduce one.
+ *
+ * @param {Object} project - Transformed project ({ rolePermissions, globalRolePermissions, managers })
+ * @param {string[]} userHatIds - Hat IDs the user currently wears
+ * @param {string} address - The connected account (msg.sender for the tx)
+ * @returns {{isPM: boolean, canCreate: boolean, canClaim: boolean, canReview: boolean,
+ *   canAssign: boolean, canSelfReview: boolean, canEditMeta: boolean, canEditFull: boolean,
+ *   canBudget: boolean, canCreateAndAssign: boolean}}
+ */
+export function projectTaskPermissions(project, userHatIds, address) {
+    const projectRolePermissions = project?.rolePermissions || [];
+    const globalRolePermissions = project?.globalRolePermissions || [];
+    const isPM = userIsProjectManager(project, address);
+    const bit = (permissionType) => userHasEffectiveTaskPermission(
+        userHatIds, projectRolePermissions, globalRolePermissions, permissionType,
+    );
+
+    const canCreate = isPM || bit('canCreate');
+    const canAssign = isPM || bit('canAssign');
+    const canEditFull = isPM || bit('canEditFull');
+
+    return {
+        isPM,
+        canCreate,
+        canClaim: isPM || bit('canClaim'),
+        canReview: isPM || bit('canReview'),
+        canAssign,
+        canSelfReview: isPM || bit('canSelfReview'),
+        // EDIT_FULL is a strict superset of EDIT_META.
+        canEditMeta: canEditFull || bit('canEditMeta'),
+        canEditFull,
+        canBudget: bit('canBudget'),
+        // `createAndAssignTask` checks CREATE **and** ASSIGN together (not either),
+        // so offering an assignee field to a CREATE-only hat loses the whole task.
+        canCreateAndAssign: isPM || (canCreate && canAssign),
+    };
+}
+
+/**
+ * The status-dependent half of `updateTask` / `updateTaskMetadata`.
+ *
+ * Contract (both functions): COMPLETED / CANCELLED always revert `BadStatus`. Otherwise
+ * the caller passes if they are a project manager / executor, OR hold EDIT_FULL
+ * (EDIT_META for the metadata-only variant) in any non-terminal status, OR hold CREATE
+ * while the task is still UNCLAIMED.
+ *
+ * `columnId === 'open'` is the UI's UNCLAIMED: expired-claim takeover cards render under
+ * `inProgress`, so no CLAIMED task ever reaches this as 'open'.
+ *
+ * @param {ReturnType<typeof projectTaskPermissions>} perms
+ * @param {string} columnId - 'open' | 'inProgress' | 'inReview' | 'completed'
+ * @returns {{canEditFull: boolean, canEditMeta: boolean}} canEditMeta implies the editor
+ *   opens at all; canEditFull decides whether payout/bounty fields are editable (and so
+ *   whether the save routes through `updateTask` or `updateTaskMetadata`).
+ */
+export function taskEditRights(perms, columnId) {
+    if (!perms || columnId === 'completed') {
+        return { canEditFull: false, canEditMeta: false };
+    }
+    const isUnclaimed = columnId === 'open';
+    const canEditFull = perms.canEditFull || (isUnclaimed && perms.canCreate);
+    return { canEditFull, canEditMeta: canEditFull || perms.canEditMeta };
 }

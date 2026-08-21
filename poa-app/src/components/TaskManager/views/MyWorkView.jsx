@@ -59,7 +59,6 @@ const MyWorkView = ({ isDesktop = true, sidebarVisible, toggleSidebar }) => {
     address: ctxAddress,
     graphUsername,
     userData,
-    hasExecRole,
   } = useUserContext() || {};
 
   const address = accountAddress || ctxAddress || '';
@@ -74,8 +73,8 @@ const MyWorkView = ({ isDesktop = true, sidebarVisible, toggleSidebar }) => {
   }, [projectsData]);
 
   const canReviewAnywhere = useMemo(
-    () => userCanReviewAnywhere(projectsData, userHatIds, hasExecRole),
-    [projectsData, userHatIds, hasExecRole],
+    () => userCanReviewAnywhere(projectsData, userHatIds, address),
+    [projectsData, userHatIds, address],
   );
 
   const { sections, activeCount, needsYouCount } = useMemo(() => {
@@ -94,7 +93,7 @@ const MyWorkView = ({ isDesktop = true, sidebarVisible, toggleSidebar }) => {
           (t) =>
             t.columnId === 'inReview' &&
             !mine(t) &&
-            taskNeedsReview(t.columnId, projectById.get(t.projectId), userHatIds, hasExecRole),
+            taskNeedsReview(t.columnId, projectById.get(t.projectId), userHatIds, address, t),
         )
       : [];
 
@@ -116,7 +115,7 @@ const MyWorkView = ({ isDesktop = true, sidebarVisible, toggleSidebar }) => {
     ].filter((s) => s.tasks.length > 0);
 
     return { sections: list, activeCount: inProgress.length, needsYouCount: needsReview.length };
-  }, [tasks, address, graphUsername, canReviewAnywhere, projectById, userHatIds, hasExecRole]);
+  }, [tasks, address, graphUsername, canReviewAnywhere, projectById, userHatIds]);
 
   const subtitleParts = [`${activeCount} active`];
   if (needsYouCount > 0) subtitleParts.push(`${needsYouCount} needs you`);

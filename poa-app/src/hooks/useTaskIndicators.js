@@ -8,8 +8,8 @@ import { isTaskMine, taskNeedsReview } from '@/util/taskIndicators';
  * Shared per-task indicator hook so the card, the list row, the filter chips,
  * and the My Work sections all answer "is this mine" / "does this need my
  * review" identically. Review permission is resolved from the task's project in
- * ProjectContext the same way TaskCardModal.js:127-151 does (project + global
- * role permissions, legacy hasExecRole fallback only when a project has none).
+ * ProjectContext exactly as the contract gates `completeTask` (the REVIEW bit
+ * from the project + global masks, or being a manager of that project).
  *
  * `columnId` overrides task.columnId — the Board passes the column as a prop and
  * the raw task object may not carry it.
@@ -22,7 +22,6 @@ export function useTaskIndicators(task, columnId) {
     address: ctxAddress,
     graphUsername,
     userData,
-    hasExecRole,
   } = useUserContext() || {};
   const { projectsData } = useProjectContext() || {};
 
@@ -42,8 +41,8 @@ export function useTaskIndicators(task, columnId) {
   );
 
   const needsMyReview = useMemo(
-    () => taskNeedsReview(col, project, userHatIds, hasExecRole),
-    [col, project, userHatIds, hasExecRole],
+    () => taskNeedsReview(col, project, userHatIds, address, task),
+    [col, project, userHatIds, address, task],
   );
 
   return { isMine, needsMyReview };

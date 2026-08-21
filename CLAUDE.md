@@ -190,10 +190,28 @@ before adding or reordering providers.
 
 ### Task permissions
 
-Hat-based permission system matching `TaskPerm.sol`. Check permissions with
-`userHasProjectPermission(userHatIds, projectRolePermissions, permType)` or the
-convenience wrappers (`userCanCreateTask`, `userCanClaimTask`, `userCanReviewTask`,
-`userCanAssignTask`) from `src/util/permissions.js`.
+Hat-based permission system matching `TaskPerm.sol`. Resolve a whole project at once with
+`projectTaskPermissions(project, userHatIds, address)` from `src/util/permissions.js`, and
+use `taskEditRights(perms, columnId)` for the edit/delete affordances. It mirrors
+TaskManager's `_checkPerm` exactly:
+
+```
+_checkPerm(pid, FLAG) = TaskPerm.has(_permMask(sender, pid), FLAG) || _isPM(pid, sender)
+```
+
+Three rules people keep getting wrong:
+
+- **The global fallback is per-hat.** A hat's *non-zero* per-project mask REPLACES its
+  global mask (it does not OR); a zero/absent project mask falls back to global.
+- **`_isPM` is the only human bypass** — being a manager of *that* project
+  (`Project.managers`, fetched by `FETCH_PROJECT_MANAGERS`, deliberately its own document
+  so an endpoint without the field can't blank the board). `BUDGET` is the one permission
+  with **no** manager bypass (`_requireBudgetEditor`).
+- **There is no "executive" hat.** Role order in `roleHatIds` carries zero authority —
+  Argus deployed its senior role first, so `roleHatIds[1]` is its *junior* role. Never gate
+  on a role index; gate on the contract that enforces the action (`projectTaskPermissions`,
+  `useVoteCreateGate`, `useEducationCreateGate`, `creatorHatIds` for projects,
+  `hasApproverRole` for token approvals).
 
 ### Glass morphism styling
 

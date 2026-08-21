@@ -1,5 +1,7 @@
 /**
- * ExecutiveMenuModal - Administrative actions for executive role holders
+ * ExecutiveMenuModal - Administrative actions, gated per-action by the hats the
+ * contracts actually check (token approver hats; proposal creator hats). There is no
+ * "executive" role on-chain — see util/permissions.js.
  * Includes token request approvals and executive role management
  */
 
@@ -123,7 +125,7 @@ const ExecutiveMenuModal = ({ isOpen, onClose, hasApproverRole = false }) => {
         >
           <HStack spacing={3}>
             <Icon as={FiShield} color="teal.300" />
-            <Text>Executive Menu</Text>
+            <Text>Approvals &amp; Roles</Text>
           </HStack>
         </ModalHeader>
         <ModalCloseButton color="white" />
@@ -179,7 +181,7 @@ const ExecutiveMenuModal = ({ isOpen, onClose, hasApproverRole = false }) => {
               p={4}
             >
               <Text fontSize="xs" color="gray.500" textTransform="uppercase" mb={2}>
-                Executive Actions Available
+                Available to you
               </Text>
               <HStack spacing={4} flexWrap="wrap">
                 {hasApproverRole && (

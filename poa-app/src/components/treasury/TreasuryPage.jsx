@@ -74,10 +74,8 @@ const TreasuryPage = () => {
     hideTreasury,
     orgChainId,
   } = usePOContext();
-  // "Propose a payout" submits a HybridVoting governance proposal, so the
-  // button follows the on-chain proposal-creator hats — NOT the positional
-  // hasExecRole guess (roleHatIds[1]), which inverts on orgs whose senior
-  // role deployed first (e.g. Argus: Agent at index 0, Apprentice at 1).
+  // "Propose a payout" submits a HybridVoting governance proposal, so the button
+  // follows the on-chain proposal-creator hats — the gate createProposal enforces.
   const { canCreateProposal } = useVoteCreateGate();
   const { pageBackground } = useOrgTheme();
 

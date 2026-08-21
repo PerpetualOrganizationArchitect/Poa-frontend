@@ -19,7 +19,7 @@ export const UserProvider = ({ children }) => {
     const { accountAddress: authAddress } = useAuth();
     const router = useRouter();
     const userDAO = useOrgName();
-    const { orgId, roleHatIds, participationTokenAddress, subgraphUrl } = usePOContext();
+    const { orgId, participationTokenAddress, subgraphUrl } = usePOContext();
 
     const [userData, setUserData] = useState({});
     const [graphUsername, setGraphUsername] = useState('');
@@ -96,21 +96,14 @@ export const UserProvider = ({ children }) => {
         return !!(user && user.membershipStatus === 'Active');
     }, [data, optimisticRoles]);
 
-    // NOTE: roleHatIds[1] is a positional guess at the "executive" role (wrong
-    // on orgs whose senior role deployed first, e.g. Argus). Authority-accurate
-    // gates exist where the harm was real: treasury "Propose a payout" and the
-    // create-vote entry points check the voting contracts' on-chain creator
-    // hats via useVoteCreateGate. Deriving a true exec set for the remaining
-    // consumers (task assign/review bypass, learn, tour) needs per-surface
-    // authority mapping — TaskManager creator hats are NOT it (the default
-    // template makes every Member a task creator).
-    const hasExecRole = useMemo(() => {
-        if (optimisticRoles?.hasExecRole) return true;
-        const userHatIds = data?.user?.currentHatIds || [];
-        const execHatId = roleHatIds?.[1];
-        return !!(execHatId && userHatIds.includes(execHatId));
-    }, [data, roleHatIds, optimisticRoles]);
-
+    // NOTE: there is deliberately no `hasExecRole` here. It used to be the positional
+    // guess `roleHatIds[1]`, which no contract implements and which inverts on any org
+    // whose senior role deployed first (Argus: Agent at index 0, Apprentice at 1 — so
+    // every real admin was denied and a junior would have been granted). Authority now
+    // comes from the contract that enforces it: `projectTaskPermissions` (util/permissions)
+    // for TaskManager surfaces, `useVoteCreateGate` for proposals, `useEducationCreateGate`
+    // for learning modules, `creatorHatIds` for projects, and `hasApproverRole` below for
+    // participation-token approvals. Do not reintroduce a positional role index.
     const hasApproverRole = useMemo(() => {
         const userHatIds = data?.user?.currentHatIds || [];
         const approverHatIds = (approverHatsData?.hatPermissions || []).map(p => p.hatId);
@@ -292,19 +285,10 @@ export const UserProvider = ({ children }) => {
         const lowerAddr = userAddr?.toLowerCase();
         optimisticLockRef.current = Date.now();
         if (username) setGraphUsername(username);
-        // Set optimistic role overrides so useMemo derivations return true immediately
-        const roles = { hasMemberRole: true };
-        const execHat = roleHatIds?.[1];
-        if (execHat && hatIds?.length > 0) {
-            try {
-                const execNorm = BigInt(execHat).toString();
-                const hasExec = hatIds.some(h => BigInt(h).toString() === execNorm);
-                if (hasExec) roles.hasExecRole = true;
-            } catch {
-                // If BigInt conversion fails, skip — subgraph will correct it on refetch
-            }
-        }
-        setOptimisticRoles(roles);
+        // Set optimistic role overrides so useMemo derivations return true immediately.
+        // Only membership is optimistic: task/vote authority is resolved per-surface from
+        // the hats in `userData.hatIds`, which this same call sets below.
+        setOptimisticRoles({ hasMemberRole: true });
         setUserData(prev => ({
             ...prev,
             id: orgId ? `${orgId}-${lowerAddr}` : prev.id,
@@ -323,7 +307,7 @@ export const UserProvider = ({ children }) => {
         // a fixed delay. The actual transaction's refresh event (via executeWithNotification)
         // will also trigger a refetch with proper _meta waiting.
         setTimeout(() => refetchUserData(), 8000);
-    }, [orgId, roleHatIds, refetchUserData]);
+    }, [orgId, refetchUserData]);
 
     // Stabilize error: only change when the message string changes, not the object reference
     const errorMessage = error?.message || null;
@@ -339,7 +323,6 @@ export const UserProvider = ({ children }) => {
         userData,
         graphUsername,
         setGraphUsername,
-        hasExecRole,
         hasMemberRole,
         hasApproverRole,
         claimedTasks,
@@ -354,7 +337,6 @@ export const UserProvider = ({ children }) => {
         userData,
         graphUsername,
         setGraphUsername,
-        hasExecRole,
         hasMemberRole,
         hasApproverRole,
         claimedTasks,

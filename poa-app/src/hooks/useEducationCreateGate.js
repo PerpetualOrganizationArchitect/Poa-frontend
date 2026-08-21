@@ -9,9 +9,11 @@
  * Decentral Park's hub creator is set at deploy and the subgraph shows zero
  * EducationHub Creator rows for it. Mirrors useVoteCreateGate:
  * chain-routed public client via useOnchainCreatorHats (cached across mounts),
- * failing OPEN to the legacy hasExecRole heuristic while the read is in
- * flight or unavailable so an RPC hiccup never hides the button from real
- * creators — the contract stays the enforcement point.
+ * failing OPEN to plain membership while the read is in flight or unavailable so
+ * an RPC hiccup never hides the button from real creators — the contract stays
+ * the enforcement point. (This hedge used to be the positional `hasExecRole`
+ * guess, which was the exact inversion of the stated intent: on orgs whose senior
+ * role deployed first it hid the button from the only people who could use it.)
  */
 
 import { useMemo } from 'react';
@@ -24,7 +26,7 @@ export function useEducationCreateGate() {
   // educationHubAddress is the RAW subgraph id — the zero address when the hub
   // is disabled (truthy!). educationHubEnabled carries the zero-check.
   const { educationHubAddress, educationHubEnabled, orgChainId } = usePOContext();
-  const { hasExecRole, userData } = useUserContext();
+  const { hasMemberRole, userData } = useUserContext();
 
   const { onchainCreatorRows, onchainCreatorLoading } = useOnchainCreatorHats({
     hybridVoting: null,
@@ -43,13 +45,13 @@ export function useEducationCreateGate() {
     }
     if (onchainCreatorLoading || creatorHats.length === 0) {
       // Loading / unreadable → legacy behavior, never a lockout.
-      return { canCreateModule: hasExecRole, educationGateLoading: onchainCreatorLoading };
+      return { canCreateModule: hasMemberRole, educationGateLoading: onchainCreatorLoading };
     }
     return {
       canCreateModule: userWearsAnyHat(userData?.hatIds || [], creatorHats),
       educationGateLoading: false,
     };
-  }, [onchainCreatorRows, onchainCreatorLoading, hasExecRole, userData, educationHubEnabled]);
+  }, [onchainCreatorRows, onchainCreatorLoading, hasMemberRole, userData, educationHubEnabled]);
 }
 
 export default useEducationCreateGate;

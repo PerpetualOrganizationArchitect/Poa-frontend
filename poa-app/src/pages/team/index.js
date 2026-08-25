@@ -38,6 +38,9 @@ import {
   RoleApplicationModal,
 } from '@/components/orgStructure';
 import { useOrgGate } from "@/components/shared/OrgDeadEnd";
+// Access v2. Renders NOTHING on an org that is not on the MembershipAuthority path, so everything
+// below it is the untouched legacy surface for every unmigrated org.
+import { AccessV2TeamSection } from '@/components/accessV2';
 
 const OrgStructurePage = () => {
   const router = useRouter();
@@ -232,6 +235,10 @@ const OrgStructurePage = () => {
               loading={loading}
             />
           </Box>
+
+          {/* Access v2 — roles + groups, the claimable panel and the review window.
+              Self-gating: `null` unless this org's MembershipAuthority is router-bound. */}
+          <AccessV2TeamSection />
 
           {/* Role Hierarchy Section */}
           <Box as="section" data-tour="org-roles">

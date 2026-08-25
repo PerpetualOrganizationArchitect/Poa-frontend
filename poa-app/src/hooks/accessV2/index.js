@@ -12,3 +12,5 @@ export { useAuthoritySubjects } from './useAuthoritySubjects';
 export { useAuthorityMemberships, useMyMemberships } from './useAuthorityMemberships';
 export { usePendingActions } from './usePendingActions';
 export { useSubjectVouches } from './useSubjectVouches';
+export { useAuthorityActions } from './useAuthorityActions';
+export { useAccessV2Proposal, MAX_SPONSORED_CALLS } from './useAccessV2Proposal';

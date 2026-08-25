@@ -16,17 +16,24 @@
  *    executing first shifts the ids and every downstream call in the batch lands on the wrong
  *    subject. `warnings` carries that, and the UI must show it.
  *
- * 2. GRANT vs OFFER is a real decision, not an implementation detail. Granting works only for
- *    someone already in the org; for anyone else it must be an OFFER they claim themselves
- *    (the consent model). Passing `inOrg` per holder is what keeps a batch from reverting
- *    `NotInOrg` inside announceWinner's try/catch, where it would silently no-op.
+ * 2. GRANT vs OFFER is a real decision, not an implementation detail. `grant` on someone already in
+ *    the org ADDS them; for anyone else the consent model requires an OFFER they claim themselves.
+ *    Note what `grant` does NOT do: it does not revert `NotInOrg`. The deployed contract writes the
+ *    rule and, when `_isInOrg` is false, emits `RoleOffered` instead of flipping acceptance
+ *    (MembershipAuthorityLogic.grant) — the `NotInOrg` error exists only as a `canGrant` preflight
+ *    reason code. So a wrong classification is not a dead batch; it silently produces an
+ *    offer-needing-claim while the UI says "Added". `inOrg` must therefore mirror the contract's
+ *    `_isInOrg` — `userSubjectList[user].length > 0`, i.e. ACCEPTED anywhere, regardless of current
+ *    eligibility — which is what `normalizeAuthorityMemberships().inOrgUsers` computes. It is NOT
+ *    the active-member set: an accepted-but-lapsed member is in-org on chain.
  *
  * 3. STICKY is surfaced, defaulted TRUE-delegable, and explained. `delegable: false` locks the
  *    seat to governance forever and survives renounce.
  *
  * GAS: `announceWinner` wraps the batch in try/catch, so an under-funded call is silently skipped
  * and the proposal still reports success. `estimateBatchGas` returns the floor a caller must pass
- * as an explicit gas limit.
+ * as an explicit gas limit — `useAccessV2Proposal` parks it against the created proposal id and
+ * `useVoteActions.handleFinalize` applies it to the finalize transaction (lib/accessV2/gasFloors).
  */
 
 import { constants, utils } from 'ethers';

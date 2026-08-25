@@ -22,6 +22,9 @@ import {
   aliceMembership,
   bobExecMembership,
   carolOffer,
+  ALICE,
+  BOB,
+  CAROL,
 } from './fixtures';
 
 const run = () => normalizeAuthoritySubjects(subjectsResponse().membershipAuthorityContract.subjects);
@@ -281,6 +284,34 @@ describe('normalizeAuthorityMemberships', () => {
   it('handles an org with no groups at all', () => {
     const { groupMembers } = normalizeAuthorityMemberships(rows(), [], []);
     expect(groupMembers.size).toBe(0);
+  });
+
+  describe('inOrgUsers mirrors the contract’s _isInOrg, not the active-member set', () => {
+    // `_isInOrg` is `userSubjectList[user].length > 0` — ACCEPTED anywhere, eligibility irrelevant.
+    // This is the grant-vs-offer input, and using "currently an active member" instead makes the
+    // wizard offer an invitation to someone who is already in the org.
+    it('includes an accepted member', () => {
+      const { inOrgUsers } = normalizeAuthorityMemberships(rows(), [], []);
+      expect(inOrgUsers.has(ALICE)).toBe(true);
+      expect(inOrgUsers.has(BOB)).toBe(true);
+    });
+
+    it('includes an ACCEPTED-BUT-LAPSED member, whom `members` excludes', () => {
+      const lapsed = aliceMembership({ eligible: false, isMember: false, eligibilitySource: 'None' });
+      const { members, inOrgUsers } = normalizeAuthorityMemberships([lapsed], [], []);
+      expect(members).toEqual([]); // not an active member...
+      expect(inOrgUsers.has(ALICE)).toBe(true); // ...but in-org on chain
+    });
+
+    it('excludes someone with only an OFFER — they have accepted nothing', () => {
+      const { inOrgUsers } = normalizeAuthorityMemberships([carolOffer()], [], []);
+      expect(inOrgUsers.has(CAROL)).toBe(false);
+    });
+
+    it('lowercases, so an address from a form matches', () => {
+      const { inOrgUsers } = normalizeAuthorityMemberships([aliceMembership({ user: ALICE.toUpperCase() })], [], []);
+      expect(inOrgUsers.has(ALICE)).toBe(true);
+    });
   });
 });
 

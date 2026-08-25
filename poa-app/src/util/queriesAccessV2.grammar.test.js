@@ -113,19 +113,23 @@ describe('every shipped document obeys the grammar', () => {
 });
 
 describe('FETCH_AUTHORITY_MEMBERSHIPS specifically', () => {
-  it('scopes BOTH or-branches to the authority — dropping it from one leaks other orgs’ rows', () => {
+  it('scopes EVERY or-branch to the authority — dropping it from one leaks other orgs’ rows', () => {
     const [{ node }] = collectWhereArguments(accessV2.FETCH_AUTHORITY_MEMBERSHIPS);
     const or = (node.fields || []).find((f) => f.name.value === 'or');
     expect(or, 'the fold-mirror filter must still be an `or`').toBeTruthy();
 
     const branches = or.value.values;
-    expect(branches).toHaveLength(2);
+    expect(branches.length).toBeGreaterThan(0);
     for (const branch of branches) {
       const keys = branch.fields.map((f) => f.name.value);
       expect(keys).toContain('authority');
     }
-    // ...and the two branches are still the rows that MATTER: a member, or a claimable seat.
+    // ...and the branches are still exactly the rows that MATTER: a member, a claimable seat, or an
+    // ACCEPTED row (the contract's `_isInOrg` — accepted anywhere, eligibility irrelevant — which
+    // is the grant-vs-offer input and is invisible without this branch once a member lapses).
     const branchKeys = branches.map((b) => b.fields.map((f) => f.name.value).sort().join(','));
-    expect(branchKeys.sort()).toEqual(['authority,claimable', 'authority,isMember'].sort());
+    expect(branchKeys.sort()).toEqual(
+      ['authority,claimable', 'authority,isMember', 'accepted,authority'].sort()
+    );
   });
 });

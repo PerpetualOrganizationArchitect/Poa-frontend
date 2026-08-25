@@ -43,6 +43,14 @@ Pinned by `src/lib/accessV2/featureDetection.test.js`: legacy org untouched, mig
 pre-publish endpoint reads as legacy, every single required field individually flips the capability
 false.
 
+The requirement list is **generated from the documents** (`util/accessV2Requirements`), not written
+by hand: the hand-written one claimed to name "the exact fields the v2 documents select" while
+covering 13 of ~120 and omitting `ConfigLintEvent` entirely, so a partial publish read as CAPABLE
+and then failed the whole query. Adding a field to a v2 query now adds it to the probe in the same
+edit; a nested selection with no entity mapping throws rather than leaving a hole. Because the list
+is large, over-strictness is the new risk — `queriesAccessV2.live.test.js` asserts the generated
+requirements are satisfied by the endpoint that actually serves the documents.
+
 ---
 
 ## 2. Surfaces
@@ -114,8 +122,14 @@ Mounted at `pages/team/index.js`, above the legacy sections.
   over the buffered estimate) and `callGasLimitFloor` (4337, a floor that composes with the existing
   3× Hats multiplier — do **not** switch it to `callGasLimit`, which replaces the multiplier). The
   store is per-browser; finalizing from another device just falls back to today's behaviour.
-- **GRANT vs OFFER is decided per holder.** `grant` on an out-of-org address reverts `NotInOrg`
-  inside that try/catch. The wizard decides from the fold mirror (`inOrg`), never from a guess.
+- **GRANT vs OFFER is decided per holder.** `grant` on an out-of-org address does **not** revert —
+  the contract writes the rule and emits `RoleOffered` instead of flipping acceptance
+  (`MembershipAuthorityLogic.grant`; the `NotInOrg` error is only a `canGrant` preflight reason
+  code). So a wrong classification is not a dead batch, it is a UI that says "Added" about someone
+  who still has to accept. The wizard decides from the fold mirror, never from a guess — and "in
+  org" means the contract's `_isInOrg` (`userSubjectList.length > 0`: ACCEPTED anywhere, current
+  eligibility irrelevant), which is `normalizeAuthorityMemberships().inOrgUsers`, not the
+  active-member list.
 - **The id-prediction race.** New subject ids come from a `localSeq` counter with no public getter,
   reconstructed from indexed subjects. Another subject-creating proposal executing first shifts the
   ids and every permission in the batch lands on the wrong subject. `buildCreateRoleBatch` returns

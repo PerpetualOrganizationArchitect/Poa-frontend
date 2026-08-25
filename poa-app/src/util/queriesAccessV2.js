@@ -120,7 +120,13 @@ export const FETCH_AUTHORITY_SUBJECTS = gql`
 
 /**
  * The org's membership rows — the fold mirror. Scoped to rows that MATTER
- * (a member, or a claimable seat), so a large org does not page in every historical row.
+ * (a member, a claimable seat, or an ACCEPTED-but-lapsed one), so a large org does not page in
+ * every historical row.
+ *
+ * The `accepted` branch is what makes the grant-vs-offer decision match the contract: `_isInOrg` is
+ * `userSubjectList[user].length > 0` — accepted ANYWHERE, regardless of current eligibility — so
+ * an accepted-but-lapsed member is in-org on chain. Without this branch those rows are invisible
+ * here and the wizard classifies a real member as an outsider needing an invitation.
  *
  * FILTER SHAPE IS LOAD-BEARING: graph-node REJECTS a column filter that sits next to `or` at the
  * same level — `where: { authority: $a, or: [...] }` fails the whole document with "Cannot mix
@@ -136,6 +142,7 @@ export const FETCH_AUTHORITY_MEMBERSHIPS = gql`
         or: [
           { authority: $authority, isMember: true }
           { authority: $authority, claimable: true }
+          { authority: $authority, accepted: true }
         ]
       }
       first: $first

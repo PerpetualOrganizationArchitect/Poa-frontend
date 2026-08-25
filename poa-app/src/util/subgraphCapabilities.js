@@ -22,6 +22,12 @@
  * frontend change.
  */
 
+import * as accessV2Documents from './queriesAccessV2';
+import { deriveRequirements } from './accessV2Requirements';
+
+/** Generated at module load from the v2 documents themselves — see accessV2Requirements. */
+export const ACCESS_V2_REQUIREMENTS = deriveRequirements(Object.values(accessV2Documents));
+
 const memory = new Map(); // `${url}|${capabilityId}` -> boolean | Promise<boolean>
 
 const memKey = (url, cap) => `${url}|${cap.id}`;
@@ -66,26 +72,16 @@ export const CAPABILITY = {
    * "absent" and keep the legacy Hats/EligibilityModule surfaces completely untouched.
    *
    * The requirement list names the fields the v2 documents actually SELECT, not just the entity
-   * types, so a partial deployment reads as absent rather than half-working.
+   * types, so a partial deployment reads as absent rather than half-working. It is GENERATED from
+   * those documents (`util/accessV2Requirements`) rather than written by hand: the hand-written
+   * version claimed exactly this property while covering 13 of ~120 selected fields and omitting
+   * ConfigLintEvent altogether — a stale publish missing any unlisted field read as CAPABLE and
+   * then failed the whole document at runtime. Adding a field to a v2 query now adds it to the
+   * probe in the same edit.
    */
   ACCESS_V2: {
     id: 'accessV2',
-    require: [
-      { type: 'Organization', field: 'membershipAuthority' },
-      { type: 'MembershipAuthorityContract', field: 'isRouterBound' },
-      { type: 'Subject', field: 'activeMemberCount' },
-      { type: 'Subject', field: 'defaultAllow' },
-      { type: 'SubjectMembership', field: 'claimable' },
-      { type: 'SubjectMembership', field: 'eligibilitySource' },
-      { type: 'AccessRule', field: 'sticky' },
-      { type: 'PermRow', field: 'inheritGlobal' },
-      { type: 'GroupComposition', field: 'isActive' },
-      { type: 'ManagerConfig', field: 'delaySecs' },
-      { type: 'PendingAction', field: 'activatesAt' },
-      { type: 'SubjectVouchConfig', field: 'epoch' },
-      { type: 'SubjectVouchRecord', field: 'active' },
-      { type: 'SubjectMembershipEvent', field: 'delegated' },
-    ],
+    require: ACCESS_V2_REQUIREMENTS,
   },
 };
 

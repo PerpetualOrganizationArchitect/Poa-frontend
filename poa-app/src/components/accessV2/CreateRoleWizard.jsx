@@ -6,8 +6,11 @@
  *
  * The things this screen is careful about, because the contract is:
  *   • GRANT vs OFFER. Someone already in the org is ADDED; anyone else is INVITED and accepts it
- *     themselves. Getting this wrong reverts NotInOrg inside announceWinner's try/catch, where the
- *     proposal reports success and nothing happens.
+ *     themselves. `grant` on an out-of-org address does NOT revert — the contract writes the rule
+ *     and emits RoleOffered instead of flipping acceptance — so getting this wrong does not break
+ *     the batch, it silently turns "Added" into "invitation pending". The badge and the summary
+ *     would then describe something that did not happen, which is why the classification comes
+ *     from the fold mirror (the contract's own `_isInOrg`: accepted anywhere), never from a guess.
  *   • STICKY. "Only a vote can change this" locks the seat to governance forever and survives
  *     resignation. It is the right default for an election result and the wrong one for everything
  *     else, so it is off by default and explained inline.
@@ -62,7 +65,7 @@ const emptyHolder = () => ({ address: '', sticky: false });
 
 export default function CreateRoleWizard({ isOpen, onClose, activeProposals = [] }) {
   const { subjects, groups, authority } = useAuthoritySubjects();
-  const { members } = useAuthorityMemberships();
+  const { inOrgUsers } = useAuthorityMemberships();
   const { submit, submitting } = useAccessV2Proposal();
 
   const [step, setStep] = useState(0);
@@ -75,8 +78,13 @@ export default function CreateRoleWizard({ isOpen, onClose, activeProposals = []
   const [perms, setPerms] = useState({});
   const [holders, setHolders] = useState([]);
 
-  /** Addresses that are already in the org — the grant-vs-offer decision, from the fold mirror. */
-  const inOrg = useMemo(() => new Set((members || []).map((m) => m.user)), [members]);
+  /**
+   * Addresses already in the org — the grant-vs-offer decision, from the fold mirror.
+   * `inOrgUsers` mirrors the contract's `_isInOrg` (accepted ANYWHERE, eligibility irrelevant),
+   * not "currently an active member": an accepted-but-lapsed member is in-org on chain, and
+   * offering them an invitation they have to accept would be wrong.
+   */
+  const inOrg = inOrgUsers || new Set();
 
   const built = useMemo(() => {
     if (!name.trim() || !authority?.address) return null;

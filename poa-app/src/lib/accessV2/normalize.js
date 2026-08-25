@@ -222,6 +222,14 @@ export function normalizeAuthorityMemberships(rawMemberships = [], compositions 
     membershipsBySubject: bySubject,
     groupMembers,
     membersOf: (subjectId) => (bySubject.get(String(subjectId)) || []).filter((m) => m.isMember),
+    /**
+     * IN-ORG, exactly as the contract defines it: `_isInOrg` is `userSubjectList[user].length > 0`
+     * — ACCEPTED anywhere, regardless of current eligibility. This is the grant-vs-offer input,
+     * and it is deliberately NOT `members` (accepted && eligible): an accepted-but-lapsed member is
+     * in-org on chain, so classifying them as an outsider makes the wizard offer an invitation to
+     * someone who is already a member.
+     */
+    inOrgUsers: new Set(rows.filter((m) => m.accepted).map((m) => String(m.user).toLowerCase())),
   };
 }
 

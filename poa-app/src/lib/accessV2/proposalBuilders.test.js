@@ -118,8 +118,9 @@ describe('buildCreateRoleBatch — the KUBI story', () => {
   });
 
   it('an in-org holder gets a GRANT and an out-of-org holder gets an OFFER', () => {
-    // Granting an out-of-org address reverts NotInOrg INSIDE announceWinner's try/catch, where it
-    // silently no-ops — this split is what prevents that.
+    // `grant` on an out-of-org address does NOT revert: the contract writes the rule and emits
+    // RoleOffered instead of flipping acceptance. So the cost of getting this wrong is not a dead
+    // batch — it is a UI that says "Added" about someone who still has to accept an invitation.
     const calls = decodeBatch(buildCreateRoleBatch({ authority: A, existingSubjects: existing, config }).batch);
     const grants = calls.filter((c) => c.name === 'grant').map((c) => c.args[1].toLowerCase());
     const offers = calls.filter((c) => c.name === 'offer').map((c) => c.args[1].toLowerCase());

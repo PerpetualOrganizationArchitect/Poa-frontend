@@ -24,6 +24,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as accessV2 from './queriesAccessV2';
 import { collectOperations } from './graphNodeFilterGrammar';
+import { ACCESS_V2_REQUIREMENTS, buildIntrospectionQuery, satisfies } from './subgraphCapabilities';
 
 const ENDPOINT = process.env.POA_LIVE_SUBGRAPH_URL
   || 'https://api.studio.thegraph.com/query/73367/poa-gnosis-v-1/version/latest';
@@ -102,6 +103,30 @@ describe.skipIf(!ENABLED)('access-v2 documents execute on a live graph-node', ()
     expect(json.errors, JSON.stringify(json.errors)).toBeUndefined();
     expect(fields, `${ENDPOINT} does not serve the v2 schema`).toContain('claimable');
     expect(fields).toContain('eligibilitySource');
+  }, 30_000);
+
+  it('the CAPABILITY.ACCESS_V2 probe passes on an endpoint that serves the documents', async () => {
+    // The probe list is generated from the documents, so it is now large (~120 fields). That makes
+    // an over-strict gate a real failure mode: one requirement the real endpoint lacks would turn
+    // v2 OFF for every org. This asserts the two agree on the endpoint that serves both.
+    const types = [...new Set(ACCESS_V2_REQUIREMENTS.map((r) => r.type))];
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: buildIntrospectionQuery(types) }),
+    });
+    const json = await res.json();
+    const typeMap = new Map();
+    types.forEach((t, i) => {
+      const node = json?.data?.[`t${i}`];
+      typeMap.set(t, node ? new Set((node.fields || []).map((f) => f?.name)) : null);
+    });
+
+    const missing = ACCESS_V2_REQUIREMENTS
+      .filter((r) => !typeMap.get(r.type)?.has(r.field))
+      .map((r) => `${r.type}.${r.field}`);
+    expect(missing, `probe requires fields this endpoint does not serve: ${missing.join(', ')}`).toEqual([]);
+    expect(satisfies(typeMap, ACCESS_V2_REQUIREMENTS)).toBe(true);
   }, 30_000);
 
   it.each(operations.map((op) => [op.name, op]))(

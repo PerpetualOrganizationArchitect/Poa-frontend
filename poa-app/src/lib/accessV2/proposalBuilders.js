@@ -202,7 +202,9 @@ export function buildCreateRoleBatch({ authority, existingSubjects = [], activeP
     );
   }
 
-  return { batch, subjectId, summaries, warnings, gasLimit: estimateBatchGas(batch) };
+  // `createsSubject` is what makes the id-prediction race detectable for the NEXT proposal — see
+  // lib/accessV2/proposalRace.
+  return { batch, subjectId, summaries, warnings, createsSubject: true, gasLimit: estimateBatchGas(batch) };
 }
 
 /** CREATE GROUP — a group with its member roles and its shared permissions. */
@@ -234,7 +236,9 @@ export function buildCreateGroupBatch({ authority, existingSubjects = [], active
       + 'proposal’s permissions would land on the wrong group — close or finish that one first.'
     );
   }
-  return { batch, subjectId, summaries, warnings, gasLimit: estimateBatchGas(batch) };
+  // `createsSubject` is what makes the id-prediction race detectable for the NEXT proposal — see
+  // lib/accessV2/proposalRace.
+  return { batch, subjectId, summaries, warnings, createsSubject: true, gasLimit: estimateBatchGas(batch) };
 }
 
 /**
@@ -266,7 +270,7 @@ export function buildEditPermsBatch({ authority, subjectId, subjectName = 'this 
     summaries.push(`Remove a permission from ${subjectName}`);
   }
 
-  return { batch, summaries, warnings: [], gasLimit: estimateBatchGas(batch) };
+  return { batch, summaries, warnings: [], createsSubject: false, gasLimit: estimateBatchGas(batch) };
 }
 
 /**
@@ -285,7 +289,7 @@ export function buildGroupCompositionBatch({ authority, groupId, groupName = 'th
     batch.push(buildRemoveRoleFromGroup(authority, roleId, groupId));
     summaries.push(`Remove a role from ${groupName} — it loses every permission the group gives`);
   }
-  return { batch, summaries, warnings: [], gasLimit: estimateBatchGas(batch) };
+  return { batch, summaries, warnings: [], createsSubject: false, gasLimit: estimateBatchGas(batch) };
 }
 
 /**
@@ -318,7 +322,7 @@ export function buildManagerConfigBatch({ authority, subjectId, subjectName = 't
   if (clearing) {
     warnings.push('Clearing the delegation also cancels anything the managers currently have pending.');
   }
-  return { batch, summaries, warnings, gasLimit: estimateBatchGas(batch) };
+  return { batch, summaries, warnings, createsSubject: false, gasLimit: estimateBatchGas(batch) };
 }
 
 /**
@@ -374,13 +378,13 @@ export function buildMemberActionsBatch({ authority, subjectId, subjectName = 't
         throw new Error(`accessV2: unknown member action "${a.action}"`);
     }
   }
-  return { batch, summaries, warnings, gasLimit: estimateBatchGas(batch) };
+  return { batch, summaries, warnings, createsSubject: false, gasLimit: estimateBatchGas(batch) };
 }
 
 /** Raw rule write, for the cases the verbs above do not cover. */
 export function buildSetRuleBatch({ authority, subjectId, user, kind, delegable = true }) {
   const batch = [buildSetRule(authority, subjectId, user, kind, delegable)];
-  return { batch, summaries: [`Set the standing decision for ${user}`], warnings: [], gasLimit: estimateBatchGas(batch) };
+  return { batch, summaries: [`Set the standing decision for ${user}`], warnings: [], createsSubject: false, gasLimit: estimateBatchGas(batch) };
 }
 
 /**
@@ -409,7 +413,7 @@ export function buildVouchConfigBatch({ authority, subjectId, subjectName = 'thi
       );
     }
   }
-  return { batch, summaries, warnings, gasLimit: estimateBatchGas(batch) };
+  return { batch, summaries, warnings, createsSubject: false, gasLimit: estimateBatchGas(batch) };
 }
 
 /** Rename / re-image a subject, and adjust its seat cap. */
@@ -430,7 +434,7 @@ export function buildEditSubjectBatch({ authority, subjectId, name, imageURI = '
       );
     }
   }
-  return { batch, summaries, warnings, gasLimit: estimateBatchGas(batch) };
+  return { batch, summaries, warnings, createsSubject: false, gasLimit: estimateBatchGas(batch) };
 }
 
 /**
@@ -452,7 +456,7 @@ export function buildSubjectDefaultBatch({ authority, subjectId, subjectName = '
       + 'because it is open. Closing it means they stop qualifying.'
     );
   }
-  return { batch, summaries, warnings, gasLimit: estimateBatchGas(batch) };
+  return { batch, summaries, warnings, createsSubject: false, gasLimit: estimateBatchGas(batch) };
 }
 
 /** Merge several builder results into one proposal batch, preserving order. */
@@ -466,5 +470,5 @@ export function mergeBatches(...results) {
     summaries.push(...(r.summaries || []));
     warnings.push(...(r.warnings || []));
   }
-  return { batch, summaries, warnings, gasLimit: estimateBatchGas(batch) };
+  return { batch, summaries, warnings, createsSubject: false, gasLimit: estimateBatchGas(batch) };
 }

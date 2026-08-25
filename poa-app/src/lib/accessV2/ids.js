@@ -15,6 +15,8 @@
  * must never touch Number. The subgraph keys `Subject.id` by the decimal string verbatim.
  */
 
+import { competingSubjectCreations } from './proposalRace';
+
 /** Every real Hats id is >= 2^224 (Hats.sol mints tophats as `++lastTopHatId << 224`). */
 export const HATS_NAMESPACE_FLOOR = 1n << 224n;
 
@@ -143,13 +145,15 @@ export function predictNextSubjectId(authority, existingSubjects = []) {
 
 /**
  * Is another in-flight proposal going to allocate a subject id before ours executes?
- * Any ACTIVE (not yet executed) proposal whose batch creates a subject invalidates our prediction.
+ * Any not-yet-executed proposal whose batch creates a subject invalidates our prediction.
  *
- * @param {Array<{executed?: boolean, expired?: boolean, createsSubject?: boolean}>} proposals
+ * "Creates a subject" is resolved by `lib/accessV2/proposalRace` — an explicit `createsSubject`
+ * flag when we have one, otherwise the proposal's indexed `actionSummaries`, because the subgraph
+ * does not index proposal calldata and a competing proposal is usually someone else's.
+ *
+ * @param {Array} proposals - builder results or transformed subgraph proposals
  * @returns {boolean}
  */
 export function hasCompetingSubjectCreation(proposals = []) {
-  return (proposals || []).some(
-    (p) => p && p.createsSubject && !p.executed && !p.expired
-  );
+  return competingSubjectCreations(proposals).length > 0;
 }

@@ -34,6 +34,7 @@ import {
 import { InfoOutlineIcon, AddIcon, CloseIcon } from "@chakra-ui/icons";
 import SubjectRestrictionPicker from '@/components/accessV2/SubjectRestrictionPicker';
 import { useRoleNames } from "@/hooks";
+import { subjectNamesLabel } from "@/lib/accessV2/subjectNames";
 import { usePOContext } from "@/context/POContext";
 import { useProjectContext } from "@/context/ProjectContext";
 import { getNetworkByChainId } from "../../config/networks";
@@ -127,7 +128,7 @@ const CreateVoteModal = ({
   canCreatePoll = true,
   canCreateProposal = true,
 }) => {
-  const { allRoles } = useRoleNames();
+  const { allRoles, resolveSubjectName } = useRoleNames();
   const { orgChainId } = usePOContext();
   const { projectsData } = useProjectContext() || {};
   const orgNetwork = getNetworkByChainId(orgChainId);
@@ -381,11 +382,14 @@ const CreateVoteModal = ({
   const whoCanVoteLabel = useMemo(() => {
     if (isBinding) return 'All members (Blended voting)';
     if (!proposal.isRestricted) return 'All members';
-    const names = (allRoles || [])
-      .filter(r => proposal.restrictedHatIds?.includes(r.hatId))
-      .map(r => r.name);
-    return names.length ? names.join(', ') : 'All members';
-  }, [isBinding, proposal.isRestricted, proposal.restrictedHatIds, allRoles]);
+    // NEVER fall back to "All members" for a RESTRICTED poll: that is the inverse of the truth,
+    // shown at the exact moment the creator is confirming the restriction. The picker writes v2
+    // subject ids — including GROUP ids and v2-native role ids, neither of which is in the legacy
+    // Hats list — so names come from the v2-aware resolver, which ends at a short id label rather
+    // than at a lie. (An empty selection is a validation error, not "everyone".)
+    const label = subjectNamesLabel(proposal.restrictedHatIds, resolveSubjectName);
+    return label || 'No roles selected yet';
+  }, [isBinding, proposal.isRestricted, proposal.restrictedHatIds, resolveSubjectName]);
 
   // ---- Type selection via the intent gallery / change-chip ----
   const handleSelectIntent = useCallback((type) => {

@@ -3,10 +3,21 @@
  *
  * Sources role names from POContext (which gets them from the subgraph's
  * Role.name and Hat.name fields) instead of fetching from IPFS.
+ *
+ * ACCESS V2: on a migrated org an id can also be a v2-NATIVE role
+ * ((authority << 64) | seq) or a GROUP, neither of which exists in the legacy
+ * Hats list — a group-restricted poll rendered "Unknown Role" here and, in
+ * CreateVoteModal's review step, "All members". The v2 subjects are consulted
+ * after the legacy map and before the fallback, so every existing consumer
+ * (PollDetail, VotePowerReceipt, OrgConstitution, CreateVoteModal) resolves
+ * both namespaces with no change of its own. On a legacy org
+ * `useAuthoritySubjects` puts nothing on the wire and this is a no-op.
  */
 
 import { useCallback, useMemo } from 'react';
 import { usePOContext } from '../context/POContext';
+import { useAuthoritySubjects } from './accessV2/useAuthoritySubjects';
+import { makeSubjectNameResolver, shortSubjectLabel } from '@/lib/accessV2/subjectNames';
 
 /**
  * Normalize a hat ID to a string for consistent comparison
@@ -33,6 +44,8 @@ function getFallbackRoleName(index) {
  */
 export function useRoleNames() {
   const { roleHatIds, roleNames: contextRoleNames, roleCanVoteMap } = usePOContext();
+  // Empty on a legacy org (the hook self-gates on the authority), so this adds no query there.
+  const { subjects } = useAuthoritySubjects();
 
   // Build normalized role names map from POContext data
   const roleNames = useMemo(() => {
@@ -51,6 +64,12 @@ export function useRoleNames() {
    * @param {string|number} hatId - The hat ID to look up
    * @returns {string} The role name or fallback
    */
+  // Legacy map → v2 subjects (roles AND groups) → short id label.
+  const resolveSubjectName = useMemo(
+    () => makeSubjectNameResolver({ legacyNames: roleNames, subjects }),
+    [roleNames, subjects]
+  );
+
   const getRoleName = useCallback((hatId) => {
     if (!hatId) return 'Unknown Role';
 
@@ -74,8 +93,12 @@ export function useRoleNames() {
       return getFallbackRoleName(index);
     }
 
+    // Access v2: a v2-native role id or a GROUP id — unknown to the legacy list by construction.
+    const v2Name = resolveSubjectName(hatId);
+    if (v2Name && v2Name !== shortSubjectLabel(hatId)) return v2Name;
+
     return 'Unknown Role';
-  }, [roleNames, roleHatIds]);
+  }, [roleNames, roleHatIds, resolveSubjectName]);
 
   /**
    * Get display names for multiple hat IDs
@@ -122,6 +145,9 @@ export function useRoleNames() {
     getRoleNamesString,
     allRoles,
     votingEligibleRoles,
+    // The raw v2-aware resolver, for callers that must NOT fall back to "Unknown Role" (a review
+    // step confirming a restriction, say — see CreateVoteModal.whoCanVoteLabel).
+    resolveSubjectName,
     isLoading: false,
   };
 }

@@ -120,6 +120,41 @@ Mounted at `pages/team/index.js`, above the legacy sections.
   `TransferSingle`. Group rosters are derived client-side exactly as the contract derives them.
 - **`memberCount` vs `activeMemberCount`.** The first mirrors accepted flips; the second is the fold
   mirror. Render the second — a lapsed member is not a member.
+- **graph-node's `where` grammar is not the GraphQL grammar.** A column filter may NOT sit beside
+  `or`/`and` at the same level; the scope has to be distributed into every branch
+  (`{ or: [{ authority, isMember: true }, { authority, claimable: true }] }`). This shipped wrong in
+  `FETCH_AUTHORITY_MEMBERSHIPS` and failed **every** request on **every** migrated org while the
+  suite stayed green — GraphQL validation accepts it, the introspection probe accepts it (all the
+  fields exist), and the unit tests only ever ran the response transforms over fixtures. See the
+  query-validity layer below.
+
+---
+
+## 3a. The query-validity layer (do not delete it)
+
+Two paired checks, both derived FROM the exported documents so neither can drift as documents are
+added:
+
+| file | needs network | what it pins |
+| --- | --- | --- |
+| `util/queriesAccessV2.grammar.test.js` | no — runs in CI | lints every exported document against `util/graphNodeFilterGrammar` (the runtime `where`-grammar rules graph-node enforces and GraphQL validation does not) |
+| `util/queriesAccessV2.live.test.js` | yes — opt-in | executes every document verbatim against a real graph-node and asserts no `errors` block |
+
+The live half is **skipped unless `POA_LIVE_SUBGRAPH_TESTS=1`**, so `yarn test` stays offline and
+deterministic. Run it before shipping any query change:
+
+```sh
+yarn test:live-subgraph
+# or against another graph-node already serving the v2 schema:
+POA_LIVE_SUBGRAPH_TESTS=1 POA_LIVE_SUBGRAPH_URL=https://… yarn test src/util/queriesAccessV2.live.test.js
+```
+
+It is read-only and side-effect free: variables are synthesised as zero values from each document's
+own variable definitions, so every query matches nothing and returns empty collections. The
+assertion is on the ABSENCE of a GraphQL error, not on data.
+
+Both halves were verified to FAIL against the original `{ authority, or: [...] }` shape — a
+query-validity check that cannot fail is the tautology this layer exists to close.
 
 ---
 

@@ -121,11 +121,23 @@ export const FETCH_AUTHORITY_SUBJECTS = gql`
 /**
  * The org's membership rows — the fold mirror. Scoped to rows that MATTER
  * (a member, or a claimable seat), so a large org does not page in every historical row.
+ *
+ * FILTER SHAPE IS LOAD-BEARING: graph-node REJECTS a column filter that sits next to `or` at the
+ * same level — `where: { authority: $a, or: [...] }` fails the whole document with "Cannot mix
+ * column filters with 'or' operator at the same level". The scope has to be DISTRIBUTED into every
+ * `or` branch instead. This is a graph-node filter-grammar rule, not a schema one, so the
+ * capability probe cannot catch it (every selected field exists) — `queriesAccessV2.grammar.test.js`
+ * lints it offline and `queriesAccessV2.live.test.js` executes it against a real graph-node.
  */
 export const FETCH_AUTHORITY_MEMBERSHIPS = gql`
   query FetchAuthorityMemberships($authority: String!, $first: Int = 1000, $skip: Int = 0) {
     subjectMemberships(
-      where: { authority: $authority, or: [{ isMember: true }, { claimable: true }] }
+      where: {
+        or: [
+          { authority: $authority, isMember: true }
+          { authority: $authority, claimable: true }
+        ]
+      }
       first: $first
       skip: $skip
       orderBy: acceptedAt

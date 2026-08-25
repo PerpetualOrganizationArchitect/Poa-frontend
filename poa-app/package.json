@@ -15,7 +15,8 @@
     "e2e:check": "node scripts/e2e/check-prod-leakage.js",
     "e2e:test-passkey": "node scripts/e2e/test-virtual-passkey.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:live-subgraph": "POA_LIVE_SUBGRAPH_TESTS=1 vitest run src/util/queriesAccessV2.live.test.js"
   },
   "dependencies": {
     "@apollo/client": "^3.10.8",

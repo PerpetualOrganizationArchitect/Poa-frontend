@@ -19,6 +19,7 @@
  */
 
 import { toSubjectId } from './ids';
+import { isOpen as isOpenPendingAction } from './pendingActions';
 
 /** Mirrors the subgraph `EligibilitySource` enum (evaluation ORDER). */
 export const ELIGIBILITY_SOURCE = {
@@ -147,15 +148,31 @@ export function claimableMemberships(rows = []) {
  * Was this seat previously held and then resigned, but is still claimable?
  * A STICKY governance grant (delegable = false) SURVIVES renounce: the seat is held in reserve and
  * may be re-claimed until governance clears the rule.
+ *
+ * RULE-BASED, NOT HISTORY-BASED, and that is the whole point. This is a client-side mirror of the
+ * contract's `RenouncedClaimable` preflight (MembershipAuthority.canClaim):
+ *
+ *     pid == 0 && rule.kind == Grant && rule.author == Governance && !rule.delegable
+ *
+ * — i.e. no OPEN pending entry, plus exactly the three flags the subgraph folds into
+ * `AccessRule.sticky` (membership-authority.ts: `sticky = kind == "Grant" && author ==
+ * "Governance" && !delegable`).
+ *
+ * It deliberately does NOT test `acceptedAt`. Renounce runs `_flipOff`, which zeroes acceptedAt on
+ * chain, and the mapping mirrors that by setting `membership.acceptedAt = null` on the burn — so
+ * every row this state describes arrives with acceptedAt null, and an acceptedAt test makes the
+ * state permanently unreachable. (It was, until 2026-08: the badge and the "the seat is still
+ * yours" copy never rendered, and a resignation was mis-described as a fresh invitation.)
+ *
+ * @param {object} membership - a normalised row, with its rule attached
  */
 export function isHeldInReserve(membership) {
-  return Boolean(
-    membership
-      && membership.claimable
-      && membership.rule
-      && membership.rule.sticky
-      && membership.acceptedAt
-  );
+  if (!membership || !membership.claimable) return false;
+  if (!membership.rule || !membership.rule.sticky) return false;
+  // An open pending entry means the seat is mid-ceremony (a delegated offer/grant in its review
+  // window), not held in reserve — the countdown copy owns that row. Mirrors `pid == 0`.
+  if (isOpenPendingAction(membership.pendingAction)) return false;
+  return true;
 }
 
 /**

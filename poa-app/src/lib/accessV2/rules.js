@@ -31,10 +31,14 @@ export function normalizeRule(raw) {
     kind,
     author,
     delegable,
-    // Trust the indexed flag when present; otherwise derive it — the two must agree by definition.
+    // Trust the indexed flag when present; otherwise derive it EXACTLY as the mapping does —
+    // `kind == Grant && author == Governance && !delegable` (membership-authority.ts). The `kind`
+    // term is not optional: `clearRule` leaves the slot but still emits RuleSet(kind=None,
+    // author=Governance, delegable=false), so an author/delegable-only derivation badges a CLEARED
+    // slot as a live sticky rule (the subgraph was bitten by exactly this).
     sticky: raw.sticky !== undefined
       ? Boolean(raw.sticky)
-      : author === RULE_AUTHOR.GOVERNANCE && !delegable,
+      : kind === RULE_KIND.GRANT && author === RULE_AUTHOR.GOVERNANCE && !delegable,
     present: kind !== RULE_KIND.NONE,
     managerSubject: raw.managerSubject || null,
     setAt: raw.setAt ? Number(raw.setAt) : null,

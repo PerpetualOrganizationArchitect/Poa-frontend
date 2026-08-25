@@ -12,7 +12,14 @@ import {
   groupBySubject,
 } from './memberships';
 import { normalizeRule } from './rules';
-import { aliceMembership, bobExecMembership, carolOffer, EXECS_ID, MEMBERS_ID } from './fixtures';
+import {
+  aliceMembership,
+  bobExecMembership,
+  bobRenouncedStickySeat,
+  carolOffer,
+  EXECS_ID,
+  MEMBERS_ID,
+} from './fixtures';
 
 describe('normalizeMembership', () => {
   it('mirrors the fold: isMember = accepted && eligible', () => {
@@ -85,16 +92,62 @@ describe('claimable rows carry WHY', () => {
 });
 
 describe('isHeldInReserve — the sticky seat that survives renounce', () => {
+  const row = (raw) => ({ ...normalizeMembership(raw), rule: normalizeRule(raw.rule) });
+
   it('is true for a resigned seat held by a sticky governance grant', () => {
-    const raw = bobExecMembership({ accepted: false, isMember: false, claimable: true });
-    const m = { ...normalizeMembership(raw), rule: normalizeRule(raw.rule) };
-    expect(isHeldInReserve(m)).toBe(true);
+    expect(isHeldInReserve(row(bobRenouncedStickySeat()))).toBe(true);
+  });
+
+  it('does NOT require acceptedAt — the mapping nulls it on the renounce burn', () => {
+    // The regression this pins: `claimable && sticky && acceptedAt` made the state permanently
+    // unreachable, because renounce runs `_flipOff` (zeroes acceptedAt on chain) and
+    // membership-authority.ts mirrors it with `membership.acceptedAt = null`. Every real row this
+    // state describes therefore arrives with acceptedAt null.
+    const raw = bobRenouncedStickySeat();
+    expect(raw.acceptedAt, 'fixture must match what the mapping actually emits').toBeNull();
+    expect(row(raw).acceptedAt).toBeNull();
+    expect(isHeldInReserve(row(raw))).toBe(true);
   });
 
   it('is false for a plain delegable invitation (never previously held)', () => {
-    const raw = carolOffer();
-    const m = { ...normalizeMembership(raw), rule: normalizeRule(raw.rule) };
-    expect(isHeldInReserve(m)).toBe(false);
+    expect(isHeldInReserve(row(carolOffer()))).toBe(false);
+  });
+
+  it('is false while the row is still a MEMBER — nothing has been given up yet', () => {
+    expect(isHeldInReserve(row(bobExecMembership()))).toBe(false);
+  });
+
+  it('is false while an OPEN pending entry owns the row — mirrors the contract’s `pid == 0`', () => {
+    // A delegated offer in its review window is mid-ceremony; the countdown copy owns that row.
+    const raw = bobRenouncedStickySeat({
+      pendingAction: {
+        id: 'p-1', pendingId: '9', action: 'Offer', actor: '0x0', activatesAt: '1750100000',
+        status: 'Pending',
+      },
+    });
+    expect(isHeldInReserve(row(raw))).toBe(false);
+  });
+
+  it('is true again once that pending entry is resolved', () => {
+    for (const status of ['Cancelled', 'Voided', 'Finalized']) {
+      const raw = bobRenouncedStickySeat({
+        pendingAction: { id: 'p-1', pendingId: '9', action: 'Offer', activatesAt: '1', status },
+      });
+      expect(isHeldInReserve(row(raw)), status).toBe(true);
+    }
+  });
+
+  it('matches the contract’s RenouncedClaimable flags exactly (Grant + Governance + !delegable)', () => {
+    // `sticky` is the subgraph's fold of those three; anything else is NOT held in reserve.
+    const notSticky = [
+      { kind: 'Grant', author: 'Governance', delegable: true, sticky: false },
+      { kind: 'Grant', author: 'Delegated', delegable: false, sticky: false },
+      { kind: 'Ban', author: 'Governance', delegable: false, sticky: false },
+    ];
+    for (const rule of notSticky) {
+      const raw = bobRenouncedStickySeat({ rule: { id: 'r', ...rule } });
+      expect(isHeldInReserve(row(raw)), JSON.stringify(rule)).toBe(false);
+    }
   });
 });
 

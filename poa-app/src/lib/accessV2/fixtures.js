@@ -246,6 +246,31 @@ export const bobExecMembership = (overrides = {}) => ({
   ...overrides,
 });
 
+/**
+ * Bob AFTER renouncing his sticky Executives seat — the "Held for you" row, in the exact shape the
+ * subgraph produces.
+ *
+ * Renounce runs `_flipOff` on chain (which zeroes acceptedAt) and the mapping mirrors it:
+ * `accepted = false; acceptedAt = null; seededWhilePaused = false`. The STICKY GRANT RULE SURVIVES
+ * untouched, which is what keeps the row `claimable`. Building this by spreading
+ * `bobExecMembership({ accepted: false, ... })` keeps the fixture's acceptedAt and produces a shape
+ * the real mapping never emits — that is how the acceptedAt-based `isHeldInReserve` bug stayed
+ * green.
+ */
+export const bobRenouncedStickySeat = (overrides = {}) => ({
+  ...bobExecMembership(),
+  accepted: false,
+  acceptedAt: null,
+  seededWhilePaused: false,
+  isMember: false,
+  claimable: true,
+  // eligible/eligibilitySource are unchanged by renounce: the sticky Grant still qualifies him.
+  eligible: true,
+  eligibilitySource: 'ExplicitGrant',
+  pendingAction: null,
+  ...overrides,
+});
+
 /** Carol: a CLAIMABLE seat — invited, not yet accepted, with a review-window countdown. */
 export const carolOffer = (overrides = {}) => ({
   id: `${EXECS_ID}-${CAROL}`,

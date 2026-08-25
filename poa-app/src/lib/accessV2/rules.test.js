@@ -27,11 +27,34 @@ describe('normalizeRule / sticky', () => {
     expect(r.present).toBe(true);
   });
 
-  it('derives sticky when the field is absent — governance AND not delegable, nothing else', () => {
+  it('derives sticky when the field is absent — GRANT and governance and not delegable', () => {
     expect(normalizeRule({ kind: 'Grant', author: 'Governance', delegable: false }).sticky).toBe(true);
     expect(normalizeRule({ kind: 'Grant', author: 'Governance', delegable: true }).sticky).toBe(false);
     // A delegate-authored rule is never sticky, delegable flag notwithstanding.
     expect(normalizeRule({ kind: 'Grant', author: 'Delegated', delegable: false }).sticky).toBe(false);
+  });
+
+  it('a CLEARED slot is not sticky — `kind` is part of the formula, not decoration', () => {
+    // clearRule leaves the slot but still emits RuleSet(kind=None, author=Governance,
+    // delegable=false). An author/delegable-only derivation badges that empty slot as a live
+    // sticky rule — the exact bug the subgraph mapping documents having been bitten by.
+    expect(normalizeRule({ kind: 'None', author: 'Governance', delegable: false }).sticky).toBe(false);
+    expect(normalizeRule({ kind: 'Ban', author: 'Governance', delegable: false }).sticky).toBe(false);
+  });
+
+  it('the derivation agrees with the indexed flag over the whole enum cross-product', () => {
+    // The mapping's formula, verbatim: sticky = kind == "Grant" && author == "Governance" && !delegable
+    for (const kind of ['None', 'Grant', 'Ban']) {
+      for (const author of ['Governance', 'Delegated']) {
+        for (const delegable of [true, false]) {
+          const expected = kind === 'Grant' && author === 'Governance' && !delegable;
+          const derived = normalizeRule({ kind, author, delegable }).sticky;
+          const indexed = normalizeRule({ kind, author, delegable, sticky: expected }).sticky;
+          expect(derived, `${kind}/${author}/${delegable}`).toBe(expected);
+          expect(indexed).toBe(derived);
+        }
+      }
+    }
   });
 
   it('a cleared slot is kind None and not present', () => {

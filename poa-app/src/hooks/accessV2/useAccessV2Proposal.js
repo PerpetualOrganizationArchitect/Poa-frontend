@@ -17,6 +17,8 @@ import { useCallback, useState } from 'react';
 import { usePOContext } from '@/context/POContext';
 import { useWeb3Services, useTransactionWithNotification } from '@/hooks/useWeb3Services';
 import { checkBatchSubmittable, MAX_SPONSORED_CALLS } from '@/lib/accessV2/submission';
+import { recordGasFloor } from '@/lib/accessV2/gasFloors';
+import { parseCreatedProposalId } from '@/lib/voting/proposalReceipt';
 import { useOrgAuthority } from './useOrgAuthority';
 
 export { MAX_SPONSORED_CALLS };
@@ -52,25 +54,19 @@ export function useAccessV2Proposal() {
 
       setSubmitting(true);
       try {
-        return await executeWithNotification(
+        const result = await executeWithNotification(
           () =>
-            voting.createHybridProposal(
-              votingAddress,
-              {
-                name: title,
-                description,
-                durationMinutes,
-                numOptions: 2,
-                optionNames: ['Yes', 'No'],
-                // "Yes" runs the batch; "No" runs nothing.
-                batches: [batch, []],
-                actionSummaries: built?.summaries || [],
-                hatIds: restrictedSubjectIds || [],
-              },
-              // The winning batch executes inside announceWinner's try/catch, which prices only
-              // the caught-failure path. Carry the builder's floor through.
-              built?.gasLimit ? { gasLimit: built.gasLimit } : {}
-            ),
+            voting.createHybridProposal(votingAddress, {
+              name: title,
+              description,
+              durationMinutes,
+              numOptions: 2,
+              optionNames: ['Yes', 'No'],
+              // "Yes" runs the batch; "No" runs nothing.
+              batches: [batch, []],
+              actionSummaries: built?.summaries || [],
+              hatIds: restrictedSubjectIds || [],
+            }),
           {
             pendingMessage: 'Creating proposal...',
             successMessage: 'Proposal created',
@@ -78,6 +74,20 @@ export function useAccessV2Proposal() {
             refreshEvent: 'proposal:created',
           }
         );
+
+        // The builder's gas floor belongs to `announceWinner`, NOT to this creation tx — creation
+        // is a plain storage write that estimates correctly. announceWinner is the one that runs
+        // the batch inside a try/catch, so its estimate prices only the caught-failure path and an
+        // under-funded call silently skips the batch (CLAUDE.md's Test6 #23 incident). Finalizing
+        // is a different session, usually a different person, and the batch is recoverable from
+        // neither chain nor subgraph — so park the floor against the on-chain proposal id here and
+        // let `useVoteActions.handleFinalize` read it back. See lib/accessV2/gasFloors.
+        if (result?.success && built?.gasLimit) {
+          const proposalId = parseCreatedProposalId(result.receipt, votingAddress);
+          if (proposalId) recordGasFloor(votingAddress, proposalId, built.gasLimit);
+        }
+
+        return result;
       } finally {
         setSubmitting(false);
       }

@@ -66,17 +66,33 @@ export function calculateGasLimit(estimate, isDelete = false) {
  * Only sets gasLimit — gas price is left to the provider (EIP-1559)
  * so it works correctly on Arbitrum, Gnosis, and other L2s.
  *
+ * `gasLimitFloor` raises the result when the caller KNOWS the estimate is too low. It is a floor,
+ * never a cap: an estimate above it always wins. The motivating case is `announceWinner`, which
+ * runs the winning batch inside a try/catch — `eth_estimateGas` therefore prices only the cheap
+ * caught-failure path, and the under-funded call silently skips the batch while the transaction
+ * itself succeeds. See lib/accessV2/gasFloors.
+ *
  * @param {BigNumber} gasEstimate - Gas estimate from contract
  * @param {Object} [options={}] - Additional options
  * @param {boolean} [options.isDelete=false] - Whether this is a delete operation
+ * @param {number|BigNumber|string|null} [options.gasLimitFloor] - minimum gas limit to send
  * @returns {Object} Gas options for transaction
  */
 export function createGasOptions(gasEstimate, options = {}) {
-  const { isDelete = false } = options;
+  const { isDelete = false, gasLimitFloor = null } = options;
 
-  return {
-    gasLimit: calculateGasLimit(gasEstimate, isDelete),
-  };
+  let gasLimit = calculateGasLimit(gasEstimate, isDelete);
+
+  if (gasLimitFloor !== null && gasLimitFloor !== undefined) {
+    try {
+      const floor = ethers.BigNumber.from(
+        typeof gasLimitFloor === 'number' ? Math.floor(gasLimitFloor) : gasLimitFloor
+      );
+      if (floor.gt(gasLimit)) gasLimit = floor;
+    } catch { /* an unparseable floor must never break a transaction — keep the estimate */ }
+  }
+
+  return { gasLimit };
 }
 
 /**

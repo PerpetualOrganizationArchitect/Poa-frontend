@@ -63,6 +63,12 @@ const DEFAULT_OPTIONS = {
   isDelete: false, // Use higher gas multiplier for delete operations
   confirmations: 1, // Number of block confirmations to wait
   onStateChange: null, // Callback for state changes: (state, data) => {}
+  // Optional FLOOR (not a cap, not an override) applied over the buffered estimate. Exists for
+  // calls whose estimate is systematically wrong in the LOW direction — above all `announceWinner`,
+  // which runs the winning batch inside a try/catch so estimation prices only the cheap
+  // caught-failure path and an under-funded call silently skips the batch while reporting success.
+  // See lib/accessV2/gasFloors.
+  gasLimit: null,
 };
 
 /**
@@ -103,6 +109,7 @@ export class TransactionManager {
       const gasEstimate = await this._estimateGas(contract, method, args, valueOverride);
       const gasOptions = createGasOptions(gasEstimate, {
         isDelete: opts.isDelete,
+        gasLimitFloor: opts.gasLimit,
       });
 
       // Include value for payable function calls

@@ -13,6 +13,8 @@ import React from 'react';
 import { Box, VStack, Alert, AlertIcon, AlertTitle, AlertDescription } from '@chakra-ui/react';
 import { useOrgAuthority } from '@/hooks/accessV2';
 import RolesGroupsPanel from './RolesGroupsPanel';
+import ClaimableRolesPanel from './ClaimableRolesPanel';
+import PendingActionsPanel from './PendingActionsPanel';
 
 export default function AccessV2TeamSection({ activeProposals = [] }) {
   const authority = useOrgAuthority();
@@ -37,6 +39,8 @@ export default function AccessV2TeamSection({ activeProposals = [] }) {
   return (
     <VStack as="section" align="stretch" spacing={{ base: 6, md: 8 }}>
       {banner}
+      <PendingActionsPanel />
+      <ClaimableRolesPanel />
       <RolesGroupsPanel activeProposals={activeProposals} />
     </VStack>
   );

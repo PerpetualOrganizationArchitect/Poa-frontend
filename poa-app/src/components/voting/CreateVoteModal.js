@@ -32,6 +32,7 @@ import {
   Link,
 } from "@chakra-ui/react";
 import { InfoOutlineIcon, AddIcon, CloseIcon } from "@chakra-ui/icons";
+import SubjectRestrictionPicker from '@/components/accessV2/SubjectRestrictionPicker';
 import { useRoleNames } from "@/hooks";
 import { usePOContext } from "@/context/POContext";
 import { useProjectContext } from "@/context/ProjectContext";
@@ -842,20 +843,15 @@ const CreateVoteModal = ({
                             <Text fontSize="sm" color="gray.300" fontWeight="medium" mb={3}>
                               Select which roles can vote:
                             </Text>
-                            <Wrap spacing={2}>
-                              {allRoles?.map((role) => (
-                                <WrapItem key={role.hatId}>
-                                  <Checkbox
-                                    isChecked={proposal.restrictedHatIds?.includes(role.hatId)}
-                                    onChange={() => toggleRestrictedRole(role.hatId)}
-                                    colorScheme="purple"
-                                    size="md"
-                                  >
-                                    <Text fontSize="sm" color="white">{role.name}</Text>
-                                  </Checkbox>
-                                </WrapItem>
-                              ))}
-                            </Wrap>
+                            {/* On a v2 org this offers GROUPS as single selections
+                                ("Only Executives" = one id that stays correct as roles move in and
+                                out of the group). On a legacy org it renders exactly the role
+                                checkboxes this block always did. */}
+                            <SubjectRestrictionPicker
+                              legacyRoles={allRoles}
+                              selected={proposal.restrictedHatIds}
+                              onToggle={toggleRestrictedRole}
+                            />
                             {visibleErrors.restrictedHatIds && (
                               <FormErrorMessage>{visibleErrors.restrictedHatIds}</FormErrorMessage>
                             )}

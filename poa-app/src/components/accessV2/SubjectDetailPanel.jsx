@@ -36,7 +36,8 @@ import {
 } from '@chakra-ui/react';
 import UserIdentity from '@/components/common/UserIdentity';
 import { lightCardStyle } from '@/components/shared/glassStyles';
-import { useAuthorityMemberships, usePendingActions, useAuthorityActions } from '@/hooks/accessV2';
+import { useAuthorityMemberships, usePendingActions, useAuthorityActions, useVouchCandidates } from '@/hooks/accessV2';
+import SubjectVouchPanel from './SubjectVouchPanel';
 import { eligibilityCopy } from '@/lib/accessV2/memberships';
 import { managerConfigSummary, formatCountdown } from '@/lib/accessV2/pendingActions';
 import { groupChangeBlastRadius } from '@/lib/accessV2/subjects';
@@ -83,6 +84,7 @@ export default function SubjectDetailPanel({ subject, isOpen, onClose }) {
   const { membersOf, groupMembers, memberships } = useAuthorityMemberships();
   const { forSubject } = usePendingActions();
   const { cancel, finalize, isBusy, paused } = useAuthorityActions();
+  const { candidatesFor } = useVouchCandidates();
   const [error, setError] = useState(null);
 
   const rows = useMemo(() => {
@@ -208,7 +210,7 @@ export default function SubjectDetailPanel({ subject, isOpen, onClose }) {
                     <Text fontSize="xs" fontWeight="bold" color="warmGray.500" textTransform="uppercase" mb={2}>
                       Vouching
                     </Text>
-                    <Text fontSize="sm" color="warmGray.700">
+                    <Text fontSize="sm" color="warmGray.700" mb={3}>
                       Needs {subject.vouchConfig.quorum} vouch
                       {subject.vouchConfig.quorum === 1 ? '' : 'es'} from
                       {' '}
@@ -216,6 +218,14 @@ export default function SubjectDetailPanel({ subject, isOpen, onClose }) {
                         ? 'existing members of this role'
                         : subject.vouchConfig.voucherSubjectName || 'the designated role'}.
                     </Text>
+                    {/* People partway to the quorum are invisible in the membership query — they
+                        are neither a member nor claimable yet — so their vouch records are the
+                        only trace of them. */}
+                    <VStack align="stretch" spacing={3}>
+                      {candidatesFor(subject.subjectId).map((c) => (
+                        <SubjectVouchPanel key={c.user} subjectId={subject.subjectId} user={c.user} />
+                      ))}
+                    </VStack>
                   </Box>
                 )}
               </>

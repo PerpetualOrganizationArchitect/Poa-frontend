@@ -25,7 +25,7 @@ export function useVouchCandidates() {
 
   const { data, loading, error, refetch } = useQuery(FETCH_AUTHORITY_VOUCH_RECORDS, {
     variables: { authority: authority.address },
-    skip: !authority.migrated || !authority.address,
+    skip: !authority.enabled || !authority.address,
     fetchPolicy: 'cache-and-network',
     client,
   });
@@ -59,12 +59,12 @@ export function useVouchCandidates() {
         if (!users) return [];
         return [...users.entries()].map(([user, rows]) => ({ user, records: rows, count: rows.length }));
       },
-      enabled: authority.migrated,
-      loading: authority.migrated ? loading : false,
-      error: authority.migrated ? error : null,
+      enabled: authority.enabled,
+      loading: authority.enabled ? loading : false,
+      error: authority.enabled ? error : null,
       refetch,
     };
-  }, [data, authority.migrated, loading, error, refetch]);
+  }, [data, authority.enabled, loading, error, refetch]);
 }
 
 export default useVouchCandidates;

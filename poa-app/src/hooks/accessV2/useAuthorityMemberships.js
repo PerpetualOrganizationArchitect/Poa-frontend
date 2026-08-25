@@ -29,7 +29,7 @@ export function useAuthorityMemberships() {
 
   const { data, loading, error, refetch } = useQuery(FETCH_AUTHORITY_MEMBERSHIPS, {
     variables: { authority: authority.address },
-    skip: !authority.migrated || !authority.address,
+    skip: !authority.enabled || !authority.address,
     fetchPolicy: 'cache-and-network',
     client,
   });
@@ -41,9 +41,9 @@ export function useAuthorityMemberships() {
 
   return {
     ...value,
-    loading: authority.migrated ? loading : false,
-    error: authority.migrated ? error : null,
-    enabled: authority.migrated,
+    loading: authority.enabled ? loading : false,
+    error: authority.enabled ? error : null,
+    enabled: authority.enabled,
     refetch,
   };
 }
@@ -66,7 +66,7 @@ export function useMyMemberships(addressOverride) {
 
   const { data, loading, error, refetch } = useQuery(FETCH_USER_MEMBERSHIPS, {
     variables: { authority: authority.address, user },
-    skip: !authority.migrated || !authority.address || !user,
+    skip: !authority.enabled || !authority.address || !user,
     fetchPolicy: 'cache-and-network',
     client,
   });
@@ -76,9 +76,9 @@ export function useMyMemberships(addressOverride) {
   return {
     ...value,
     user,
-    loading: authority.migrated ? loading : false,
-    error: authority.migrated ? error : null,
-    enabled: authority.migrated,
+    loading: authority.enabled ? loading : false,
+    error: authority.enabled ? error : null,
+    enabled: authority.enabled,
     paused: authority.paused,
     refetch,
   };

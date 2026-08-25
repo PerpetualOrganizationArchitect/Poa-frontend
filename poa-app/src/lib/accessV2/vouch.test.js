@@ -8,11 +8,12 @@ import {
   vouchProgressCopy,
   hasVouched,
   canVouch,
+  isMemberOfVoucherSubject,
   predictLints,
   LINT_CODE,
   LINT_COPY,
 } from './vouch';
-import { execsSubject, vouchRecord, ALICE, BOB, CAROL, EXECS_ID } from './fixtures';
+import { execsSubject, vouchRecord, ALICE, BOB, CAROL, EXECS_ID, MEMBERS_ID, EVERYONE_GROUP_ID } from './fixtures';
 
 const config = () => normalizeVouchConfig(execsSubject().vouchConfig);
 
@@ -148,5 +149,61 @@ describe('config-time lints — warn BEFORE the vote is opened', () => {
       if (name === 'None') continue;
       expect(LINT_COPY[name], `missing copy for ${name}`).toBeTruthy();
     }
+  });
+});
+
+describe('isMemberOfVoucherSubject', () => {
+  // A vouch config whose voucherSubject is a GROUP is legal and works on chain: only the VOUCHED
+  // subject may not be a group, and `vouch()` resolves `_isMember(cfg.voucherSubject, msg.sender)`
+  // through the group's member roles. But SubjectMembership rows exist for roles only, so asking
+  // the membership rows directly answers "no" for every group — a wrong-eligibility display that
+  // disables the button for every legitimate voucher.
+  const subjects = [
+    { subjectId: MEMBERS_ID, isGroup: false, memberRoleIds: [] },
+    { subjectId: EXECS_ID, isGroup: false, memberRoleIds: [] },
+    { subjectId: EVERYONE_GROUP_ID, isGroup: true, memberRoleIds: [MEMBERS_ID, EXECS_ID] },
+  ];
+  const memberOf = (...ids) => (id) => ids.includes(String(id));
+
+  it('resolves a ROLE voucher subject from the membership rows', () => {
+    expect(isMemberOfVoucherSubject(EXECS_ID, subjects, memberOf(EXECS_ID))).toBe(true);
+    expect(isMemberOfVoucherSubject(EXECS_ID, subjects, memberOf(MEMBERS_ID))).toBe(false);
+  });
+
+  it('resolves a GROUP voucher subject through its member roles', () => {
+    expect(isMemberOfVoucherSubject(EVERYONE_GROUP_ID, subjects, memberOf(MEMBERS_ID))).toBe(true);
+    expect(isMemberOfVoucherSubject(EVERYONE_GROUP_ID, subjects, memberOf(EXECS_ID))).toBe(true);
+  });
+
+  it('says no for a group the viewer holds none of the member roles of', () => {
+    expect(isMemberOfVoucherSubject(EVERYONE_GROUP_ID, subjects, memberOf('12345'))).toBe(false);
+  });
+
+  it('says no for an EMPTY group (nothing to be a member of)', () => {
+    const empty = [{ subjectId: EVERYONE_GROUP_ID, isGroup: true, memberRoleIds: [] }];
+    expect(isMemberOfVoucherSubject(EVERYONE_GROUP_ID, empty, memberOf(MEMBERS_ID))).toBe(false);
+  });
+
+  it('falls back to the direct row when the subject list has not loaded yet', () => {
+    expect(isMemberOfVoucherSubject(EXECS_ID, [], memberOf(EXECS_ID))).toBe(true);
+    expect(isMemberOfVoucherSubject(EXECS_ID, undefined, memberOf(EXECS_ID))).toBe(true);
+  });
+
+  it('is false for an unset voucher subject or a missing predicate', () => {
+    expect(isMemberOfVoucherSubject('0', subjects, memberOf(EXECS_ID))).toBe(false);
+    expect(isMemberOfVoucherSubject(null, subjects, memberOf(EXECS_ID))).toBe(false);
+    expect(isMemberOfVoucherSubject(EXECS_ID, subjects, undefined)).toBe(false);
+  });
+
+  it('unblocks the vouch button for a group voucher (the end-to-end symptom)', () => {
+    const groupConfig = { ...config(), voucherSubjectId: EVERYONE_GROUP_ID, voucherSubjectName: 'Everyone' };
+    const gate = canVouch({
+      config: groupConfig,
+      records: [],
+      viewer: ALICE,
+      target: CAROL,
+      viewerIsVoucherMember: isMemberOfVoucherSubject(EVERYONE_GROUP_ID, subjects, memberOf(MEMBERS_ID)),
+    });
+    expect(gate).toEqual({ can: true, reason: null });
   });
 });

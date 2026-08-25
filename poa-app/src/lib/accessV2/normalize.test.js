@@ -15,6 +15,7 @@ import {
   subjectsResponse,
   membersSubject,
   everyoneGroup,
+  execsSubject,
   MEMBERS_ID,
   EXECS_ID,
   EVERYONE_GROUP_ID,
@@ -143,6 +144,103 @@ describe('attachPerms', () => {
     ]);
     expect(s.permRows[0].isGlobalCtx).toBe(true);
     expect(s.canVote).toBe(true);
+  });
+});
+
+describe('group-held permissions land in the legacy projection', () => {
+  // On chain the gate is `_hasPerm`, which folds every subject the user is a member of INCLUDING
+  // GROUPS (a group's `_isMember` resolves through its member roles). A projection built from a
+  // role's own rows alone reports canVote=false / taskMask='0' for the exact org shape v2 exists
+  // for: permissions parked on a group, roles dropped into it.
+  const groupWith = (key, value) => everyoneGroup({
+    perms: [{
+      id: 'g-perm',
+      permKey: key,
+      ctx: GLOBAL_CTX,
+      isGlobalCtx: true,
+      foldTag: Number(BigInt(key) >> 248n),
+      word: ((1n << 255n) | BigInt(value)).toString(),
+    }],
+  });
+
+  const withGroupPerm = (key, value = 1) => normalizeAuthoritySubjects([
+    membersSubject({ perms: [] }),
+    execsSubject({ perms: [] }),
+    groupWith(key, value),
+  ]);
+
+  it('a role whose GROUP carries DD_VOTE reports canVote', () => {
+    const { roles } = withGroupPerm(PERM_KEYS.DD_VOTE);
+    expect(roles.map((r) => r.canVote)).toEqual([true, true]);
+    // ...and the fold is honest about where it came from.
+    expect(roles[0].ownCanVote).toBe(false);
+    expect(roles[0].permViaGroup(PERM_KEYS.DD_VOTE)).toBe(true);
+    expect(roles[0].permSources(PERM_KEYS.DD_VOTE)).toEqual([EVERYONE_GROUP_ID]);
+  });
+
+  it('a role whose GROUP carries HV_CREATE reports canCreateVote', () => {
+    const { roles } = withGroupPerm(PERM_KEYS.HV_CREATE);
+    expect(roles.every((r) => r.canCreateVote)).toBe(true);
+    expect(roles.every((r) => r.ownCanCreateVote === false)).toBe(true);
+  });
+
+  it('TM_PERMS is OR-folded across the role and its groups, per the contract _fold', () => {
+    // Role carries CLAIM(2), group carries REVIEW(4) → effective 6.
+    const roleTm = {
+      id: 'r-tm',
+      permKey: PERM_KEYS.TM_PERMS,
+      ctx: GLOBAL_CTX,
+      isGlobalCtx: true,
+      foldTag: 1,
+      word: ((1n << 255n) | 2n).toString(),
+    };
+    const { roles } = normalizeAuthoritySubjects([
+      membersSubject({ perms: [roleTm] }),
+      execsSubject({ perms: [] }),
+      groupWith(PERM_KEYS.TM_PERMS, 4),
+    ]);
+    const members = roles.find((r) => r.subjectId === MEMBERS_ID);
+    const execs = roles.find((r) => r.subjectId === EXECS_ID);
+    expect(members.taskMask).toBe('6'); // 2 | 4 — not "the role's own", not "the group's own"
+    expect(members.ownTaskMask).toBe('2');
+    expect(execs.taskMask).toBe('4');
+  });
+
+  it('the real fixture org: Executives holds nothing of its own but is in a group with TM_PERMS', () => {
+    const { roles, groups } = run();
+    const execs = roles.find((r) => r.subjectId === EXECS_ID);
+    expect(execs.permRows).toEqual([]); // no own rows at all
+    expect(execs.ownTaskMask).toBe('0');
+    expect(execs.taskMask).toBe('2'); // via Everyone
+    // The group itself is unchanged — its own rows ARE its permissions.
+    expect(groups[0].taskMask).toBe('2');
+    expect(groups[0].permViaGroup(PERM_KEYS.TM_PERMS)).toBe(false);
+  });
+
+  it('a role in NO group is unaffected', () => {
+    const { roles } = normalizeAuthoritySubjects([membersSubject({ groups: [] })]);
+    expect(roles[0].canVote).toBe(true); // its own DD_VOTE
+    expect(roles[0].permViaGroup(PERM_KEYS.DD_VOTE)).toBe(false);
+    expect(roles[0].taskMask).toBe('0');
+  });
+
+  it('an INACTIVE composition row does not leak the group’s permissions', () => {
+    // Removal keeps the row for history with isActive: false — on BOTH sides of the relation.
+    const inactive = (c) => ({ ...c, isActive: false });
+    const group = groupWith(PERM_KEYS.DD_VOTE, 1);
+    const { roles } = normalizeAuthoritySubjects([
+      membersSubject({ perms: [], groups: (membersSubject().groups || []).map(inactive) }),
+      { ...group, memberRoles: group.memberRoles.map(inactive) },
+    ]);
+    expect(roles[0].groupIds).toEqual([]);
+    expect(roles[0].canVote).toBe(false);
+  });
+
+  it('relinks role.groups / group.memberRoles to the FOLDED objects', () => {
+    const { roles, groups } = run();
+    const execs = roles.find((r) => r.subjectId === EXECS_ID);
+    expect(execs.groups[0].taskMask).toBe('2');
+    expect(groups[0].memberRoles.map((r) => r.taskMask)).toEqual(['2', '2']);
   });
 });
 

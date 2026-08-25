@@ -20,6 +20,7 @@ import {
   vouchProgressCopy,
   canVouch,
   hasVouched,
+  isMemberOfVoucherSubject,
 } from '@/lib/accessV2/vouch';
 import { useOrgAuthority } from './useOrgAuthority';
 import { useAuthoritySubjects } from './useAuthoritySubjects';
@@ -42,7 +43,7 @@ export function useSubjectVouches(subjectId, targetUser) {
 
   const { data, loading, error, refetch } = useQuery(FETCH_SUBJECT_VOUCH_RECORDS, {
     variables: { subject: String(subjectId || ''), user },
-    skip: !authority.migrated || !subjectId || !user,
+    skip: !authority.enabled || !subjectId || !user,
     fetchPolicy: 'cache-and-network',
     client,
   });
@@ -58,9 +59,8 @@ export function useSubjectVouches(subjectId, targetUser) {
 
     const progress = vouchProgress(records, config);
     const viewer = String(accountAddress || '').toLowerCase();
-    const viewerIsVoucherMember = config?.voucherSubjectId
-      ? Boolean(isMemberOf?.(config.voucherSubjectId))
-      : false;
+    // Group-aware: a voucher subject may be a GROUP, which has no membership rows of its own.
+    const viewerIsVoucherMember = isMemberOfVoucherSubject(config?.voucherSubjectId, subjects, isMemberOf);
 
     return {
       subject,
@@ -77,12 +77,12 @@ export function useSubjectVouches(subjectId, targetUser) {
         viewerIsVoucherMember,
         paused: authority.paused,
       }),
-      enabled: authority.migrated,
-      loading: authority.migrated ? loading : false,
-      error: authority.migrated ? error : null,
+      enabled: authority.enabled,
+      loading: authority.enabled ? loading : false,
+      error: authority.enabled ? error : null,
       refetch,
     };
-  }, [data, subject, accountAddress, isMemberOf, user, authority.migrated, authority.paused, loading, error, refetch]);
+  }, [data, subject, subjects, accountAddress, isMemberOf, user, authority.enabled, authority.paused, loading, error, refetch]);
 }
 
 export default useSubjectVouches;

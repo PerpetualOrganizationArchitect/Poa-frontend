@@ -105,6 +105,36 @@ export function hasVouched(records = [], config, voucher) {
  * @param {boolean} [opts.paused]
  * @returns {{ can: boolean, reason: string|null }}
  */
+/**
+ * Is the viewer a member of the config's VOUCHER SUBJECT — which may be a GROUP?
+ *
+ * `SubjectMembership` rows exist for ROLE subjects only: groups have no acceptance, so the subgraph
+ * folds no membership row for them (schema.graphql) and the app derives group rosters instead. A
+ * membership-row lookup therefore answers "no" for every group, while on chain the vouch is legal
+ * and works — `configureVouchAttestor` only forbids the VOUCHED subject being a group, and
+ * `vouch()` checks `_isMember(cfg.voucherSubject, msg.sender)`, which resolves a group through its
+ * member roles (MembershipAuthorityLogic._isMember). "Executives-group vouches for X" would show
+ * every legitimate voucher a disabled button reading "Only members of <group> can vouch here".
+ *
+ * @param {string} voucherSubjectId
+ * @param {Array} subjects - normalised subjects (groups carry `memberRoleIds`)
+ * @param {(subjectId: string) => boolean} isMemberOf - the viewer's role-membership predicate
+ * @returns {boolean}
+ */
+export function isMemberOfVoucherSubject(voucherSubjectId, subjects = [], isMemberOf) {
+  const id = toSubjectId(voucherSubjectId);
+  if (!id || id === '0' || typeof isMemberOf !== 'function') return false;
+
+  const subject = (subjects || []).find((s) => s && s.subjectId === id) || null;
+  // Unknown subject (subject list still loading, or a subject outside this authority): fall back to
+  // the direct row. Roles are the common case and this keeps the check working without the list.
+  if (!subject || !subject.isGroup) return Boolean(isMemberOf(id));
+
+  // Group: a user is in it iff they are an active member of at least one active member-role —
+  // the same derivation the contract does.
+  return (subject.memberRoleIds || []).some((roleId) => Boolean(isMemberOf(roleId)));
+}
+
 export function canVouch({ config, records = [], viewer, target, viewerIsVoucherMember, paused = false }) {
   if (!config || !config.enabled) return { can: false, reason: 'Vouching is not enabled for this role.' };
   if (paused) return { can: false, reason: 'Membership changes are paused for this org right now.' };

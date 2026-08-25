@@ -11,6 +11,13 @@
  * hatIds verbatim as subject ids.
  *
  * Silent when the org is not on the v2 path — no query, empty arrays.
+ *
+ * GATED ON `enabled`, NOT `migrated`. `migrated` is true the moment an authority exists, including
+ * the PENDING window (deployed, not yet router-bound) during which every v2 surface renders only
+ * the "being set up" banner. Gating on `migrated` put the 1000-row subjects document on the paid,
+ * quota-metered gateway on every proposal-modal open for data nothing renders — and contradicted
+ * this directory's stated contract ("nothing here puts a v2 query on the wire until the org's
+ * authority is router-bound"). The same correction applies to every sibling hook.
  */
 
 import { useMemo } from 'react';
@@ -28,7 +35,7 @@ export function useAuthoritySubjects() {
 
   const { data, loading, error, refetch } = useQuery(FETCH_AUTHORITY_SUBJECTS, {
     variables: { authority: authority.address },
-    skip: !authority.migrated || !authority.address,
+    skip: !authority.enabled || !authority.address,
     fetchPolicy: 'cache-and-network',
     client,
   });
@@ -41,9 +48,9 @@ export function useAuthoritySubjects() {
   return {
     ...value,
     authority,
-    enabled: authority.migrated,
-    loading: authority.migrated ? loading : false,
-    error: authority.migrated ? error : null,
+    enabled: authority.enabled,
+    loading: authority.enabled ? loading : false,
+    error: authority.enabled ? error : null,
     refetch,
   };
 }

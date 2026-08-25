@@ -48,7 +48,7 @@ export function usePendingActions({ tick = true } = {}) {
 
   const { data, loading, error, refetch } = useQuery(FETCH_PENDING_ACTIONS, {
     variables: { authority: authority.address, status: 'Pending' },
-    skip: !authority.migrated || !authority.address,
+    skip: !authority.enabled || !authority.address,
     fetchPolicy: 'cache-and-network',
     client,
   });
@@ -74,12 +74,12 @@ export function usePendingActions({ tick = true } = {}) {
       forSubject: (subjectId) => rows.filter((p) => p.subjectId === String(subjectId)),
       forUser: (addr) => rows.filter((p) => p.user === String(addr || '').toLowerCase()),
       now,
-      enabled: authority.migrated,
-      loading: authority.migrated ? loading : false,
-      error: authority.migrated ? error : null,
+      enabled: authority.enabled,
+      loading: authority.enabled ? loading : false,
+      error: authority.enabled ? error : null,
       refetch,
     };
-  }, [data, now, user, authority.migrated, loading, error, refetch]);
+  }, [data, now, user, authority.enabled, loading, error, refetch]);
 }
 
 export default usePendingActions;

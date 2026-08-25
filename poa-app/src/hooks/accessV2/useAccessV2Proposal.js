@@ -16,13 +16,10 @@
 import { useCallback, useState } from 'react';
 import { usePOContext } from '@/context/POContext';
 import { useWeb3Services, useTransactionWithNotification } from '@/hooks/useWeb3Services';
+import { checkBatchSubmittable, MAX_SPONSORED_CALLS } from '@/lib/accessV2/submission';
 import { useOrgAuthority } from './useOrgAuthority';
 
-/**
- * Above this many calls a batch is a migration ceremony, not a proposal. The runbook runs those
- * from a funded EOA with explicit gas; the sponsored path would silently under-fund them.
- */
-export const MAX_SPONSORED_CALLS = 24;
+export { MAX_SPONSORED_CALLS };
 
 export function useAccessV2Proposal() {
   const { votingContractAddress, hybridVotingContractAddress } = usePOContext();
@@ -50,18 +47,8 @@ export function useAccessV2Proposal() {
         return { success: false, error: new Error('We’re still getting things ready — please try again in a moment.') };
       }
       const batch = built?.batch || [];
-      if (batch.length === 0) {
-        return { success: false, error: new Error('Nothing to propose — no changes were selected.') };
-      }
-      if (batch.length > MAX_SPONSORED_CALLS) {
-        return {
-          success: false,
-          error: new Error(
-            `This change needs ${batch.length} steps, which is too large for a normal proposal. `
-            + 'Migration-scale batches are run from the org’s own wallet — talk to your admins.'
-          ),
-        };
-      }
+      const check = checkBatchSubmittable(batch);
+      if (!check.ok) return { success: false, error: new Error(check.message) };
 
       setSubmitting(true);
       try {

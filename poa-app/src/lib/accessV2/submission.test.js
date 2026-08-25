@@ -1,10 +1,24 @@
 import { describe, it, expect } from 'vitest';
 import { checkBatchSubmittable, MAX_SPONSORED_CALLS } from './submission';
+import { MAX_CALLS_PER_BATCH } from '@/config/contractLimits';
 import { buildCreateRoleBatch } from './proposalBuilders';
 import { buildGrant } from './txBuilders';
 import { AUTHORITY_ADDRESS as A, ALICE, MEMBERS_ID, EXECS_ID } from './fixtures';
 
 const oneCall = () => buildGrant(A, EXECS_ID, ALICE);
+
+describe('the ceiling is the CHAIN’s, not a frontend policy number', () => {
+  // Every other test in this file is written relative to MAX_SPONSORED_CALLS, so they would all
+  // pass at any value — which is how 24 survived. These two are absolute.
+  it('is the contracts’ 20-call batch limit', () => {
+    expect(MAX_CALLS_PER_BATCH).toBe(20);
+    expect(MAX_SPONSORED_CALLS).toBe(20);
+  });
+
+  it('has exactly one definition — submission re-exports contractLimits, it does not restate it', () => {
+    expect(MAX_SPONSORED_CALLS).toBe(MAX_CALLS_PER_BATCH);
+  });
+});
 
 describe('checkBatchSubmittable', () => {
   it('accepts an ordinary governance batch', () => {
@@ -24,6 +38,17 @@ describe('checkBatchSubmittable', () => {
     expect(r.ok).toBe(false);
     expect(r.code).toBe('too-large');
     expect(r.message).toMatch(/org’s own wallet/);
+  });
+
+  it('catches a 21-call batch — the size the chain rejects but the old ceiling waved through', () => {
+    // 21..24 used to pass this preflight and then revert TooManyCalls at createProposal.
+    for (const n of [21, 22, 23, 24]) {
+      const r = checkBatchSubmittable(Array.from({ length: n }, oneCall));
+      expect(r.ok).toBe(false);
+      expect(r.code).toBe('too-large');
+      expect(r.message).toContain(`${n} steps`);
+      expect(r.message).toContain('20');
+    }
   });
 
   it('accepts a batch exactly at the ceiling', () => {

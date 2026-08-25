@@ -97,14 +97,23 @@ Mounted at `pages/team/index.js`, above the legacy sections.
 
 ## 3. Things that will bite you if you change them
 
-- **Sponsorship cut-off.** `checkBatchSubmittable` refuses a batch over `MAX_SPONSORED_CALLS` (24).
-  Seed/cutover ceremonies are far outside the paymaster rulebook's gas hints and the runbook runs
-  them **from a funded EOA**. Ordinary role-creation proposals are ~7–13 calls and go through the
-  normal sponsored flow like any other proposal. Do not "fix" this by raising the ceiling.
-- **`announceWinner` swallows reverts.** The winning batch runs inside a try/catch, so wallets price
-  only the cheap caught-failure path and an under-funded batch silently no-ops while the proposal
-  reports success. Every builder returns `gasLimit`; `useAccessV2Proposal` passes it through. Keep
-  it.
+- **Batch cut-off.** `checkBatchSubmittable` refuses a batch over `MAX_SPONSORED_CALLS`, which is
+  `config/contractLimits.MAX_CALLS_PER_BATCH` — **20, the chain's own limit** (Executor.sol:45 and
+  `MAX_CALLS` in both voting modules, which revert `TooManyCalls` at PROPOSAL CREATION). It is not a
+  frontend policy number and raising it does not raise anything: 21+ calls simply revert on chain,
+  burning a UserOp for a sponsored user. (It read 24 until the reviewers caught it.) Seed/cutover
+  ceremonies are far outside the paymaster rulebook's gas hints anyway and the runbook runs them
+  **from a funded EOA**. A wizard batch that overflows should be split across two proposals.
+- **`announceWinner` swallows reverts.** The winning batch runs inside a try/catch, so every
+  estimator prices only the cheap caught-failure path and an under-funded batch silently no-ops
+  while the transaction reports success. Every builder returns `gasLimit` — that floor belongs to
+  `announceWinner`, **not** to `createProposal` (it used to be attached there, under a key neither
+  transaction manager read, i.e. it did nothing at all). `useAccessV2Proposal` now parks it against
+  the created proposal id (`lib/accessV2/gasFloors`) and `useVoteActions.handleFinalize` reads it
+  back and applies it to the finalize transaction through both managers: `gasLimit` (EOA, a floor
+  over the buffered estimate) and `callGasLimitFloor` (4337, a floor that composes with the existing
+  3× Hats multiplier — do **not** switch it to `callGasLimit`, which replaces the multiplier). The
+  store is per-browser; finalizing from another device just falls back to today's behaviour.
 - **GRANT vs OFFER is decided per holder.** `grant` on an out-of-org address reverts `NotInOrg`
   inside that try/catch. The wizard decides from the fold mirror (`inOrg`), never from a guess.
 - **The id-prediction race.** New subject ids come from a `localSeq` counter with no public getter,

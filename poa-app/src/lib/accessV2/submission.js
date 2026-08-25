@@ -10,12 +10,24 @@
  * other proposal, so the cut is a size check, not a per-verb allow-list.
  */
 
+import { MAX_CALLS_PER_BATCH } from '@/config/contractLimits';
+
 /**
- * Above this many calls a batch is a migration ceremony, not a proposal.
- * A create-role batch with a group, six permissions and five initial holders is 13 calls, so the
- * ceiling leaves ordinary governance plenty of room while still catching a seed.
+ * The ceiling IS the on-chain one — 20, from `config/contractLimits` — not a frontend policy
+ * number.
+ *
+ * It used to be 24, chosen as "comfortably above a normal create-role batch". But both voting
+ * modules revert `TooManyCalls` above 20 AT PROPOSAL CREATION (Executor enforces the same 20 at
+ * execution), and buildCreateRoleBatch can legitimately reach the low 20s: createRole +
+ * setSubjectDefault + up to 8 addRoleToGroup + up to a dozen permission rows + vouch + manager +
+ * one call per initial holder. A 21-24 call batch therefore cleared this preflight and then
+ * reverted on chain — a raw TooManyCalls, and for a sponsored passkey user a burned UserOp,
+ * instead of the friendly message this check exists to give.
+ *
+ * Kept as a named export because it is what the hooks and wizard import; the VALUE has exactly one
+ * definition.
  */
-export const MAX_SPONSORED_CALLS = 24;
+export const MAX_SPONSORED_CALLS = MAX_CALLS_PER_BATCH;
 
 /**
  * @param {Array} batch - `{target,value,data}[]`
@@ -37,8 +49,10 @@ export function checkBatchSubmittable(batch) {
       ok: false,
       code: 'too-large',
       message:
-        `This change needs ${calls.length} steps, which is too large for a normal proposal. `
-        + 'Migration-scale batches are run from the org’s own wallet — talk to your admins.',
+        `This change needs ${calls.length} steps, but a proposal can carry at most `
+        + `${MAX_SPONSORED_CALLS}. Split it up — create the role first, then add the extra `
+        + 'permissions or people in a second proposal. (Migration-scale batches are run from the '
+        + 'org’s own wallet — talk to your admins.)',
     };
   }
 

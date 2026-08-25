@@ -10,3 +10,7 @@ export { TaskService, createTaskService } from './TaskService';
 export { EducationService, createEducationService } from './EducationService';
 export { TreasuryService, createTreasuryService } from './TreasuryService';
 export { HatsService, createHatsService } from './HatsService';
+export {
+  MembershipAuthorityService,
+  createMembershipAuthorityService,
+} from './MembershipAuthorityService';

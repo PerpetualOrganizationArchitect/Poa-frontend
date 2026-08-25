@@ -2132,25 +2132,6 @@
   },
   {
     "type": "event",
-    "name": "MembershipReconciled",
-    "inputs": [
-      {
-        "name": "subjectId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "user",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "OfferWithdrawn",
     "inputs": [
       {
@@ -2650,43 +2631,6 @@
   },
   {
     "type": "event",
-    "name": "TransferSingle",
-    "inputs": [
-      {
-        "name": "operator",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "from",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "id",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "value",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "UserVouchesCleared",
     "inputs": [
       {
@@ -2855,11 +2799,6 @@
   },
   {
     "type": "error",
-    "name": "AlreadyMember",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "AlreadyVouched",
     "inputs": []
   },
@@ -2925,16 +2864,6 @@
   },
   {
     "type": "error",
-    "name": "NotAGroup",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotAuthorizedManager",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "NotAuthorizedManager",
     "inputs": []
   },
@@ -2986,11 +2915,6 @@
   },
   {
     "type": "error",
-    "name": "Paused",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "PendingActionExists",
     "inputs": []
   },
@@ -3013,11 +2937,6 @@
   {
     "type": "error",
     "name": "RemoveBlockedByStickyGovernance",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "RoleLimit",
     "inputs": []
   },
   {
@@ -3058,27 +2977,6 @@
   },
   {
     "type": "error",
-    "name": "SubjectFull",
-    "inputs": [
-      {
-        "name": "subjectId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "lapsedCandidate",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "UnknownSubject",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "UnknownSubject",
     "inputs": []
   },
@@ -3090,11 +2988,6 @@
   {
     "type": "error",
     "name": "WiringIncompatible",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "ZeroAddress",
     "inputs": []
   },
   {

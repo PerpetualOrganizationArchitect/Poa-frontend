@@ -16,6 +16,7 @@
  * Detected capabilities:
  *   PROPOSAL_PROPOSER — subgraph-pop #195, proposer attribution.
  *   TASK_RELEASES     — subgraph-pop #201, TaskManager v7 claim release.
+ *   ACCESS_V2         — subgraph-pop access-v2 wave, the MembershipAuthority model.
  *
  * Once an org's endpoint serves the newer version the feature lights up with no
  * frontend change.
@@ -53,6 +54,37 @@ export const CAPABILITY = {
       { type: 'Task', field: 'lastReleasedAt' },
       { type: 'Task', field: 'releases' },
       { type: 'TaskRelease' },
+    ],
+  },
+  /**
+   * Access v2 — the per-org `MembershipAuthority` model (subjects, the eligibility fold mirror,
+   * the semantic permission table, manager delegation). Gates EVERY v2 query in the app.
+   *
+   * This one matters more than the others: the v2 entities land on the gateway endpoints only
+   * after the Wave-E publish, and one unknown field fails the WHOLE document — so an org whose
+   * endpoint has not been republished (and every org that never migrates) must read this as
+   * "absent" and keep the legacy Hats/EligibilityModule surfaces completely untouched.
+   *
+   * The requirement list names the fields the v2 documents actually SELECT, not just the entity
+   * types, so a partial deployment reads as absent rather than half-working.
+   */
+  ACCESS_V2: {
+    id: 'accessV2',
+    require: [
+      { type: 'Organization', field: 'membershipAuthority' },
+      { type: 'MembershipAuthorityContract', field: 'isRouterBound' },
+      { type: 'Subject', field: 'activeMemberCount' },
+      { type: 'Subject', field: 'defaultAllow' },
+      { type: 'SubjectMembership', field: 'claimable' },
+      { type: 'SubjectMembership', field: 'eligibilitySource' },
+      { type: 'AccessRule', field: 'sticky' },
+      { type: 'PermRow', field: 'inheritGlobal' },
+      { type: 'GroupComposition', field: 'isActive' },
+      { type: 'ManagerConfig', field: 'delaySecs' },
+      { type: 'PendingAction', field: 'activatesAt' },
+      { type: 'SubjectVouchConfig', field: 'epoch' },
+      { type: 'SubjectVouchRecord', field: 'active' },
+      { type: 'SubjectMembershipEvent', field: 'delegated' },
     ],
   },
 };

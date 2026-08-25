@@ -5,6 +5,12 @@ import { gql } from '@apollo/client';
 // Endpoints are configured per-chain in src/config/networks.js
 // ============================================
 
+// Access v2 (MembershipAuthority) documents live in their own module because every field they
+// select is absent from the endpoints the app reads until the Wave-E gateway publish, and one
+// unknown field fails the whole document. They are re-exported here so callers keep importing
+// from `util/queries`. Consumers MUST gate on CAPABILITY.ACCESS_V2 — see util/subgraphCapabilities.
+export * from './queriesAccessV2';
+
 // Fetch single organization by orgId (bytes)
 export const FETCH_ORG_BY_ID = gql`
   query FetchOrgById($id: Bytes!) {

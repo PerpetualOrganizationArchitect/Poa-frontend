@@ -190,8 +190,14 @@ export function activationGate(memberships = [], proposalCreatedAt) {
   const created = Number(proposalCreatedAt || 0);
   let earliest = null;
   for (const m of memberships || []) {
-    if (!m || !m.isMember || !m.acceptedAt) continue;
-    if (earliest === null || m.acceptedAt < earliest) earliest = m.acceptedAt;
+    if (!m || !m.isMember) continue;
+    // Ceremony-seeded rows are BACKDATED on-chain to acceptedAt = 1 (pre-existing members stay
+    // votable on in-flight proposals). The subgraph stores the indexed block timestamp and flags
+    // the row instead — so the replay must honour the flag, or every seeded member reads as
+    // joined-after-proposal for anything created before their org's seed batch.
+    const activatedAt = m.seededWhilePaused ? 1 : m.acceptedAt;
+    if (!activatedAt) continue;
+    if (earliest === null || activatedAt < earliest) earliest = activatedAt;
   }
   if (earliest === null) {
     return { canVote: false, activeSince: null, reason: 'not-a-member' };

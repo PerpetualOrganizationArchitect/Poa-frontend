@@ -152,6 +152,21 @@ describe('isHeldInReserve — the sticky seat that survives renounce', () => {
 });
 
 describe('activationGate — the electorate activation gate', () => {
+  it('treats seededWhilePaused rows as backdated to 1 (ceremony members vote on in-flight proposals)', () => {
+    // On-chain the seed writes acceptedAt = 1; the subgraph stores the indexed timestamp + a flag.
+    const seeded = [{ isMember: true, acceptedAt: 1756200000, seededWhilePaused: true }];
+    const out = activationGate(seeded, 1700000000); // proposal long before the seed batch indexed
+    expect(out.canVote).toBe(true);
+    expect(out.activeSince).toBe(1);
+  });
+
+  it('still gates a post-cutover claimant off pre-claim proposals', () => {
+    const claimed = [{ isMember: true, acceptedAt: 1756200000, seededWhilePaused: false }];
+    const out = activationGate(claimed, 1700000000);
+    expect(out.canVote).toBe(false);
+    expect(out.reason).toBe('joined-after-proposal');
+  });
+
   const at = (t) => normalizeMembership(aliceMembership({ acceptedAt: String(t) }));
 
   it('lets a member who joined BEFORE the proposal vote', () => {

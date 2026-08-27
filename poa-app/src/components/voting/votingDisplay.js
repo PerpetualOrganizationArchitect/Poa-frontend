@@ -38,6 +38,10 @@ export function lifecycleVariant(p, nowMsValue) {
  * used as the eligible denominator when the poll is unrestricted (there is no
  * cheap exact eligible count for the general case; restricted polls still fall
  * back to members, flagged approximate so copy reads "members").
+ *
+ * `settled` / `hasResult` exist because `p.quorum` is the org's CURRENT quorum —
+ * transformProposal stamps every proposal with it, snapshot or not. See
+ * turnoutCopy for why a closed poll stops being measured against it.
  */
 export function turnoutInputs(p, poMembers = 0) {
   const voted = distinctVoters(p);
@@ -48,6 +52,10 @@ export function turnoutInputs(p, poMembers = 0) {
     quorum: Number(p?.quorum) || 0,
     // We only ever have the member-count fallback for now → always approximate.
     approximate: true,
+    // Deliberately not the ticking lifecycle: an awaiting-finalize poll is
+    // still Active, and the count ahead of it WILL apply the current quorum.
+    settled: !!p && p.isOngoing !== true,
+    hasResult: p?.isValid !== false,
   };
 }
 

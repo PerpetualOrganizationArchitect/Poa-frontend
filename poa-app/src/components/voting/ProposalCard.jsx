@@ -480,6 +480,8 @@ export function ProposalCard({
             eligible={turnout.eligible}
             quorum={turnout.quorum}
             approximate={turnout.approximate}
+            settled={turnout.settled}
+            hasResult={turnout.hasResult}
             variant="compact"
           />
           <HStack spacing={2} flexShrink={0}>

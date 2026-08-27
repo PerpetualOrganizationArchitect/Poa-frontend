@@ -330,6 +330,8 @@ export function VoteCelebration({
               eligible={turnout.eligible}
               quorum={turnout.quorum}
               approximate={turnout.approximate}
+              settled={turnout.settled}
+              hasResult={turnout.hasResult}
               variant="full"
             />
           </Box>

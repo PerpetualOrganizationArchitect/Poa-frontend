@@ -10,18 +10,24 @@
  * Denominator: prefer a real eligible count; callers fall back to the org
  * member count and pass `approximate` so the noun softens to "members".
  *
+ * Closed polls get no quorum story: `quorum` is always the org's CURRENT rule,
+ * so measuring a decided vote against it turned past decisions amber the moment
+ * a group raised its quorum. `settled` drops the quorum clause and the tick.
+ *
  * Props:
  *   voted        number  — distinct voters so far
  *   eligible     number  — eligible denominator (0 → "N voted", no fraction)
  *   quorum       number  — min voters for the result to count (0 → no quorum)
  *   approximate  bool    — denominator is the member-count fallback
+ *   settled      bool    — poll is closed; its result is already fixed on-chain
+ *   hasResult    bool    — the closed poll counted to a valid outcome
  *   variant      "compact" (default, one line) | "full" (bar + line)
  */
 
 import React, { useMemo } from 'react';
 import { Box, HStack, Text, Icon, Tooltip } from '@chakra-ui/react';
 import { PiUsersThree } from 'react-icons/pi';
-import { turnoutCopy, lowQuorumTooltip } from '@/config/votingVocabulary';
+import { turnoutCopy, lowQuorumTooltip, priorRulesTooltip } from '@/config/votingVocabulary';
 
 const AMETHYST = '#9473DC';
 const AMETHYST_SOFT = 'rgba(148, 115, 220, 0.16)';
@@ -31,19 +37,24 @@ export function TurnoutMeter({
   eligible = 0,
   quorum = 0,
   approximate = false,
+  settled = false,
+  hasResult = true,
   variant = 'compact',
 }) {
-  const { line, quorumMet, lowQuorum } = useMemo(
-    () => turnoutCopy({ voted, eligible, quorum, approximate }),
-    [voted, eligible, quorum, approximate]
+  const { line, quorumMet, lowQuorum, priorRules } = useMemo(
+    () => turnoutCopy({ voted, eligible, quorum, approximate, settled, hasResult }),
+    [voted, eligible, quorum, approximate, settled, hasResult]
   );
   // Green celebrates a healthy quorum being met; a trivially low quorum (or
   // zero turnout) renders neutral so the UI never endorses rubber-stamp rules.
-  const lineColor = !quorumMet
-    ? '#F6C177'
-    : lowQuorum || voted === 0
-      ? 'gray.300'
-      : 'green.300';
+  // A closed poll has no quorum verdict left to render, so it stays neutral.
+  const lineColor = settled
+    ? 'gray.300'
+    : !quorumMet
+      ? '#F6C177'
+      : lowQuorum || voted === 0
+        ? 'gray.300'
+        : 'green.300';
   const ariaProps = {
     role: 'progressbar',
     'aria-valuemin': 0,
@@ -51,9 +62,15 @@ export function TurnoutMeter({
     'aria-valuenow': voted,
     'aria-label': `Turnout: ${line.replace(/\u00a0/g, ' ')}`,
   };
+  // At most one fires: turnoutCopy forces `lowQuorum` false once settled.
+  const tooltipLabel = priorRules
+    ? priorRulesTooltip(quorum, voted)
+    : lowQuorum && quorum > 0
+      ? lowQuorumTooltip(quorum, eligible)
+      : null;
   const maybeTooltip = (node) =>
-    lowQuorum && quorum > 0 ? (
-      <Tooltip label={lowQuorumTooltip(quorum, eligible)} placement="top" hasArrow bg="gray.700" maxW="300px">
+    tooltipLabel ? (
+      <Tooltip label={tooltipLabel} placement="top" hasArrow bg="gray.700" maxW="300px">
         {node}
       </Tooltip>
     ) : (
@@ -63,12 +80,13 @@ export function TurnoutMeter({
   // Fraction filled = voters / eligible (clamped). No denominator → show a
   // subtle empty rail rather than a misleading full/zero bar.
   const filledPct = eligible > 0 ? Math.min(100, Math.round((voted / eligible) * 100)) : 0;
+  // No tick on a closed poll — it would mark a line that never governed it.
   const quorumTickPct =
-    eligible > 0 && quorum > 0 ? Math.min(100, (quorum / eligible) * 100) : null;
+    !settled && eligible > 0 && quorum > 0 ? Math.min(100, (quorum / eligible) * 100) : null;
 
   if (variant === 'compact') {
     return maybeTooltip(
-      <HStack spacing={1.5} align="center" minW={0} {...ariaProps} cursor={lowQuorum ? 'help' : undefined}>
+      <HStack spacing={1.5} align="center" minW={0} {...ariaProps} cursor={tooltipLabel ? 'help' : undefined}>
         <Icon as={PiUsersThree} boxSize="14px" color={AMETHYST} flexShrink={0} />
         {/* No truncation: "quorum met ✓" clipping to "quorum me…" reads broken.
             Wrapping to a second line on narrow cards is the honest fallback. */}
@@ -98,7 +116,7 @@ export function TurnoutMeter({
             color={lineColor}
             fontWeight="600"
             textAlign="right"
-            cursor={lowQuorum ? 'help' : undefined}
+            cursor={tooltipLabel ? 'help' : undefined}
           >
             {line}
           </Text>

@@ -63,6 +63,7 @@ requirements are satisfied by the endpoint that actually serves the documents.
 | `permKeys.js` | the semantic key table derived exactly as Solidity derives it, fold tags, 254-bit word packing, ctx resolution |
 | `subjects.js` | Subject/GroupComposition normalisers, group derivation, blast-radius copy |
 | `memberships.js` | the fold mirror, source-accurate copy, the electorate activation gate |
+| `ballotGate.js` | the ballot's half of that gate: electorate scoping, and every degrade-to-silence case |
 | `rules.js` | the one rule slot, sticky, removal-blocker copy, preflight reason codes |
 | `pendingActions.js` | the review window, countdowns, ManagerConfig |
 | `vouch.js` | epoch-aware vouch counting, `canVouch`, config lints |
@@ -74,7 +75,7 @@ requirements are satisfied by the endpoint that actually serves the documents.
 
 Hooks: `useOrgAuthority`, `useAuthoritySubjects`, `useAuthorityMemberships`, `useMyMemberships`,
 `usePendingActions`, `useSubjectVouches`, `useVouchCandidates`, `useAuthorityActions`,
-`useAccessV2Proposal`.
+`useAccessV2Proposal`, `useActivationGate`.
 
 **Every hook returns a legacy-compatible shape where a legacy equivalent exists.** A migrated org
 adopts its hatIds verbatim as subject ids, so roles carry `hatId` / `name` / `image` / `canVote` and
@@ -100,6 +101,11 @@ emits only a config event on chain — the mapping re-folds the accepted rows it
 `SubjectRestrictionPicker` is wired into `CreateVoteModal`'s existing restricted-poll block.
 
 Mounted at `pages/team/index.js`, above the legacy sections.
+
+One v2 read lives OUTSIDE that tree: `PollDetail` mounts `useActivationGate`, because the ballot is
+the one legacy surface whose *existing* verdict a migrated org can contradict. It adds no query
+(it reuses `useMyMemberships`) and returns the silent answer on every legacy org, so the rule in
+§1 still holds — `enabled === false` renders exactly what renders today.
 
 ---
 
@@ -205,18 +211,33 @@ endpoint lights up on the next page load after the publish with no frontend chan
   (`removalBlockers`) exist; the member-removal dialog that calls them does not. Until it lands, a
   soft removal of a member held by an open default or a live vouch quorum will revert
   `RemovalIneffective` rather than explaining itself.
-- **The `Executor.CallFailed` selector→copy table.** The spec pairs the preflights with bubbling the
-  inner revert selector out of `ProposalExecutionFailed`. `ACTION_REASON_COPY` covers the preflight
-  half; the failed-execution half needs a selector map in `lib/errors/ErrorParser.js`.
 - **`hasExecRole` positional derivation** (`context/UserContext.js:107`) is still
   `roleHatIds[1]`. With groups this should become "is a member of the group holding permission X",
   via `hasPerm` / the perm rows. ~15 consumers.
-- **Activation-gate copy on the ballot.** `activationGate` / `activationGateCopy` are implemented
-  and tested but not yet rendered in `PollDetail` / `WeightedBallot`. Until they are, a member who
-  joined mid-proposal sees a vote button that reverts instead of the "you can vote on proposals
-  created after…" explanation.
 - **Feed rendering of the seven lifecycle verbs.** `FETCH_MEMBERSHIP_EVENTS` is written; nothing
   consumes it yet. The verbs are disjoint on purpose (`RoleClaimed` ≠ `RoleGranted`,
   `MembershipReconciled` is an automatic lapse repair) and must be rendered verbatim.
 - **Test6 verification.** Not run — this branch has never touched a live authority, because no org
   is cut over yet. Do it through the `test6-verify` Smithers workflow once one is.
+
+### Closed
+
+- ~~**Activation-gate copy on the ballot.**~~ `PollDetail` mounts `useActivationGate`, which folds
+  the viewer's rows through the pure `lib/accessV2/ballotGate`. When the gate blocks, `canVote` goes
+  false and the eligibility line carries `activationGateCopy` in place of "You're eligible ✓".
+  The gate is deliberately one-sided: it reports ONLY `joined-after-proposal`, never
+  `not-a-member` — that copy belongs to `votingDisplay.voterEligibility`, and an eager gate would
+  flash "you are not a member" at a member whose rows have not arrived. Legacy orgs, an org
+  mid-index and a proposal with no `startTimestamp` all read as silent.
+- ~~**The `Executor.CallFailed` selector→copy table.**~~ `decodeRevertData` now unwraps
+  `CallFailed(index, lowLevelData)` BEFORE the Interface branch (every voting ABI declares
+  CallFailed, so an Interface-first decode resolves the wrapper and throws the cause away) and
+  speaks about the inner revert: "Action 3 in this proposal failed: …", falling back to the
+  4-byte selector. `lowLevelData == 0x` is reported as the swallowed out-of-gas with its remedy.
+  The MembershipAuthority error selectors were added to `CONTRACT_ERROR_SELECTORS` with copy kept
+  in step with `ACTION_REASON_COPY`, so the pre- and post-flight halves cannot contradict.
+  Three surfaces consume it: both transaction paths via `parseError` / `_parseAAError`;
+  `votingVocabulary.executionStatus`, which used to interpolate the raw `executionError` bytes into
+  member-facing copy; and `useVoteActions.handleFinalize`, which reads
+  `ProposalExecutionFailed` off the finalize receipt — a batch that reverts or runs out of gas
+  leaves a SUCCESSFUL transaction, so the success toast alone was a lie.

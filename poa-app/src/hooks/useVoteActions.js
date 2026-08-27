@@ -19,13 +19,17 @@
 
 import { useCallback } from 'react';
 import { useWeb3Services, useTransactionWithNotification } from './useWeb3Services';
+import { useNotification } from '@/context/NotificationContext';
 import { VotingType } from '@/services/web3/domain/VotingService';
 import { RefreshEvent } from '@/context/RefreshContext';
 import { readGasFloor, clearGasFloor, gasFloorOptions } from '@/lib/accessV2/gasFloors';
+import { parseExecutionFailure } from '@/lib/voting/proposalReceipt';
+import { describeExecutionFailure } from '@/lib/errors/contractErrors';
 
 export function useVoteActions(votingTypeSelected) {
   const { voting, getNotReadyMessage } = useWeb3Services();
   const { executeWithNotification } = useTransactionWithNotification();
+  const { addNotification } = useNotification();
   // The open poll's type, as the service layer names it. VotingService owns the
   // hybrid/DD dispatch for both verbs (castVote / announceWinner) — this hook
   // only decides which type to hand it.
@@ -92,8 +96,24 @@ export function useVoteActions(votingTypeSelected) {
     // (Only on success: a failed send can be retried and would want the floor again.)
     if (result?.success && floor) clearGasFloor(contractAddress, proposalId);
 
+    // A SUCCESSFUL announceWinner can still have applied nothing: the winning batch runs inside a
+    // try/catch, so a revert (or an out-of-gas, the common case) is swallowed and surfaces ONLY as
+    // `ProposalExecutionFailed`. Say so — the success toast alone is a lie, and the subgraph copy
+    // that would eventually say it is a refetch away. Purely additive: the count DID land, so the
+    // result stays `success` and PollDetail's confirm dialog still closes.
+    if (result?.success && result?.receipt) {
+      const failure = parseExecutionFailure(result.receipt, contractAddress);
+      if (failure) {
+        addNotification(
+          describeExecutionFailure(failure.reason)
+            || 'The votes were counted, but the winning action failed to run on-chain.',
+          'error'
+        );
+      }
+    }
+
     return result;
-  }, [voting, executeWithNotification, notReady]);
+  }, [voting, executeWithNotification, notReady, addNotification]);
 
   // `voting` + `executeWithNotification` are handed back so a surface that also
   // runs OTHER voting transactions (VotingPage creates proposals) can reuse this

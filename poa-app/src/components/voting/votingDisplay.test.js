@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { countdownFigure, lifecycleVariant } from './votingDisplay';
-import { outcomeProblem, outcomeHeadline } from '@/config/votingVocabulary';
+import { countdownFigure, lifecycleVariant, turnoutInputs } from './votingDisplay';
+import { outcomeProblem, outcomeHeadline, turnoutCopy, PRIOR_RULES_NOTE } from '@/config/votingVocabulary';
 
 // Fixed clock — these helpers take `now` explicitly so a card can tick.
 const NOW_MS = 1_800_000_000_000;
@@ -110,20 +110,63 @@ describe('outcomeProblem — cards only narrate failures', () => {
       expect(outcomeProblem(tie)).toBe('Tied — no single option won, so nothing changed.');
     });
 
-    it('falls back to a cause-neutral sentence for a below-share winner', () => {
-      const short = { ...passed, isValid: false, options: [{ name: 'Yes', percentage: 60 }, { name: 'No', percentage: 40 }] };
+    // Turnout cleared the quorum, so the support line is the only rule left
+    // that the leader could have missed.
+    it('names the support line when only it can explain the failure', () => {
+      const short = {
+        ...passed, isValid: false, quorum: 2, votes: [{ voter: '0x1' }, { voter: '0x2' }],
+        options: [{ name: 'Yes', percentage: 40 }, { name: 'No', percentage: 35 }],
+      };
       expect(outcomeProblem(short)).toBe(
         'No option reached the support this group requires, so nothing changed.'
       );
     });
 
-    it('never claims a voter shortfall it cannot know', () => {
+    // The real Argus case: 1 voter, quorum 2, leader on 100%. The contracts
+    // reject sub-quorum turnout before the support math, and 100% can't have
+    // missed a 50% line — so this is a turnout shortfall, not a support one.
+    it('names the turnout shortfall when the leader clears the support line', () => {
+      const subQuorum = {
+        ...passed, isValid: false, quorum: 2, votes: [{ voter: '0x1' }],
+        options: [{ name: 'Yes', percentage: 100 }, { name: 'No', percentage: 0 }],
+      };
+      expect(outcomeProblem(subQuorum)).toBe(
+        'Not enough of the group voted for this to count, so nothing changed.'
+      );
+    });
+
+    it('stays neutral when both rules could explain it', () => {
+      const both = {
+        ...passed, isValid: false, quorum: 2, votes: [{ voter: '0x1' }],
+        options: [{ name: 'Yes', percentage: 40 }, { name: 'No', percentage: 35 }],
+      };
+      expect(outcomeProblem(both)).toBe(
+        'This vote didn\u2019t clear the group\u2019s rules, so nothing changed.'
+      );
+    });
+
+    // Neither of today's rules fits — the group has changed them since. Naming
+    // either one would be an invention.
+    it('stays neutral when neither rule fits, meaning the rules moved', () => {
+      const moved = {
+        ...passed, isValid: false, quorum: 1, votes: [{ voter: '0x1' }, { voter: '0x2' }],
+        options: [{ name: 'Yes', percentage: 70 }, { name: 'No', percentage: 30 }],
+      };
+      expect(outcomeProblem(moved)).toBe(
+        'This vote didn\u2019t clear the group\u2019s rules, so nothing changed.'
+      );
+    });
+
+    it('never claims a shortfall of either kind with no vote data to judge it', () => {
       for (const opts of [
         [{ name: 'A', percentage: 0 }],
         [{ name: 'A', percentage: 50 }, { name: 'B', percentage: 50 }],
         [{ name: 'A', percentage: 70 }, { name: 'B', percentage: 30 }],
       ]) {
-        expect(outcomeProblem({ ...passed, isValid: false, options: opts })).not.toMatch(/people voted/);
+        // No `votes` array → no headcount → no turnout verdict, ever.
+        const reason = outcomeProblem({ ...passed, isValid: false, quorum: 2, options: opts });
+        expect(reason).not.toMatch(/Not enough of the group voted/);
+        expect(reason).not.toMatch(/reached the support/);
       }
     });
   });
@@ -171,5 +214,64 @@ describe('outcomeProblem — cards only narrate failures', () => {
 
   it('treats an unknown isValid as valid, matching executionStatus', () => {
     expect(outcomeProblem({ ...passed, isValid: undefined })).toBeNull();
+  });
+});
+
+// `p.quorum` is the org's CURRENT rule, so raising it used to retro-fail every
+// decided proposal — "needs 1 more for quorum (2)" under a "Decision Applied" chip.
+describe('turnoutCopy — a closed vote is not re-judged by today\u2019s quorum', () => {
+  const closed = { voted: 1, eligible: 24, quorum: 2, approximate: true, settled: true };
+
+  it('never asks a decided proposal for more votes', () => {
+    const { line, quorumMet, needsMore } = turnoutCopy(closed);
+    expect(line).not.toMatch(/needs/);
+    expect(needsMore).toBe(0);
+    expect(quorumMet).toBe(true); // drives the amber ink
+
+  });
+
+  it('notes that the result was counted under the rule in force then', () => {
+    const { line, priorRules } = turnoutCopy(closed);
+    expect(line).toBe(`1 of 24 members voted \u00b7 ${PRIOR_RULES_NOTE}`);
+    expect(priorRules).toBe(true);
+  });
+
+  it('stays silent when the closed turnout clears the current line anyway', () => {
+    const { line, priorRules } = turnoutCopy({ ...closed, voted: 4 });
+    expect(line).toBe('4 of 24 members voted');
+    expect(priorRules).toBe(false);
+  });
+
+  it('leaves a no-result poll to its own outcome copy', () => {
+    // invalidReason already explains isValid === false; blaming today's quorum
+    // on top of it would invent a cause we cannot verify.
+    const { line, priorRules } = turnoutCopy({ ...closed, hasResult: false });
+    expect(line).toBe('1 of 24 members voted');
+    expect(priorRules).toBe(false);
+  });
+
+  it('still holds a LIVE poll to the current quorum', () => {
+    const { line, quorumMet, needsMore } = turnoutCopy({ ...closed, settled: false });
+    expect(line).toBe('1 of 24 members voted \u00b7 needs\u00a01\u00a0more\u00a0for\u00a0quorum\u00a0(2)');
+    expect(quorumMet).toBe(false);
+    expect(needsMore).toBe(1);
+  });
+});
+
+describe('turnoutInputs — settled tracks the on-chain status, not the deadline', () => {
+  const proposal = { quorum: 2, votes: [{ voter: '0x1' }], isValid: true };
+
+  it('marks a completed proposal settled', () => {
+    expect(turnoutInputs({ ...proposal, isOngoing: false }, 24)).toMatchObject({
+      voted: 1, eligible: 24, quorum: 2, settled: true, hasResult: true,
+    });
+  });
+
+  it('keeps an awaiting-finalize poll live — its count WILL apply the current quorum', () => {
+    expect(turnoutInputs({ ...proposal, isOngoing: true, isExpired: true }, 24).settled).toBe(false);
+  });
+
+  it('reports a no-result proposal so the meter withholds the note', () => {
+    expect(turnoutInputs({ ...proposal, isOngoing: false, isValid: false }, 24).hasResult).toBe(false);
   });
 });

@@ -72,13 +72,43 @@ export const COMPLETED_ELIGIBILITY_LABEL = 'Who could vote:';
 export const FINALIZE_VERB = 'Count the votes';
 
 /**
+ * Trailing note for a CLOSED vote sitting under today's quorum. Says nothing
+ * about what the older rule WAS — no per-proposal snapshot exists, so the only
+ * honest claim is that the chain applied whatever was live at the time.
+ */
+export const PRIOR_RULES_NOTE = 'counted under the rules at the time';
+
+/** Tooltip behind PRIOR_RULES_NOTE. `quorum` is the CURRENT rule. */
+export function priorRulesTooltip(quorum, voted) {
+  const one = quorum === 1;
+  const ballots = voted === 1 ? '1 ballot' : `${voted} ballots`;
+  return `Your group now needs ${quorum} voter${one ? '' : 's'} for a result to count. ` +
+    `This vote closed earlier with ${ballots} and was already counted on-chain under the rule ` +
+    `in force then \u2014 changing the rule doesn\u2019t re-open decisions that are already made.`;
+}
+
+/**
  * Turnout copy — votes cast vs. eligible denominator, with a quorum aside.
  * `voted` = distinct voters, `eligible` = eligible denominator (may be the
  * member count fallback → set `approximate` so the label reads "members"),
  * `quorum` = minimum voters for the result to count (0 = no quorum).
- * Returns `{ line, quorumMet, needsMore }`.
+ * Returns `{ line, quorumMet, needsMore, lowQuorum, priorRules }`.
+ *
+ * `settled` (poll closed) is not cosmetic: `quorum` is ALWAYS the org's current
+ * rule, and a closed vote was counted under whatever was live then — raising
+ * quorum 1 → 2 used to repaint every past decision amber with "needs 1 more for
+ * quorum (2)". Settled polls show turnout ONLY, plus a neutral note when the
+ * turnout wouldn't clear today's line yet still produced a result.
+ * `hasResult` = isValid !== false; a no-result poll is left to invalidReason.
  */
-export function turnoutCopy({ voted = 0, eligible = 0, quorum = 0, approximate = false }) {
+export function turnoutCopy({
+  voted = 0,
+  eligible = 0,
+  quorum = 0,
+  approximate = false,
+  settled = false,
+  hasResult = true,
+}) {
   const noun = approximate ? 'members' : 'eligible';
   const denom = eligible > 0 ? `${voted} of ${eligible} ${noun}` : `${voted} voted`;
   const base = eligible > 0 ? `${denom} voted` : denom;
@@ -87,8 +117,21 @@ export function turnoutCopy({ voted = 0, eligible = 0, quorum = 0, approximate =
   // green check — the UI must not endorse rubber-stamp rules (panel: Marcus).
   const lowQuorum = quorum > 0 && eligible > 1 && quorum < Math.max(2, Math.ceil(eligible * 0.2));
 
+  if (settled) {
+    // Only a visible mismatch earns a line; everything else is just turnout.
+    const priorRules = quorum > 0 && voted < quorum && hasResult;
+    return {
+      line: priorRules ? `${base} \u00b7 ${PRIOR_RULES_NOTE}` : base,
+      // A closed poll is never failing a live gate — no amber, no shortfall.
+      quorumMet: true,
+      needsMore: 0,
+      lowQuorum: false,
+      priorRules,
+    };
+  }
+
   if (!quorum || quorum <= 0) {
-    return { line: base, quorumMet: true, needsMore: 0, lowQuorum: false };
+    return { line: base, quorumMet: true, needsMore: 0, lowQuorum: false, priorRules: false };
   }
   if (voted >= quorum) {
     return {
@@ -97,6 +140,7 @@ export function turnoutCopy({ voted = 0, eligible = 0, quorum = 0, approximate =
       quorumMet: true,
       needsMore: 0,
       lowQuorum,
+      priorRules: false,
     };
   }
   const needsMore = quorum - voted;
@@ -105,6 +149,7 @@ export function turnoutCopy({ voted = 0, eligible = 0, quorum = 0, approximate =
     quorumMet: false,
     needsMore,
     lowQuorum,
+    priorRules: false,
   };
 }
 
@@ -251,18 +296,19 @@ export function outcomeHeadline(p = {}) {
 /**
  * Why a proposal came back `isValid === false`.
  *
- * IMPORTANT: `isValid` is NOT a quorum flag. Both contracts compute it as
- *   ok = (winner's share >= quorum) && (winner > runner-up)
- * (VotingMath.pickWinnerMajority / pickWinnerTwoSlice), so a false value covers
- * THREE different outcomes: nothing was counted, the top two TIED, or the winner
- * fell under the required share. Calling all of them "not enough people voted"
- * mislabels two of the three.
+ * `isValid` is a verdict, not a cause. It goes false for FOUR different
+ * outcomes: nothing was counted, too few people voted, the top two TIED, or the
+ * winner fell under the required share — so naming any one of them outright is
+ * a guess. `quorum` IS a minimum voter count (`QuorumSet(uint32)`, and Argus
+ * invalidated a 1-voter/100%-support proposal at quorum 2 with only 3 members,
+ * which a percentage reading can't explain), and the contracts reject a
+ * sub-quorum turnout BEFORE the support math ever runs.
  *
- * Only the first two are identifiable from vote data, so the third gets a
- * cause-neutral sentence rather than an invented one. In particular we do NOT
- * compare voter count against `p.quorum`: the contracts emit that value as a
- * PERCENTAGE (`event QuorumSet(uint8 pct)`), despite the subgraph schema
- * describing it as a minimum voter count.
+ * Neither the quorum nor the threshold in force AT THE TIME is recorded per
+ * proposal, so we name a cause only where today's rules leave exactly one
+ * standing: a turnout under quorum whose leader clears the support line can
+ * only have failed on turnout, and vice versa. When both fit — or neither,
+ * meaning the rules have moved since — say so plainly instead of inventing one.
  */
 function invalidReason(p) {
   const shares = (p.options || []).map((o) => Number(o.percentage) || 0);
@@ -272,7 +318,20 @@ function invalidReason(p) {
   if (shares.filter((s) => s === top).length > 1) {
     return 'Tied — no single option won, so nothing changed.';
   }
-  return 'No option reached the support this group requires, so nothing changed.';
+  // Absent votes we claim no turnout cause at all — `totalVotes` is a weight
+  // sum for Direct Democracy, not a headcount, so it can't stand in here.
+  const voted = Array.isArray(p.votes) ? p.votes.length : 0;
+  const quorum = Number(p.quorum) || 0;
+  const threshold = Number(p.thresholdPct) || 0;
+  const turnoutShort = voted > 0 && quorum > 0 && voted < quorum;
+  const supportShort = threshold > 0 && top < threshold;
+  if (turnoutShort && !supportShort) {
+    return 'Not enough of the group voted for this to count, so nothing changed.';
+  }
+  if (supportShort && !turnoutShort) {
+    return 'No option reached the support this group requires, so nothing changed.';
+  }
+  return 'This vote didn\u2019t clear the group\u2019s rules, so nothing changed.';
 }
 
 /**
@@ -432,6 +491,8 @@ export default {
   sliceBadge,
   ineligibleCopy,
   turnoutCopy,
+  PRIOR_RULES_NOTE,
+  priorRulesTooltip,
   passRuleCopy,
   supportCopy,
   STATUS_LIVE,

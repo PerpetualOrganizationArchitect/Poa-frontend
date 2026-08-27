@@ -3,7 +3,7 @@
  * capture-product-shots.mjs — P0 marketing product screenshots.
  *
  * READ-ONLY. Serves the existing static export (poa-app/out/) on a local port and
- * photographs real, logged-out org surfaces (Decentral Park tasks, KUBI voting/team,
+ * photographs real, logged-out org surfaces (Decentral Park tasks, Kansas Blockchain voting/team,
  * Argus treasury, the /explore proof band). No dev server, no transactions, no app-source
  * edits. Client JS fetches live subgraph data, so every shot waits for network idle plus a
  * settle delay before capturing.
@@ -169,12 +169,12 @@ const SHOTS = [
     },
   },
 
-  // 3. KUBI hybrid election tally — real turnout, clear winner.
+  // 3. Kansas Blockchain hybrid election tally — real turnout, clear winner.
   //    The proposal description names the underlying tech (banned word) and the row carries an
   //    "Execution Failed" status badge; both are hidden so only the title + vote results show.
   {
     name: 'vote-tally',
-    url: '/voting/?org=KUBI',
+    url: '/voting/?org=Kansas%20Blockchain',
     viewport: DESKTOP,
     deviceScaleFactor: 2,
     waitFor: ['View All History'],
@@ -264,10 +264,10 @@ const SHOTS = [
     },
   },
 
-  // 6. KUBI permissions matrix — roles × exact written powers.
+  // 6. Kansas Blockchain permissions matrix — roles × exact written powers.
   {
     name: 'team-matrix',
-    url: '/team/?org=KUBI',
+    url: '/team/?org=Kansas%20Blockchain',
     viewport: DESKTOP,
     deviceScaleFactor: 2,
     waitFor: ['wolfiesell'],
@@ -275,10 +275,10 @@ const SHOTS = [
     clipSelector: 'section:has(> h2:text-is("Permissions"))',
   },
 
-  // 7. KUBI members grid (bonus) — real human members, activity, roles.
+  // 7. Kansas Blockchain members grid (bonus) — real human members, activity, roles.
   {
     name: 'team-members',
-    url: '/team/?org=KUBI',
+    url: '/team/?org=Kansas%20Blockchain',
     viewport: DESKTOP,
     deviceScaleFactor: 2,
     waitFor: ['wolfiesell'],

@@ -1,6 +1,6 @@
-# KUBI DAO — dao.kublockchain.com setup
+# Kansas Blockchain (formerly KUBI) — dao.kublockchain.com setup
 
-One-time setup for hosting KUBI's DAO at `dao.kublockchain.com`. After this, no
+One-time setup for hosting Kansas Blockchain's org at `dao.kublockchain.com`. After this, no
 ongoing coordination is required — every deploy we ship to `poa.box` is live on
 your domain on the next request.
 
@@ -8,7 +8,7 @@ your domain on the next request.
 
 Your Cloudflare Worker reverse-proxies `dao.kublockchain.com` to
 `https://poa.box`. The client-side app reads `window.location.hostname`,
-sees `dao.kublockchain.com`, and auto-loads the KUBI org as the default — no
+sees `dao.kublockchain.com`, and auto-loads the Kansas Blockchain org as the default — no
 query params, no branding flash. Passkeys work across both domains because we
 register `dao.kublockchain.com` as a WebAuthn Related Origin on our side.
 
@@ -63,7 +63,7 @@ From the account home:
 
        // Proxy everything else transparently to poa.box.
        // URL bar stays on dao.kublockchain.com — the app reads the hostname
-       // and auto-loads KUBI as the default org.
+       // and auto-loads Kansas Blockchain as the default org.
        const upstreamUrl = UPSTREAM + url.pathname + url.search;
        const upstreamReq = new Request(upstreamUrl, {
          method: request.method,
@@ -113,7 +113,7 @@ curl -i https://poa.box/.well-known/webauthn
 
 Then in a browser:
 
-1. Open `https://dao.kublockchain.com/` — should land on the KUBI DAO home
+1. Open `https://dao.kublockchain.com/` — should land on the Kansas Blockchain home
    with no intermediate "POA" branding flash.
 2. Sign up with a passkey. DevTools → Application → WebAuthn should show
    `rp.id: "poa.box"`. Completion of the flow means Related Origins worked.
@@ -128,6 +128,15 @@ Then in a browser:
 - **Rate limits.** For high traffic, enable Cloudflare's edge cache on the
   Worker route — upstream cache headers are already configured correctly
   (immutable JS/CSS, no-cache HTML).
+- **If the org renames itself on-chain, tell us.** The domain resolves its org
+  by exact *name*: `HOST_DEFAULT_ORG` in `poa-app/src/config/hostDefaultOrg.js`
+  maps `dao.kublockchain.com` → the org's current name, and POContext looks it
+  up with `organizations(where: { name: $name })`. A rename makes that lookup
+  miss and the domain lands on "Organization not found" until the map is
+  updated. Two edits, both in that file: point `HOST_DEFAULT_ORG` (and
+  `ORG_WHITE_LABEL_URL`) at the new name, and add the retired name to
+  `ORG_NAME_ALIASES` so `?org=<old name>` links already in the wild keep
+  working. This is what happened when KUBI became Kansas Blockchain.
 
 ## Browser support notes
 

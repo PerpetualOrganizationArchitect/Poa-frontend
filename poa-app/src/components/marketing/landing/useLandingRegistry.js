@@ -3,9 +3,11 @@ import { useprofileHubContext } from "@/context/profileHubContext";
 import { isHiddenOrg } from "@/util/hiddenOrgs";
 
 // Known-real orgs referenced elsewhere in the repo; preferred for the
-// featured charter card. Matched case-insensitively (the directory stores
-// e.g. "KUBI").
-const PREFERRED_FEATURED = ["kubi", "poa"];
+// featured charter card. Matched case-insensitively against the org's current
+// on-chain name (the directory stores e.g. "Kansas Blockchain"); retired names
+// are kept so a rename degrades to the next preference instead of silently
+// featuring whichever org happens to be largest.
+const PREFERRED_FEATURED = ["kansas blockchain", "kubi", "poa"];
 
 // A display name a stranger should never meet on the front door.
 const isPresentableName = (name) =>

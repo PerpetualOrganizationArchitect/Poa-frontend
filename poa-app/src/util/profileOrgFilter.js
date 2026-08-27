@@ -1,4 +1,7 @@
-const HUDSONHRH_ALLOWED = new Set(['poa', 'kubi']);
+// Matched against the org's CURRENT on-chain name, lowercased. Retired names
+// ('kubi' → 'kansas blockchain') stay listed so the filter survives a rename
+// in either direction.
+const HUDSONHRH_ALLOWED = new Set(['poa', 'kubi', 'kansas blockchain']);
 
 export function filterUserOrgsForViewedProfile(orgs, profileUsername) {
   const owner = profileUsername?.trim().toLowerCase();

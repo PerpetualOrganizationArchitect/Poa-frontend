@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { getDefaultOrgForHost } from '@/config/hostDefaultOrg';
+import { getDefaultOrgForHost, resolveOrgAlias } from '@/config/hostDefaultOrg';
 
 /**
  * Resolve the active org name for the current page.
@@ -9,6 +9,11 @@ import { getDefaultOrgForHost } from '@/config/hostDefaultOrg';
  *   1. ?org= query param (canonical, preferred)
  *   2. ?userDAO= query param (legacy, kept for back-compat with old links)
  *   3. Host default (white-label domains — see HOST_DEFAULT_ORG)
+ *
+ * Whatever the source, the name is mapped through `resolveOrgAlias` so links
+ * carrying an org's retired name (?org=KUBI for what is now "Kansas
+ * Blockchain") still resolve, and every link this value builds carries the
+ * current name forward.
  *
  * SSR-safe: the initial render uses only `router.query`, which Next produces
  * identically on server and client. The `window.location`/`hostname` fallbacks
@@ -39,7 +44,7 @@ export function useOrgNameState() {
   }, [fromRouter]);
 
   return {
-    orgName: fromRouter || browser.name || '',
+    orgName: resolveOrgAlias(fromRouter || browser.name || ''),
     // True once we know WHETHER a name exists, whatever the answer.
     resolved: !!fromRouter || browser.checked,
   };

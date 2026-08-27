@@ -21,6 +21,7 @@ import { useCallback } from 'react';
 import { useWeb3Services, useTransactionWithNotification } from './useWeb3Services';
 import { VotingType } from '@/services/web3/domain/VotingService';
 import { RefreshEvent } from '@/context/RefreshContext';
+import { readGasFloor, clearGasFloor, gasFloorOptions } from '@/lib/accessV2/gasFloors';
 
 export function useVoteActions(votingTypeSelected) {
   const { voting, getNotReadyMessage } = useWeb3Services();
@@ -60,13 +61,24 @@ export function useVoteActions(votingTypeSelected) {
   // PollDetail's `onFinalize` ("Count the votes"), routed through its confirm
   // dialog. Returns the result so the dialog can await it. PollDetail passes
   // `isHybrid` from the poll itself, so this one does NOT reuse `type` above.
+  //
+  // GAS FLOOR: announceWinner runs the winning batch inside a try/catch, so every estimator —
+  // `eth_estimateGas`, the wallet, the bundler — prices only the cheap caught-failure path. An
+  // under-funded call therefore SUCCEEDS while silently skipping the batch (CLAUDE.md's loudest
+  // gotcha; Test6 proposal #23 no-op'd at ~29k). When the proposal was created in this browser
+  // with a known-expensive batch, its builder parked a floor — apply it to THIS transaction, the
+  // only one that can use it. `gasFloorOptions` feeds both managers (`gasLimit` for the EOA path,
+  // `callGasLimitFloor` for the 4337 path, both floors over the estimate, never caps).
   const handleFinalize = useCallback(async (contractAddress, proposalId, isHybrid = false) => {
-    return executeWithNotification(
+    const floor = readGasFloor(contractAddress, proposalId);
+
+    const result = await executeWithNotification(
       () => (voting
         ? voting.announceWinner(
           isHybrid ? VotingType.HYBRID : VotingType.DIRECT_DEMOCRACY,
           contractAddress,
           proposalId,
+          gasFloorOptions(floor),
         )
         : notReady()),
       {
@@ -75,6 +87,12 @@ export function useVoteActions(votingTypeSelected) {
         refreshEvent: RefreshEvent.PROPOSAL_COMPLETED,
       }
     );
+
+    // Settled — announceWinner can only run once per proposal, so the floor is spent either way.
+    // (Only on success: a failed send can be retried and would want the floor again.)
+    if (result?.success && floor) clearGasFloor(contractAddress, proposalId);
+
+    return result;
   }, [voting, executeWithNotification, notReady]);
 
   // `voting` + `executeWithNotification` are handed back so a surface that also

@@ -16,10 +16,17 @@
  * Detected capabilities:
  *   PROPOSAL_PROPOSER — subgraph-pop #195, proposer attribution.
  *   TASK_RELEASES     — subgraph-pop #201, TaskManager v7 claim release.
+ *   ACCESS_V2         — subgraph-pop access-v2 wave, the MembershipAuthority model.
  *
  * Once an org's endpoint serves the newer version the feature lights up with no
  * frontend change.
  */
+
+import * as accessV2Documents from './queriesAccessV2';
+import { deriveRequirements } from './accessV2Requirements';
+
+/** Generated at module load from the v2 documents themselves — see accessV2Requirements. */
+export const ACCESS_V2_REQUIREMENTS = deriveRequirements(Object.values(accessV2Documents));
 
 const memory = new Map(); // `${url}|${capabilityId}` -> boolean | Promise<boolean>
 
@@ -54,6 +61,27 @@ export const CAPABILITY = {
       { type: 'Task', field: 'releases' },
       { type: 'TaskRelease' },
     ],
+  },
+  /**
+   * Access v2 — the per-org `MembershipAuthority` model (subjects, the eligibility fold mirror,
+   * the semantic permission table, manager delegation). Gates EVERY v2 query in the app.
+   *
+   * This one matters more than the others: the v2 entities land on the gateway endpoints only
+   * after the Wave-E publish, and one unknown field fails the WHOLE document — so an org whose
+   * endpoint has not been republished (and every org that never migrates) must read this as
+   * "absent" and keep the legacy Hats/EligibilityModule surfaces completely untouched.
+   *
+   * The requirement list names the fields the v2 documents actually SELECT, not just the entity
+   * types, so a partial deployment reads as absent rather than half-working. It is GENERATED from
+   * those documents (`util/accessV2Requirements`) rather than written by hand: the hand-written
+   * version claimed exactly this property while covering 13 of ~120 selected fields and omitting
+   * ConfigLintEvent altogether — a stale publish missing any unlisted field read as CAPABLE and
+   * then failed the whole document at runtime. Adding a field to a v2 query now adds it to the
+   * probe in the same edit.
+   */
+  ACCESS_V2: {
+    id: 'accessV2',
+    require: ACCESS_V2_REQUIREMENTS,
   },
 };
 

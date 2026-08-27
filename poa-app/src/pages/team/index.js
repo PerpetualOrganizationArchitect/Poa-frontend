@@ -38,6 +38,9 @@ import {
   RoleApplicationModal,
 } from '@/components/orgStructure';
 import { useOrgGate } from "@/components/shared/OrgDeadEnd";
+// Access v2. Renders NOTHING on an org that is not on the MembershipAuthority path, so everything
+// below it is the untouched legacy surface for every unmigrated org.
+import { AccessV2TeamSection } from '@/components/accessV2';
 
 const OrgStructurePage = () => {
   const router = useRouter();
@@ -53,8 +56,10 @@ const OrgStructurePage = () => {
   const { userData } = useUserContext();
   const userHatIds = userData?.hatIds || [];
 
-  // Get voting classes for governance display
-  const { votingClasses } = useVotingContext();
+  // Voting classes for governance display, and the ongoing proposals the access-v2 create-role
+  // wizard needs: a subject-creating proposal that executes before ours shifts every predicted
+  // subject id in our batch, and the only signal that another one is in flight is this list.
+  const { votingClasses, ongoingPolls } = useVotingContext();
 
   const {
     orgName,
@@ -232,6 +237,11 @@ const OrgStructurePage = () => {
               loading={loading}
             />
           </Box>
+
+          {/* Access v2 — roles + groups, the claimable panel and the review window.
+              Self-gating: `null` unless this org's MembershipAuthority is router-bound.
+              `activeProposals` feeds the create-role wizard's id-prediction race warning. */}
+          <AccessV2TeamSection activeProposals={ongoingPolls} />
 
           {/* Role Hierarchy Section */}
           <Box as="section" data-tour="org-roles">

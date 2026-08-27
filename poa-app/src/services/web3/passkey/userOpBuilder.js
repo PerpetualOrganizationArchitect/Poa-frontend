@@ -129,7 +129,7 @@ export async function buildUserOpWithFallback({
   paymasterDataEntries,
   authorization, // EIP-7702 authorization (optional — for delegated EOAs)
   dummySignatureLength, // Override dummy sig length (65 for ECDSA, 640 for passkey)
-  gasOverrides, // { callGasLimit, callGasLimitMultiplier }
+  gasOverrides, // { callGasLimit, callGasLimitMultiplier, callGasLimitFloor }
 }) {
   const entryPoint = ENTRY_POINT_ADDRESS;
 
@@ -249,9 +249,18 @@ export async function buildUserOpWithFallback({
  *   estimate INSTEAD of the default 10% buffer. Pass as BigInt (e.g. 3n for 3x).
  *   Useful for ops like `announceWinner` where the bundler can't simulate recursive
  *   sub-calls (Hats protocol tree-walk through beacon-proxy chains) and undercounts.
+ * @param {bigint} [gasOverrides.callGasLimitFloor] - MINIMUM callGasLimit, applied AFTER the
+ *   override/multiplier/buffer. Unlike `callGasLimit` this composes rather than replaces, so a
+ *   caller that knows an absolute floor (the size of a governance batch) does not have to throw
+ *   away a multiplier that exists for an orthogonal reason (the Hats tree-walk undercount).
+ *   `announceWinner` needs BOTH: see lib/accessV2/gasFloors.
  */
 async function estimateGas(userOp, bundlerClient, gasOverrides = {}) {
-  const { callGasLimit: callGasLimitOverride, callGasLimitMultiplier } = gasOverrides;
+  const {
+    callGasLimit: callGasLimitOverride,
+    callGasLimitMultiplier,
+    callGasLimitFloor,
+  } = gasOverrides;
 
   // Validate overrides eagerly so misuse surfaces at the caller, not deep in the bundler.
   // 0 / 0n are treated as invalid (not "no override") — these would cause immediate OOG.
@@ -263,6 +272,11 @@ async function estimateGas(userOp, bundlerClient, gasOverrides = {}) {
   if (callGasLimitMultiplier !== undefined && callGasLimitMultiplier !== null) {
     if (BigInt(callGasLimitMultiplier) <= 0n) {
       throw new Error(`callGasLimitMultiplier must be positive, got ${callGasLimitMultiplier}`);
+    }
+  }
+  if (callGasLimitFloor !== undefined && callGasLimitFloor !== null) {
+    if (BigInt(callGasLimitFloor) <= 0n) {
+      throw new Error(`callGasLimitFloor must be positive, got ${callGasLimitFloor}`);
     }
   }
 
@@ -285,6 +299,20 @@ async function estimateGas(userOp, bundlerClient, gasOverrides = {}) {
       console.log(`[UserOp] callGasLimit ${callGasLimitMultiplier}x multiplier: ${userOp.callGasLimit} (bundler estimated ${gasEstimate.callGasLimit})`);
     } else {
       userOp.callGasLimit = applyBuffer(gasEstimate.callGasLimit);
+    }
+
+    // FLOOR, applied last so it composes with whichever branch ran above. This is the channel for
+    // "the caller knows the real cost and the bundler structurally cannot" — announceWinner runs
+    // the winning batch inside a try/catch, so the bundler traces only the caught-failure path.
+    if (callGasLimitFloor !== undefined && callGasLimitFloor !== null) {
+      const floor = BigInt(callGasLimitFloor);
+      if (floor > userOp.callGasLimit) {
+        console.log(`[UserOp] callGasLimit floor: ${floor} (was ${userOp.callGasLimit})`);
+        userOp.callGasLimit = floor;
+        // The floor is an explicit caller instruction, exactly like an override — do not let the
+        // MAX_USEROP_GAS trim below silently undo it.
+        overrideApplied = true;
+      }
     }
     userOp.preVerificationGas = applyBuffer(gasEstimate.preVerificationGas);
 

@@ -101,6 +101,7 @@ export class SmartAccountTransactionManager {
       value,
       callGasLimit,
       callGasLimitMultiplier,
+      callGasLimitFloor,
     } = options;
 
     try {
@@ -122,6 +123,7 @@ export class SmartAccountTransactionManager {
       const userOp = await this._buildUserOpWithFallback(callData, overrideHatIds, paymasterClaimTarget, {
         callGasLimit,
         callGasLimitMultiplier,
+        callGasLimitFloor,
       });
 
       // State: Awaiting signature (biometric prompt)
@@ -193,7 +195,7 @@ export class SmartAccountTransactionManager {
    * @returns {Promise<TransactionResult>}
    */
   async executeBatch(transactions, batchOptions = {}) {
-    const { onStateChange, callGasLimit, callGasLimitMultiplier } = batchOptions;
+    const { onStateChange, callGasLimit, callGasLimitMultiplier, callGasLimitFloor } = batchOptions;
 
     try {
       this._notifyState(onStateChange, TransactionState.ESTIMATING);
@@ -220,6 +222,7 @@ export class SmartAccountTransactionManager {
       const userOp = await this._buildUserOpWithFallback(callData, null, null, {
         callGasLimit,
         callGasLimitMultiplier,
+        callGasLimitFloor,
       });
 
       this._notifyState(onStateChange, TransactionState.AWAITING_SIGNATURE);
@@ -274,7 +277,8 @@ export class SmartAccountTransactionManager {
    *
    * @param {string} callData - Encoded call data
    * @param {string[]} [overrideHatIds] - Override hat IDs for paymaster budget
-   * @param {Object} [gasOverrides] - Optional gas overrides ({ callGasLimit, callGasLimitMultiplier })
+   * @param {Object} [gasOverrides] - Optional gas overrides
+   *   ({ callGasLimit, callGasLimitMultiplier, callGasLimitFloor })
    */
   async _buildUserOpWithFallback(callData, overrideHatIds = null, claimTarget = null, gasOverrides = {}) {
     // Reset per-transaction state up front: the manager instance is memoized

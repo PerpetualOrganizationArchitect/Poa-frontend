@@ -288,6 +288,39 @@ export const CONTRACT_ERROR_SELECTORS = {
   '0x40ab3afe': 'ZeroClaimer',
   '0xe5d19efb': 'ZeroDepositor',
   '0xe0830f6b': 'ZeroUser',
+
+  // ---- MembershipAuthority (access v2) ----
+  // Generated from `abi/MembershipAuthority.json` (union, per the note above — nothing was
+  // replaced). These are what an access-v2 governance batch reverts WITH, so they are the payload
+  // `Executor.CallFailed` carries; without them a failed role proposal reads as a bare selector.
+  // Names already present under a DIFFERENT selector (NotMember, NotExecutor, Paused, ZeroAddress,
+  // AlreadyVouched, HasNotVouched, ArrayLengthMismatch, CannotVouchForSelf, InvalidMaxDailyVouches)
+  // are deliberately not re-listed — the map is selector-keyed and they already resolve.
+  '0x810074be': 'AlreadyMember',
+  '0x48e708d1': 'ForceRequired',
+  '0x851ab6e2': 'GrantBlockedByGovernanceBan',
+  '0x8a1d92d8': 'GroupSizeLimit',
+  '0x138a9d9f': 'GroupsPerRoleLimit',
+  '0x0ef9ab66': 'MaxMembersOnGroup',
+  '0x5ba4d769': 'NoPendingAction',
+  '0x0596c757': 'NotAGroup',
+  '0x85e045ee': 'NotAuthorizedManager',
+  '0x6247a84e': 'NotClaimable',
+  '0xdd3637db': 'NotInOrg',
+  '0x7a936074': 'NotRegisteredModule',
+  '0x7ab20abd': 'NotYetActive',
+  '0x153639c7': 'PendingActionExists',
+  '0x34d382b8': 'PermFanoutLimit',
+  '0x0c55addc': 'RemovalIneffective',
+  '0xf2271ea8': 'RemoveBlockedByStickyGovernance',
+  '0x31286a16': 'RoleLimit',
+  '0x249ea75e': 'RuleNotDelegable',
+  '0xf7ff5abb': 'SelfManagedCycle',
+  '0x2fa36b95': 'SubjectExists',
+  '0x5d975623': 'SubjectFull',
+  '0xcff887c5': 'UnknownSubject',
+  '0x7f1b58f9': 'VouchRateLimited',
+  '0x07d3660b': 'WiringIncompatible',
 };
 
 /**
@@ -545,6 +578,36 @@ export const CONTRACT_ERROR_MESSAGES = {
   ERC20InsufficientBalance: "You don't have enough tokens for this transfer.",
   ERC20InsufficientAllowance: 'This contract is not approved to move that many of your tokens yet. Approve it and try again.',
   ReentrancyGuardReentrantCall: 'That action is already running. Wait for it to finish before trying again.',
+
+  // ---- MembershipAuthority (access v2) ----
+  // The write half of the roles/groups surface. Where a condition also has a PRE-flight reason
+  // code, the wording is kept in step with `lib/accessV2/rules.ACTION_REASON_COPY` on purpose: a
+  // member must not be told one thing before a proposal and a different thing after it fails.
+  UnknownSubject: 'That role or group no longer exists. Refresh and try again.',
+  SubjectExists: 'A role or group with that name already exists.',
+  SubjectFull: 'That role is full. Free a seat first, or raise the seat limit.',
+  AlreadyMember: 'They already hold that role.',
+  NotClaimable: 'There is nothing to claim on that role right now.',
+  NotInOrg: "They aren't in the org yet, so this had to be an invitation they accept rather than a direct add.",
+  GrantBlockedByGovernanceBan: 'A governance block is in place on that role — only a vote can lift it.',
+  RemoveBlockedByStickyGovernance: 'That seat was granted by a vote and cannot be removed by a delegate — it takes another vote.',
+  RemovalIneffective: 'Removing them would not take effect — they still qualify another way (an open role, a live vouch quorum, or a verified email).',
+  ForceRequired: 'Closing that role would drop every member who is only held by it, so the change has to be confirmed as a forced change.',
+  RuleNotDelegable: 'That rule was set by a vote and is not delegable — a manager cannot change it.',
+  NotAuthorizedManager: "You aren't a manager for that role, so you can't act on it.",
+  NoPendingAction: 'That request is no longer pending — it may have been completed or cancelled already.',
+  PendingActionExists: 'There is already a pending request for that person and role. Resolve it before starting another.',
+  NotYetActive: 'That request is still in its review window — it can be completed once the countdown ends.',
+  NotAGroup: 'That subject is a role, not a group. Groups are the only thing roles can be composed into.',
+  SelfManagedCycle: 'That wiring would make a role manage itself through a loop. Pick a different manager.',
+  WiringIncompatible: 'That composition is not allowed — check which roles belong to the group.',
+  RoleLimit: 'This organization has reached its limit on roles.',
+  GroupSizeLimit: 'That group already holds the maximum number of roles.',
+  GroupsPerRoleLimit: 'That role already belongs to the maximum number of groups.',
+  MaxMembersOnGroup: 'That group is at its member limit.',
+  PermFanoutLimit: 'Too many permissions were set at once. Split the change across two proposals.',
+  VouchRateLimited: "You've used up your vouches for today. Try again tomorrow.",
+  NotRegisteredModule: "That contract isn't registered to this organization, so the authority won't answer for it.",
 };
 
 /**
@@ -588,6 +651,120 @@ function looksLikeRevertData(s) {
   return typeof s === 'string' && /^0x[0-9a-fA-F]{8,}$/.test(s.trim());
 }
 
+// ---------------------------------------------------------------------------
+// Executor.CallFailed — the proposal-batch wrapper
+// ---------------------------------------------------------------------------
+
+/**
+ * `Executor.CallFailed(uint256 index, bytes lowLevelData)` (Executor.sol:35).
+ *
+ * Every governance batch runs through `Executor.execute`, which catches each sub-call and
+ * re-reverts with THIS wrapper. So the selector that reaches the app is always CallFailed and the
+ * error the member actually needs — `SubjectFull`, `RemovalIneffective`, `TargetNotAllowed` — is
+ * ABI-encoded INSIDE `lowLevelData`. Decoding only the outer layer produced "One of the actions in
+ * this proposal failed" for every possible cause, and on the completed-poll surface it produced
+ * raw hex (`executionStatus` interpolated `proposal.executionError` verbatim).
+ */
+export const EXECUTOR_CALL_FAILED_SELECTOR = '0x5c0dee5d';
+
+/** The 4-byte selector prefix of a revert blob, as the user-facing fallback identifier. */
+export function shortSelector(hex) {
+  if (typeof hex !== 'string') return null;
+  const trimmed = hex.trim().toLowerCase();
+  return /^0x[0-9a-f]{8}/.test(trimmed) ? trimmed.slice(0, 10) : null;
+}
+
+/** "Action 3 in this proposal" / "One of the actions in this proposal" when the index is unknown. */
+function callIndexPhrase(index) {
+  return Number.isInteger(index) && index >= 0
+    ? `Action ${index + 1} in this proposal`
+    : 'One of the actions in this proposal';
+}
+
+/**
+ * Compose the user-facing sentence for a decoded CallFailed.
+ *
+ * The EMPTY-inner case is not a decode miss — it is CLAUDE.md's loudest gotcha. `announceWinner`
+ * wraps the batch in a try/catch, so every estimator prices the cheap caught-failure path and an
+ * under-funded finalize hits OutOfGas in a sub-call: the executor re-reverts `CallFailed(i, 0x)`,
+ * the proposal is marked executed and NOTHING happened. Naming the remedy (retry with a higher gas
+ * limit) is the whole point of surfacing this.
+ */
+function callFailedMessage({ index, innerData, inner }) {
+  const where = callIndexPhrase(index);
+  // `innerData === null` means the WRAPPER itself would not decode (a truncated blob) — we know
+  // nothing, so do not guess a cause. `'0x'` is different: the wrapper decoded and the callee
+  // returned NO revert data, which is the out-of-gas signature.
+  if (innerData === null) return messageForErrorName('CallFailed');
+  if (innerData === '0x') {
+    return `${where} failed with no reason given — usually it ran out of gas. Nothing was applied; try counting the votes again with a higher gas limit.`;
+  }
+  if (inner?.message) return `${where} failed: ${inner.message}`;
+  if (inner?.isStringError && inner.reason) return `${where} failed: ${inner.reason}`;
+  if (inner?.name) return `${where} failed with ${inner.name}. Nothing was applied.`;
+  const sel = shortSelector(innerData);
+  return `${where} failed with error ${sel || 'of unknown type'}. Nothing was applied.`;
+}
+
+/**
+ * Decode `Executor.CallFailed` revert bytes, recovering the INNER revert.
+ *
+ * @param {string} data - hex revert data whose selector is CallFailed
+ * @param {Array|Object} [abi] - ABI/Interface used to name the inner error
+ * @param {number} [depth] - recursion guard (an executor batch can target another executor)
+ * @returns {{index: number|null, innerData: string|null, inner: object|null, message: string}|null}
+ */
+export function decodeExecutorCallFailure(data, abi = null, depth = 0) {
+  if (!looksLikeRevertData(data)) return null;
+  const hex = data.trim().toLowerCase();
+  if (hex.slice(0, 10) !== EXECUTOR_CALL_FAILED_SELECTOR) return null;
+
+  let index = null;
+  let innerData = null;
+  try {
+    const [i, ret] = ethers.utils.defaultAbiCoder.decode(['uint256', 'bytes'], '0x' + hex.slice(10));
+    index = Number(i.toString());
+    innerData = String(ret || '0x').toLowerCase();
+  } catch {
+    // A truncated/odd payload still tells us WHICH wrapper fired — keep the generic copy rather
+    // than falling through to the raw-hex surface.
+  }
+
+  const inner = depth < 3 ? decodeRevertData(innerData, abi, depth + 1) : null;
+  return { index, innerData, inner, message: callFailedMessage({ index, innerData, inner }) };
+}
+
+/**
+ * One sentence for a `ProposalExecutionFailed.reason` blob (the subgraph's
+ * `Proposal.executionError`, and the same bytes the finalize receipt carries).
+ *
+ * Returns null when there is nothing to say, so callers can keep their existing generic copy.
+ *
+ * @param {string} reasonHex - the raw `reason` bytes
+ * @param {Array|Object} [abi]
+ * @returns {string|null}
+ */
+export function describeExecutionFailure(reasonHex, abi = null) {
+  if (!reasonHex || typeof reasonHex !== 'string') return null;
+  const hex = reasonHex.trim().toLowerCase();
+  // An EMPTY reason is the executor's whole call reverting with no data — the swallowed OOG.
+  if (hex === '' || hex === '0x') {
+    return 'The winning action ran out of gas and was skipped, so nothing was applied. Try counting the votes again with a higher gas limit.';
+  }
+  const decoded = decodeRevertData(hex, abi);
+  if (!decoded) {
+    const sel = shortSelector(hex);
+    return sel
+      ? `The winning action failed on-chain with error ${sel}.`
+      : 'The winning action failed on-chain.';
+  }
+  // CallFailed already reads as a full sentence (it names the action index and the remedy).
+  if (decoded.name === 'CallFailed') return decoded.message;
+  if (decoded.message) return `The winning action failed on-chain: ${decoded.message}`;
+  if (decoded.isStringError && decoded.reason) return `The winning action failed on-chain: ${decoded.reason}`;
+  return `The winning action failed on-chain with ${decoded.name} (${shortSelector(hex)}).`;
+}
+
 /**
  * Normalize an `abi` argument (array of fragments, JSON ABI, or an already-built
  * ethers Interface) into an Interface, or null.
@@ -616,8 +793,9 @@ function toInterface(abi) {
  *
  * @param {string} data - hex revert data (0x…)
  * @param {Array|Object} [abi] - contract ABI/fragments or a built ethers Interface
+ * @param {number} [depth] - internal recursion guard for nested Executor.CallFailed wrappers
  */
-export function decodeRevertData(data, abi = null) {
+export function decodeRevertData(data, abi = null, depth = 0) {
   if (!looksLikeRevertData(data)) return null;
   const hex = data.trim().toLowerCase();
   const selector = hex.slice(0, 10);
@@ -645,6 +823,22 @@ export function decodeRevertData(data, abi = null) {
       reason: 'Panic',
       message: 'The transaction hit an internal contract error. Please refresh and try again, or contact an admin if it persists.',
     };
+  }
+
+  // Executor.CallFailed(index, lowLevelData) — decode the INNER revert and speak about that.
+  // This runs BEFORE the Interface branch on purpose: every voting ABI declares CallFailed, so
+  // `iface.parseError` would resolve it first and return the generic wrapper copy, throwing the
+  // one piece of information the member needs (which action, and why) away.
+  if (selector === EXECUTOR_CALL_FAILED_SELECTOR) {
+    const failure = decodeExecutorCallFailure(hex, abi, depth);
+    if (failure) {
+      return {
+        name: 'CallFailed',
+        reason: failure.inner?.name ? `CallFailed: ${failure.inner.name}` : 'CallFailed',
+        message: failure.message,
+        callFailure: failure,
+      };
+    }
   }
 
   // Custom error: prefer the contract's own Interface (recovers args + exact name).

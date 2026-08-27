@@ -10,6 +10,8 @@
  * from here too so the vocabulary never drifts between surfaces again.
  */
 
+import { describeExecutionFailure } from '@/lib/errors/contractErrors';
+
 /**
  * Map an internal voting-type identifier to its member-facing display name.
  * `votingType` comes from VotingContext ('Hybrid' | 'Direct Democracy' |
@@ -191,9 +193,12 @@ export function executionStatus(p = {}) {
       key: 'failed',
       label: 'Execution Failed',
       colorScheme: 'red',
-      explain: p.executionError
-        ? `The winning action failed on-chain: ${p.executionError}`
-        : "The winning option's on-chain action failed to run — it can be retried.",
+      // `executionError` is RAW BYTES (`ProposalExecutionFailed.reason`, Bytes in the schema) — it
+      // used to be interpolated verbatim, so a member read "The winning action failed on-chain:
+      // 0x5c0dee5d0000…". Decode it: the outer wrapper is always `Executor.CallFailed`, and the
+      // cause is the inner revert. Falls back to the short selector, then to the generic line.
+      explain: describeExecutionFailure(p.executionError)
+        || "The winning option's on-chain action failed to run — it can be retried.",
       canRetry: true,
     };
   }

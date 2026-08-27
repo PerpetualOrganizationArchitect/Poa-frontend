@@ -11,11 +11,11 @@ import { useIPFScontext } from './ipfsContext';
 import { useIdentityContext } from './IdentityContext';
 import { getSubgraphUrl, getAllSubgraphUrls } from '../config/networks';
 import { useSubgraphClient } from '../util/apolloClient';
-import { getDefaultOrgForHost, getVisitUrlForOrg } from '../config/hostDefaultOrg';
+import { getDefaultOrgForHost, getVisitUrlForOrg, resolveOrgAlias } from '../config/hostDefaultOrg';
 import { useOrgNameState } from '@/hooks/useOrgName';
 
 // Re-export for back-compat with callers that imported these from POContext.
-export { getDefaultOrgForHost, getVisitUrlForOrg };
+export { getDefaultOrgForHost, getVisitUrlForOrg, resolveOrgAlias };
 
 const POContext = createContext();
 

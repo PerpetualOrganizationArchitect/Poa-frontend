@@ -14,4 +14,5 @@ export { usePendingActions } from './usePendingActions';
 export { useSubjectVouches } from './useSubjectVouches';
 export { useVouchCandidates } from './useVouchCandidates';
 export { useAuthorityActions } from './useAuthorityActions';
+export { useActivationGate } from './useActivationGate';
 export { useAccessV2Proposal, MAX_SPONSORED_CALLS } from './useAccessV2Proposal';

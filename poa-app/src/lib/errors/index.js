@@ -27,3 +27,15 @@ export {
   parseError,
   createParsedError,
 } from './ErrorParser';
+
+// Contract-revert decoding shared by both transaction paths. `describeExecutionFailure` is the
+// read-side twin: the same bytes arrive as `ProposalExecutionFailed.reason` on a receipt and as
+// `Proposal.executionError` from the subgraph, and both must read as English, not as hex.
+export {
+  decodeContractRevert,
+  decodeRevertData,
+  decodeExecutorCallFailure,
+  describeExecutionFailure,
+  shortSelector,
+  EXECUTOR_CALL_FAILED_SELECTOR,
+} from './contractErrors';

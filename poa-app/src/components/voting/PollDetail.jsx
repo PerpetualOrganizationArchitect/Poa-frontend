@@ -76,6 +76,7 @@ import { useVotingContext } from '@/context/VotingContext';
 import { useVotingPower } from '@/hooks/useVotingPower';
 import { useRoleNames } from '@/hooks/useRoleNames';
 import { useOrgName } from '@/hooks/useOrgName';
+import { useActivationGate } from '@/hooks/accessV2/useActivationGate';
 import { usePOContext } from '@/context/POContext';
 import {
   displayName,
@@ -242,6 +243,15 @@ export function PollDetail({
   );
   const eligible = verdict.eligible;
 
+  // ELECTORATE ACTIVATION GATE (access v2). Both voting modules reject a voter whose membership
+  // activated AFTER the proposal was created, and `announceWinner`-style silence is not the
+  // failure mode here — `vote()` REVERTS. Without this, a member who joined mid-proposal was told
+  // "You're eligible ✓", pressed Cast vote, and got a bare revert toast.
+  //
+  // Additive and silent everywhere else: legacy orgs, an org whose rows have not arrived, and a
+  // poll with no creation timestamp all return `blocked: false` (see lib/accessV2/ballotGate).
+  const activation = useActivationGate(poll);
+
   // NOTE: no early return before this point — every hook above and below must
   // run on EVERY render (React hooks-order rule). All poll derivations here are
   // null-tolerant; the single `if (!poll) return null` lives after the last hook.
@@ -264,7 +274,7 @@ export function PollDetail({
   // that mounts PollDetail without wiring onVote gets the read-only view rather
   // than a button that optimistically celebrates a vote it never sent.
   const canCast = typeof onVote === 'function';
-  const canVote = !windowClosed && eligible && !hasVoted && canAct && canCast;
+  const canVote = !windowClosed && eligible && !hasVoted && canAct && canCast && !activation.blocked;
 
   // A miswire otherwise degrades into a silent dead end: a member who is told
   // "You're eligible ✓" on a live poll, with no ballot and no reason given.
@@ -642,7 +652,7 @@ export function PollDetail({
                         color={
                           !canAct ? '#C6B4F5'
                             : verdict.indeterminate ? 'gray.400'
-                              : eligible ? 'green.300' : '#F6C177'
+                              : eligible && !activation.blocked ? 'green.300' : '#F6C177'
                         }
                         fontWeight="600"
                       >
@@ -652,15 +662,20 @@ export function PollDetail({
                             ? 'Votes here are public — join this org to take part'
                             : verdict.indeterminate
                               ? 'Checking your eligibility…'
-                              : eligible
-                                ? "You're eligible ✓"
-                                : verdict.reason === 'no_voting_hat'
-                                  ? (ddVotingHats?.length
-                                      ? `Only ${getRoleNamesString(ddVotingHats)} can cast this vote — your roles can't`
-                                      : "Your roles can't cast this vote")
-                                  : verdict.reason === 'no_class_power'
-                                    ? "You don't have voting power yet — hold an eligible role or earn shares to take part"
-                                    : `Only ${restrictedRolesText} can vote on this one`}
+                              /* The activation gate outranks "You're eligible ✓": it is precisely
+                                 the case where the legacy check says yes and the contract says no,
+                                 so it has to win, or the ballot disappears with no explanation. */
+                              : activation.blocked
+                                ? activation.message
+                                : eligible
+                                  ? "You're eligible ✓"
+                                  : verdict.reason === 'no_voting_hat'
+                                    ? (ddVotingHats?.length
+                                        ? `Only ${getRoleNamesString(ddVotingHats)} can cast this vote — your roles can't`
+                                        : "Your roles can't cast this vote")
+                                    : verdict.reason === 'no_class_power'
+                                      ? "You don't have voting power yet — hold an eligible role or earn shares to take part"
+                                      : `Only ${restrictedRolesText} can vote on this one`}
                       </Text>
                     )}
                   </VStack>

@@ -291,6 +291,36 @@ export function projectTaskPermissions(project, userHatIds, address) {
 }
 
 /**
+ * Turn a raw `projectTaskPermissions` bit into an answer the UI may act on.
+ *
+ * That function reads from three sources that resolve independently: the board
+ * document (the hat masks), the SEPARATE managers document (the `_isPM` half —
+ * see FETCH_PROJECT_MANAGERS), and UserContext (which hats the visitor wears).
+ * The masks always arrive with the tasks, because a card cannot render without
+ * its project. The other two can land a beat later, and until they do a project
+ * manager reads as `managers: []` and a member reads as `hatIds: []`. A gate that
+ * denied on that would refuse an action to exactly the people entitled to it —
+ * which for CLAIM is the app's most-used action.
+ *
+ * So grants and denials are NOT symmetric. A grant never has to wait: nothing
+ * that arrives later can revoke one (a bit already resolved true stays true when
+ * more hats or the manager list land). A denial does, and is reported as
+ * `pending` — "not a no yet" — until `resolved` says every input is in.
+ *
+ * Callers should key enabled affordances off `allowed` and only surface a
+ * permission refusal when `allowed` is false.
+ *
+ * @param {boolean} granted - The bit as `projectTaskPermissions` currently answers it.
+ * @param {boolean} resolved - Whether every input that bit depends on has landed.
+ * @returns {{allowed: boolean, pending: boolean}}
+ */
+export function permissionGate(granted, resolved) {
+    if (granted) return { allowed: true, pending: false };
+    if (!resolved) return { allowed: true, pending: true };
+    return { allowed: false, pending: false };
+}
+
+/**
  * The status-dependent half of `updateTask` / `updateTaskMetadata`.
  *
  * Contract (both functions): COMPLETED / CANCELLED always revert `BadStatus`. Otherwise

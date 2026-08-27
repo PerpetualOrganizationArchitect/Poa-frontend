@@ -56,10 +56,11 @@ import { useProjectContext } from '@/context/ProjectContext';
 import { UserSearchInput } from '@/components/common';
 import UserIdentity from '@/components/common/UserIdentity';
 import {
-  projectTaskPermissions,
   taskEditRights,
+  permissionGate,
   PERMISSION_MESSAGES,
 } from '../../util/permissions';
+import { useProjectTaskAuthority } from '@/hooks/useProjectTaskAuthority';
 import { useOrgName } from '@/hooks/useOrgName';
 import UsernameLink from '@/components/common/UsernameLink';
 import { usePOContext } from '@/context/POContext';
@@ -139,7 +140,6 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const [applicationContents, setApplicationContents] = useState({});
   const [applicationsLoading, setApplicationsLoading] = useState(false);
 
-  const userHatIds = useMemo(() => userData?.hatIds || [], [userData]);
   const currentProject = useMemo(() => {
     return projectsData?.find(p => p.id === task?.projectId);
   }, [projectsData, task?.projectId]);
@@ -148,13 +148,26 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   // the per-hat mask (project mask shadows global, else global) OR being one of this
   // project's managers. `account` is the tx's msg.sender under both auth types —
   // the ERC-4337 smart account for passkey users, the EOA otherwise.
-  const perms = useMemo(
-    () => projectTaskPermissions(currentProject, userHatIds, account),
-    [currentProject, userHatIds, account],
-  );
+  // `authorityResolved` is whether all three inputs have landed — only meaningful
+  // for the gates below that REFUSE rather than reveal.
+  const { perms, resolved: authorityResolved } = useProjectTaskAuthority(currentProject, account);
 
   const canReviewTask = perms.canReview;
   const canAssign = perms.canAssign;
+
+  // `claimTask` / `applyForTask` are gated on-chain by `_checkPerm(pid, CLAIM)`,
+  // and take-over is `claimTask` again (TaskBoardContext.takeOverTask). Verified
+  // by eth_call on Gnosis: on the same Open task, a CLAIM-holding hat gets past
+  // the check while a maskless caller reverts `Unauthorized()` (0x82b42900) — for
+  // `applyForTask` too, which stops at `NoApplicationRequired` for the former and
+  // `Unauthorized` for the latter. Membership alone was never the gate.
+  //
+  // Refusing is held back until authority is fully known, so a project manager is
+  // never denied their own claim while the managers document is still in flight.
+  const claim = useMemo(
+    () => permissionGate(perms.canClaim, authorityResolved),
+    [perms.canClaim, authorityResolved],
+  );
 
   // Status-dependent edit rights: terminal tasks are immutable; EDIT_FULL works in any
   // non-terminal status; a CREATE hat may still edit while the task is UNCLAIMED.
@@ -354,19 +367,40 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
     isClosingRef.current = false;
   };
 
-  // Handle applying for a task (for tasks that require application)
-  const handleApply = async (applicationData) => {
+  // Membership then CLAIM, in that order, for every route into `claimTask` /
+  // `applyForTask`. Returns true when the caller may proceed. Joining is the
+  // prerequisite the user can act on themselves, so it stays the first thing
+  // they are told; the CLAIM refusal names the two ways the contract grants it.
+  const passesClaimGate = (memberDescription) => {
     if (!hasMemberRole) {
       toast({
         title: 'Membership Required',
-        description: 'You must be a member to apply for this task.',
+        description: memberDescription,
         status: 'warning',
         duration: 4000,
         isClosable: true,
         position: 'top',
       });
-      return;
+      return false;
     }
+    if (!claim.allowed) {
+      toast({
+        title: 'Permission Required',
+        description: PERMISSION_MESSAGES.REQUIRE_CLAIM,
+        status: 'warning',
+        duration: 4000,
+        isClosable: true,
+        position: 'top',
+      });
+      return false;
+    }
+    return true;
+  };
+
+  // Handle applying for a task (for tasks that require application)
+  const handleApply = async (applicationData) => {
+    // `applyForTask` is `_checkPerm(pid, CLAIM)` on-chain, same as claiming.
+    if (!passesClaimGate('You must be a member to apply for this task.')) return;
 
     try {
       await applyForTask(task.id, applicationData, account);
@@ -557,32 +591,15 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
         });
         return;
       }
-      if (hasMemberRole) {
+      if (passesClaimGate('You must be a member to apply for this task.')) {
         onOpenApplicationModal();
-      } else {
-        toast({
-          title: 'Membership Required',
-          description: 'You must be a member to apply for this task.',
-          status: 'warning',
-          duration: 4000,
-          isClosable: true,
-          position: 'top',
-        });
       }
       return;
     }
 
     // Validate permissions and inputs BEFORE closing modal
     if (columnId === 'open') {
-      if (!hasMemberRole) {
-        toast({
-          title: 'Membership Required',
-          description: 'You must be a member to claim this task. Go to user page to join.',
-          status: 'warning',
-          duration: 4000,
-          isClosable: true,
-          position: 'top',
-        });
+      if (!passesClaimGate('You must be a member to claim this task. Go to user page to join.')) {
         return;
       }
     }
@@ -592,15 +609,9 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
       // task over instead of submitting. Application-gated tasks route through
       // the application modal — approval performs the takeover on-chain.
       if (!isClaimer && claimExpired) {
-        if (!hasMemberRole) {
-          toast({
-            title: 'Membership Required',
-            description: 'You must be a member to take over this task. Go to user page to join.',
-            status: 'warning',
-            duration: 4000,
-            isClosable: true,
-            position: 'top',
-          });
+        // Take-over IS `claimTask` (TaskBoardContext.takeOverTask), so it carries the
+        // same CLAIM gate — and applying to take over is `applyForTask`, likewise.
+        if (!passesClaimGate('You must be a member to take over this task. Go to user page to join.')) {
           return;
         }
         if (task.requiresApplication) {
@@ -721,6 +732,16 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
         return '';
     }
   };
+
+  // Does the primary button lead into `claimTask` / `applyForTask`? Claim and Apply
+  // in Open, and the expired-claim take-over in In Progress — but NOT the claimer's
+  // own Submit (that is `submitTask`) and not Complete Review (`completeTask`).
+  const isClaimAction = columnId === 'open' || (columnId === 'inProgress' && !isClaimer && claimExpired);
+  // Members only. A non-member's problem is not the CLAIM bit, it's that they have
+  // not joined — and that is a thing they can fix, so they keep the live button and
+  // the "go join" toast rather than a disabled control blaming a permission they
+  // could not hold in the first place.
+  const claimRefused = isClaimAction && hasMemberRole && !claim.allowed;
 
   const [isEditTaskModalOpen, setIsEditTaskModalOpen] = useState(false);
 
@@ -912,11 +933,21 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                       </HStack>
                       <Text fontSize="sm" color="gray.200">
                         {task.claimerUsername || 'The current claimer'} hasn't submitted within the
-                        deadline. The task is still in progress, but you can take it over now —
-                        you'd become the new assignee and their claim is replaced.
-                        {task.requiresApplication
-                          ? ' This task requires an application: apply below and an assigner can hand it over.'
-                          : ''}
+                        deadline. The task is still in progress
+                        {/* "Open to others" is true of the task, not necessarily of THIS
+                            reader — the contract still wants CLAIM on this project. Don't
+                            invite a take-over the footer button is about to refuse. */}
+                        {claimRefused
+                          ? ', so anyone with claim permission on this project can take it over.'
+                          : (
+                            <>
+                              , but you can take it over now —
+                              you&apos;d become the new assignee and their claim is replaced.
+                              {task.requiresApplication
+                                ? ' This task requires an application: apply below and an assigner can hand it over.'
+                                : ''}
+                            </>
+                          )}
                       </Text>
                     </Box>
                   )}
@@ -1228,7 +1259,24 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
               )}
             </VStack>
           </ModalBody>
-          <ModalFooter borderTop="1px solid" borderColor="whiteAlpha.200" pt={4}>
+          <ModalFooter
+            borderTop="1px solid"
+            borderColor="whiteAlpha.200"
+            pt={4}
+            flexDirection="column"
+            alignItems="stretch"
+            gap={2}
+          >
+            {/* The refusal is written out on its own row, not hidden in a tooltip: a
+                disabled button fires no pointer events, and Chakra's tooltip ignores
+                touch entirely, so on a phone a hover-only explanation is none at all.
+                Its own row (rather than inline with the buttons) keeps the narrow
+                viewport from overflowing the action bar off-screen. */}
+            {claimRefused && (
+              <Text fontSize="xs" color="orange.200" textAlign={{ base: 'left', md: 'right' }}>
+                {PERMISSION_MESSAGES.REQUIRE_CLAIM}
+              </Text>
+            )}
             <HStack spacing={3} w="100%" justify="space-between" align="center">
               {/* Reward Display */}
               <Box
@@ -1359,6 +1407,7 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                     colorScheme={columnId === 'inProgress' && !isClaimer && claimExpired ? 'orange' : 'teal'}
                     isDisabled={
                       task.isIndexing ||
+                      claimRefused ||
                       (columnId === 'open' && task.requiresApplication && hasApplied) ||
                       (columnId === 'inProgress' && !isClaimer && !claimExpired) ||
                       (columnId === 'inProgress' && !isClaimer && claimExpired && task.requiresApplication && hasApplied)

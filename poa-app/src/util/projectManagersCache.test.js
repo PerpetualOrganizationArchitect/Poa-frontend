@@ -123,3 +123,61 @@ describe('managers self-heal when the board poll adds an unseen project', () => 
     expect(projects.find((p) => p.id === `${TM}-3`).managers[0].manager).toBe(MANAGER);
   });
 });
+
+describe('managersLoaded across an org switch', () => {
+  /**
+   * `ProjectContext.managersLoaded` is `!!managersData?.organization?.taskManager`, and the
+   * CLAIM gate only DENIES once it is true. Switching orgs must therefore not leave the
+   * previous org's TaskManager visible on the observable: `managers` would then be read
+   * from an org the user is not even looking at, and `_isPM` would answer for the wrong
+   * project set — allowing or denying claims on the strength of stale authority.
+   */
+  it('does not report the previous org\'s TaskManager while the new org is still in flight', async () => {
+    const ORG2 = '0xdeadbeef';
+    const TM2 = '0xfeedface';
+    const cache = new InMemoryCache();
+    let resolveSecond;
+    const link = new ApolloLink((op) => new Observable((obs) => {
+      if (op.variables.orgId === ORG) {
+        obs.next({ data: managersResult(2) });
+        obs.complete();
+        return;
+      }
+      // Hold the second org's response open — this is the window under test.
+      resolveSecond = () => {
+        obs.next({
+          data: {
+            organization: {
+              __typename: 'Organization', id: ORG2,
+              taskManager: {
+                __typename: 'TaskManager', id: TM2,
+                projects: [{ __typename: 'Project', id: `${TM2}-0`, managers: [] }],
+              },
+            },
+          },
+        });
+        obs.complete();
+      };
+    }));
+    const client = new ApolloClient({ link, cache });
+
+    const obs = client.watchQuery({
+      query: FETCH_PROJECT_MANAGERS, variables: { orgId: ORG }, fetchPolicy: 'cache-first',
+    });
+    obs.subscribe({ next: () => {}, error: () => {} });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(obs.getCurrentResult().data?.organization?.taskManager?.id).toBe(TM);
+
+    obs.setVariables({ orgId: ORG2 });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // The gate must read "not loaded", never the old org's TaskManager.
+    const inFlight = obs.getCurrentResult().data?.organization?.taskManager;
+    expect(inFlight?.id).not.toBe(TM);
+    expect(!!inFlight).toBe(false);
+
+    resolveSecond();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(obs.getCurrentResult().data?.organization?.taskManager?.id).toBe(TM2);
+  });
+});

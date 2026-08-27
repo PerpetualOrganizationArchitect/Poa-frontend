@@ -11,10 +11,12 @@ import { useToast } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
 import { useProjectContext } from '@/context/ProjectContext';
 import { useUserContext } from '@/context/UserContext';
+import { useDataBaseContext } from '@/context/dataBaseContext';
 import { useOrgName } from '@/hooks/useOrgName';
 import { useTaskDrafts } from '@/hooks/useTaskDrafts';
 import { calculatePayout } from '../../util/taskUtils';
-import { projectTaskPermissions, PERMISSION_MESSAGES } from '../../util/permissions';
+import { permissionGate, PERMISSION_MESSAGES } from '../../util/permissions';
+import { useProjectTaskAuthority } from '@/hooks/useProjectTaskAuthority';
 import { useTaskFilters } from './views/useTaskFilters';
 import { FilteredEmptyState } from './views/TaskFilterBar';
 
@@ -42,26 +44,35 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   const { accountAddress: account } = useAuth();
   const { taskManagerContractAddress } = usePOContext();
   const { taskCount, projectsData } = useProjectContext();
+  const { selectedProject } = useDataBaseContext();
   const toast = useToast();
-  const { graphUsername, hasMemberRole: userHasMemberRole, userData } = useUserContext();
+  const { graphUsername, hasMemberRole: userHasMemberRole } = useUserContext();
   // Shared filter predicate (search + quick-filter chips). Applied per-card at
   // render so the original task index stays correct for edit-by-index.
   const { predicate, isFiltering } = useTaskFilters();
 
-  // Get user's current hat IDs for permission checking
-  const userHatIds = useMemo(() => userData?.hatIds || [], [userData]);
-
-  // Find the current project's role permissions
+  // Find the current project's role permissions.
+  //
+  // By ID first. Project NAMES are not unique — nothing on-chain or in the wizard
+  // stops two projects sharing one — and a name lookup returns whichever matches
+  // first, which may not be the project whose tasks are on screen. That was merely
+  // untidy while these permissions only revealed buttons; now that they can REFUSE
+  // a claim, gating on a homonym's mask would deny the wrong person. `selectedProject`
+  // is the same object TaskBoardContext targets with every task transaction, so its
+  // id is the board's real identity. Name stays as the fallback for any mount that
+  // has no selection yet.
   const currentProject = useMemo(() => {
-    return projectsData?.find(p => p.name === projectName || p.title === projectName);
-  }, [projectsData, projectName]);
+    const byId = selectedProject?.id
+      ? projectsData?.find(p => p.id === selectedProject.id)
+      : null;
+    return byId || projectsData?.find(p => p.name === projectName || p.title === projectName);
+  }, [projectsData, projectName, selectedProject?.id]);
 
   // Every TaskManager gate for this project, resolved as the contract does: the
   // per-hat mask (project shadows global) OR being one of this project's managers.
-  const perms = useMemo(
-    () => projectTaskPermissions(currentProject, userHatIds, account),
-    [currentProject, userHatIds, account],
-  );
+  // `authorityResolved` says whether all three inputs have landed — only the drop
+  // handler needs it, because it is the one place here that REFUSES an action.
+  const { perms, resolved: authorityResolved } = useProjectTaskAuthority(currentProject, account);
   const currentProjectId = currentProject?.id;
   const projectDrafts = useMemo(
     () => (currentProjectId ? draftsForProject(currentProjectId) : []),
@@ -69,7 +80,6 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   );
 
   const canCreateTask = perms.canCreate;
-  const canReviewTask = perms.canReview;
 
   // Empty state icons and messages, moved from TaskBoard for consistency
   const emptyStateIcons = {
@@ -86,11 +96,21 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
     'Completed': 'The finish line is waiting for your first completed task. Keep pushing!'
   };
 
+  // Dropping into "In Progress" is a claim, gated on-chain by `_checkPerm(pid, CLAIM)`
+  // exactly like the modal's Claim button; dropping into "Completed" is a review.
+  // Both are REFUSALS, so both wait for `authorityResolved` — a project manager is
+  // never turned away while the managers document is still in flight. (Review and
+  // self-review were already gated on the right bits; what they lacked was the wait.)
+  const claimAllowed = permissionGate(perms.canClaim, authorityResolved).allowed;
+  const reviewAllowed = permissionGate(perms.canReview, authorityResolved).allowed;
+  const selfReviewAllowed = permissionGate(perms.canSelfReview, authorityResolved).allowed;
+
   let hasMemberRole = userHasMemberRole;
   const hasMemberRoleRef = useRef(hasMemberRole);
   // useDrop's spec is memoised once, so the drop handler reads authority through refs.
-  const canReviewTaskRef = useRef(canReviewTask);
-  const canSelfReviewRef = useRef(perms.canSelfReview);
+  const reviewAllowedRef = useRef(reviewAllowed);
+  const selfReviewAllowedRef = useRef(selfReviewAllowed);
+  const claimAllowedRef = useRef(claimAllowed);
   const accountRef = useRef(account);
 
   // Expose methods via ref
@@ -118,12 +138,16 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   }, [hasMemberRole]);
 
   useEffect(() => {
-    canReviewTaskRef.current = canReviewTask;
-  }, [canReviewTask]);
+    reviewAllowedRef.current = reviewAllowed;
+  }, [reviewAllowed]);
 
   useEffect(() => {
-    canSelfReviewRef.current = perms.canSelfReview;
-  }, [perms.canSelfReview]);
+    selfReviewAllowedRef.current = selfReviewAllowed;
+  }, [selfReviewAllowed]);
+
+  useEffect(() => {
+    claimAllowedRef.current = claimAllowed;
+  }, [claimAllowed]);
 
   useEffect(() => {
     accountRef.current = account;
@@ -251,10 +275,27 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
         });
         return;
       }
-      else if (!canReviewTaskRef.current && title === 'Completed') {
+      else if (!reviewAllowedRef.current && title === 'Completed') {
         toast({
           title: 'Permission Required',
           description: PERMISSION_MESSAGES.REQUIRE_REVIEW,
+          status: 'warning',
+          duration: 4000,
+          isClosable: true,
+          position: 'top',
+        });
+        return;
+      }
+      // Open -> In Progress is `claimTask`. Membership is not the gate; the CLAIM
+      // bit (or being a manager of this project) is. `item.columnId === 'open'` is
+      // load-bearing: it is the only transition into this column that claims
+      // anything, so a backwards drag from In Review still gets `validTransitions`'
+      // accurate "tasks can only move forward" instead of a permission error about
+      // a permission the drop never needed.
+      else if (title === 'In Progress' && item.columnId === 'open' && !claimAllowedRef.current) {
+        toast({
+          title: 'Permission Required',
+          description: PERMISSION_MESSAGES.REQUIRE_CLAIM,
           status: 'warning',
           duration: 4000,
           isClosable: true,
@@ -267,7 +308,7 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
         title === 'Completed' &&
         item.claimedBy && accountRef.current &&
         item.claimedBy.toLowerCase() === accountRef.current.toLowerCase() &&
-        !canSelfReviewRef.current
+        !selfReviewAllowedRef.current
       ) {
         toast({
           title: 'Permission Required',

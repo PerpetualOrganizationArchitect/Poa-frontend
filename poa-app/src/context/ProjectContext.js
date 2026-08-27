@@ -214,6 +214,16 @@ export const ProjectProvider = ({ children }) => {
                     // Active project managers (lowercased). The contract's `_isPM` bypass —
                     // arrives from its own document, so it may be [] for a beat on first paint.
                     managers: managersByProjectId.get(project.id) || [],
+                    // Whether that [] means "no managers" or "not here yet", answered PER
+                    // PROJECT rather than per org. The distinction is load-bearing for gates
+                    // that DENY (see `permissionGate` in util/permissions): a project the
+                    // board knows about but the managers document has not returned yet — a
+                    // brand-new project between the board's poll and the managers refetch —
+                    // would otherwise be certified as "this project has no managers" and
+                    // hard-deny the very people who manage it. Absent/failed/unsupported
+                    // `Project.managers` leaves this false everywhere, which is the
+                    // documented "no manager bypass" degradation rather than a denial.
+                    managersLoaded: managersByProjectId.has(project.id),
                     columns: [
                         { id: 'open', title: 'Open', tasks: [] },
                         { id: 'inProgress', title: 'In Progress', tasks: [] },

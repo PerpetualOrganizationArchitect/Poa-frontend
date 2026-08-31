@@ -126,7 +126,7 @@ describe('managers self-heal when the board poll adds an unseen project', () => 
 
 describe('managersLoaded across an org switch', () => {
   /**
-   * `ProjectContext.managersLoaded` is `!!managersData?.organization?.taskManager`, and the
+   * `ProjectContext` derives each project's `managersLoaded` from this document, and the
    * CLAIM gate only DENIES once it is true. Switching orgs must therefore not leave the
    * previous org's TaskManager visible on the observable: `managers` would then be read
    * from an org the user is not even looking at, and `_isPM` would answer for the wrong

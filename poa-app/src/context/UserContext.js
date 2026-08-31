@@ -7,6 +7,7 @@ import { useOrgName } from '../hooks/useOrgName';
 import { usePOContext } from './POContext';
 import { formatTokenAmount } from '../util/formatToken';
 import { useRefreshSubscription, RefreshEvent } from './RefreshContext';
+import { HAT_AUTHORITY_EVENTS, trackAuthorityRefresh } from '../util/authorityEvents';
 import { findUsernameAcrossChains } from '../util/crossChainUsername';
 import { useSubgraphClient } from '../util/apolloClient';
 import { useUserActive } from '../hooks/useUserActive';
@@ -27,6 +28,9 @@ export const UserProvider = ({ children }) => {
     const [userProposals, setUserProposals] = useState([]);
     const [completedModules, setCompletedModules] = useState([]);
     const [userDataLoading, setUserDataLoading] = useState(true);
+    // True from a hat-granting event until the user document has answered again.
+    // Folded into `userAuthorityResolved` below.
+    const [hatsRefreshing, setHatsRefreshing] = useState(false);
     // Optimistic overrides — set by optimisticJoin, cleared when subgraph catches up
     const [optimisticRoles, setOptimisticRoles] = useState(null);
 
@@ -65,6 +69,7 @@ export const UserProvider = ({ children }) => {
         pollInterval: isActive ? 60000 : 0,
         client,
     });
+
 
     // Ref-stabilize refetch so callbacks don't re-create when Apollo returns a new reference
     const refetchRef = useRef(refetch);
@@ -116,6 +121,25 @@ export const UserProvider = ({ children }) => {
         }
     }, [orgUserID, account]);
 
+    // Same refetch, but for the events that can change the visitor's HATS — and hats are
+    // an authority input, so from the moment one of those fires until the answer lands,
+    // `hatIds` is known-suspect. A gate that REFUSES must not read the pre-grant copy and
+    // conclude "you don't wear that hat"; `userDataLoading` cannot express this because it
+    // only goes true on an org switch, never on a refetch.
+    //
+    // Deliberately NOT the whole subscription list below. Submitting a task, casting a
+    // vote or finishing a module also refetch this document, and treating those as
+    // suspect would re-open every gated control on ordinary activity — handing an
+    // unauthorised member a live Claim button several times a session.
+    const refetchUserAuthority = useCallback(() => {
+        if (!orgUserID || !account) return;
+        // Settles either way: a failed refetch releases the gate rather than pinning it
+        // open, leaving us refusing on last-known hats until the 60s poll heals them.
+        trackAuthorityRefresh(setHatsRefreshing, [() => refetchRef.current()]);
+    }, [orgUserID, account]);
+
+    const userAuthorityResolved = !userDataLoading && !hatsRefreshing;
+
     // Refetch on any event that can change this user's row in FETCH_USER_DATA_NEW.
     // executeWithNotification-emitted events already waited for the subgraph to
     // index the tx block; TaskBoardContext emits immediately, and the poll heals
@@ -139,18 +163,24 @@ export const UserProvider = ({ children }) => {
             // hybridProposalsCreated + totalVotes
             RefreshEvent.PROPOSAL_CREATED,
             RefreshEvent.PROPOSAL_VOTED,
-            RefreshEvent.PROPOSAL_COMPLETED,
-            // membershipStatus / currentHatIds
-            RefreshEvent.MEMBER_JOINED,
-            RefreshEvent.ROLE_CLAIMED,
-            RefreshEvent.ROLE_VOUCHED,
-            RefreshEvent.ROLE_VOUCH_REVOKED,
             // account.username
             RefreshEvent.USER_CREATED,
             RefreshEvent.USERNAME_CHANGED,
+            // NOTE: the events that change `currentHatIds` are NOT here — they go through
+            // refetchUserAuthority below so the permission gates can wait for them.
         ],
         refetchUserData,
         [refetchUserData]
+    );
+
+    // membershipStatus / currentHatIds — the hat-granting events. Same refetch, but it
+    // marks authority unresolved for the round trip. Shared with the gate's test via
+    // util/authorityEvents (PROPOSAL_COMPLETED is here because a passing proposal can
+    // mint or burn a hat; it also refreshes the proposal counters this document carries).
+    useRefreshSubscription(
+        HAT_AUTHORITY_EVENTS,
+        refetchUserAuthority,
+        [refetchUserAuthority]
     );
 
     useEffect(() => {
@@ -319,6 +349,10 @@ export const UserProvider = ({ children }) => {
         // their own task from the modal (Submit stayed disabled for everyone).
         address: effectiveAddress,
         userDataLoading,
+        // Stricter than `!userDataLoading`: also false while a refetch triggered by a
+        // hat-GRANTING event is in flight. Gates that REFUSE an action must use this;
+        // spinners and "still loading" copy should keep using `userDataLoading`.
+        userAuthorityResolved,
         userProposals,
         userData,
         graphUsername,
@@ -333,6 +367,7 @@ export const UserProvider = ({ children }) => {
     }), [
         effectiveAddress,
         userDataLoading,
+        userAuthorityResolved,
         userProposals,
         userData,
         graphUsername,

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useUserContext } from '@/context/UserContext';
+import { useProjectContext } from '@/context/ProjectContext';
 import { projectTaskPermissions } from '@/util/permissions';
 
 /**
@@ -13,7 +14,8 @@ import { projectTaskPermissions } from '@/util/permissions';
  * late. Surfaces that *refuse* an action cannot, because a half-loaded answer
  * denies a project manager their own project.
  *
- * `resolved` needs both halves that can arrive late:
+ * `resolved` has to rule out every way the answer can be incomplete — both "has
+ * not arrived yet" and, just as important, "has arrived but is being replaced":
  *   - `project.managersLoaded` — the managers document actually delivered THIS
  *     project's row. Deliberately per-project, not per-org: the board can know
  *     about a project the managers document has not returned yet, and an org-wide
@@ -21,8 +23,13 @@ import { projectTaskPermissions } from '@/util/permissions';
  *     also, conveniently, false for a `project` that did not resolve at all — and
  *     an unresolved project yields all-false permissions, so refusing on one would
  *     deny everyone on any lookup miss.
- *   - `!userDataLoading` — the visitor's hats are in, so an empty `hatIds` means
- *     "wears nothing" rather than "not fetched".
+ *   - `!authorityRefreshing` — no authority refetch is in flight. Apollo keeps
+ *     serving the previous result during a refetch, so without this a grant that
+ *     just landed on-chain reads as absent AND fully resolved, and the user is
+ *     refused the permission they were seconds ago given.
+ *   - `userAuthorityResolved` — the visitor's hats are in and not mid-refetch, so
+ *     an empty `hatIds` means "wears nothing" rather than "not fetched" or
+ *     "about to change".
  *
  * Pair with `permissionGate(perms.canX, resolved)` at the call site, which keeps
  * grants immediate and holds only denials back.
@@ -34,7 +41,8 @@ import { projectTaskPermissions } from '@/util/permissions';
  * @returns {{perms: ReturnType<typeof projectTaskPermissions>, resolved: boolean}}
  */
 export function useProjectTaskAuthority(project, address) {
-  const { userData, userDataLoading } = useUserContext() || {};
+  const { userData, userAuthorityResolved } = useUserContext() || {};
+  const { authorityRefreshing } = useProjectContext() || {};
 
   const userHatIds = useMemo(() => userData?.hatIds || [], [userData]);
 
@@ -43,7 +51,7 @@ export function useProjectTaskAuthority(project, address) {
     [project, userHatIds, address],
   );
 
-  const resolved = !!project?.managersLoaded && !userDataLoading;
+  const resolved = !!project?.managersLoaded && !authorityRefreshing && !!userAuthorityResolved;
 
   return { perms, resolved };
 }

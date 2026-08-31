@@ -3,6 +3,7 @@ import { useQuery } from '@apollo/client';
 import { FETCH_PROJECTS_DATA_NEW, FETCH_PROJECTS_DATA_WITH_RELEASES, FETCH_PROJECT_MANAGERS } from '../util/queries';
 import { usePOContext } from './POContext';
 import { useRefreshSubscription, RefreshEvent } from './RefreshContext';
+import { PROJECT_AUTHORITY_EVENTS, trackAuthorityRefresh } from '../util/authorityEvents';
 import { formatTokenAmount } from '../util/formatToken';
 import { getTokenByAddress } from '../util/tokens';
 import { useUserActive } from '../hooks/useUserActive';
@@ -28,6 +29,9 @@ export const ProjectProvider = ({ children }) => {
     // project in hand (e.g. the Create Project modal, which shows them as a baseline
     // even when the org has zero projects yet).
     const [globalRolePermissions, setGlobalRolePermissions] = useState([]);
+    // True from the moment an authority-changing event fires until BOTH authority
+    // documents have answered again. See `authorityRefreshing` below.
+    const [authorityRefreshing, setAuthorityRefreshing] = useState(false);
     const { orgId, subgraphUrl } = usePOContext();
 
     const client = useSubgraphClient(subgraphUrl);
@@ -82,6 +86,7 @@ export const ProjectProvider = ({ children }) => {
         fetchPolicy: 'cache-first',
         client,
     });
+
 
     const managersByProjectId = useMemo(() => {
         const map = new Map();
@@ -142,21 +147,29 @@ export const ProjectProvider = ({ children }) => {
 
     // Creating or deleting a project also changes its manager set (the creator is
     // auto-added on-chain), so those two events refresh the managers document too.
+    //
+    // These are also the only events that can change authority, so this is where the
+    // answer becomes known-suspect. Both documents carry an authority input — managers
+    // here, the per-hat role masks on the board — and they are two INDEPENDENT requests.
+    // The gate has to stay open until both have answered: the managers document is a
+    // fraction of the size of the board (which drags every task and its metadata along)
+    // and reliably lands first, so clearing on it alone would re-arm the refusal while
+    // the mask grant was still in flight — the exact false denial this is here to stop.
+    //
+    // `trackAuthorityRefresh` is where the all-must-settle rule lives, and is unit-tested.
     const handleProjectSetChange = useCallback(() => {
-        if (orgId) {
-            refetchRef.current();
-            refetchManagersRef.current();
-        }
+        if (!orgId) return;
+        trackAuthorityRefresh(setAuthorityRefreshing, [
+            () => refetchRef.current(),
+            () => refetchManagersRef.current(),
+        ]);
     }, [orgId]);
 
+    // PROJECT_CREATED / PROJECT_DELETED / PROPOSAL_COMPLETED — setConfig(PROJECT_MANAGER, ...)
+    // and setProjectRolePerm are both executor-only, so a passing proposal is the only
+    // other in-app route. Shared with the gate's test via util/authorityEvents.
     useRefreshSubscription(
-        [
-            RefreshEvent.PROJECT_CREATED,
-            RefreshEvent.PROJECT_DELETED,
-            // setConfig(PROJECT_MANAGER, ...) is executor-only, i.e. it only happens
-            // when a proposal executes — the one other event that changes managers.
-            RefreshEvent.PROPOSAL_COMPLETED,
-        ],
+        PROJECT_AUTHORITY_EVENTS,
         handleProjectSetChange,
         [handleProjectSetChange]
     );
@@ -361,13 +374,17 @@ export const ProjectProvider = ({ children }) => {
         recommendedTasks,
         nextTaskId,
         globalRolePermissions,
+        // True from an authority-changing event until both authority documents have
+        // answered again. Gates that REFUSE must treat it as "not resolved"; gates that
+        // merely reveal an affordance can ignore it.
+        authorityRefreshing,
         // Exposed so the release ACTION can be gated on the same probe as the
         // release FIELDS. The TaskUnclaimed mapping handler ships in the same
         // subgraph release as these fields, so an endpoint that fails the probe
         // also cannot index a release — the board would show the task as still
         // claimed forever, and the next click would revert BadStatus.
         releasesSupported,
-    }), [projectsData, projectsLoading, taskCount, recommendedTasks, nextTaskId, globalRolePermissions, releasesSupported]);
+    }), [projectsData, projectsLoading, taskCount, recommendedTasks, nextTaskId, globalRolePermissions, authorityRefreshing, releasesSupported]);
 
     return (
         <ProjectContext.Provider value={contextValue}>

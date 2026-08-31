@@ -6,6 +6,7 @@ import {
   userHasEffectiveTaskPermission,
   userIsProjectManager,
   projectTaskPermissions,
+  permissionGate,
   taskEditRights,
   PERMISSION_MESSAGES,
 } from './permissions';
@@ -65,7 +66,7 @@ const T6_MEMBER = '2903586297190365558667424377234432731166472765207058930215921
 const T6_EXEC = '29035862971903655490893272468226273664268038455176265325988018110070784';
 
 // Executive: project mask 15; Member: project mask 2 (CLAIM).
-// Executive ALSO has global mask 160 = EDIT_META|EDIT_FULL (a governance ROLE_PERM grant).
+// Executive ALSO has global mask 160 = BUDGET|EDIT_FULL (a governance ROLE_PERM grant).
 const TEST6_PROJECT = {
   rolePermissions: [perm(T6_EXEC, 15), perm(T6_MEMBER, 2)],
   globalRolePermissions: [perm(T6_EXEC, 160)],
@@ -261,6 +262,77 @@ describe('taskEditRights', () => {
 
   it('is all-false when perms are missing', () => {
     expect(taskEditRights(null, 'open')).toEqual({ canEditFull: false, canEditMeta: false });
+  });
+});
+
+describe('projectTaskPermissions — canClaim (regression for #484)', () => {
+  // Test6's Newcomer / Treasurer / TaskRunner: real role hats with no mask row on
+  // any project and none globally. Membership says yes, the contract says no.
+  const T6_NEWCOMER = '29035862971903655586675705273981658214582931336903305585178869179088896';
+
+  it('denies claim to a hat with no project mask and no global mask', () => {
+    const p = projectTaskPermissions(TEST6_PROJECT, [T6_NEWCOMER], ARGUS_MEMBER);
+    expect(p.canClaim).toBe(false);
+    expect(p.isPM).toBe(false);
+  });
+
+  it('grants claim from the project mask (Member holds CLAIM on this project)', () => {
+    expect(projectTaskPermissions(TEST6_PROJECT, [T6_MEMBER], ARGUS_MEMBER).canClaim).toBe(true);
+  });
+
+  it('does NOT let a global mask that lacks CLAIM be rescued by a project mask on another hat', () => {
+    // Executive's global mask is 160 (BUDGET|EDIT_FULL, no CLAIM). Its *project*
+    // mask 15 does carry CLAIM, and a non-zero project mask REPLACES global — so
+    // the same hat is claim-capable here and not on a project with no mask row.
+    const elsewhere = { rolePermissions: [], globalRolePermissions: [perm(T6_EXEC, 160)], managers: [] };
+    expect(projectTaskPermissions(TEST6_PROJECT, [T6_EXEC], ARGUS_MEMBER).canClaim).toBe(true);
+    expect(projectTaskPermissions(elsewhere, [T6_EXEC], ARGUS_MEMBER).canClaim).toBe(false);
+  });
+
+  it('grants claim to a project manager on a project with no masks at all (_isPM bypass)', () => {
+    // Argus "Hudson": zero role permissions, one human manager. Under a
+    // membership-only gate this looked the same as the governance-only projects.
+    expect(projectTaskPermissions(ARGUS_MANAGER_ONLY, [], ARGUS_MEMBER).canClaim).toBe(true);
+    expect(projectTaskPermissions(ARGUS_GOVERNANCE_ONLY, [AGENT], ARGUS_MEMBER).canClaim).toBe(false);
+  });
+});
+
+describe('permissionGate', () => {
+  it('grants immediately, without waiting for anything to resolve', () => {
+    expect(permissionGate(true, false)).toEqual({ allowed: true, pending: false });
+    expect(permissionGate(true, true)).toEqual({ allowed: true, pending: false });
+  });
+
+  it('holds a denial back until authority resolves, and reports it as pending', () => {
+    expect(permissionGate(false, false)).toEqual({ allowed: true, pending: true });
+  });
+
+  it('denies once authority has resolved', () => {
+    expect(permissionGate(false, true)).toEqual({ allowed: false, pending: false });
+  });
+
+  it('never refuses a project manager while the managers document is still in flight', () => {
+    // First paint: the board has landed but FETCH_PROJECT_MANAGERS has not, so the
+    // project reads `managers: []` and `_isPM` is false. This is the transient the
+    // gate exists for — the manager keeps their Claim button, and keeps it after.
+    const beforeManagers = { ...ARGUS_MANAGER_ONLY, managers: [] };
+    const early = projectTaskPermissions(beforeManagers, [], ARGUS_MEMBER);
+    expect(early.canClaim).toBe(false);
+    expect(permissionGate(early.canClaim, /* resolved */ false).allowed).toBe(true);
+
+    const late = projectTaskPermissions(ARGUS_MANAGER_ONLY, [], ARGUS_MEMBER);
+    expect(permissionGate(late.canClaim, true).allowed).toBe(true);
+  });
+
+  it('treats a never-resolving input as permissive, so a missing managers document cannot lock members out', () => {
+    // An endpoint whose schema lacks `Project.managers` leaves managersLoaded false
+    // forever. The documented degradation is "no manager bypass", NOT "deny everyone".
+    expect(permissionGate(false, false).allowed).toBe(true);
+  });
+
+  it('coerces truthy/falsy inputs to booleans', () => {
+    expect(permissionGate(undefined, undefined)).toEqual({ allowed: true, pending: true });
+    expect(permissionGate(0, 1)).toEqual({ allowed: false, pending: false });
   });
 });
 

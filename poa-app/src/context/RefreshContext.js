@@ -50,8 +50,12 @@ export const RefreshEvent = {
 
   // Role/Vouching events
   ROLE_CLAIMED: 'role:claimed',
+  ROLE_RENOUNCED: 'role:renounced',
   ROLE_VOUCHED: 'role:vouched',
   ROLE_VOUCH_REVOKED: 'role:vouch-revoked',
+  VOUCH_CHANGED: 'vouch:changed',
+  MEMBERSHIP_PENDING: 'membership:pending',
+  MEMBERSHIP_CHANGED: 'membership:changed',
   ROLE_APPLICATION_SUBMITTED: 'role:application-submitted',
   ROLE_APPLICATION_WITHDRAWN: 'role:application-withdrawn',
 

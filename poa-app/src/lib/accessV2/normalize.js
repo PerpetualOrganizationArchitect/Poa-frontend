@@ -15,7 +15,7 @@ import {
   deriveGroupMembers,
 } from './subjects';
 import {
-  normalizeMemberships,
+  normalizeMembership,
   activeMemberships,
   claimableMemberships,
   groupBySubject,
@@ -24,6 +24,7 @@ import { normalizeRule, RULE_KIND } from './rules';
 import { normalizeVouchConfig } from './vouch';
 import { normalizeManagerConfig } from './pendingActions';
 import { decodePermWord, permKeyName, isGlobalCtx, foldTag, FOLD_TAG, PERM_KEYS } from './permKeys';
+import { toSubjectId } from './ids';
 
 /** Decode a subject's perm rows and derive the legacy-compatible flags from them. */
 export function attachPerms(subject, rawPerms = []) {
@@ -168,8 +169,23 @@ export function normalizeAuthoritySubjects(rawSubjects = []) {
   // indexGroupCompositions de-dupes, and it keeps the group derivation in one pure place.
   const compositions = raw.flatMap((s) => [...(s.memberRoles || []), ...(s.groups || [])]);
 
-  const withGroups = attachGroups(normalizeSubjects(raw), compositions);
-  const rawById = new Map(raw.map((s) => [String(s.subjectId ?? s.id), s]));
+  // Keep every indexed id for subject-id prediction, including the migrated top hat. The
+  // user-facing graph below excludes structural subjects before relationships are attached, so a
+  // top hat cannot leak through a group's memberRoles or a role-name resolver either.
+  const indexedSubjects = normalizeSubjects(raw);
+  const visibleIds = new Set(
+    indexedSubjects.filter((s) => s.isUserFacing).map((s) => s.subjectId)
+  );
+  const visibleCompositions = compositions.filter((c) => {
+    const groupId = toSubjectId(c?.groupSubjectId ?? c?.group?.subjectId ?? c?.group?.id);
+    const roleId = toSubjectId(c?.roleSubjectId ?? c?.role?.subjectId ?? c?.role?.id);
+    return visibleIds.has(groupId) && visibleIds.has(roleId);
+  });
+  const withGroups = attachGroups(
+    indexedSubjects.filter((s) => s.isUserFacing),
+    visibleCompositions
+  );
+  const rawById = new Map(raw.map((s) => [toSubjectId(s.subjectId ?? s.id), s]));
 
   // Perms are decoded per subject first, THEN folded across the group wiring — a role's effective
   // permissions are its own ∪ its groups', which cannot be known until every subject is decoded.
@@ -187,7 +203,10 @@ export function normalizeAuthoritySubjects(rawSubjects = []) {
     subjects,
     roles,
     groups,
-    compositions,
+    compositions: visibleCompositions,
+    // Creation-id prediction must see hidden structural/native ids even though no UI should render
+    // them. `CreateRoleWizard` consumes this collection instead of the display projection.
+    indexedSubjects,
     // Legacy-shaped lookups, so existing consumers can be pointed here with no render change.
     roleNames: subjectNameMap(subjects),
     roleHatIds: roles.map((r) => r.subjectId),
@@ -208,7 +227,11 @@ export function normalizeAuthoritySubjects(rawSubjects = []) {
  */
 export function normalizeAuthorityMemberships(rawMemberships = [], compositions = [], groups = []) {
   const raw = rawMemberships || [];
-  const rows = normalizeMemberships(raw).map((m, i) => ({ ...m, rule: normalizeRule(raw[i]?.rule) }));
+  const allRows = raw.map((source) => {
+    const membership = normalizeMembership(source);
+    return membership ? { ...membership, rule: normalizeRule(source?.rule) } : null;
+  }).filter(Boolean);
+  const rows = allRows.filter((m) => m.isUserFacing);
   const bySubject = groupBySubject(rows);
 
   const { rolesByGroup } = indexGroupCompositions(compositions);
@@ -218,6 +241,7 @@ export function normalizeAuthorityMemberships(rawMemberships = [], compositions 
 
   return {
     memberships: rows,
+    indexedMemberships: allRows,
     members: activeMemberships(rows),
     membershipsBySubject: bySubject,
     groupMembers,
@@ -229,7 +253,9 @@ export function normalizeAuthorityMemberships(rawMemberships = [], compositions 
      * in-org on chain, so classifying them as an outsider makes the wizard offer an invitation to
      * someone who is already a member.
      */
-    inOrgUsers: new Set(rows.filter((m) => m.accepted).map((m) => String(m.user).toLowerCase())),
+    // Structural top-hat memberships still count for the contract's `_isInOrg`; hiding their
+    // cards must not turn a real member into an outsider when a proposal chooses grant vs offer.
+    inOrgUsers: new Set(allRows.filter((m) => m.accepted).map((m) => String(m.user).toLowerCase())),
   };
 }
 
@@ -239,9 +265,14 @@ export function normalizeAuthorityMemberships(rawMemberships = [], compositions 
  */
 export function normalizeMyMemberships(rawMemberships = []) {
   const raw = rawMemberships || [];
-  const rows = normalizeMemberships(raw).map((m, i) => ({ ...m, rule: normalizeRule(raw[i]?.rule) }));
+  const indexedRows = raw.map((source) => {
+    const membership = normalizeMembership(source);
+    return membership ? { ...membership, rule: normalizeRule(source?.rule) } : null;
+  }).filter(Boolean);
+  const rows = indexedRows.filter((m) => m.isUserFacing);
   return {
     rows,
+    indexedRows,
     myRoles: activeMemberships(rows),
     claimable: claimableMemberships(rows),
     // Neither a member nor claimable, with a BAN on the slot: the answer to "why can't I see this

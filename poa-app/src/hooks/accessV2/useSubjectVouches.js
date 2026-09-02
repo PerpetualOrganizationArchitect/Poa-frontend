@@ -13,6 +13,7 @@ import { usePOContext } from '@/context/POContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSubgraphClient } from '@/util/apolloClient';
 import { FETCH_SUBJECT_VOUCH_RECORDS } from '@/util/queries';
+import { RefreshEvent, useRefreshSubscription } from '@/context/RefreshContext';
 import {
   normalizeVouchRecords,
   normalizeVouchConfig,
@@ -47,6 +48,14 @@ export function useSubjectVouches(subjectId, targetUser) {
     fetchPolicy: 'cache-and-network',
     client,
   });
+
+  useRefreshSubscription(
+    [RefreshEvent.VOUCH_CHANGED, RefreshEvent.PROPOSAL_COMPLETED],
+    () => {
+      if (authority.enabled && subjectId && user) refetch?.();
+    },
+    [authority.enabled, subjectId, user, refetch]
+  );
 
   return useMemo(() => {
     const rawRecords = data?.subjectVouchRecords || [];

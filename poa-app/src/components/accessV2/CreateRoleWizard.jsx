@@ -64,7 +64,7 @@ const STEPS = ['Basics', 'Group', 'Permissions', 'People', 'Review'];
 const emptyHolder = () => ({ address: '', sticky: false });
 
 export default function CreateRoleWizard({ isOpen, onClose, activeProposals = [] }) {
-  const { subjects, groups, authority } = useAuthoritySubjects();
+  const { indexedSubjects, groups, authority } = useAuthoritySubjects();
   const { inOrgUsers } = useAuthorityMemberships();
   const { submit, submitting } = useAccessV2Proposal();
 
@@ -91,7 +91,7 @@ export default function CreateRoleWizard({ isOpen, onClose, activeProposals = []
     try {
       return buildCreateRoleBatch({
         authority: authority.address,
-        existingSubjects: subjects,
+        existingSubjects: indexedSubjects,
         activeProposals,
         config: {
           name: name.trim(),
@@ -112,7 +112,7 @@ export default function CreateRoleWizard({ isOpen, onClose, activeProposals = []
     } catch {
       return null;
     }
-  }, [name, imageURI, limited, maxMembers, openRole, groupIds, perms, holders, subjects, activeProposals, authority, inOrg]);
+  }, [name, imageURI, limited, maxMembers, openRole, groupIds, perms, holders, indexedSubjects, activeProposals, authority, inOrg]);
 
   const lints = useMemo(
     () =>

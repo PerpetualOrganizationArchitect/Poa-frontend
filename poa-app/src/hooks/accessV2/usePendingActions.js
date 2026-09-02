@@ -19,6 +19,7 @@ import { usePOContext } from '@/context/POContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSubgraphClient } from '@/util/apolloClient';
 import { FETCH_PENDING_ACTIONS } from '@/util/queries';
+import { RefreshEvent, useRefreshSubscription } from '@/context/RefreshContext';
 import {
   normalizePendingActions,
   pendingAgainstUser,
@@ -52,6 +53,18 @@ export function usePendingActions({ tick = true } = {}) {
     fetchPolicy: 'cache-and-network',
     client,
   });
+
+  useRefreshSubscription(
+    [
+      RefreshEvent.ROLE_CLAIMED,
+      RefreshEvent.MEMBERSHIP_PENDING,
+      RefreshEvent.MEMBERSHIP_CHANGED,
+    ],
+    () => {
+      if (authority.enabled && authority.address) refetch?.();
+    },
+    [authority.enabled, authority.address, refetch]
+  );
 
   const user = String(accountAddress || '').toLowerCase();
 

@@ -59,6 +59,29 @@ export function isLegacyAdoptedId(id) {
   return b === null ? false : b >= HATS_NAMESPACE_FLOOR;
 }
 
+/**
+ * True only for a Hats TOP HAT, not for one of its child roles.
+ *
+ * A top hat is the root of an organisation's Hats tree. Its id is the non-zero tree domain in
+ * bits 224..255 with every lower bit clear. Migration adopts it into MembershipAuthority because
+ * the executor wears it, but it remains structural organisation ownership — the legacy UI never
+ * included it in `roleHatIds`, and access-v2 user-facing role surfaces must not include it either.
+ *
+ * This structural check is deliberately stronger than matching a name. Decentral Park's top hat
+ * was created with the malformed Hats details string `ipfs://Decentral Park `, but an IPFS-looking
+ * name is not proof that an arbitrary role is structural.
+ */
+export function isLegacyTopHatId(id) {
+  const b = toSubjectBigInt(id);
+  if (b === null || b < HATS_NAMESPACE_FLOOR) return false;
+  return (b & (HATS_NAMESPACE_FLOOR - 1n)) === 0n;
+}
+
+/** User-facing subjects exclude structural Hats roots but include child hats and v2-native ids. */
+export function isUserFacingSubjectId(id) {
+  return toSubjectBigInt(id) !== null && !isLegacyTopHatId(id);
+}
+
 /** True for a v2-native id (below the Hats floor AND carrying an embedded authority address). */
 export function isV2NativeId(id) {
   const b = toSubjectBigInt(id);

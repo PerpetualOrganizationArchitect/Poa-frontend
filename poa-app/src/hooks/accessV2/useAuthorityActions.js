@@ -12,6 +12,7 @@
 
 import { useCallback, useState } from 'react';
 import { useWeb3Services, useTransactionWithNotification } from '@/hooks/useWeb3Services';
+import { RefreshEvent } from '@/context/RefreshContext';
 import { useOrgAuthority } from './useOrgAuthority';
 
 export function useAuthorityActions() {
@@ -45,7 +46,7 @@ export function useAuthorityActions() {
         pendingMessage: `Joining ${roleName}...`,
         successMessage: `You’re now in ${roleName}`,
         errorMessage: `Could not join ${roleName}`,
-        refreshEvent: 'role:claimed',
+        refreshEvent: RefreshEvent.ROLE_CLAIMED,
         refreshData: { subjectId },
       }),
     [run, membershipAuthority, authority.address]
@@ -57,7 +58,7 @@ export function useAuthorityActions() {
         pendingMessage: `Leaving ${roleName}...`,
         successMessage: `You’ve left ${roleName}`,
         errorMessage: `Could not leave ${roleName}`,
-        refreshEvent: 'role:renounced',
+        refreshEvent: RefreshEvent.ROLE_RENOUNCED,
         refreshData: { subjectId },
       }),
     [run, membershipAuthority, authority.address]
@@ -69,7 +70,7 @@ export function useAuthorityActions() {
         pendingMessage: 'Vouching...',
         successMessage: 'Vouch recorded',
         errorMessage: 'Could not record the vouch',
-        refreshEvent: 'vouch:changed',
+        refreshEvent: RefreshEvent.VOUCH_CHANGED,
         refreshData: { subjectId, user },
       }),
     [run, membershipAuthority, authority.address]
@@ -81,7 +82,7 @@ export function useAuthorityActions() {
         pendingMessage: 'Revoking your vouch...',
         successMessage: 'Vouch revoked',
         errorMessage: 'Could not revoke the vouch',
-        refreshEvent: 'vouch:changed',
+        refreshEvent: RefreshEvent.VOUCH_CHANGED,
         refreshData: { subjectId, user },
       }),
     [run, membershipAuthority, authority.address]
@@ -93,7 +94,7 @@ export function useAuthorityActions() {
         pendingMessage: 'Adding them...',
         successMessage: 'Started — it takes effect after the review window',
         errorMessage: 'Could not add them',
-        refreshEvent: 'membership:pending',
+        refreshEvent: RefreshEvent.MEMBERSHIP_PENDING,
         refreshData: { subjectId, user },
       }),
     [run, membershipAuthority, authority.address]
@@ -105,7 +106,7 @@ export function useAuthorityActions() {
         pendingMessage: 'Sending the invitation...',
         successMessage: 'Invitation sent',
         errorMessage: 'Could not send the invitation',
-        refreshEvent: 'membership:pending',
+        refreshEvent: RefreshEvent.MEMBERSHIP_PENDING,
         refreshData: { subjectId, user },
       }),
     [run, membershipAuthority, authority.address]
@@ -120,7 +121,7 @@ export function useAuthorityActions() {
           pendingMessage: ban ? 'Blocking them...' : 'Removing them...',
           successMessage: 'Started — it takes effect after the review window',
           errorMessage: ban ? 'Could not block them' : 'Could not remove them',
-          refreshEvent: 'membership:pending',
+          refreshEvent: RefreshEvent.MEMBERSHIP_PENDING,
           refreshData: { subjectId, user },
         }
       ),
@@ -136,7 +137,7 @@ export function useAuthorityActions() {
           pendingMessage: 'Unblocking them...',
           successMessage: 'Unblocked — they can take the role back themselves',
           errorMessage: 'Could not unblock them',
-          refreshEvent: 'membership:changed',
+          refreshEvent: RefreshEvent.MEMBERSHIP_CHANGED,
           refreshData: { subjectId, user },
         }
       ),
@@ -149,7 +150,7 @@ export function useAuthorityActions() {
         pendingMessage: 'Applying...',
         successMessage: 'Done',
         errorMessage: 'Could not apply this yet',
-        refreshEvent: 'membership:changed',
+        refreshEvent: RefreshEvent.MEMBERSHIP_CHANGED,
         refreshData: { pendingId },
       }),
     [run, membershipAuthority, authority.address]
@@ -161,7 +162,7 @@ export function useAuthorityActions() {
         pendingMessage: 'Cancelling...',
         successMessage: 'Cancelled',
         errorMessage: 'Could not cancel it',
-        refreshEvent: 'membership:changed',
+        refreshEvent: RefreshEvent.MEMBERSHIP_CHANGED,
         refreshData: { pendingId },
       }),
     [run, membershipAuthority, authority.address]
@@ -173,7 +174,7 @@ export function useAuthorityActions() {
         pendingMessage: 'Tidying up lapsed members...',
         successMessage: 'Done',
         errorMessage: 'Could not tidy up',
-        refreshEvent: 'membership:changed',
+        refreshEvent: RefreshEvent.MEMBERSHIP_CHANGED,
         refreshData: { subjectId },
       }),
     [run, membershipAuthority, authority.address]

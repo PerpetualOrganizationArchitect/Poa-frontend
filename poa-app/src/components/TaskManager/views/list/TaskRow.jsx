@@ -15,6 +15,7 @@ import {
 import { useNow } from '@/hooks/useNow';
 import { useTaskIndicators } from '@/hooks/useTaskIndicators';
 import { useRouter } from 'next/router';
+import { getProjectNavigationQuery } from '../../taskViewIds';
 import UserIdentity from '@/components/common/UserIdentity';
 import { usePOContext } from '@/context/POContext';
 import { useOrgName } from '@/hooks/useOrgName';
@@ -74,7 +75,7 @@ const TaskRow = ({ task, isMobile = false, showProject = false }) => {
       {
         pathname: '/tasks/',
         query: {
-          ...router.query,
+          ...getProjectNavigationQuery(router.query),
           org: userDAO,
           task: id,
           ...(safeProjectId ? { projectId: safeProjectId } : {}),

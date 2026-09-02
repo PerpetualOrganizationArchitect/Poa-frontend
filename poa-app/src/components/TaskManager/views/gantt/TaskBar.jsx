@@ -1,6 +1,7 @@
 import { Box, Tooltip, Text } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
 import { useOrgName } from '@/hooks/useOrgName';
+import { getProjectNavigationQuery } from '../../taskViewIds';
 import { COLUMN_COLORS } from '@/util/taskUtils';
 import { toMs, startOfDayMs, dateToPx } from './timeAxis';
 import {
@@ -99,7 +100,7 @@ const TaskBar = ({ task, anchorMs, perDayPx, rowHeight, rangeEndMs, nowMsValue }
       {
         pathname: '/tasks/',
         query: {
-          ...router.query,
+          ...getProjectNavigationQuery(router.query),
           org: userDAO,
           task: task.id,
           ...(safeProjectId ? { projectId: safeProjectId } : {}),

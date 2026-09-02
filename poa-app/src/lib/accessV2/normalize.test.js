@@ -28,6 +28,28 @@ import {
 } from './fixtures';
 
 const run = () => normalizeAuthoritySubjects(subjectsResponse().membershipAuthorityContract.subjects);
+// Decentral Park's live Gnosis topHatId (queried from the production subgraph and chain).
+const TOP_HAT_ID = '36180248427316158604443134246780344364021047815049448269641044954447872';
+
+const decentralParkTopHat = () => ({
+  id: TOP_HAT_ID,
+  subjectId: TOP_HAT_ID,
+  kind: 'Role',
+  name: 'ipfs://Decentral Park ',
+  metadataCID: `0x${'0'.repeat(64)}`,
+  imageURI: null,
+  maxMembers: 1,
+  memberCount: 1,
+  activeMemberCount: 1,
+  defaultAllow: false,
+  isLegacyAdopted: true,
+  createdAt: '1788278685',
+  vouchConfig: null,
+  managerConfig: null,
+  perms: [],
+  memberRoles: [],
+  groups: [],
+});
 
 describe('normalizeAuthoritySubjects', () => {
   it('splits roles from groups', () => {
@@ -85,6 +107,16 @@ describe('normalizeAuthoritySubjects', () => {
   it('handles an empty authority without throwing', () => {
     expect(normalizeAuthoritySubjects([])).toMatchObject({ subjects: [], roles: [], groups: [] });
     expect(normalizeAuthoritySubjects(undefined).roles).toEqual([]);
+  });
+
+  it('keeps a migrated top hat indexed but removes it from every display projection', () => {
+    // This is the exact bad Decentral Park row: it is the org's Hats root, not an IPFS role.
+    const out = normalizeAuthoritySubjects([decentralParkTopHat(), membersSubject()]);
+    expect(out.indexedSubjects.map((s) => s.subjectId)).toContain(TOP_HAT_ID);
+    expect(out.subjects.map((s) => s.subjectId)).not.toContain(TOP_HAT_ID);
+    expect(out.roles.map((s) => s.name)).toEqual(['Members']);
+    expect(out.roleHatIds).toEqual([MEMBERS_ID]);
+    expect(out.roleNames[TOP_HAT_ID]).toBeUndefined();
   });
 
   it('survives a subject with no perms, no configs and no compositions', () => {
@@ -342,5 +374,28 @@ describe('normalizeMyMemberships', () => {
   it('is empty-safe', () => {
     expect(normalizeMyMemberships([]).myRoles).toEqual([]);
     expect(normalizeMyMemberships(undefined).claimable).toEqual([]);
+  });
+
+  it('does not render the migrated top-hat membership as one of the user\'s roles', () => {
+    const topHatMembership = aliceMembership({
+      subject: { ...aliceMembership().subject, subjectId: TOP_HAT_ID, id: TOP_HAT_ID, name: 'ipfs://Decentral Park ' },
+    });
+    const out = normalizeMyMemberships([topHatMembership, aliceMembership()]);
+    expect(out.indexedRows).toHaveLength(2);
+    expect(out.rows).toHaveLength(1);
+    expect(out.myRoles.map((m) => m.subjectName)).toEqual(['Members']);
+  });
+});
+
+describe('structural memberships', () => {
+  it('hides top-hat rows from rosters but preserves their contract-level in-org status', () => {
+    const topHatMembership = aliceMembership({
+      subject: { ...aliceMembership().subject, subjectId: TOP_HAT_ID, id: TOP_HAT_ID, name: 'ipfs://Decentral Park ' },
+    });
+    const out = normalizeAuthorityMemberships([topHatMembership], [], []);
+    expect(out.memberships).toEqual([]);
+    expect(out.members).toEqual([]);
+    expect(out.indexedMemberships).toHaveLength(1);
+    expect(out.inOrgUsers.has(ALICE)).toBe(true);
   });
 });

@@ -14,6 +14,7 @@ import { useQuery } from '@apollo/client';
 import { usePOContext } from '@/context/POContext';
 import { useSubgraphClient } from '@/util/apolloClient';
 import { FETCH_AUTHORITY_VOUCH_RECORDS } from '@/util/queries';
+import { RefreshEvent, useRefreshSubscription } from '@/context/RefreshContext';
 import { normalizeVouchRecords } from '@/lib/accessV2/vouch';
 import { toSubjectId } from '@/lib/accessV2/ids';
 import { useOrgAuthority } from './useOrgAuthority';
@@ -29,6 +30,14 @@ export function useVouchCandidates() {
     fetchPolicy: 'cache-and-network',
     client,
   });
+
+  useRefreshSubscription(
+    [RefreshEvent.VOUCH_CHANGED, RefreshEvent.PROPOSAL_COMPLETED],
+    () => {
+      if (authority.enabled && authority.address) refetch?.();
+    },
+    [authority.enabled, authority.address, refetch]
+  );
 
   return useMemo(() => {
     const raw = data?.subjectVouchRecords || [];

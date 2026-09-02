@@ -26,6 +26,7 @@ import { usePOContext } from '@/context/POContext';
 import { useSubgraphClient } from '@/util/apolloClient';
 import { FETCH_AUTHORITY_SUBJECTS } from '@/util/queries';
 import { normalizeAuthoritySubjects } from '@/lib/accessV2/normalize';
+import { RefreshEvent, useRefreshSubscription } from '@/context/RefreshContext';
 import { useOrgAuthority } from './useOrgAuthority';
 
 export function useAuthoritySubjects() {
@@ -39,6 +40,26 @@ export function useAuthoritySubjects() {
     fetchPolicy: 'cache-and-network',
     client,
   });
+
+  // Subject configuration is governance-only, while activeMemberCount also changes on the direct
+  // membership verbs. The transaction helper emits only after its subgraph wait has observed the
+  // transaction block; VotingContext mirrors proposal completion when a different member
+  // finalizes. Without this subscription, new/renamed roles, groups, and their seat counts remain
+  // stale in every access-v2 surface until the query happens to remount.
+  useRefreshSubscription(
+    [
+      RefreshEvent.PROPOSAL_COMPLETED,
+      RefreshEvent.ROLE_CLAIMED,
+      RefreshEvent.ROLE_RENOUNCED,
+      RefreshEvent.VOUCH_CHANGED,
+      RefreshEvent.MEMBERSHIP_PENDING,
+      RefreshEvent.MEMBERSHIP_CHANGED,
+    ],
+    () => {
+      if (authority.enabled && authority.address) refetch?.();
+    },
+    [authority.enabled, authority.address, refetch]
+  );
 
   const value = useMemo(
     () => normalizeAuthoritySubjects(data?.membershipAuthorityContract?.subjects || []),

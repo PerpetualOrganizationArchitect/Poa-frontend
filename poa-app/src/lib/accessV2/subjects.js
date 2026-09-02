@@ -11,9 +11,32 @@
  * groups have no acceptance, no maxMembers and are NOT tokens).
  */
 
-import { isLegacyAdoptedId, toSubjectId } from './ids';
+import { isLegacyAdoptedId, isLegacyTopHatId, toSubjectId } from './ids';
 
 export const SUBJECT_KIND = { ROLE: 'Role', GROUP: 'Group' };
+export const UINT32_MAX = 0xffffffff;
+
+/**
+ * Normalise the two unlimited-seat encodings that can coexist after migration.
+ *
+ * Native access-v2 roles use 0. Legacy Hats roles use uint32.max; graph-node's `Int` scalar is
+ * signed, so that same uint32.max currently arrives from the production subgraph as -1. Convert a
+ * signed Int back to its uint32 value before deciding whether it is unlimited, and never let a
+ * negative seat count escape into the UI.
+ */
+export function normalizeMaxMembers(value) {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+    return { maxMembers: 0, unlimitedSeats: true };
+  }
+
+  const uint32 = parsed < 0 ? parsed + (UINT32_MAX + 1) : parsed;
+  const unlimitedSeats = uint32 === 0 || uint32 === UINT32_MAX;
+  return {
+    maxMembers: unlimitedSeats ? 0 : uint32,
+    unlimitedSeats,
+  };
+}
 
 /**
  * Normalise one subgraph Subject.
@@ -26,19 +49,23 @@ export function normalizeSubject(raw) {
   if (subjectId === null) return null;
   const kind = raw.kind === SUBJECT_KIND.GROUP ? SUBJECT_KIND.GROUP : SUBJECT_KIND.ROLE;
   const isGroup = kind === SUBJECT_KIND.GROUP;
+  const seatLimit = isGroup
+    ? { maxMembers: null, unlimitedSeats: true }
+    : normalizeMaxMembers(raw.maxMembers);
+  const isTopHat = isLegacyTopHatId(subjectId);
 
   return {
     subjectId,
     kind,
     isGroup,
     isRole: !isGroup,
-    name: raw.name || '',
+    name: typeof raw.name === 'string' ? raw.name.trim() : '',
     imageURI: raw.imageURI || '',
     metadataCID: raw.metadataCID || null,
     // maxMembers is ROLE-only; the contract reverts on setMaxMembers for a Group, and the
     // subgraph writes 0 there — never render "0 of 0 seats" for a group.
-    maxMembers: isGroup ? null : Number(raw.maxMembers ?? 0),
-    unlimitedSeats: isGroup ? true : Number(raw.maxMembers ?? 0) === 0,
+    maxMembers: seatLimit.maxMembers,
+    unlimitedSeats: seatLimit.unlimitedSeats,
     // memberCount mirrors ACCEPTED flips; activeMemberCount is the fold mirror
     // (accepted && eligible) — activeMemberCount is the number to render.
     acceptedCount: Number(raw.memberCount ?? 0),
@@ -49,6 +76,11 @@ export function normalizeSubject(raw) {
     isLegacyAdopted: raw.isLegacyAdopted !== undefined
       ? Boolean(raw.isLegacyAdopted)
       : isLegacyAdoptedId(subjectId),
+    // A migrated top hat is an authority subject for contract bookkeeping, not a role people join
+    // or administer. Keep the marker on the indexed model so the shared transform can remove it
+    // from every user-facing projection without guessing from its (occasionally malformed) name.
+    isTopHat,
+    isUserFacing: !isTopHat,
     vouchConfig: raw.vouchConfig || null,
     managerConfig: raw.managerConfig || null,
     createdAt: raw.createdAt ? Number(raw.createdAt) : null,

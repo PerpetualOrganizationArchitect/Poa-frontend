@@ -4,6 +4,8 @@ import {
   toSubjectBigInt,
   toSubjectId,
   isLegacyAdoptedId,
+  isLegacyTopHatId,
+  isUserFacingSubjectId,
   isV2NativeId,
   embeddedAuthority,
   localSeq,
@@ -67,6 +69,15 @@ describe('namespace classification', () => {
     const v2 = composeSubjectId(AUTH, 999);
     expect(isV2NativeId(v2) && isLegacyAdoptedId(v2)).toBe(false);
     expect(isV2NativeId(CHILD_HAT) && isLegacyAdoptedId(CHILD_HAT)).toBe(false);
+  });
+
+  it('distinguishes a structural top hat from its user-facing child roles', () => {
+    expect(isLegacyTopHatId(TOPHAT)).toBe(true);
+    expect(isLegacyTopHatId(CHILD_HAT)).toBe(false);
+    expect(isLegacyTopHatId(composeSubjectId(AUTH, 1))).toBe(false);
+    expect(isUserFacingSubjectId(TOPHAT)).toBe(false);
+    expect(isUserFacingSubjectId(CHILD_HAT)).toBe(true);
+    expect(isUserFacingSubjectId('not-an-id')).toBe(false);
   });
 });
 

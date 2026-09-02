@@ -18,7 +18,7 @@
  * delegated action is MACHINERY, never a membership condition.
  */
 
-import { toSubjectId } from './ids';
+import { isLegacyTopHatId, toSubjectId } from './ids';
 import { isOpen as isOpenPendingAction } from './pendingActions';
 
 /** Mirrors the subgraph `EligibilitySource` enum (evaluation ORDER). */
@@ -83,12 +83,15 @@ export function normalizeMembership(raw) {
   const subjectId = toSubjectId(raw.subject?.subjectId ?? raw.subject?.id ?? raw.subjectId);
   if (subjectId === null) return null;
   const source = raw.eligibilitySource || ELIGIBILITY_SOURCE.NONE;
+  const isTopHat = isLegacyTopHatId(subjectId);
 
   return {
     id: raw.id || `${subjectId}-${String(raw.user || '').toLowerCase()}`,
     subjectId,
     subject: raw.subject || null,
-    subjectName: raw.subject?.name || '',
+    subjectName: typeof raw.subject?.name === 'string' ? raw.subject.name.trim() : '',
+    isTopHat,
+    isUserFacing: !isTopHat,
     user: String(raw.user || '').toLowerCase(),
     username: raw.userUsername || raw.userEntity?.username || null,
 

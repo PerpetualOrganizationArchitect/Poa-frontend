@@ -57,3 +57,22 @@ describe('v2 hooks gate on `enabled` (router-bound), not `migrated`', () => {
     }
   });
 });
+
+describe('v2 hooks invalidate their indexed view models after writes', () => {
+  const sourceOf = (file) => sources.find((s) => s.file === file)?.src || '';
+
+  it('refreshes the shared subject source after a proposal creates or edits a role/group', () => {
+    const src = sourceOf('useAuthoritySubjects.js');
+    expect(src).toContain('useRefreshSubscription');
+    expect(src).toContain('RefreshEvent.PROPOSAL_COMPLETED');
+    expect(src).toMatch(/PROPOSAL_COMPLETED[\s\S]*refetch/);
+  });
+
+  it('refreshes org-wide and per-user membership projections after access-v2 writes', () => {
+    const src = sourceOf('useAuthorityMemberships.js');
+    expect(src).toContain('RefreshEvent.ROLE_CLAIMED');
+    expect(src).toContain('RefreshEvent.ROLE_RENOUNCED');
+    expect(src).toContain('RefreshEvent.MEMBERSHIP_CHANGED');
+    expect(src.match(/useRefreshSubscription\(/g)).toHaveLength(2);
+  });
+});

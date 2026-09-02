@@ -17,8 +17,18 @@ import { useAuth } from '@/context/AuthContext';
 import { useSubgraphClient } from '@/util/apolloClient';
 import { FETCH_AUTHORITY_MEMBERSHIPS, FETCH_USER_MEMBERSHIPS } from '@/util/queries';
 import { normalizeAuthorityMemberships, normalizeMyMemberships } from '@/lib/accessV2/normalize';
+import { RefreshEvent, useRefreshSubscription } from '@/context/RefreshContext';
 import { useOrgAuthority } from './useOrgAuthority';
 import { useAuthoritySubjects } from './useAuthoritySubjects';
+
+const MEMBERSHIP_REFRESH_EVENTS = [
+  RefreshEvent.PROPOSAL_COMPLETED,
+  RefreshEvent.ROLE_CLAIMED,
+  RefreshEvent.ROLE_RENOUNCED,
+  RefreshEvent.VOUCH_CHANGED,
+  RefreshEvent.MEMBERSHIP_PENDING,
+  RefreshEvent.MEMBERSHIP_CHANGED,
+];
 
 /** Every membership row that matters in the org (a member, or a claimable seat). */
 export function useAuthorityMemberships() {
@@ -33,6 +43,14 @@ export function useAuthorityMemberships() {
     fetchPolicy: 'cache-and-network',
     client,
   });
+
+  useRefreshSubscription(
+    MEMBERSHIP_REFRESH_EVENTS,
+    () => {
+      if (authority.enabled && authority.address) refetch?.();
+    },
+    [authority.enabled, authority.address, refetch]
+  );
 
   const value = useMemo(
     () => normalizeAuthorityMemberships(data?.subjectMemberships || [], compositions, groups),
@@ -70,6 +88,14 @@ export function useMyMemberships(addressOverride) {
     fetchPolicy: 'cache-and-network',
     client,
   });
+
+  useRefreshSubscription(
+    MEMBERSHIP_REFRESH_EVENTS,
+    () => {
+      if (authority.enabled && authority.address && user) refetch?.();
+    },
+    [authority.enabled, authority.address, user, refetch]
+  );
 
   const value = useMemo(() => normalizeMyMemberships(data?.subjectMemberships || []), [data]);
 

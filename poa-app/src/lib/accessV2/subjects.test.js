@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizeSubject,
+  normalizeMaxMembers,
   normalizeSubjects,
   splitSubjects,
   indexGroupCompositions,
@@ -59,6 +60,21 @@ describe('normalizeSubject', () => {
   it('marks a default-ALLOW subject as open', () => {
     expect(normalizeSubject(membersSubject()).isOpen).toBe(true);
     expect(normalizeSubject(execsSubject()).isOpen).toBe(false);
+  });
+
+  it('normalises both legacy encodings of an unlimited seat cap', () => {
+    // Decentral Park's adopted Agent hat is uint32.max on chain. The deployed subgraph exposes
+    // that through a signed GraphQL Int as -1; neither representation may render as a seat count.
+    expect(normalizeMaxMembers(-1)).toEqual({ maxMembers: 0, unlimitedSeats: true });
+    expect(normalizeMaxMembers(4294967295)).toEqual({ maxMembers: 0, unlimitedSeats: true });
+    expect(normalizeSubject(execsSubject({ maxMembers: -1 }))).toMatchObject({
+      maxMembers: 0,
+      unlimitedSeats: true,
+    });
+  });
+
+  it('restores other signed GraphQL Int values to their uint32 seat cap', () => {
+    expect(normalizeMaxMembers(-2)).toEqual({ maxMembers: 4294967294, unlimitedSeats: false });
   });
 
   it('drops an unusable row instead of throwing', () => {

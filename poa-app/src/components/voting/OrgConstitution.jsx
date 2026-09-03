@@ -18,6 +18,11 @@
  *                          rule and the affordance can never disagree.
  *                          describeVoteOpenRights (src/lib/voting) owns every
  *                          branch; this file only maps icon keys to components.
+ *                          On an access-v2 org those arrays are SUBJECT ids, so
+ *                          the role list and names come from useRoleNames (the
+ *                          authority's roles) rather than POContext's legacy
+ *                          Hats list, which froze at cutover and can name
+ *                          nothing created since.
  *
  * That section used to guess ("polls are open more widely") and then apologise
  * for guessing ("creator roles set at deployment may not be listed"). Both were
@@ -69,6 +74,8 @@ import {
   passRuleCopy,
 } from '@/config/votingVocabulary';
 import { describeVoteOpenRights } from '@/lib/voting/voteOpenRights';
+import { getAvailableTemplateById } from '@/lib/voting/setterAvailability';
+import { useOrgAuthority } from '@/hooks/accessV2/useOrgAuthority';
 import { VOTE_PALETTE } from './votingDisplay';
 
 const { amethyst, leaderText, amethystSoft, amethystBorder } = VOTE_PALETTE;
@@ -109,7 +116,14 @@ function ProposeChange({
   onProposeRuleChange,
   label = 'Propose a change',
 }) {
-  if (!canPropose || !onProposeRuleChange || !templateId) return null;
+  // On a cut-over org the creator-hat / project-mask templates write tables the
+  // contracts no longer read — their rows must not offer a vote that would pass
+  // and change nothing. Legacy orgs see every row exactly as before.
+  const authority = useOrgAuthority();
+  const available = Boolean(
+    templateId && getAvailableTemplateById(templateId, { authorityEnabled: authority.enabled })
+  );
+  if (!canPropose || !onProposeRuleChange || !templateId || !available) return null;
   return (
     <Button
       size="xs"
@@ -232,8 +246,12 @@ export function OrgConstitution({
     ddThresholdPct,
     ddQuorum,
   } = useVotingContext();
-  const { orgId, poMembers, roleHatIds, roleNames } = usePOContext();
-  const { getRoleNames } = useRoleNames();
+  const { orgId, poMembers } = usePOContext();
+  // The role list and names come from useRoleNames, not straight from POContext: on an
+  // access-v2 org useVoteCreateGate returns SUBJECT ids, and POContext's frozen legacy Hats list
+  // cannot name a role created after cutover — the section would count it as "1 more role"
+  // instead of naming it. On a legacy org these are POContext's own values, unchanged.
+  const { getRoleNames, roleHatIds, roleNamesById } = useRoleNames();
 
   // undefined = not yet resolved from storage. defaultOpen (the /rules page)
   // wins immediately; otherwise remember the member's last choice per-org.
@@ -282,7 +300,7 @@ export function OrgConstitution({
     bindingHatIds: voteGate.bindingCreatorHatIds,
     pollHatIds: voteGate.pollCreatorHatIds,
     roleHatIds,
-    roleNames,
+    roleNames: roleNamesById,
     hasBinding: voteGate.hasBinding,
     hasPolls: voteGate.hasPolls,
     settled: voteGate.creatorGateSettled,
@@ -291,7 +309,7 @@ export function OrgConstitution({
     canOpenBinding: voteGate.canCreateProposal,
     canOpenPoll: voteGate.canCreatePoll,
     isMember: voteGate.isMember,
-  }), [voteGate, roleHatIds, roleNames]);
+  }), [voteGate, roleHatIds, roleNamesById]);
 
   // Resolve DIRECT-class gating hats to role names for a specific label.
   const classRows = useMemo(() => {

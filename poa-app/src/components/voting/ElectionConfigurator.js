@@ -126,6 +126,12 @@ const ElectionConfigurator = ({
   onChange,
   allRoles = [],
   leaderboardData = [],
+  // ACCESS V2 — who holds a role. On a migrated org the roster comes from the MembershipAuthority
+  // (a role created after cutover has no hat, and nobody who joined since holds a hat token), so
+  // the modal passes a resolver and this component asks IT instead of deriving from the hat lists
+  // in `leaderboardData`. Absent on a legacy org, where every path below is byte-identical.
+  resolveHolders = null,
+  holdersReady = undefined,
 }) => {
   const [step, setStep] = useState(proposal.electionRoleId ? 2 : 1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -139,8 +145,15 @@ const ElectionConfigurator = ({
   // failure alert to anyone on a slow subgraph while data is still in flight.
   const { poContextLoading } = usePOContext();
   const rolesResolved = allRoles.length > 0;
-  const holdersResolved = leaderboardData.length > 0;
+  const holdersResolved = holdersReady !== undefined ? Boolean(holdersReady) : leaderboardData.length > 0;
   const orgDataLoading = poContextLoading && (!rolesResolved || !holdersResolved);
+
+  // The one place "who holds this role?" is answered — the authority's roster when the modal
+  // supplies one, the legacy hat lists otherwise.
+  const holdersOf = useCallback(
+    (roleId) => (resolveHolders ? resolveHolders(roleId) : getCurrentHolders(roleId, leaderboardData)),
+    [resolveHolders, leaderboardData]
+  );
 
   // Holders of the selected hat, re-derived from LIVE leaderboardData rather
   // than trusted from the one-shot snapshot handleRoleSelect took: that click
@@ -148,8 +161,8 @@ const ElectionConfigurator = ({
   // forever — the incumbent picker would never render and the UI would claim
   // "no one holds this role" while the election revokes nothing.
   const liveHolders = useMemo(
-    () => getCurrentHolders(proposal.electionRoleId, leaderboardData),
-    [proposal.electionRoleId, leaderboardData]
+    () => holdersOf(proposal.electionRoleId),
+    [proposal.electionRoleId, holdersOf]
   );
 
   // All holders of the selected hat (for display / selection). The persisted
@@ -272,18 +285,18 @@ const ElectionConfigurator = ({
       return;
     }
     // Pre-compute which addresses currently hold the fallback hat
-    const holders = getCurrentHolders(fallbackHatId, leaderboardData);
+    const holders = holdersOf(fallbackHatId);
     const holderAddresses = holders.map(h => h.address);
     onChange({
       electionFallbackRoleId: fallbackHatId,
       electionFallbackHolders: holderAddresses,
     });
-  }, [onChange, leaderboardData]);
+  }, [onChange, holdersOf]);
 
   // Handle role selection (step 1 -> 2)
   const handleRoleSelect = useCallback(
     (role) => {
-      const holders = getCurrentHolders(role.hatId, leaderboardData);
+      const holders = holdersOf(role.hatId);
       const updates = {
         electionRoleId: role.hatId,
         electionCurrentHolders: holders,
@@ -491,7 +504,7 @@ const ElectionConfigurator = ({
           {!orgDataLoading && rolesResolved && (
             <SimpleGrid columns={2} spacing={3}>
               {allRoles.map((role) => {
-                const holders = getCurrentHolders(role.hatId, leaderboardData);
+                const holders = holdersOf(role.hatId);
                 return (
                   <RoleCard
                     key={role.hatId}

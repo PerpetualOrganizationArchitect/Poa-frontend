@@ -15,6 +15,7 @@ import {
   FiPlusCircle,
   FiSettings,
 } from 'react-icons/fi';
+import { BINDING_TYPES } from './wizardSteps';
 
 /**
  * Intent-first entry for Create-a-Vote. Replaces the 5-option <Select> with a
@@ -38,8 +39,11 @@ export const INTENT_OPTIONS = [
     type: 'transferFunds',
     icon: FiDollarSign,
     title: 'Send money from the treasury',
-    description: 'Propose a payout — passes as a Yes/No vote.',
-    binding: false,
+    description: 'Pay someone or fund task rewards — passing the vote moves the money.',
+    // A payout RUNS on-chain when it passes, so it is binding: it submits to
+    // Blended voting (the only contract that can execute) and is gated on the
+    // binding-creator permission. See wizardSteps.BINDING_TYPES.
+    binding: true,
   },
   {
     type: 'election',
@@ -63,6 +67,15 @@ export const INTENT_OPTIONS = [
     binding: true,
   },
 ];
+
+// The badge and the routing must never disagree: a card marked non-binding
+// that submits a batch would be gated on the wrong creator permission and sent
+// to a contract that cannot execute it.
+for (const option of INTENT_OPTIONS) {
+  if (option.binding !== BINDING_TYPES.has(option.type)) {
+    throw new Error(`IntentGallery: "${option.type}" binding flag disagrees with wizardSteps.BINDING_TYPES`);
+  }
+}
 
 const IntentCard = ({ option, onSelect, isDisabled = false }) => {
   const IconComponent = option.icon;

@@ -4,7 +4,7 @@
  * Sources role names from POContext (which gets them from the subgraph's
  * Role.name and Hat.name fields) instead of fetching from IPFS.
  *
- * ACCESS V2: on a migrated org an id can also be a v2-NATIVE role
+ * ACCESS V2 — NAMES: on a migrated org an id can also be a v2-NATIVE role
  * ((authority << 64) | seq) or a GROUP, neither of which exists in the legacy
  * Hats list — a group-restricted poll rendered "Unknown Role" here and, in
  * CreateVoteModal's review step, "All members". The v2 subjects are consulted
@@ -12,12 +12,25 @@
  * (PollDetail, VotePowerReceipt, OrgConstitution, CreateVoteModal) resolves
  * both namespaces with no change of its own. On a legacy org
  * `useAuthoritySubjects` puts nothing on the wire and this is a no-op.
+ *
+ * ACCESS V2 — THE LIST: `allRoles` (and the `roleHatIds` / `roleNamesById` that
+ * go with it) used to come from POContext `roleHatIds`, the legacy Hats list.
+ * On a v2 org that list is frozen at cutover, so every picker built on it
+ * (setter-template roleSelect, ElectionConfigurator, RoleConfigurator's parent
+ * picker, the restricted-poll subject picker) offered deactivated hats and
+ * could never offer a role created since — a v2-native role has no hat at all.
+ * When the authority is live the list is sourced from its ROLE subjects
+ * instead. The projection stays legacy-shaped (`{ hatId, name, index }`, with
+ * `hatId` carrying the subject id) because a migrated org adopts its hat ids
+ * verbatim, so no consumer changes. The fold is `lib/voting/roleOptions.js`.
  */
 
 import { useCallback, useMemo } from 'react';
 import { usePOContext } from '../context/POContext';
 import { useAuthoritySubjects } from './accessV2/useAuthoritySubjects';
+import { useOrgAuthority } from './accessV2/useOrgAuthority';
 import { makeSubjectNameResolver, shortSubjectLabel } from '@/lib/accessV2/subjectNames';
+import { foldRoleOptions } from '@/lib/voting/roleOptions';
 
 /**
  * Normalize a hat ID to a string for consistent comparison
@@ -43,9 +56,15 @@ function getFallbackRoleName(index) {
  * @returns {Object} { roleNames, getRoleName, isLoading }
  */
 export function useRoleNames() {
-  const { roleHatIds, roleNames: contextRoleNames, roleCanVoteMap } = usePOContext();
+  const {
+    roleHatIds,
+    roleNames: contextRoleNames,
+    roleCanVoteMap,
+    eligibilityModuleAdminHat,
+  } = usePOContext();
   // Empty on a legacy org (the hook self-gates on the authority), so this adds no query there.
-  const { subjects } = useAuthoritySubjects();
+  const { subjects, roles: subjectRoles } = useAuthoritySubjects();
+  const { enabled: authorityEnabled } = useOrgAuthority();
 
   // Build normalized role names map from POContext data
   const roleNames = useMemo(() => {
@@ -121,22 +140,33 @@ export function useRoleNames() {
     return names.join(', ');
   }, [getRoleNames]);
 
-  // Create a stable reference for all roles with their names
-  const allRoles = useMemo(() => {
-    if (!roleHatIds?.length) return [];
+  // The role list every picker renders. Legacy Hats list, or the authority's ROLE subjects on a
+  // migrated org — see lib/voting/roleOptions.js for the rule and its tests.
+  const roleOptions = useMemo(
+    () => foldRoleOptions({
+      authorityEnabled: !!authorityEnabled,
+      legacyRoleHatIds: roleHatIds,
+      legacyRoleNames: roleNames,
+      legacyCanVoteMap: roleCanVoteMap,
+      subjectRoles,
+      // The eligibility-module admin hat is a SYSTEM hat (its wearer is the module contract).
+      // POContext strips it from the legacy `roleHatIds`; migration adopts it as a subject like
+      // any other hat, so the v2 list has to strip it too or it reappears in every picker.
+      excludeIds: eligibilityModuleAdminHat ? [eligibilityModuleAdminHat] : [],
+      nameFor: getRoleName,
+    }),
+    [
+      authorityEnabled,
+      roleHatIds,
+      roleNames,
+      roleCanVoteMap,
+      subjectRoles,
+      eligibilityModuleAdminHat,
+      getRoleName,
+    ]
+  );
 
-    return roleHatIds.map((hatId, index) => ({
-      hatId: String(hatId),
-      name: getRoleName(hatId),
-      index,
-    }));
-  }, [roleHatIds, getRoleName]);
-
-  // Roles that have canVote === true
-  const votingEligibleRoles = useMemo(() => {
-    if (!allRoles?.length) return [];
-    return allRoles.filter(role => roleCanVoteMap?.[role.hatId] !== false);
-  }, [allRoles, roleCanVoteMap]);
+  const { allRoles, votingEligibleRoles } = roleOptions;
 
   return {
     roleNames,
@@ -145,6 +175,13 @@ export function useRoleNames() {
     getRoleNamesString,
     allRoles,
     votingEligibleRoles,
+    // The same list as ids + an id -> name map, for surfaces that describe roles rather than pick
+    // one (OrgConstitution's "who can open a vote"). On a legacy org these ARE POContext's
+    // `roleHatIds` / `roleNames`; on a v2 org they are the authority's roles, so a role created
+    // after cutover is named instead of counted as "1 more role".
+    roleHatIds: roleOptions.roleHatIds,
+    roleNamesById: roleOptions.roleNamesById,
+    roleOptionSource: roleOptions.source,
     // The raw v2-aware resolver, for callers that must NOT fall back to "Unknown Role" (a review
     // step confirming a restriction, say — see CreateVoteModal.whoCanVoteLabel).
     resolveSubjectName,

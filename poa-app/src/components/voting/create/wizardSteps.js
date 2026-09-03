@@ -28,6 +28,38 @@ export const STEP_REVIEW = 'review';
 export const CONFIG_TYPES = new Set(['setter', 'election', 'createRole', 'transferFunds']);
 
 /**
+ * Types whose passing option RUNS a batch on-chain, and therefore submit to the
+ * org's Blended (HybridVoting) governance rather than the DirectDemocracy poll
+ * contract. ONE definition: the intent gallery's `binding` badge, the modal's
+ * creator gate + banner, and the routing predicate all derive from it.
+ *
+ * `transferFunds` belongs here. It always carried a batch, but it used to be
+ * routed to DirectDemocracy — whose target allow-list is empty on every org we
+ * deploy, so `createProposal` reverted `TargetNotAllowed` after the member had
+ * walked the whole wizard. HybridVoting has no allow-list by design (#74), and
+ * the Executor accepts HybridVoting as its ONLY caller, so a batch-carrying
+ * proposal can only ever execute from there.
+ */
+export const BINDING_TYPES = new Set(['election', 'createRole', 'setter', 'transferFunds']);
+
+export function isBindingType(type) {
+  return BINDING_TYPES.has(type);
+}
+
+/**
+ * Which contract a built proposal submits to. Decided by the BATCH, not the
+ * type name: anything that would run a call if it passed goes to Blended
+ * voting; a batch-less poll goes to DirectDemocracy.
+ *
+ * @param {Array<Array>} batches - per-option call lists from buildProposalData
+ * @returns {'hybrid'|'dd'}
+ */
+export function votingLaneForBatches(batches) {
+  const executes = (batches || []).some((b) => Array.isArray(b) && b.length > 0);
+  return executes ? 'hybrid' : 'dd';
+}
+
+/**
  * The ordered step list for a proposal type.
  *   normal                                   → intent → details → review
  *   transferFunds/setter/election/createRole → intent → config → details → review

@@ -7,6 +7,29 @@
  */
 
 import { utils } from 'ethers';
+import { parseProjectId } from '@/services/web3/utils/encoding';
+import { PERM_CATALOGUE, TASK_PERM_BITS } from '@/lib/accessV2/permKeys';
+import { buildPermRows, buildEditPermsBatch } from '@/lib/accessV2/proposalBuilders';
+
+// ============================================================================
+// ACCESS-SYSTEM FLAGS
+// ============================================================================
+//
+// A template/raw-function entry declares WHICH access system it belongs to; nothing else in the
+// app hardcodes the ids. `src/lib/voting/setterAvailability.js` is the only reader — it turns
+// these flags plus `useOrgAuthority().enabled` into the list a member sees.
+//
+//   legacyOnly     — the call still SUCCEEDS on an access-v2 org and still emits the legacy event
+//                    the subgraph indexes, but the contract no longer reads the table it writes.
+//                    Offering it would let a group hold a vote, pass it, and change nothing while
+//                    the UI reported success. Hidden once the authority is live.
+//   v2Only         — needs the MembershipAuthority; hidden on a legacy org.
+//   idsAreSubjects — LIVE on both, but on a v2 org the role ids it writes are AUTHORITY SUBJECT
+//                    ids (the contract resolves them through `authority.isMember`), not Hats ids.
+//                    Purely a copy concern — see `v2HelpText` / `v2Description`.
+//   v2HelpText / v2Description / v2Note
+//                  — copy swapped in ONLY when the authority is live, so a legacy org renders
+//                    byte-identically to what it renders today.
 
 // ============================================================================
 // VALUE HELPERS
@@ -49,6 +72,161 @@ export function abbreviateHash(value) {
   const s = String(value ?? '').trim();
   if (s.length <= 8 + 6 + 1) return s || '(not set)';
   return `${s.slice(0, 8)}…${s.slice(-6)}`;
+}
+
+// ============================================================================
+// ACCESS-V2 PERMISSION HELPERS  (used by the `edit-role-permissions` template)
+// ============================================================================
+
+/**
+ * Verb phrases for the permission catalogue, so a proposal can say what it DOES rather than
+ * reprinting a checkbox label. `PERM_CATALOGUE[].label` is written for a checkbox ("Granted on
+ * join"), which does not survive being dropped into a sentence.
+ */
+const PERM_ACTION_WORDS = {
+  DD_VOTE: 'vote in community votes',
+  DD_CREATE: 'open a community vote',
+  HV_CREATE: 'open a binding vote',
+  PT_MEMBER: 'hold shares',
+  PT_APPROVE: 'approve other people’s share requests',
+  EDU_CREATE: 'publish learning modules',
+  EDU_MEMBER: 'take learning modules and earn their rewards',
+  PAY_CREATE: 'request payments from the treasury',
+  QJ_AUTOJOIN: 'be given to everyone who joins through the join link',
+  SUBJECT_RENAME: 'rename roles and groups',
+};
+
+/** The same treatment for the task bits, which the picker labels for a checkbox too. */
+const TASK_ACTION_WORDS = {
+  CREATE: 'create tasks',
+  CLAIM: 'claim tasks',
+  REVIEW: 'review finished tasks',
+  ASSIGN: 'assign tasks to other people',
+  SELF_REVIEW: 'finish their own claimed tasks',
+  BUDGET: 'set project budgets',
+  EDIT_META: 'edit task titles',
+  EDIT_FULL: 'edit task titles and pay',
+};
+
+const permWords = (id) => PERM_ACTION_WORDS[id]
+  || (PERM_CATALOGUE.find((e) => e.id === id)?.label || id).toLowerCase();
+const taskWords = (bit) => TASK_ACTION_WORDS[bit.id] || bit.label.toLowerCase();
+
+/** "a", "a and b", "a, b and c" — the list voice the rest of the vote copy uses. */
+export function joinPhrases(items = []) {
+  const list = items.filter(Boolean);
+  if (list.length === 0) return '';
+  if (list.length === 1) return list[0];
+  return `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
+}
+
+/**
+ * A subject's OWN global permissions, in the `{ DD_VOTE: true, TM_PERMS: 6 }` shape
+ * `PermissionPicker` edits and `buildPermRows` consumes.
+ *
+ * OWN, not effective: this is the seed for an editor that rewrites THIS subject's rows. Folding in
+ * a group's permissions would show ticks the member cannot untick here, and unticking one would
+ * emit a `clearPerm` for a row that does not exist on this subject.
+ *
+ * GLOBAL ctx only. A per-project row lives at `ctx = bytes32(projectId + 1)` and is deliberately
+ * invisible to this editor, so the diff can never clear one it never showed.
+ *
+ * @param {object} subject - a `useAuthoritySubjects()` subject (post `attachPerms`)
+ */
+export function permsFromSubject(subject) {
+  const out = {};
+  if (!subject) return out;
+  const rows = subject.permRows || [];
+  for (const entry of PERM_CATALOGUE) {
+    const row = typeof subject.permGlobal === 'function'
+      ? subject.permGlobal(entry.key)
+      : rows.find((r) => (
+        String(r.permKey).toLowerCase() === String(entry.key).toLowerCase()
+        && r.isGlobalCtx && r.exists
+      ));
+    if (!row || !row.exists) continue;
+    let value;
+    try {
+      value = BigInt(row.value ?? 0);
+    } catch {
+      value = 0n;
+    }
+    if (value === 0n) continue;
+    out[entry.id] = entry.mask ? Number(value) : true;
+  }
+  return out;
+}
+
+/** Drop anything that is not a catalogue key, so a stale form value cannot reach the encoder. */
+export function normalizePermSelection(perms) {
+  const out = {};
+  if (!perms || typeof perms !== 'object') return out;
+  for (const entry of PERM_CATALOGUE) {
+    const value = perms[entry.id];
+    if (entry.mask) {
+      const mask = Number(value) || 0;
+      if (mask > 0) out[entry.id] = mask;
+    } else if (value) {
+      out[entry.id] = true;
+    }
+  }
+  return out;
+}
+
+/**
+ * What changed between two permission selections, in words a member can read.
+ * @returns {{granted: string[], removed: string[], taskAdded: string[], taskRemoved: string[],
+ *            changed: boolean}}
+ */
+export function describePermChanges(currentPerms = {}, nextPerms = {}) {
+  const before = normalizePermSelection(currentPerms);
+  const after = normalizePermSelection(nextPerms);
+
+  const granted = [];
+  const removed = [];
+  for (const entry of PERM_CATALOGUE) {
+    if (entry.mask) continue;
+    const had = Boolean(before[entry.id]);
+    const has = Boolean(after[entry.id]);
+    if (has && !had) granted.push(permWords(entry.id));
+    if (had && !has) removed.push(permWords(entry.id));
+  }
+
+  const beforeMask = Number(before.TM_PERMS || 0);
+  const afterMask = Number(after.TM_PERMS || 0);
+  const taskAdded = [];
+  const taskRemoved = [];
+  for (const bit of TASK_PERM_BITS) {
+    const had = (beforeMask & bit.value) === bit.value;
+    const has = (afterMask & bit.value) === bit.value;
+    if (has && !had) taskAdded.push(taskWords(bit));
+    if (had && !has) taskRemoved.push(taskWords(bit));
+  }
+
+  return {
+    granted,
+    removed,
+    taskAdded,
+    taskRemoved,
+    changed: granted.length + removed.length + taskAdded.length + taskRemoved.length > 0,
+  };
+}
+
+/**
+ * One sentence per kind of change, each naming the role — the per-call summary list the review
+ * screen renders beside a governance batch. `buildEditPermsBatch` emits a generic "Change a
+ * permission on X" per call; a member voting on this needs to know WHICH permission.
+ */
+export function permChangeSummaries(subjectName, changes) {
+  const name = `“${subjectName}”`;
+  const out = [];
+  if (changes.granted.length) out.push(`Let ${name} ${joinPhrases(changes.granted)}`);
+  if (changes.removed.length) out.push(`Stop ${name} being able to ${joinPhrases(changes.removed)}`);
+  if (changes.taskAdded.length) out.push(`Let ${name} ${joinPhrases(changes.taskAdded)}`);
+  if (changes.taskRemoved.length) {
+    out.push(`Stop ${name} being able to ${joinPhrases(changes.taskRemoved)}`);
+  }
+  return out;
 }
 
 // ============================================================================
@@ -117,6 +295,15 @@ export const CONTRACT_MAP = {
     contextKey: 'zkEmailInvitesAddress',
     displayName: 'Email Invites',
     description: 'ZK email allowlist module (claim roles by proving your email)'
+  },
+  // Access v2. `isContractAvailable` needs no special case: the caller supplies
+  // `membershipAuthorityAddress` only when the org's authority is live and router-bound, so a
+  // legacy org resolves it to undefined and every template targeting it disappears — the same
+  // rule the optional Email Invites module already follows.
+  membershipAuthority: {
+    contextKey: 'membershipAuthorityAddress',
+    displayName: 'Roles and permissions',
+    description: 'Who holds each role, and what each role is allowed to do'
   }
 };
 
@@ -275,6 +462,9 @@ export const SETTER_TEMPLATES = [
     name: 'Change Voting Class Weights',
     autoTitle: 'Change how voting power is split',
     description: 'Adjust the voting power split between democracy and share-based classes',
+    // LIVE on access v2. The `hatIds` inside each class are the ELECTORATE for that class, and on
+    // a v2 org they are authority role ids resolved through `authority.isMember`.
+    idsAreSubjects: true,
     contract: 'hybridVoting',
     functionName: 'setClasses',
     inputs: [
@@ -282,7 +472,9 @@ export const SETTER_TEMPLATES = [
         name: 'classWeights',
         label: 'Voting Class Weights',
         type: 'votingClassWeights',
-        helpText: 'Adjust the percentage split between voting classes (must sum to 100%)'
+        helpText: 'Adjust the percentage split between voting classes (must sum to 100%)',
+        v2HelpText: 'Adjust the percentage split between voting classes (must sum to 100%). '
+          + 'Each class counts the roles listed under Roles and permissions'
       }
     ],
     requiresContext: 'votingClasses',
@@ -345,6 +537,10 @@ export const SETTER_TEMPLATES = [
     description: 'Grant or revoke a role\'s permission to create new blended voting proposals',
     contract: 'hybridVoting',
     functionName: 'setCreatorHatAllowed',
+    // DEAD on access v2 and SILENT about it: `setCreatorHatAllowed` still succeeds and still emits
+    // the event the subgraph indexes, but HybridVoting.createProposal now gates on
+    // `authority.hasPerm(user, HV_CREATE)`. Use `edit-role-permissions` instead.
+    legacyOnly: true,
     inputs: [
       {
         name: 'role',
@@ -378,6 +574,10 @@ export const SETTER_TEMPLATES = [
     description: 'Grant or revoke a role\'s permission to vote in direct democracy',
     contract: 'directDemocracyVoting',
     functionName: 'setConfig',
+    // DEAD on access v2 and SILENT about it: HAT_ALLOWED (config key 3) still writes and still
+    // emits, but DirectDemocracyVoting now gates on `authority.hasPerm(user, DD_VOTE / DD_CREATE)`.
+    // Use `edit-role-permissions` instead.
+    legacyOnly: true,
     inputs: [
       {
         name: 'role',
@@ -417,6 +617,117 @@ export const SETTER_TEMPLATES = [
       const action = values.allowed === 'Grant' ? 'Allow' : 'Revoke';
       const hatType = values.hatType === '0' ? 'vote' : 'create proposals';
       return `${action} "${roleName}" to ${hatType} in direct democracy`;
+    }
+  },
+
+  {
+    id: 'edit-role-permissions',
+    category: 'permissions',
+    name: 'Change What a Role Can Do',
+    autoTitle: 'Change what a role can do',
+    description: 'Choose a role or group, then set what the people in it are allowed to do',
+    contract: 'membershipAuthority',
+    // The single replacement for the three templates that went dead at the access-v2 cutover
+    // (allow-proposal-creator-hybrid, allow-voter-dd, and the global half of
+    // set-project-permissions): all of those wrote a per-module table, and every module now asks
+    // the authority instead. One vote, one place.
+    v2Only: true,
+    inputs: [
+      {
+        name: 'subjectId',
+        label: 'Role or group',
+        type: 'authoritySubjectSelect',
+        helpText: 'Pick the role — or the group of roles — this vote should change',
+        // Written together with the picker's choice so the ballot can name the role even after
+        // the roles list has moved on. See SetterParamInputs.
+        nameField: 'subjectName',
+        permsField: 'perms',
+        currentField: 'permsCurrent'
+      },
+      {
+        name: 'perms',
+        label: 'What they’re allowed to do',
+        type: 'authorityPermissions',
+        helpText: 'Ticked is allowed. Anything you untick is taken away when this vote passes. '
+          + 'Settings that apply to one project only are left alone',
+        currentField: 'permsCurrent'
+      },
+      // Both derived from the picker, never typed: the chosen role's name, and the snapshot of
+      // what it can do today. The snapshot is what makes "nothing has changed yet" answerable on
+      // the config screen, where there is no authority data to diff against.
+      { name: 'subjectName', type: 'hidden', optional: true },
+      { name: 'permsCurrent', type: 'hidden', optional: true }
+    ],
+    /**
+     * Build the governance batch. Called by the wizard's setter arm INSTEAD of `encode` — this is
+     * a multi-call diff against live authority state, not a single encoded setter.
+     *
+     * @param {object} values - setterValues
+     * @param {object} ctx    - `{ authority, subjects, contractAddresses, roleNames, projectNames }`
+     * @returns {{batch: Array, summaries: string[], warnings: string[], gasLimit: number}}
+     */
+    buildBatch: (values, ctx = {}) => {
+      const { authority, subjects = [], roleNames = {} } = ctx;
+      if (!authority) {
+        throw new Error('This group’s roles and permissions aren’t loaded yet — try again in a moment.');
+      }
+      const subjectId = String(values?.subjectId ?? '').trim();
+      if (!subjectId) throw new Error('Pick the role this vote should change.');
+
+      const subject = (subjects || []).find((s) => String(s?.subjectId) === subjectId);
+      // Never fall back to the form's own snapshot here. A diff against a stale picture would
+      // rewrite rows somebody else already changed, or clear ones this vote never showed.
+      if (!subject) {
+        throw new Error('That role isn’t in this group’s list any more — choose it again.');
+      }
+
+      const subjectName = subject.name || values?.subjectName || roleNames?.[subjectId] || 'this role';
+      const currentPerms = permsFromSubject(subject);
+      const nextPerms = normalizePermSelection(values?.perms);
+
+      const result = buildEditPermsBatch({
+        authority,
+        subjectId,
+        subjectName,
+        // Both sides go through buildPermRows so the diff compares like with like: a row whose
+        // stored word differs only in bits the picker cannot express (a bool held as 5 rather
+        // than 1) is not rewritten for nothing.
+        currentRows: buildPermRows(currentPerms),
+        nextRows: buildPermRows(nextPerms),
+      });
+
+      if (!result.batch.length) {
+        throw new Error(`Nothing would change for “${subjectName}”. Adjust a permission first.`);
+      }
+
+      const changes = describePermChanges(currentPerms, nextPerms);
+      const warnings = [...(result.warnings || [])];
+      if (subject.isGroup) {
+        warnings.push(`Every role inside “${subjectName}” gets these permissions.`);
+      }
+      // Keep the builder's batch and gas floor; replace its generic per-call summaries with ones
+      // that name the role and the permission.
+      return { ...result, summaries: permChangeSummaries(subjectName, changes), warnings };
+    },
+    validate: (values) => {
+      if (!values?.subjectId) return 'Pick the role or group this vote should change.';
+      if (!values.perms || typeof values.perms !== 'object') {
+        return 'Choose what this role should be allowed to do.';
+      }
+      if (!describePermChanges(values.permsCurrent, values.perms).changed) {
+        return 'Nothing has changed yet — tick or untick a permission to propose a change.';
+      }
+      return null;
+    },
+    preview: (values, roleNames) => {
+      const name = values?.subjectName || roleNames?.[values?.subjectId] || 'this role';
+      const changes = describePermChanges(values?.permsCurrent, values?.perms);
+      const lines = permChangeSummaries(name, changes);
+      if (lines.length === 0) return `Leave “${name}” with the permissions it already has`;
+      // Sentence-case the run-on: "Let “X” … ; stop “X” being able to …".
+      return lines
+        .map((line, i) => (i === 0 ? line : line.charAt(0).toLowerCase() + line.slice(1)))
+        .join('; ');
     }
   },
 
@@ -483,6 +794,10 @@ export const SETTER_TEMPLATES = [
     description: 'Configure what a role can do within a specific project',
     contract: 'taskManager',
     functionName: 'setProjectRolePerm',
+    // DEAD on access v2 and SILENT about it: `setProjectRolePerm` still writes its own table and
+    // still emits, but TaskManager now reads `authority.hasPerm(user, TM_PERMS, bytes32(pid + 1))`.
+    // Per-project rows are edited through the authority; see BACKLOG.
+    legacyOnly: true,
     inputs: [
       {
         name: 'project',
@@ -518,7 +833,11 @@ export const SETTER_TEMPLATES = [
       const mask = Array.isArray(values.permissions)
         ? values.permissions.reduce((acc, val) => acc | Number(val), 0)
         : Number(values.permissions) || 0;
-      return [values.project, values.role, mask];
+      // The picker's value is the SUBGRAPH id — the composite `{taskManagerAddress}-{n}` — and
+      // `pid` is a bytes32. Handing the composite straight to ethers threw INVALID_ARGUMENT at
+      // submit, so this template could never be proposed at all. `parseProjectId` is the same
+      // conversion every other project call in the app makes (TaskService, the folder tree).
+      return [parseProjectId(values.project), values.role, mask];
     },
     preview: (values, roleNames, projectNames) => {
       const roleName = roleNames?.[values.role] || `Role ${values.role}`;
@@ -542,6 +861,12 @@ export const SETTER_TEMPLATES = [
     name: 'Allow Role to Create Tasks',
     autoTitle: 'Change who can create tasks',
     description: 'Grant or revoke a role\'s permission to create tasks globally',
+    // LIVE on access v2 — TaskManager still keeps its own creator list — but the ids in that list
+    // are resolved through `authority.isMember`, so they are AUTHORITY ROLE ids, not Hats ids.
+    // `useRoleNames().allRoles` already switches source (lib/voting/roleOptions), so only the
+    // legend needs to say which list the member is choosing from.
+    idsAreSubjects: true,
+    v2Description: 'Let a role create tasks anywhere in this group, or take that away',
     contract: 'taskManager',
     functionName: 'setConfig',
     inputs: [
@@ -549,7 +874,8 @@ export const SETTER_TEMPLATES = [
         name: 'role',
         label: 'Role',
         type: 'roleSelect',
-        helpText: 'Select which role to modify'
+        helpText: 'Select which role to modify',
+        v2HelpText: 'Pick one of this group’s roles — the same roles listed under Roles and permissions'
       },
       {
         name: 'allowed',
@@ -579,6 +905,9 @@ export const SETTER_TEMPLATES = [
     name: 'Allow Role to Organize Folders',
     autoTitle: 'Change who can organize task folders',
     description: 'Grant or revoke a role\'s permission to publish folder-tree updates via setFolders',
+    // Same as allow-task-creator: LIVE on v2, but the id it writes is an authority role id.
+    idsAreSubjects: true,
+    v2Description: 'Let a role rearrange the task folders, or take that away',
     contract: 'taskManager',
     functionName: 'setConfig',
     inputs: [
@@ -586,7 +915,8 @@ export const SETTER_TEMPLATES = [
         name: 'role',
         label: 'Role',
         type: 'roleSelect',
-        helpText: 'Select which role to authorize as a folder organizer'
+        helpText: 'Select which role to authorize as a folder organizer',
+        v2HelpText: 'Pick one of this group’s roles — the same roles listed under Roles and permissions'
       },
       {
         name: 'allowed',
@@ -675,6 +1005,9 @@ export const RAW_FUNCTIONS = {
   hybridVoting: [
     {
       name: 'setCreatorHatAllowed',
+      // Same silent death as the template: on an access-v2 org this succeeds, emits, and changes
+      // nothing HybridVoting reads. Hidden from Developer mode once the authority is live.
+      legacyOnly: true,
       signature: 'function setCreatorHatAllowed(uint256 h, bool ok)',
       params: [
         { name: 'h', type: 'uint256', label: 'Hat ID' },
@@ -738,7 +1071,11 @@ export const RAW_FUNCTIONS = {
         { name: 'key', type: 'uint8', label: 'Config Key (0=THRESHOLD, 1=EXECUTOR, 2=TARGET_ALLOWED, 3=HAT_ALLOWED, 4=QUORUM)' },
         { name: 'value', type: 'bytes', label: 'Encoded Value' }
       ],
-      description: 'Set a configuration value'
+      description: 'Set a configuration value',
+      // Not legacyOnly — THRESHOLD and QUORUM are still read on v2. Only key 3 (HAT_ALLOWED) went
+      // dead, and it is the one key someone reaching for Developer mode is most likely to want.
+      v2Note: 'Key 3 (HAT_ALLOWED) no longer does anything on this group — voting rights now come '
+        + 'from Roles and permissions'
     },
     {
       name: 'pause',
@@ -761,10 +1098,16 @@ export const RAW_FUNCTIONS = {
         { name: 'key', type: 'uint8', label: 'Config Key' },
         { name: 'value', type: 'bytes', label: 'Encoded Value' }
       ],
-      description: 'Set a configuration value'
+      description: 'Set a configuration value',
+      // CREATOR_HAT_ALLOWED (1) and ORGANIZER_HAT_ALLOWED (7) are still read on v2; ROLE_PERM (2)
+      // is not — the task permission mask lives in the authority now.
+      v2Note: 'Key 2 (ROLE_PERM) no longer does anything on this group — task permissions now come '
+        + 'from Roles and permissions'
     },
     {
       name: 'setProjectRolePerm',
+      // Dead on v2: TaskManager reads the authority's per-project rows instead.
+      legacyOnly: true,
       signature: 'function setProjectRolePerm(bytes32 pid, uint256 hatId, uint8 mask)',
       params: [
         { name: 'pid', type: 'bytes32', label: 'Project ID' },
@@ -816,7 +1159,14 @@ export const RAW_FUNCTIONS = {
 // ============================================================================
 
 /**
- * Get a template by ID
+ * Get a template by ID.
+ *
+ * Pure id lookup — it answers "does this id exist", NOT "may this org propose it". A template can
+ * exist and still be unreachable here (a dead legacy action on an access-v2 org, a v2 action on a
+ * legacy org, a module the org never deployed). Anything that acts on the answer — the picker, a
+ * `?propose=<id>` deep link, the /rules "Propose a change" rows — must go through
+ * `@/lib/voting/setterAvailability` (`getAvailableTemplateById` / `resolveSetterTemplate`), which
+ * returns a null/unavailable result WITH the reason to show.
  */
 export function getTemplateById(id) {
   return SETTER_TEMPLATES.find(t => t.id === id);
@@ -916,6 +1266,10 @@ export function getRawFunctions(contractKey) {
 
 /**
  * Check if a contract is available (has an address in POContext)
+ *
+ * `membershipAuthority` needs no special case: its address is only supplied under
+ * `membershipAuthorityAddress` when `useOrgAuthority().enabled` is true, so on a legacy org this
+ * returns false and every access-v2 template disappears — exactly like an undeployed module.
  */
 export function isContractAvailable(contractKey, contractAddresses) {
   const contextKey = CONTRACT_MAP[contractKey]?.contextKey;

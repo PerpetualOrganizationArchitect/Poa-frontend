@@ -37,6 +37,7 @@
  */
 
 import { constants, utils } from 'ethers';
+import { parseProjectId } from '@/services/web3/utils/encoding';
 import { predictNextSubjectIds, hasCompetingSubjectCreation } from './ids';
 import {
   buildCreateRole,
@@ -72,14 +73,44 @@ export function estimateBatchGas(batch = []) {
 }
 
 /**
- * ctx for a TaskManager per-project row. Always a full bytes32 — the ABI field is `bytes32` and a
- * short hex string encodes as an INVALID_ARGUMENT rather than being left-padded for you.
+ * ctx for a TaskManager per-project row.
+ *
+ * TWO things this has to get right, and both are silent when wrong — a row written at the wrong
+ * ctx is a perfectly valid row that simply governs nothing the reader ever asks about:
+ *
+ * 1. THE +1 OFFSET (spec freeze amendment W4). TaskManager reads
+ *    `hasPerm(user, TM_PERMS, bytes32(uint256(pid) + 1))` — `TaskManager._permMask`, and the
+ *    convention is stated in `AccessV2PermKeys.sol`'s header. The offset exists because TM project
+ *    ids START AT 0 and ctx 0 is the authority's GLOBAL context, so the identity mapping would
+ *    collide every org's first project with its global rows. Writing the un-offset id lands every
+ *    row exactly one project off: project N's permissions govern project N-1, and project 0's
+ *    become the subject's global grant.
+ *
+ * 2. THE ID FORMAT. Project ids reach the UI as the SUBGRAPH's composite `{taskManager}-{n}`;
+ *    the contract wants the bytes32. `parseProjectId` is the conversion the rest of the app
+ *    already makes (TaskService, the folder tree), so it is the one used here.
+ *
+ * Always returns a full bytes32 — the ABI field is `bytes32`, and a short hex string encodes as an
+ * INVALID_ARGUMENT rather than being left-padded for you.
+ *
+ * Only a NULLISH/empty id means "global". Numeric `0` is a real project — the first one every org
+ * creates — and must not be mistaken for the global ctx.
  */
 export function projectCtx(projectId) {
-  if (!projectId) return GLOBAL_CTX;
-  const s = String(projectId);
-  if (s.startsWith('0x')) return utils.hexZeroPad(s, 32);
-  return utils.hexZeroPad(utils.hexlify(BigInt(s)), 32);
+  if (projectId === null || projectId === undefined) return GLOBAL_CTX;
+  const s = String(projectId).trim();
+  if (s === '') return GLOBAL_CTX;
+  // Composite subgraph id. Narrowly detected so the plain forms below keep their exact behaviour:
+  // parseProjectId's last resort is to KECCAK an unrecognised string, which would turn a short hex
+  // id like '0xabc' into an unrelated ctx.
+  const raw = /^0x[0-9a-fA-F]{40}-/.test(s) ? parseProjectId(s) : s;
+  let pid;
+  try {
+    pid = BigInt(raw);
+  } catch {
+    throw new Error(`accessV2: "${projectId}" is not a project id`);
+  }
+  return utils.hexZeroPad(utils.hexlify(pid + 1n), 32);
 }
 
 /**
@@ -104,7 +135,9 @@ export function buildPermRows(perms = {}, projectPerms = []) {
     }
   }
   for (const p of projectPerms || []) {
-    if (!p || !p.projectId) continue;
+    // Nullish/empty means "no project named", NOT project 0 — TaskManager ids start at 0, so a
+    // falsy test here would silently drop every rule about the first project an org ever made.
+    if (!p || p.projectId === null || p.projectId === undefined || p.projectId === '') continue;
     const mask = Number(p.mask) || 0;
     if (mask <= 0) continue;
     // NEW project rows default to inherit=true. That is deliberate: v1's implicit REPLACE is the

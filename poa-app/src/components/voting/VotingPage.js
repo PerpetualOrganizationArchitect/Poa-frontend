@@ -19,7 +19,7 @@ import { useRouter } from "next/router";
 import { Box, Container, Center, Flex, Heading, Button, Icon, Link, Tooltip, useToast } from "@chakra-ui/react";
 import { PiPlusCircle, PiScales } from "react-icons/pi";
 import {
-  getTemplateById, isContractAvailable, CONTRACT_MAP, buildSetterCopy,
+  isContractAvailable, CONTRACT_MAP, buildSetterCopy,
 } from "@/config/setterDefinitions";
 import PulseLoader from "@/components/shared/PulseLoader";
 import GlassBack from "./GlassBack";
@@ -32,6 +32,16 @@ import { useOrgTheme, useVoteLanes } from "@/hooks";
 import { useVoteCreateGate } from "@/hooks/useVoteCreateGate";
 import { useVoteActions } from "@/hooks/useVoteActions";
 import { useOrgName } from "@/hooks/useOrgName";
+import { useOrgAuthority } from "@/hooks/accessV2/useOrgAuthority";
+import { useAuthoritySubjects } from "@/hooks/accessV2/useAuthoritySubjects";
+import { useAuthorityMemberships } from "@/hooks/accessV2/useAuthorityMemberships";
+import { parseCreatedProposalId } from "@/lib/voting/proposalReceipt";
+import { recordGasFloor } from "@/lib/accessV2/gasFloors";
+import { estimateBatchGas } from "@/lib/accessV2/proposalBuilders";
+import { votingLaneForBatches, isBindingType } from "./create/wizardSteps";
+import { TRANSFER_DESTINATION, FUND_BOUNTIES_DEEP_LINK } from "@/lib/voting/treasuryBatches";
+import { resolveSetterTemplate } from "@/lib/voting/setterAvailability";
+import { getBountyTokenOptions } from "@/util/tokens";
 
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import VotingEducationHeader from "./VotingEducationHeader";
@@ -74,6 +84,8 @@ const VotingPage = () => {
     votingContractAddress,
     taskManagerContractAddress,
     executorContractAddress,
+    paymentManagerAddress,
+    orgChainId,
     eligibilityModuleAddress,
     participationTokenAddress,
     zkEmailInvitesAddress,
@@ -82,6 +94,13 @@ const VotingPage = () => {
     leaderboardData,
     poMembers,
   } = usePOContext();
+
+  // Access v2 (MembershipAuthority) facts the wizard's builders need. Every
+  // hook here self-skips on a legacy org (no query on the wire, empty arrays),
+  // so `accessV2.enabled === false` means "build exactly what you built before".
+  const authority = useOrgAuthority();
+  const authoritySubjects = useAuthoritySubjects();
+  const authorityMemberships = useAuthorityMemberships();
 
   const {
     hybridVotingOngoing,
@@ -156,9 +175,10 @@ const VotingPage = () => {
     return all.find((p) => p.id === selectedPoll.id) || selectedPoll;
   }, [selectedPoll, hybridVotingOngoing, hybridVotingCompleted, democracyVotingOngoing, democracyVotingCompleted]);
 
-  // Proposal creation
+  // Proposal creation. Resolves `true` when the proposal landed and `false`
+  // when it did not — useProposalForm keeps the member's draft on `false`.
   const handleProposalSubmit = useCallback(async (proposalData) => {
-    if (!voting) return;
+    if (!voting) return false;
 
     const proposalParams = {
       name: proposalData.name,
@@ -173,15 +193,25 @@ const VotingPage = () => {
       actionSummaries: proposalData.actionSummaries || [],
     };
 
-    const isExecutionProposal =
-      proposalData.type === 'setter'
-      || proposalData.type === 'election'
-      || proposalData.type === 'createRole';
+    // The BATCH decides the contract, not the intent name. Anything that runs
+    // a call when it passes goes to Blended voting: HybridVoting has no target
+    // allow-list (#74) and is the Executor's ONLY permitted caller. A batch-less
+    // poll goes to DirectDemocracy — whose allow-list is empty on every org we
+    // deploy, so a payout routed there reverted TargetNotAllowed at creation.
+    // A binding TYPE also goes to Blended voting even when its batches happen
+    // to be empty (a v2 election that only confirms the incumbent): the member
+    // was gated on the binding-creator permission and the ballot says BINDING.
+    const lane = (votingLaneForBatches(proposalParams.batches) === 'hybrid' || isBindingType(proposalData.type))
+      ? 'hybrid'
+      : 'dd';
+    const contractAddress = lane === 'hybrid'
+      ? votingContractAddress
+      : directDemocracyVotingContractAddress;
 
     const result = await executeWithNotification(
-      () => isExecutionProposal
-        ? voting.createHybridProposal(votingContractAddress, proposalParams)
-        : voting.createDDProposal(directDemocracyVotingContractAddress, proposalParams),
+      () => (lane === 'hybrid'
+        ? voting.createHybridProposal(contractAddress, proposalParams)
+        : voting.createDDProposal(contractAddress, proposalParams)),
       {
         pendingMessage: 'Creating proposal...',
         successMessage: 'Proposal created successfully!',
@@ -189,9 +219,28 @@ const VotingPage = () => {
       }
     );
 
-    if (result.success) {
-      setShowCreatePoll(false);
+    // executeWithNotification never throws on a reverted transaction — it
+    // shows the failure and resolves { success: false }. That used to be
+    // dropped here, so the form read a revert as success (reset, draft wiped,
+    // green toast). Hand the answer back instead.
+    if (!result?.success) return false;
+
+    // announceWinner runs the winning batch inside a try/catch, so every gas
+    // estimator prices only the cheap caught-failure path; an under-funded
+    // finalize SUCCEEDS while silently skipping the batch. Park the floor the
+    // builder computed (or a generous per-call default) against the on-chain
+    // id so useVoteActions.handleFinalize can apply it — the same thing
+    // useAccessV2Proposal does for the /team wizard.
+    if (lane === 'hybrid') {
+      const proposalId = parseCreatedProposalId(result.receipt, contractAddress);
+      const perOption = proposalParams.batches.map((b) => estimateBatchGas(b || []));
+      const floor = proposalData.gasLimit
+        || (perOption.length ? Math.max(...perOption) : 0);
+      if (proposalId && floor) recordGasFloor(contractAddress, proposalId, floor);
     }
+
+    setShowCreatePoll(false);
+    return true;
   }, [voting, executeWithNotification, directDemocracyVotingContractAddress, votingContractAddress]);
 
   const {
@@ -221,13 +270,54 @@ const VotingPage = () => {
     directDemocracyVotingContractAddress,
     taskManagerContractAddress,
     executorContractAddress,
+    // The treasury's payout account — the source a "send money" vote withdraws
+    // from when the Executor's own balance can't cover it.
+    paymentManagerAddress,
     participationTokenAddress,
     zkEmailInvitesAddress,
-  }), [votingContractAddress, directDemocracyVotingContractAddress, taskManagerContractAddress, executorContractAddress, participationTokenAddress, zkEmailInvitesAddress]);
+    // Only set on a cut-over org: the access-v2 setter templates target it and
+    // isContractAvailable hides them on a legacy org.
+    membershipAuthorityAddress: authority.enabled ? (authority.address || '') : '',
+  }), [
+    votingContractAddress, directDemocracyVotingContractAddress, taskManagerContractAddress,
+    executorContractAddress, paymentManagerAddress, participationTokenAddress,
+    zkEmailInvitesAddress, authority.enabled, authority.address,
+  ]);
+
+  // Live access-v2 facts the pure builders need (subject ids for role pickers,
+  // who is already in the org for grant-vs-offer, in-flight proposals for the
+  // id-prediction race). Empty on a legacy org.
+  const accessV2 = useMemo(() => ({
+    enabled: !!authority.enabled,
+    authority: authority.enabled ? (authority.address || '') : '',
+    subjects: authoritySubjects.subjects || [],
+    // The DISPLAY projection hides structural subjects (the migrated top hat), but a hidden
+    // subject still consumed a sequence number — so subject-id prediction has to see the indexed
+    // list or a new role's whole batch lands on the wrong id.
+    indexedSubjects: authoritySubjects.indexedSubjects || [],
+    roles: authoritySubjects.roles || [],
+    groups: authoritySubjects.groups || [],
+    // A SET of lowercased addresses (the contract's `_isInOrg`), not an array — the grant-vs-offer
+    // decision reads it directly.
+    inOrgUsers: authorityMemberships.inOrgUsers || new Set(),
+    // `members` is accepted && eligible; `memberships` is every row. An election needs the rows:
+    // `remove` only requires acceptance, so an accepted-but-lapsed incumbent is still removable
+    // (and would still make `grant` revert AlreadyMember).
+    members: authorityMemberships.members || [],
+    memberships: authorityMemberships.memberships || [],
+    activeProposals: hybridVotingOngoing || [],
+  }), [
+    authority.enabled, authority.address,
+    authoritySubjects.subjects, authoritySubjects.indexedSubjects,
+    authoritySubjects.roles, authoritySubjects.groups,
+    authorityMemberships.inOrgUsers, authorityMemberships.members,
+    authorityMemberships.memberships,
+    hybridVotingOngoing,
+  ]);
 
   const handlePollCreated = useCallback(() => {
-    return handleSubmit(eligibilityModuleAddress, contractAddresses);
-  }, [handleSubmit, eligibilityModuleAddress, contractAddresses]);
+    return handleSubmit(eligibilityModuleAddress, contractAddresses, { accessV2 });
+  }, [handleSubmit, eligibilityModuleAddress, contractAddresses, accessV2]);
 
   // True only when the modal was opened by a deep link that pre-filled the
   // proposal (the /rules "Propose a change" rows and ?propose=<template>).
@@ -257,8 +347,26 @@ const VotingPage = () => {
   // (setterContract/Function + initialized setterValues) so the modal lands on
   // the template's configured step, not the category picker.
   const handleProposeRuleChange = useCallback((templateId, initialValues = null) => {
-    const template = getTemplateById(templateId);
+    // On a cut-over org some templates write tables the contracts no longer
+    // read (creator hats, project role masks) — resolve through the availability
+    // rules so a stale /rules row or ?propose= link says why instead of opening
+    // a wizard for a dead action.
+    const resolved = resolveSetterTemplate(templateId, {
+      authorityEnabled: authority.enabled,
+      contractAddresses,
+    });
+    const template = resolved.template;
     if (!template) return;
+    if (!resolved.available) {
+      toast({
+        title: 'Not available here',
+        description: resolved.reason,
+        status: 'info',
+        duration: 6000,
+        isClosable: true,
+      });
+      return;
+    }
     // Rule changes are setter proposals on HybridVoting — require its creator
     // hat up front. This also closes the ?propose= deep link, which previously
     // opened the wizard with no gate at all.
@@ -317,10 +425,46 @@ const VotingPage = () => {
     });
     setDeepLinkedOpen(true);
     setShowCreatePoll(true);
-  }, [restoreProposal, votingClasses, contractAddresses, toast, roleNames, canCreateProposal]);
+  }, [restoreProposal, votingClasses, contractAddresses, toast, roleNames, canCreateProposal, authority.enabled]);
+
+  // "Propose a move" from /treasury's fund-task-rewards modal: open the wizard
+  // on the payout config step with the task-reward pool already chosen. Gated
+  // like every other deep link — a payout is a binding proposal.
+  const handleProposeFundBounties = useCallback(() => {
+    if (!canCreateProposal) {
+      toast({
+        title: "You can't propose a payout here",
+        description: 'Only members holding a vote-creator role can open proposals.',
+        status: 'info',
+        duration: 6000,
+        isClosable: true,
+      });
+      return;
+    }
+    if (!taskManagerContractAddress) {
+      toast({
+        title: 'Not available here',
+        description: "This group doesn't have a task-reward pool set up.",
+        status: 'info',
+        duration: 6000,
+        isClosable: true,
+      });
+      return;
+    }
+    const firstToken = getBountyTokenOptions(orgChainId)[0];
+    restoreProposal({
+      type: 'transferFunds',
+      transferDestination: TRANSFER_DESTINATION.BOUNTY_POOL,
+      transferAddress: taskManagerContractAddress,
+      transferToken: firstToken?.address || '',
+    });
+    setDeepLinkedOpen(true);
+    setShowCreatePoll(true);
+  }, [canCreateProposal, taskManagerContractAddress, orgChainId, restoreProposal, toast]);
 
   // Deep link support: /voting?propose=<templateId> (from the /rules page)
   // opens the create modal with that rule template preselected, once.
+  // `?propose=fund-bounties` is the one non-template value (from /treasury).
   const proposeParamHandledRef = useRef(false);
   useEffect(() => {
     if (!router.isReady || proposeParamHandledRef.current) return;
@@ -337,18 +481,22 @@ const VotingPage = () => {
     const templateId = router.query.propose;
     if (!templateId || typeof templateId !== 'string') return;
     proposeParamHandledRef.current = true;
-    // Collect ?prefill_<inputName>=… params into the template's initial values.
-    const prefill = {};
-    for (const [key, value] of Object.entries(router.query)) {
-      if (key.startsWith('prefill_') && typeof value === 'string') prefill[key.slice(8)] = value;
+    if (templateId === FUND_BOUNTIES_DEEP_LINK) {
+      handleProposeFundBounties();
+    } else {
+      // Collect ?prefill_<inputName>=… params into the template's initial values.
+      const prefill = {};
+      for (const [key, value] of Object.entries(router.query)) {
+        if (key.startsWith('prefill_') && typeof value === 'string') prefill[key.slice(8)] = value;
+      }
+      handleProposeRuleChange(templateId, Object.keys(prefill).length ? prefill : null);
     }
-    handleProposeRuleChange(templateId, Object.keys(prefill).length ? prefill : null);
     // Strip the params so a refresh / back doesn't reopen the modal.
     const rest = Object.fromEntries(
       Object.entries(router.query).filter(([key]) => key !== 'propose' && !key.startsWith('prefill_')),
     );
     router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
-  }, [router.isReady, router.query, handleProposeRuleChange, router, poContextLoading, creatorGateLoading, isConnected, userDataLoading]);
+  }, [router.isReady, router.query, handleProposeRuleChange, handleProposeFundBounties, router, poContextLoading, creatorGateLoading, isConnected, userDataLoading]);
 
   const canCreate = canCreateAny;
 
@@ -488,6 +636,9 @@ const VotingPage = () => {
             contractAddresses={contractAddresses}
             canCreatePoll={canCreatePoll}
             canCreateProposal={canCreateProposal}
+            // The same object the builders get, so the configurators and the batch can never
+            // disagree about what this org's roles actually are.
+            accessV2={accessV2}
           />
 
           {/* ONE detail surface for ongoing AND completed polls. */}

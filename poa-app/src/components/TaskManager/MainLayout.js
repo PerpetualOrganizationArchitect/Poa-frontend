@@ -11,7 +11,7 @@ import { useFolderDoc } from '../folders/useFolderDoc';
 import { TaskBoardProvider } from '../../context/TaskBoardContext';
 import AllTasksView from './views/AllTasksView';
 import MyWorkView from './views/MyWorkView';
-import { ALL_TASKS_ID, MY_WORK_ID } from './taskViewIds';
+import { ALL_TASKS_ID, MY_WORK_ID, getProjectNavigationQuery } from './taskViewIds';
 import { useDataBaseContext} from '../../context/dataBaseContext';
 import { useIPFScontext } from '../../context/ipfsContext';
 import { useUserContext } from '../../context/UserContext';
@@ -318,8 +318,11 @@ const MainLayout = () => {
      // Decode first to handle any prior encoding, then encode properly
      const safeProjectId = encodeURIComponent(decodeURIComponent(projectId));
      // Preserve the active view= so switching projects from a list/gantt
-     // view doesn't flash the user back through Board.
-     const viewParam = router.query.view ? `&view=${encodeURIComponent(router.query.view)}` : '';
+     // view doesn't flash the user back through Board. Cross-project surfaces
+     // are the exception: All Tasks may have temporarily forced Board to List,
+     // so restore the saved project preference instead of carrying that List.
+     const projectQuery = getProjectNavigationQuery(router.query);
+     const viewParam = projectQuery.view ? `&view=${encodeURIComponent(projectQuery.view)}` : '';
 
     router.push(`/tasks?projectId=${safeProjectId}&org=${encodeURIComponent(userDAO)}${viewParam}`);
     const selected = projects.find((project) => project.id === projectId);
@@ -605,4 +608,3 @@ const MainLayout = () => {
 };
 
 export default MainLayout;
-

@@ -57,6 +57,11 @@ export const INTENT_OPTIONS = [
     icon: FiPlusCircle,
     title: 'Create a new role',
     description: 'Add a role and set what it can do.',
+    // ACCESS V2 only: the same intent also creates a GROUP (a bundle of permissions roles go
+    // into), because on an authority org that is one screen and one proposal. The legacy copy is
+    // untouched — a legacy org has no groups to make.
+    v2Title: 'Create a role or group',
+    v2Description: 'Add a role or group and set what it can do.',
     binding: true,
   },
   {
@@ -77,8 +82,12 @@ for (const option of INTENT_OPTIONS) {
   }
 }
 
-const IntentCard = ({ option, onSelect, isDisabled = false }) => {
+const IntentCard = ({ option, onSelect, isDisabled = false, accessV2 = false }) => {
   const IconComponent = option.icon;
+  // A card can carry ACCESS-V2 copy for the same intent (createRole also makes a group there).
+  // Falls back to the legacy words, so a card without v2 copy is byte-identical on both orgs.
+  const title = (accessV2 && option.v2Title) || option.title;
+  const description = (accessV2 && option.v2Description) || option.description;
   const card = (
     <Box
       as="button"
@@ -111,10 +120,10 @@ const IntentCard = ({ option, onSelect, isDisabled = false }) => {
         <Icon as={IconComponent} boxSize={5} color="purple.300" mt={0.5} flexShrink={0} />
         <VStack align="start" spacing={0.5}>
           <Text fontSize="sm" fontWeight="bold" color="white">
-            {option.title}
+            {title}
           </Text>
           <Text fontSize="xs" color="gray.400">
-            {option.description}
+            {description}
           </Text>
         </VStack>
       </HStack>
@@ -138,7 +147,7 @@ const IntentCard = ({ option, onSelect, isDisabled = false }) => {
  * differ per contract, so a poll-only creator sees binding cards disabled
  * instead of walking the wizard into an Unauthorized revert.
  */
-const IntentGallery = ({ onSelect, canCreatePoll = true, canCreateProposal = true }) => {
+const IntentGallery = ({ onSelect, canCreatePoll = true, canCreateProposal = true, accessV2 = false }) => {
   return (
     <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
       {INTENT_OPTIONS.map((option) => (
@@ -147,6 +156,7 @@ const IntentGallery = ({ onSelect, canCreatePoll = true, canCreateProposal = tru
           option={option}
           onSelect={onSelect}
           isDisabled={option.binding ? !canCreateProposal : !canCreatePoll}
+          accessV2={accessV2}
         />
       ))}
     </SimpleGrid>

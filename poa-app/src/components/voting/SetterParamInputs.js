@@ -26,6 +26,7 @@ import EmailInviteListField from './EmailInviteListField';
 import PermissionPicker from '@/components/accessV2/PermissionPicker';
 import { inputStyles } from '@/components/shared/glassStyles';
 import { permsFromSubject } from '@/config/setterDefinitions';
+import { classLabel, contractClassIndex } from '@/lib/voting/votingClasses';
 
 /**
  * Render a single parameter input based on its type
@@ -115,16 +116,11 @@ const ParameterInput = ({
           bg="whiteAlpha.50"
           borderRadius="md"
           border="1px solid rgba(148, 115, 220, 0.3)"
-          sx={{
-            // PermissionPicker is written for the light admin surfaces; the create-vote modal is
-            // dark. Recolour its text rather than forking the component.
-            'p, .chakra-text': { color: 'gray.200' },
-            '.chakra-checkbox__label > div > p:last-of-type': { color: 'gray.400' },
-          }}
         >
           <PermissionPicker
             value={typeof value === 'object' && value !== null ? value : current}
             onChange={(next) => handleChange(next)}
+            variant="dark"
           />
         </Box>
       );
@@ -159,21 +155,46 @@ const ParameterInput = ({
         />
       );
 
-    case 'roleSelect':
+    case 'roleSelect': {
+      // `allRoles` is a ROLE picker by design (lib/voting/roleOptions excludes groups). A template
+      // whose target can be a group too (`includeGroups`) — a class electorate takes either, and a
+      // group voted INTO a class must be nameable to be voted out — gets the authority's groups
+      // appended, marked so the two kinds don't read alike.
+      const groupOptions = param.includeGroups
+        ? authoritySubjects
+          .filter((s) => s.isGroup)
+          .map((g) => ({ hatId: String(g.subjectId), name: `${g.name} (group)` }))
+        : [];
+      const roleOptions = [...(allRoles || []), ...groupOptions];
       return (
         <Select
-          placeholder="Select role"
+          placeholder={param.includeGroups ? 'Select a role or group' : 'Select role'}
           value={value || ''}
-          onChange={(e) => handleChange(e.target.value)}
+          onChange={(e) => {
+            // OPT-IN, and only for a template that asked: also record the role's NAME. The
+            // `roleNames` map the preview and the ballot summary fall back to comes from
+            // POContext, which is the LEGACY hat list — frozen at the access-v2 cutover, so a role
+            // created since has no entry and the sentence a member votes on degrades to "this
+            // role". `allRoles` here is already the folded v2 list (useRoleNames), so the name is
+            // on hand at the moment of choosing. Both keys land in ONE update; without `nameField`
+            // this is exactly the single-key write it has always been.
+            if (param.nameField) {
+              const role = roleOptions.find((r) => String(r.hatId) === e.target.value);
+              onChangeMany({ [param.name]: e.target.value, [param.nameField]: role?.name || '' });
+              return;
+            }
+            handleChange(e.target.value);
+          }}
           {...inputStyles}
         >
-          {allRoles?.map((role) => (
+          {roleOptions.map((role) => (
             <option key={role.hatId} value={role.hatId} style={{ background: '#1a1a2e' }}>
               {role.name}
             </option>
           ))}
         </Select>
       );
+    }
 
     case 'projectSelect':
       return (
@@ -261,6 +282,52 @@ const ParameterInput = ({
           onChange={(newClasses) => handleChange(newClasses)}
         />
       );
+
+    // WHICH part of a binding vote to change the voters of. Value is the POSITIONAL class index
+    // the contract takes (`addHatToClass(uint8 classIdx, …)`), labelled in the same words the
+    // rule diff and the vote receipt use (`classLabel`) — nobody should be picking "class 0".
+    case 'votingClassSelect': {
+      const classes = param.currentClasses || [];
+      // Empty means the org's blended voting hasn't loaded (or was never configured). An enabled
+      // picker with nothing in it reads as "this group has no voters"; say which it is instead.
+      if (classes.length === 0) {
+        return (
+          <>
+            <Select placeholder="Not loaded yet" isDisabled {...inputStyles} />
+            <Text fontSize="xs" color="gray.400" mt={2}>
+              This group’s binding votes haven’t loaded their voters yet. Give it a moment, or pick
+              a different action.
+            </Text>
+          </>
+        );
+      }
+      return (
+        <Select
+          placeholder="Select who this applies to"
+          value={value === 0 || value ? String(value) : ''}
+          onChange={(e) => {
+            // The index AND the list it indexes into, in ONE update. The list is what
+            // `validate`/`buildBatch` read (they only ever see setterValues), and writing it here
+            // rather than only at selection time is what makes a `?propose=` deep link — whose
+            // seeding knows nothing about this field — able to validate itself at all.
+            // Sequential onChange calls would each spread the same stale `values`.
+            onChangeMany({
+              [param.name]: e.target.value,
+              [param.classesField || 'votingClasses']: classes,
+            });
+          }}
+          {...inputStyles}
+        >
+          {/* The value is the CONTRACT index (`classIndex`), the uint8 `addHatToClass` stores —
+              not the array position, which a filtered or re-versioned class list shifts. */}
+          {classes.map((cls, idx) => (
+            <option key={cls?.classIndex ?? idx} value={String(contractClassIndex(classes, idx))} style={{ background: '#1a1a2e' }}>
+              {classLabel(cls, idx)}
+            </option>
+          ))}
+        </Select>
+      );
+    }
 
     case 'bool':
       return (

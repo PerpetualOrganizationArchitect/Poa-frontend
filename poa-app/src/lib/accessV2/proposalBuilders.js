@@ -62,6 +62,10 @@ import {
 } from './txBuilders';
 import { PERM_KEYS, GLOBAL_CTX, boolPermWord, maskPermWord, foldTag, FOLD_TAG } from './permKeys';
 
+/** A person on the ballot: their name when the form knows it, else a short address. */
+const holderLabel = (h) => h?.name
+  || (String(h?.address || '').length > 10 ? `${h.address.slice(0, 6)}…${h.address.slice(-4)}` : String(h?.address || ''));
+
 /**
  * Gas floor for an authority batch. `announceWinner` prices only the CAUGHT-FAILURE path when
  * wallets estimate, so anything non-trivial under-funds and no-ops. Deliberately generous.
@@ -195,7 +199,7 @@ export function buildCreateRoleBatch({ authority, existingSubjects = [], activeP
   if (defaultAllow) {
     // A brand-new subject has no members, so `force` is never needed here.
     batch.push(buildSetSubjectDefault(authority, subjectId, true, false));
-    summaries.push('Make it open — anyone in the org can join it');
+    summaries.push('Make it open — anyone in the co-op can join it');
   }
 
   for (const groupId of groupIds || []) {
@@ -226,11 +230,11 @@ export function buildCreateRoleBatch({ authority, existingSubjects = [], activeP
     const delegable = !holder.sticky;
     if (holder.inOrg) {
       batch.push(buildGrant(authority, subjectId, holder.address, delegable));
-      summaries.push(`Add ${holder.address}`);
+      summaries.push(`Add ${holderLabel(holder)}`);
     } else {
       // Out-of-org: consent is required, so this is an invitation they accept themselves.
       batch.push(buildOffer(authority, subjectId, holder.address, delegable));
-      summaries.push(`Invite ${holder.address}`);
+      summaries.push(`Invite ${holderLabel(holder)}`);
     }
   }
 
@@ -385,14 +389,14 @@ export function buildMemberActionsBatch({ authority, subjectId, subjectName = 't
     switch (a.action) {
       case 'grant':
         batch.push(buildGrant(authority, subjectId, a.address, delegable));
-        summaries.push(`Add ${a.address} to ${subjectName}`);
+        summaries.push(`Add ${holderLabel(a)} to ${subjectName}`);
         if (a.sticky) {
           warnings.push(`${a.address} would be locked in: only another vote could remove them.`);
         }
         break;
       case 'offer':
         batch.push(buildOffer(authority, subjectId, a.address, delegable));
-        summaries.push(`Invite ${a.address} to ${subjectName}`);
+        summaries.push(`Invite ${holderLabel(a)} to ${subjectName}`);
         break;
       case 'withdrawOffer':
         batch.push(buildWithdrawOffer(authority, subjectId, a.address));

@@ -1,21 +1,19 @@
 /**
- * CreateRoleWizard — "make a new role" as ONE governance proposal.
+ * CreateRoleWizard — /team's door to "make a new role or group", as ONE governance proposal.
  *
- * Four steps: Basics -> Group -> Permissions -> People, then a review that spells out every call
- * the batch will make and every warning the builder raised.
+ * A SHELL, deliberately: the modal, the submit button and the "what happens next" copy live here;
+ * every decision lives in `RoleForm`, which the Create-a-Vote wizard renders too. That is the
+ * point. Before this, /team's version could not set vouching, per-project task permissions or a
+ * vote in binding votes, and the voting wizard's version could not make a group — so which door a
+ * member happened to use decided what their role could do. One form, one encoder
+ * (`lib/accessV2/roleFormBatch`), one answer.
  *
- * The things this screen is careful about, because the contract is:
- *   • GRANT vs OFFER. Someone already in the org is ADDED; anyone else is INVITED and accepts it
- *     themselves. `grant` on an out-of-org address does NOT revert — the contract writes the rule
- *     and emits RoleOffered instead of flipping acceptance — so getting this wrong does not break
- *     the batch, it silently turns "Added" into "invitation pending". The badge and the summary
- *     would then describe something that did not happen, which is why the classification comes
- *     from the fold mirror (the contract's own `_isInOrg`: accepted anywhere), never from a guess.
- *   • STICKY. "Only a vote can change this" locks the seat to governance forever and survives
- *     resignation. It is the right default for an election result and the wrong one for everything
- *     else, so it is off by default and explained inline.
- *   • The id-prediction race. Another open role/group proposal executing first shifts the new
- *     subject's id and every permission in this batch lands on the wrong role.
+ * What is left here is only what a shell owes the member:
+ *   • the batch is BUILT here, from the same pure encoder the form previews, and submitted through
+ *     `useAccessV2Proposal` (which refuses anything over the on-chain 20-call ceiling rather than
+ *     burning a UserOp on a `TooManyCalls` revert);
+ *   • the submit button is gated on `roleFormError` — the same gate the vote wizard's step machine
+ *     uses — so the two doors cannot disagree about whether a form is ready.
  */
 
 import React, { useMemo, useState } from 'react';
@@ -28,343 +26,154 @@ import {
   ModalFooter,
   ModalCloseButton,
   Button,
-  VStack,
   HStack,
   Text,
-  Input,
-  FormControl,
-  FormLabel,
-  FormHelperText,
-  Switch,
-  NumberInput,
-  NumberInputField,
-  Alert,
-  AlertIcon,
-  Box,
-  Badge,
-  Radio,
-  RadioGroup,
-  Stack,
-  IconButton,
-  Divider,
-  Progress,
-  Tag,
-  Wrap,
-  WrapItem,
+  useToast,
 } from '@chakra-ui/react';
-import { FiPlus, FiTrash2 } from 'react-icons/fi';
-import PermissionPicker from './PermissionPicker';
-import { STICKY_COPY } from '@/lib/accessV2/rules';
-import { predictLints, LINT_COPY } from '@/lib/accessV2/vouch';
-import { buildCreateRoleBatch } from '@/lib/accessV2/proposalBuilders';
+import { usePOContext } from '@/context/POContext';
+import { useIPFScontext } from '@/context/ipfsContext';
+import { ipfsCidToBytes32 } from '@/services/web3/utils/encoding';
+import { useProjectContext } from '@/context/ProjectContext';
+import { useVotingContext } from '@/context/VotingContext';
+import {
+  ROLE_FORM_KIND,
+  buildRoleFormBatch,
+  defaultRoleForm,
+  roleFormCopy,
+  roleFormError,
+} from '@/lib/accessV2/roleFormBatch';
 import { useAuthoritySubjects, useAuthorityMemberships, useAccessV2Proposal } from '@/hooks/accessV2';
-
-const STEPS = ['Basics', 'Group', 'Permissions', 'People', 'Review'];
-
-const emptyHolder = () => ({ address: '', sticky: false });
+import RoleForm from './RoleForm';
 
 export default function CreateRoleWizard({ isOpen, onClose, activeProposals = [] }) {
-  const { indexedSubjects, groups, authority } = useAuthoritySubjects();
+  const { indexedSubjects, roles, groups, authority } = useAuthoritySubjects();
   const { inOrgUsers } = useAuthorityMemberships();
   const { submit, submitting } = useAccessV2Proposal();
+  const { addToIpfs } = useIPFScontext();
+  const toast = useToast();
+  const { projectsData } = useProjectContext() || {};
+  const { votingClasses } = useVotingContext() || {};
+  const { votingContractAddress, hybridVotingContractAddress, taskManagerContractAddress } = usePOContext();
 
-  const [step, setStep] = useState(0);
-  const [name, setName] = useState('');
-  const [imageURI, setImageURI] = useState('');
-  const [limited, setLimited] = useState(false);
-  const [maxMembers, setMaxMembers] = useState(5);
-  const [openRole, setOpenRole] = useState(false);
-  const [groupIds, setGroupIds] = useState([]);
-  const [perms, setPerms] = useState({});
-  const [holders, setHolders] = useState([]);
+  const [form, setForm] = useState(defaultRoleForm);
+
+  const isGroup = form.kind === ROLE_FORM_KIND.GROUP;
 
   /**
-   * Addresses already in the org — the grant-vs-offer decision, from the fold mirror.
-   * `inOrgUsers` mirrors the contract's `_isInOrg` (accepted ANYWHERE, eligibility irrelevant),
-   * not "currently an active member": an accepted-but-lapsed member is in-org on chain, and
-   * offering them an invitation they have to accept would be wrong.
+   * Everything the form needs to describe the org back to the member — and everything the encoder
+   * needs to predict the new subject's id. `inOrgUsers` mirrors the contract's own `_isInOrg`
+   * (accepted ANYWHERE, eligibility irrelevant), which is what decides ADDED vs INVITED; an
+   * accepted-but-lapsed member is in-org on chain, so offering them an invitation would be wrong.
    */
-  const inOrg = inOrgUsers || new Set();
+  const ctx = useMemo(() => ({
+    authority: authority?.address || '',
+    hybridVoting: votingContractAddress || hybridVotingContractAddress || '',
+    taskManagerAddress: taskManagerContractAddress || '',
+    indexedSubjects: indexedSubjects || [],
+    roles: roles || [],
+    groups: groups || [],
+    projects: projectsData || [],
+    votingClasses: votingClasses || [],
+    inOrgUsers: inOrgUsers || new Set(),
+    activeProposals,
+  }), [
+    authority?.address, votingContractAddress, hybridVotingContractAddress, taskManagerContractAddress,
+    indexedSubjects, roles, groups, projectsData, votingClasses, inOrgUsers, activeProposals,
+  ]);
+
+  const formError = roleFormError(form);
 
   const built = useMemo(() => {
-    if (!name.trim() || !authority?.address) return null;
+    if (formError || !ctx.authority) return null;
     try {
-      return buildCreateRoleBatch({
-        authority: authority.address,
-        existingSubjects: indexedSubjects,
-        activeProposals,
-        config: {
-          name: name.trim(),
-          imageURI,
-          maxMembers: limited ? Number(maxMembers) || 0 : 0,
-          defaultAllow: openRole,
-          groupIds,
-          perms,
-          initialHolders: holders
-            .filter((h) => /^0x[0-9a-fA-F]{40}$/.test(h.address))
-            .map((h) => ({
-              address: h.address,
-              inOrg: inOrg.has(h.address.toLowerCase()),
-              sticky: h.sticky,
-            })),
-        },
-      });
+      return buildRoleFormBatch({ ...ctx, form });
     } catch {
       return null;
     }
-  }, [name, imageURI, limited, maxMembers, openRole, groupIds, perms, holders, indexedSubjects, activeProposals, authority, inOrg]);
+  }, [ctx, form, formError]);
 
-  const lints = useMemo(
-    () =>
-      predictLints({
-        defaultAllow: openRole,
-        maxMembers: limited ? Number(maxMembers) : 0,
-        hasStrongPerms: Object.values(perms).some(Boolean),
-      }),
-    [openRole, limited, maxMembers, perms]
-  );
-
-  const reset = () => {
-    setStep(0); setName(''); setImageURI(''); setLimited(false); setMaxMembers(5);
-    setOpenRole(false); setGroupIds([]); setPerms({}); setHolders([]);
+  const close = () => {
+    setForm(defaultRoleForm());
+    onClose?.();
   };
-
-  const close = () => { reset(); onClose?.(); };
 
   const onSubmit = async () => {
     if (!built) return;
-    const res = await submit(built, {
-      title: `Create the role “${name.trim()}”`,
-      description: built.summaries.join('\n'),
+    // The description is the subject's on-chain metadata (`createRole`/`createGroup` take the
+    // CID), so it is uploaded FIRST and the batch rebuilt with it — exactly what the vote wizard
+    // does (useProposalForm). Before this, the same form on this door threw the paragraph away.
+    let metadataCID = null;
+    if (String(form.description || '').trim()) {
+      try {
+        const result = await addToIpfs(JSON.stringify({
+          name: form.name || '',
+          description: form.description || '',
+        }));
+        if (result?.path) metadataCID = ipfsCidToBytes32(result.path);
+      } catch (err) {
+        console.error('[CreateRoleWizard] metadata IPFS upload failed:', err);
+        toast({
+          title: 'Could not save the description',
+          description: 'The upload to IPFS failed. Please try again.',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+        return;
+      }
+    }
+    const finalBuilt = metadataCID ? buildRoleFormBatch({ ...ctx, form, metadataCID }) : built;
+    const copy = roleFormCopy(form);
+    const res = await submit(finalBuilt, {
+      title: copy.title,
+      // The same sentence the vote wizard writes; the enactment lines travel as actionSummaries.
+      description: copy.description || finalBuilt.summaries.join('\n'),
     });
     if (res?.success) close();
   };
+
+  const blockedReason = formError
+    || (!ctx.authority ? 'Still loading this group’s roles — give it a moment.' : null)
+    || (built && !built.submittable.ok ? built.submittable.message : null);
 
   return (
     <Modal isOpen={isOpen} onClose={close} size="2xl" scrollBehavior="inside">
       <ModalOverlay />
       <ModalContent bg="white" borderRadius="2xl">
         <ModalHeader color="warmGray.900">
-          Create a role
-          <Progress
-            value={((step + 1) / STEPS.length) * 100}
-            size="xs"
-            colorScheme="coral"
-            mt={3}
-            borderRadius="full"
-          />
-          <Text fontSize="sm" color="warmGray.500" fontWeight="normal" mt={2}>
-            Step {step + 1} of {STEPS.length} — {STEPS[step]}
+          Create a role or group
+          <Text fontSize="sm" color="warmGray.500" fontWeight="normal" mt={1}>
+            It opens a vote — the {isGroup ? 'group' : 'role'} exists once that vote passes.
           </Text>
         </ModalHeader>
         <ModalCloseButton />
 
-        <ModalBody>
-          {step === 0 && (
-            <VStack align="stretch" spacing={5}>
-              <FormControl isRequired>
-                <FormLabel>Name</FormLabel>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Stewards" />
-              </FormControl>
-
-              <FormControl>
-                <FormLabel>Image</FormLabel>
-                <Input value={imageURI} onChange={(e) => setImageURI(e.target.value)} placeholder="ipfs://… (optional)" />
-              </FormControl>
-
-              <FormControl display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <FormLabel mb={0}>Anyone in the org can join</FormLabel>
-                  <FormHelperText mt={0}>
-                    Open roles need no invitation — people add themselves. Leave this off for a titled role.
-                  </FormHelperText>
-                </Box>
-                <Switch isChecked={openRole} onChange={(e) => setOpenRole(e.target.checked)} colorScheme="coral" />
-              </FormControl>
-
-              <FormControl display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <FormLabel mb={0}>Limit the number of seats</FormLabel>
-                  <FormHelperText mt={0}>Off means unlimited.</FormHelperText>
-                </Box>
-                <Switch isChecked={limited} onChange={(e) => setLimited(e.target.checked)} colorScheme="coral" />
-              </FormControl>
-
-              {limited && (
-                <NumberInput min={1} value={maxMembers} onChange={(v) => setMaxMembers(v)}>
-                  <NumberInputField />
-                </NumberInput>
-              )}
-
-              {lints.map((l) => (
-                <Alert key={l.code} status="warning" borderRadius="md" fontSize="sm">
-                  <AlertIcon />
-                  {l.message || LINT_COPY[l.code]}
-                </Alert>
-              ))}
-            </VStack>
-          )}
-
-          {step === 1 && (
-            <VStack align="stretch" spacing={4}>
-              <Text color="warmGray.600" fontSize="sm">
-                Groups bundle permissions. A role in a group gets everything the group gives — and
-                when the group changes, every role in it changes at once.
-              </Text>
-              {groups.length === 0 ? (
-                <Alert status="info" borderRadius="md" fontSize="sm">
-                  <AlertIcon />
-                  This org has no groups yet. You can add this role to one later.
-                </Alert>
-              ) : (
-                <Wrap>
-                  {groups.map((g) => {
-                    const on = groupIds.includes(g.subjectId);
-                    return (
-                      <WrapItem key={g.subjectId}>
-                        <Tag
-                          size="lg"
-                          cursor="pointer"
-                          colorScheme={on ? 'coral' : 'gray'}
-                          variant={on ? 'solid' : 'subtle'}
-                          onClick={() =>
-                            setGroupIds((prev) =>
-                              on ? prev.filter((id) => id !== g.subjectId) : [...prev, g.subjectId]
-                            )
-                          }
-                        >
-                          {g.name}
-                        </Tag>
-                      </WrapItem>
-                    );
-                  })}
-                </Wrap>
-              )}
-            </VStack>
-          )}
-
-          {step === 2 && (
-            <VStack align="stretch" spacing={4}>
-              <Text color="warmGray.600" fontSize="sm">
-                What this role can do. Anything the role’s groups already give is on top of this.
-              </Text>
-              <PermissionPicker value={perms} onChange={setPerms} />
-            </VStack>
-          )}
-
-          {step === 3 && (
-            <VStack align="stretch" spacing={4}>
-              <Text color="warmGray.600" fontSize="sm">
-                Who holds it from day one. People already in the org are added directly; anyone else
-                gets an invitation they accept themselves.
-              </Text>
-
-              {holders.map((h, i) => {
-                const valid = /^0x[0-9a-fA-F]{40}$/.test(h.address);
-                const known = valid && inOrg.has(h.address.toLowerCase());
-                return (
-                  <Box key={i} borderWidth="1px" borderColor="warmGray.100" borderRadius="lg" p={3}>
-                    <HStack>
-                      <Input
-                        size="sm"
-                        placeholder="0x…"
-                        value={h.address}
-                        onChange={(e) =>
-                          setHolders((prev) => prev.map((x, j) => (j === i ? { ...x, address: e.target.value } : x)))
-                        }
-                      />
-                      {valid && (
-                        <Badge colorScheme={known ? 'green' : 'purple'}>{known ? 'Added' : 'Invited'}</Badge>
-                      )}
-                      <IconButton
-                        aria-label="Remove"
-                        size="sm"
-                        variant="ghost"
-                        icon={<FiTrash2 />}
-                        onClick={() => setHolders((prev) => prev.filter((_, j) => j !== i))}
-                      />
-                    </HStack>
-                    <RadioGroup
-                      mt={3}
-                      value={h.sticky ? 'sticky' : 'delegable'}
-                      onChange={(v) =>
-                        setHolders((prev) => prev.map((x, j) => (j === i ? { ...x, sticky: v === 'sticky' } : x)))
-                      }
-                    >
-                      <Stack spacing={2}>
-                        {['delegable', 'sticky'].map((mode) => (
-                          <Radio key={mode} value={mode} colorScheme="coral" alignItems="flex-start">
-                            <VStack align="start" spacing={0} ml={1}>
-                              <Text fontSize="sm" fontWeight="medium">{STICKY_COPY[mode].label}</Text>
-                              <Text fontSize="xs" color="warmGray.500">{STICKY_COPY[mode].help}</Text>
-                            </VStack>
-                          </Radio>
-                        ))}
-                      </Stack>
-                    </RadioGroup>
-                  </Box>
-                );
-              })}
-
-              <Button leftIcon={<FiPlus />} size="sm" variant="outline" onClick={() => setHolders((p) => [...p, emptyHolder()])}>
-                Add someone
-              </Button>
-            </VStack>
-          )}
-
-          {step === 4 && (
-            <VStack align="stretch" spacing={4}>
-              {built ? (
-                <>
-                  <Box>
-                    <Text fontSize="xs" fontWeight="bold" color="warmGray.500" textTransform="uppercase" mb={2}>
-                      If this passes
-                    </Text>
-                    <VStack align="stretch" spacing={1}>
-                      {built.summaries.map((s, i) => (
-                        <Text key={i} fontSize="sm" color="warmGray.700">• {s}</Text>
-                      ))}
-                    </VStack>
-                  </Box>
-                  <Divider borderColor="warmGray.100" />
-                  {built.warnings.map((w, i) => (
-                    <Alert key={i} status="warning" borderRadius="md" fontSize="sm">
-                      <AlertIcon />
-                      {w}
-                    </Alert>
-                  ))}
-                  <Text fontSize="xs" color="warmGray.500">
-                    {built.batch.length} step{built.batch.length === 1 ? '' : 's'} in one proposal.
-                  </Text>
-                </>
-              ) : (
-                <Alert status="error" borderRadius="md" fontSize="sm">
-                  <AlertIcon />
-                  Give the role a name before proposing it.
-                </Alert>
-              )}
-            </VStack>
-          )}
+        <ModalBody pb={2}>
+          <RoleForm value={form} onChange={setForm} ctx={ctx} variant="light" />
         </ModalBody>
 
         <ModalFooter>
           <HStack w="full" justify="space-between">
-            <Button variant="ghost" onClick={() => (step === 0 ? close() : setStep((s) => s - 1))}>
-              {step === 0 ? 'Cancel' : 'Back'}
-            </Button>
-            {step < STEPS.length - 1 ? (
+            <Button variant="ghost" onClick={close}>Cancel</Button>
+            {/* The REASON is never in a tooltip: a disabled Chakra button swallows pointer
+                events, so the explanation would be unreachable. RoleForm renders it inline on
+                the step that owns the answer, which is also where it can be fixed. */}
+            <HStack spacing={3}>
+              {blockedReason && (
+                <Text fontSize="xs" color="warmGray.500" maxW="300px" textAlign="right">
+                  {blockedReason}
+                </Text>
+              )}
               <Button
                 colorScheme="coral"
-                onClick={() => setStep((s) => s + 1)}
-                isDisabled={step === 0 && !name.trim()}
+                onClick={onSubmit}
+                isLoading={submitting}
+                isDisabled={!built || Boolean(blockedReason)}
+                data-testid="role-form-submit"
               >
-                Next
-              </Button>
-            ) : (
-              <Button colorScheme="coral" onClick={onSubmit} isLoading={submitting} isDisabled={!built}>
                 Open the vote
               </Button>
-            )}
+            </HStack>
           </HStack>
         </ModalFooter>
       </ModalContent>

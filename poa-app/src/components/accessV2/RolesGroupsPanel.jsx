@@ -128,8 +128,14 @@ export default function RolesGroupsPanel({ activeProposals = [] }) {
             Roles are what people hold. Groups bundle permissions across roles.
           </Text>
         </VStack>
-        <Button leftIcon={<FiPlus />} colorScheme="coral" size="sm" onClick={() => setWizardOpen(true)}>
-          New role
+        <Button
+          leftIcon={<FiPlus />}
+          colorScheme="coral"
+          size="sm"
+          onClick={() => setWizardOpen(true)}
+          data-testid="create-role-or-group"
+        >
+          Create a role or group
         </Button>
       </HStack>
 

@@ -58,6 +58,8 @@ import {
 import SetterActionSelector from "./SetterActionSelector";
 import ElectionConfigurator from "./ElectionConfigurator";
 import RoleConfigurator, { parseAutoTitle as parseRoleAutoTitle } from "./RoleConfigurator";
+import RoleForm from "@/components/accessV2/RoleForm";
+import { ROLE_FORM_KIND, resolveRoleForm, roleConfigToRoleForm, roleFormCopy } from "@/lib/accessV2/roleFormBatch";
 import { inputStyles } from '@/components/shared/glassStyles';
 import IntentGallery, { INTENT_OPTIONS } from "./create/IntentGallery";
 import DurationField from "./create/DurationField";
@@ -75,6 +77,7 @@ import {
   STEP_ERROR_KEYS,
 } from "./create/wizardSteps";
 import { configError as computeConfigError, isComplete } from "@/lib/voting/proposalChecks";
+import { isDurationAllowed, durationTooShortMessage } from "@/lib/voting/durationLimits";
 import { applyAutoCopy, backfillProvenance } from "./create/autoCopy";
 
 const glassLayerStyle = {
@@ -107,7 +110,9 @@ const CONFIG_STEP_TITLES = {
   transferFunds: "Choose the payment",
 };
 
-function stepTitle(step, type) {
+function stepTitle(step, type, accessV2 = false) {
+  // On a cut-over org the create-role screen also makes GROUPS, so the heading can't say "role".
+  if (step === STEP_CONFIG && type === "createRole" && accessV2) return "Set up the role or group";
   if (step === STEP_CONFIG) return CONFIG_STEP_TITLES[type] || "Configure";
   if (step === STEP_DETAILS) return "Vote details";
   if (step === STEP_REVIEW) return "Review your ballot";
@@ -400,7 +405,14 @@ const CreateVoteModal = ({
   // useProposalForm.buildProposalData for each type.
   const reviewOptions = useMemo(() => {
     if (proposal.type === 'setter') return ['Apply Changes', 'Reject'];
-    if (proposal.type === 'createRole') return ['Create role', 'Reject'];
+    if (proposal.type === 'createRole') {
+      // The v2 form can be making a GROUP — the ballot has to name what it actually creates.
+      // The same resolution the encoder uses, so the review can never say “group” to a ballot
+      // that creates a role.
+      return accessV2Enabled && resolveRoleForm(proposal).kind === ROLE_FORM_KIND.GROUP
+        ? ['Create group', 'Reject']
+        : ['Create role', 'Reject'];
+    }
     if (proposal.type === 'election') {
       const names = (proposal.electionCandidates || []).map(c => c.name).filter(Boolean);
       return proposal.electionIncludeNoOneOption ? [...names, 'No One'] : names;
@@ -411,6 +423,8 @@ const CreateVoteModal = ({
     proposal.type,
     proposal.electionCandidates,
     proposal.electionIncludeNoOneOption,
+    proposal.roleFormV2?.kind,
+    accessV2Enabled,
   ]);
   const selectedIntent = useMemo(
     () => INTENT_OPTIONS.find(o => o.type === proposal.type),
@@ -477,6 +491,43 @@ const CreateVoteModal = ({
       : ''
   ), [accessV2Enabled, ongoingProposals]);
 
+  /**
+   * Everything RoleForm needs to describe the org back to the member, and everything the encoder
+   * needs to predict the new subject's id. The SAME facts /team's modal assembles — this is one
+   * form with two doors, so the two ctx objects have to mean the same thing.
+   *
+   * `indexedSubjects`, not the display list: the migrated top hat is hidden from every surface but
+   * still consumed a sequence number, so a prediction that can't see it lands the whole batch on
+   * the wrong subject.
+   */
+  const roleFormCtx = useMemo(() => ({
+    authority: accessV2?.authority || contractAddresses?.membershipAuthorityAddress || '',
+    hybridVoting: contractAddresses?.votingContractAddress || '',
+    taskManagerAddress: taskManagerContractAddress || '',
+    indexedSubjects: accessV2?.indexedSubjects?.length ? accessV2.indexedSubjects : (accessV2?.subjects || []),
+    roles: accessV2?.roles || [],
+    groups: accessV2?.groups || [],
+    projects: allProjects,
+    votingClasses,
+    inOrgUsers: accessV2?.inOrgUsers || new Set(),
+    activeProposals: ongoingProposals || [],
+  }), [accessV2, contractAddresses, taskManagerContractAddress, allProjects, votingClasses, ongoingProposals]);
+
+  /**
+   * The v2 create-role screen owns `proposal.roleFormV2` and, like every other configurator here,
+   * writes the title/description suggestion as it goes — `applyAutoCopy` keeps a wording the
+   * member typed themselves, so edit → Back → reconfigure survives.
+   */
+  const [roleFormStatus, setRoleFormStatus] = useState({ atReview: false, blocked: null });
+
+  const handleRoleFormChange = useCallback((nextForm) => {
+    const copy = roleFormCopy(nextForm);
+    handleSetterChange({
+      roleFormV2: nextForm,
+      ...applyAutoCopy(proposal, { title: copy.title, description: copy.description }),
+    });
+  }, [proposal, handleSetterChange]);
+
   // ---- Inline validation (mirrors useProposalForm.fieldErrors; kept local so
   // this component stays compatible with the current VotingPage prop set) ----
   const fieldErrors = useMemo(() => {
@@ -486,9 +537,8 @@ const CreateVoteModal = ({
     if (!setterProvidesTitle && (!proposal.name || proposal.name.trim() === '')) {
       errors.name = 'Give your vote a title.';
     }
-    const durationHours = Number(proposal.time);
-    if (isNaN(durationHours) || durationHours < 1) {
-      errors.time = 'Voting must run for at least 1 hour.';
+    if (!isDurationAllowed(proposal.time)) {
+      errors.time = durationTooShortMessage();
     }
     if (proposal.type === 'normal') {
       const nonEmpty = (proposal.options || []).filter(o => o.trim() !== '');
@@ -573,6 +623,14 @@ const CreateVoteModal = ({
     return null;
   }, [step, configError, fieldErrors]);
 
+  // The v2 role/group form runs its own steps INSIDE the config step. While the member is still
+  // walking them there must be exactly one Next on screen — the form's — so the footer primary is
+  // hidden until the form reaches its review, and refused while the form reports a blocker
+  // (a batch over the on-chain call ceiling).
+  const roleFormMounted = step === STEP_CONFIG && proposal.type === 'createRole' && accessV2Enabled;
+  const roleFormMidFlow = roleFormMounted && !roleFormStatus.atReview;
+  const roleFormBlocked = roleFormMounted ? roleFormStatus.blocked : null;
+
   // Creator gate for the CURRENT proposal type — not just the intent gallery.
   // A restored draft (or a deep link) jumps past the gallery straight into
   // later steps, and the poll/proposal creator sets can differ, so the gate
@@ -582,7 +640,7 @@ const CreateVoteModal = ({
     || (BINDING_TYPES.has(proposal.type) ? canCreateProposal : canCreatePoll);
 
   // Gates leaving the current step (and, on the last step, submitting).
-  const canSubmit = !firstError && !isTourStep && typeAllowed;
+  const canSubmit = !firstError && !isTourStep && typeAllowed && !roleFormMidFlow && !roleFormBlocked;
 
   const whoCanVoteLabel = useMemo(() => {
     // A payout is binding (Blended voting) but can still be restricted to roles,
@@ -625,11 +683,21 @@ const CreateVoteModal = ({
     // backfillProvenance teaches a draft saved before autoTitle/autoDescription
     // existed which of its copy we generated, so restoring one keeps its
     // regenerate-on-change behaviour instead of freezing as "user typed this".
-    const restored = backfillProvenance(draft.pendingDraft);
+    const restored = { ...backfillProvenance(draft.pendingDraft) };
+    // A draft saved before the v2 form existed carries `roleConfig` and no `roleFormV2`. Bridge it
+    // HERE so the screen shows the role the encoder will build — otherwise the form renders blank
+    // while `resolveRoleForm` quietly encodes fields the member can no longer see or edit.
+    if (
+      accessV2Enabled
+      && !String(restored.roleFormV2?.name || '').trim()
+      && String(restored.roleConfig?.name || '').trim()
+    ) {
+      restored.roleFormV2 = roleConfigToRoleForm(restored.roleConfig);
+    }
     draft.markRestored();
     handleSetterChange({ ...restored });
     setStep(resolveEntryStep(restored, { isComplete }));
-  }, [draft, handleSetterChange]);
+  }, [draft, handleSetterChange, accessV2Enabled]);
 
   const handleStartFresh = useCallback(() => {
     draft.startFresh();
@@ -698,7 +766,7 @@ const CreateVoteModal = ({
           Create a vote
           {step !== STEP_INTENT && (
             <Text fontSize="xs" fontWeight="medium" color="gray.400" mt={0.5} noOfLines={1}>
-              Step {stepIndex + 1} of {steps.length} · {stepTitle(step, proposal.type)}
+              Step {stepIndex + 1} of {steps.length} · {stepTitle(step, proposal.type, accessV2Enabled)}
             </Text>
           )}
         </ModalHeader>
@@ -743,6 +811,8 @@ const CreateVoteModal = ({
                   // walkable there regardless of the viewer's creator hats.
                   canCreatePoll={isTourActive || canCreatePoll}
                   canCreateProposal={isTourActive || canCreateProposal}
+                  // On a cut-over org the create-role card also makes GROUPS, and says so.
+                  accessV2={accessV2Enabled}
                 />
               </Box>
             ) : (
@@ -752,7 +822,11 @@ const CreateVoteModal = ({
                 {step !== STEP_REVIEW && (
                   <HStack justify="space-between" flexWrap="wrap" spacing={2}>
                     <Tag size="md" colorScheme="purple" variant="subtle" borderRadius="full">
-                      <TagLabel>{selectedIntent?.title || proposal.type}</TagLabel>
+                      <TagLabel>
+                        {(accessV2Enabled && selectedIntent?.v2Title)
+                          || selectedIntent?.title
+                          || proposal.type}
+                      </TagLabel>
                     </Tag>
                     <Link fontSize="sm" color="purple.200" onClick={handleChangeType}>
                       change
@@ -903,7 +977,20 @@ const CreateVoteModal = ({
                       />
                     )}
 
-                    {proposal.type === "createRole" && (
+                    {/* CREATE ROLE. On a cut-over org this is the SAME form /team's
+                        "Create a role or group" modal renders — one screen, one encoder
+                        (lib/accessV2/roleFormBatch), so the door you came in by can't decide
+                        what your role is allowed to do. A legacy org keeps RoleConfigurator
+                        and its Hats-era batch, untouched. */}
+                    {proposal.type === "createRole" && (accessV2Enabled ? (
+                      <RoleForm
+                        value={proposal.roleFormV2}
+                        onChange={handleRoleFormChange}
+                        ctx={roleFormCtx}
+                        variant="dark"
+                        onStatus={setRoleFormStatus}
+                      />
+                    ) : (
                       <RoleConfigurator
                         proposal={proposal}
                         onChange={handleSetterChange}
@@ -914,7 +1001,7 @@ const CreateVoteModal = ({
                         accessV2Enabled={accessV2Enabled}
                         subjectRaceWarning={v2SubjectRaceWarning}
                       />
-                    )}
+                    ))}
 
                     {proposal.type === "transferFunds" && (
                       <>
@@ -1224,14 +1311,14 @@ const CreateVoteModal = ({
                 to "what do you want to do?" reads broken, not disabled. The
                 tour is the exception: its disabled "Demo only" button is the
                 affordance the create-vote-preview step points at. */}
-            {(step !== STEP_INTENT || isTourStep) && (
+            {(step !== STEP_INTENT || isTourStep) && !roleFormMidFlow && (
               <Tooltip
                 label={isTourStep
                   ? "Demo only — finish the tour to create a real proposal"
                   : !typeAllowed
                     ? "Your roles can't submit this kind of vote. Ask an admin to grant you a vote-creator role."
-                    : firstError || ''}
-                isDisabled={!isTourStep && typeAllowed && !firstError}
+                    : roleFormBlocked || firstError || ''}
+                isDisabled={!isTourStep && typeAllowed && !firstError && !roleFormBlocked}
                 hasArrow
                 placement="top"
               >

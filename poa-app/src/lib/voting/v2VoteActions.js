@@ -1,19 +1,16 @@
 /**
- * lib/voting/v2VoteActions — the Create-a-Vote wizard's form state -> access-v2 governance batches.
+ * lib/voting/v2VoteActions — the Create-a-Vote wizard's ELECTION arm for an access-v2 org.
  *
- * PURE. These are the ELECTION and CREATE-ROLE arms of `useProposalForm.buildProposalData` for an
- * org that has cut over to a MembershipAuthority. They exist because the legacy arms are not
- * merely sub-optimal on a v2 org, they are WRONG in two different ways:
+ * PURE. This is the ELECTION arm of `useProposalForm.buildProposalData` for an org that has cut
+ * over to a MembershipAuthority. It exists because the legacy arm is not merely sub-optimal on a
+ * v2 org, it is WRONG: the legacy batch calls `EligibilityModule.setWearerEligibility` /
+ * `clearWearerVouches` / `mintHatToAddress` and `Hats.transferHat` against a role hat that cutover
+ * DEACTIVATED. Every one of those reverts `HatNotActive`, inside `announceWinner`'s try/catch: the
+ * vote passes, the winner is announced, and nothing happens. Silent.
  *
- *   • ELECTION — the legacy batch calls `EligibilityModule.setWearerEligibility` /
- *     `clearWearerVouches` / `mintHatToAddress` and `Hats.transferHat` against a role hat that
- *     cutover DEACTIVATED. Every one of those reverts `HatNotActive`, inside `announceWinner`'s
- *     try/catch: the vote passes, the winner is announced, and nothing happens. Silent.
- *   • CREATE ROLE — the legacy batch SUCCEEDS. It mints an inert legacy hat and writes
- *     `TaskManager.setConfig(ROLE_PERM, …)` / `HybridVoting.setCreatorHatAllowed(…)` tables that
- *     the v2 contracts no longer read (`TaskManager._permMask` and `HybridVoting._canCreate` both
- *     return through the authority once one is set). That is worse than a revert — a role that
- *     LOOKS created and grants nothing.
+ * CREATE ROLE used to live here too. It now has ONE encoder shared with /team's create-role modal
+ * — `lib/accessV2/roleFormBatch` — because two doors that build a role differently is how a role
+ * ends up with permissions on one path and voting power on neither.
  *
  * Three contract facts drive the shape of everything below. All three are silent when violated,
  * because `announceWinner` swallows a reverting batch and still reports the vote as executed:
@@ -34,22 +31,10 @@
  * `normalizeAuthorityMemberships().inOrgUsers` computes — never by the active-member set.
  */
 
-import { utils } from 'ethers';
 import {
-  buildCreateRoleBatch,
   buildMemberActionsBatch,
   estimateBatchGas,
 } from '@/lib/accessV2/proposalBuilders';
-
-/** TaskManager.ConfigKey — org-wide task grants. Still LIVE on a v2 org (see below). */
-const TM_CONFIG_KEY = {
-  CREATOR_HAT_ALLOWED: 1,
-  ORGANIZER_HAT_ALLOWED: 7,
-};
-
-const taskManagerInterface = new utils.Interface([
-  'function setConfig(uint8 key, bytes value)',
-]);
 
 /**
  * An elected seat is held by the GROUP, not by the person: `delegable: false` (sticky) means the
@@ -280,7 +265,7 @@ function electionSummaries({
   const summaries = [];
   const names = runners.map(nameOf);
   summaries.push(
-    `Elect one of: ${names.join(', ')} to ${subjectName}. The winner is added to the role automatically.`
+    `Elect ${names.join(' or ')} as ${subjectName}. The winner is added to the role automatically.`
   );
 
   for (const runner of runners) {
@@ -318,148 +303,5 @@ function electionSummaries({
   return summaries;
 }
 
-/**
- * CREATE ROLE -> one authority batch.
- *
- * Maps `RoleConfigurator`'s `roleConfig` onto `buildCreateRoleBatch`'s config. What each legacy
- * field becomes, and why:
- *
- *   name / description / imageURI -> `createRole(name, metadataCID, imageURI, maxMembers)`. The
- *     description rides in the metadata CID the caller uploads, so there is no second
- *     `updateHatMetadata` call and no "must be a mutable hat" precondition.
- *   maxSupply         -> `maxMembers` (0 = no limit, which the Hats `maxSupply` could not say).
- *   openRole          -> `defaultAllow`. Default OFF: an unclaimed-by-default role is what every
- *                        legacy hat was, and flipping it on makes the role claimable by ANYONE.
- *   canVote           -> the `HV_CREATE` permission. NOT `HybridVoting.setCreatorHatAllowed`: once
- *                        an authority is set, `HybridVoting` resolves creation through
- *                        `hasPerm(HV_CREATE)` and never reads `creatorHatIds` again.
- *   globalPerms       -> a global `TM_PERMS` row; projectPerms -> per-project `TM_PERMS` rows.
- *                        NOT `setConfig(ROLE_PERM)`, which `TaskManager._permMask` stops reading
- *                        the moment an authority is set.
- *   canCreateTasks /  -> `TaskManager.setConfig(CREATOR_HAT_ALLOWED | ORGANIZER_HAT_ALLOWED)`,
- *   canOrganizeFolders   UNCHANGED — these two are the exception. TaskManager keeps both
- *                        enumerations on v2 and folds AUTHORITY membership over them
- *                        (`_authorityHoldsAny`), so the same call with the SUBJECT id is still the
- *                        way to grant them.
- *   vouching          -> `configureVouchAttestor(subject, quorum, voucher)`. `combineWithHierarchy`
- *                        has no v2 meaning (there is no hat-admin chain to combine with) and is
- *                        dropped.
- *   parentHatId / mutable / defaultEligible / defaultStanding — Hats-tree concepts with no v2
- *                        counterpart. Dropped; the configurator hides them on a v2 org.
- *
- * @param {object} opts
- * @param {string} opts.authority
- * @param {Array} opts.existingSubjects - INDEXED subjects (structural ids included) for id prediction
- * @param {Array} [opts.activeProposals] - in-flight proposals, for the id-race warning
- * @param {object} opts.roleConfig - `proposal.roleConfig`
- * @param {Set<string>|Array} [opts.inOrgUsers]
- * @param {string} [opts.metadataCID] - bytes32 CID for `{ name, description }`
- * @param {string} [opts.taskManagerAddress]
- * @returns {{batch: Array, summaries: string[], warnings: string[], gasLimit: number, predictedSubjectId: string}}
- */
-export function buildV2CreateRoleBatch({
-  authority,
-  existingSubjects = [],
-  activeProposals = [],
-  roleConfig = {},
-  inOrgUsers = null,
-  metadataCID = null,
-  taskManagerAddress = '',
-} = {}) {
-  if (!authority) throw new Error('This group’s roles contract hasn’t loaded yet — please try again in a moment.');
-  const rc = roleConfig || {};
-  const inOrg = toAddressSet(inOrgUsers);
 
-  const holders = (rc.initialWearers || [])
-    .filter((w) => w && isAddress(w.address))
-    .map((w) => ({
-      address: w.address,
-      inOrg: inOrg.has(lower(w.address)),
-      // Someone put into a role at creation can still resign from it; only an elected seat is
-      // locked to governance.
-      sticky: false,
-    }));
-
-  const built = buildCreateRoleBatch({
-    authority,
-    existingSubjects,
-    activeProposals,
-    config: {
-      name: String(rc.name || '').trim(),
-      imageURI: rc.imageURI || '',
-      ...(metadataCID ? { metadataCID } : {}),
-      maxMembers: Math.max(0, Number(rc.maxSupply) || 0),
-      defaultAllow: Boolean(rc.openRole),
-      perms: {
-        HV_CREATE: Boolean(rc.canVote),
-        TM_PERMS: Number(rc.globalPerms) || 0,
-      },
-      projectPerms: (rc.projectPerms || [])
-        .filter((p) => p && p.projectId !== undefined && p.projectId !== null && p.projectId !== '')
-        .map((p) => ({ projectId: p.projectId, mask: Number(p.mask) || 0 })),
-      vouch: rc.vouching?.enabled
-        ? {
-            quorum: Number(rc.vouching.quorum) || 1,
-            voucherSubjectId: rc.vouching.voucherHatId || 0,
-            selfVouch: Boolean(rc.vouching.selfVouch),
-          }
-        : null,
-      initialHolders: holders,
-    },
-  });
-
-  const batch = [...built.batch];
-  const summaries = [...built.summaries];
-  const warnings = [...built.warnings];
-  const subjectId = built.subjectId;
-
-  const wantsTaskManagerGrants = Boolean(rc.canCreateTasks) || Boolean(rc.canOrganizeFolders);
-  if (wantsTaskManagerGrants && !taskManagerAddress) {
-    warnings.push(
-      'This group has no task manager set up, so the "create projects and tasks" and '
-      + '"organise the folder tree" permissions were left out.'
-    );
-  }
-  if (wantsTaskManagerGrants && taskManagerAddress) {
-    if (rc.canCreateTasks) {
-      batch.push({
-        target: taskManagerAddress,
-        value: '0',
-        data: taskManagerInterface.encodeFunctionData('setConfig', [
-          TM_CONFIG_KEY.CREATOR_HAT_ALLOWED,
-          utils.defaultAbiCoder.encode(['uint256', 'bool'], [subjectId, true]),
-        ]),
-      });
-      summaries.push('Let it create projects and tasks');
-    }
-    if (rc.canOrganizeFolders) {
-      batch.push({
-        target: taskManagerAddress,
-        value: '0',
-        data: taskManagerInterface.encodeFunctionData('setConfig', [
-          TM_CONFIG_KEY.ORGANIZER_HAT_ALLOWED,
-          utils.defaultAbiCoder.encode(['uint256', 'bool'], [subjectId, true]),
-        ]),
-      });
-      summaries.push('Let it organise the project folders');
-    }
-  }
-
-  if (rc.vouching?.enabled && rc.vouching?.combineWithHierarchy) {
-    warnings.push(
-      'This group no longer has a role hierarchy, so "combine with hierarchy" doesn’t apply — '
-      + 'vouching alone decides who can join.'
-    );
-  }
-
-  return {
-    batch,
-    summaries,
-    warnings,
-    predictedSubjectId: subjectId,
-    createsSubject: true,
-    gasLimit: estimateBatchGas(batch),
-  };
-}
-
-export default { buildV2ElectionBatches, buildV2CreateRoleBatch, acceptedHoldersOf, toAddressSet };
+export default { buildV2ElectionBatches, acceptedHoldersOf, toAddressSet };

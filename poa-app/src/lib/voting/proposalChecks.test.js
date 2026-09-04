@@ -223,7 +223,9 @@ describe('configError — createRole', () => {
     const rc = { name: 'Treasurer' };
     expect(configError(withType('createRole', { roleConfig: { ...rc, maxSupply: 0 } }), v2)).toBeNull();
     expect(configError(withType('createRole', { roleConfig: { ...rc, maxSupply: 4294967295 } }), v2)).toBeNull();
-    for (const maxSupply of [-1, 'abc', undefined, 4294967296]) {
+    // A draft that never carried a cap is “no limit” on v2 (0), not an error about a hidden input.
+    expect(configError(withType('createRole', { roleConfig: { ...rc, maxSupply: undefined } }), v2)).toBeNull();
+    for (const maxSupply of [-1, 'abc', 4294967296]) {
       expect(configError(withType('createRole', { roleConfig: { ...rc, maxSupply } }), v2))
         .toBe('The seat limit must be 0 (no limit) or more.');
     }
@@ -248,6 +250,58 @@ describe('configError — createRole', () => {
       },
     });
     expect(configError(p)).toBeNull();
+  });
+});
+
+/**
+ * ACCESS V2 — the config screen is `components/accessV2/RoleForm`, writing `proposal.roleFormV2`,
+ * and it can make a GROUP as well as a role. The gate is `roleFormError` over the SAME form
+ * `buildProposalData` encodes, so "the step says it's ready" and "the batch is buildable" cannot
+ * come apart.
+ */
+describe('configError — createRole on an access-v2 org', () => {
+  const v2 = { accessV2: { enabled: true } };
+  const form = (overrides = {}) => withType('createRole', {
+    roleConfig: {},
+    roleFormV2: { kind: 'role', name: 'Treasurer', ...overrides },
+  });
+
+  it('passes a named role and a named group', () => {
+    expect(configError(form(), v2)).toBeNull();
+    expect(configError(form({ kind: 'group', memberRoleIds: ['1'] }), v2)).toBeNull();
+  });
+
+  it('asks for the name in the language of the thing being made', () => {
+    expect(configError(form({ name: '  ' }), v2)).toBe('Give the new role a name.');
+    expect(configError(form({ kind: 'group', name: '' }), v2)).toBe('Give the new group a name.');
+  });
+
+  it('gates the decisions that only exist on the new screen', () => {
+    expect(configError(form({ limitSeats: true, maxMembers: -1 }), v2))
+      .toBe('The seat limit must be 0 (no limit) or more.');
+    expect(configError(form({ bindingVote: true, bindingClassIdx: null }), v2))
+      .toBe('Pick which group of voters this role joins.');
+    expect(configError(form({ vouching: { enabled: true, quorum: 1, voucherSubjectId: '' } }), v2))
+      .toBe('Pick the role whose members can vouch, or let the new role vouch for itself.');
+    expect(configError(form({ holders: [{ address: '0x123', name: 'Ann' }] }), v2))
+      .toBe('"Ann" has an invalid address.');
+  });
+
+  it('judges a pre-v2 draft on the legacy fields it actually carries', () => {
+    // `restoreProposal` merges an old draft over defaultProposal, so `roleFormV2` is present but
+    // blank while `roleConfig` holds everything the member entered.
+    const draft = withType('createRole', {
+      roleConfig: { parentHatId: '0x01', name: 'Treasurer', maxSupply: 5 },
+      roleFormV2: { kind: 'role', name: '' },
+    });
+    expect(configError(draft, v2)).toBeNull();
+  });
+
+  it('leaves the legacy gate exactly as it was when the flag is off', () => {
+    const legacy = form();
+    for (const ctx of [null, {}, { accessV2: { enabled: false } }]) {
+      expect(configError(legacy, ctx)).toBe('Pick which role this new role should sit under.');
+    }
   });
 });
 

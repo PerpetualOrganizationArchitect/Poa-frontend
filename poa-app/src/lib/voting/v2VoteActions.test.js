@@ -9,18 +9,14 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { utils, constants } from 'ethers';
 import {
   buildV2ElectionBatches,
-  buildV2CreateRoleBatch,
   acceptedHoldersOf,
   toAddressSet,
   ELECTED_SEAT_STICKY,
 } from './v2VoteActions';
 import { authorityInterface } from '@/lib/accessV2/txBuilders';
-import { projectCtx, estimateBatchGas } from '@/lib/accessV2/proposalBuilders';
-import { predictNextSubjectId } from '@/lib/accessV2/ids';
-import { PERM_KEYS, GLOBAL_CTX, decodePermWord } from '@/lib/accessV2/permKeys';
+import { estimateBatchGas } from '@/lib/accessV2/proposalBuilders';
 import {
   AUTHORITY_ADDRESS as A,
   ALICE,
@@ -28,19 +24,9 @@ import {
   CAROL,
   MEMBERS_ID,
   EXECS_ID,
-  EVERYONE_GROUP_ID,
 } from '@/lib/accessV2/fixtures';
 
 const DAVE = '0xdddddddddddddddddddddddddddddddddddddddd';
-const TASK_MANAGER = '0x7777777777777777777777777777777777777777';
-
-const existingSubjects = [
-  { subjectId: MEMBERS_ID },
-  { subjectId: EXECS_ID },
-  { subjectId: EVERYONE_GROUP_ID },
-];
-
-const taskManagerInterface = new utils.Interface(['function setConfig(uint8 key, bytes value)']);
 
 /** Decode a batch of authority calls into `[{ name, args }]`. */
 const decode = (batch) =>
@@ -206,7 +192,7 @@ describe('buildV2ElectionBatches', () => {
       includeNoOneOption: true,
     });
     expect(summaries[0]).toBe(
-      'Elect one of: Alice, Bob to Executives. The winner is added to the role automatically.'
+      'Elect Alice or Bob as Executives. The winner is added to the role automatically.'
     );
     expect(summaries.join(' ')).toMatch(/Bob isn’t in this group yet/);
     expect(summaries.join(' ')).toMatch(/If Carol doesn’t win, they lose Executives/);
@@ -233,204 +219,6 @@ describe('buildV2ElectionBatches', () => {
     expect(() => buildV2ElectionBatches({ ...base, authority: '' })).toThrow(/roles contract/);
     expect(() => buildV2ElectionBatches({ ...base, subjectId: '' })).toThrow(/which role/);
     expect(() => buildV2ElectionBatches({ ...base, candidates: [] })).toThrow(/at least one candidate/);
-  });
-});
-
-describe('buildV2CreateRoleBatch', () => {
-  const roleConfig = {
-    parentHatId: MEMBERS_ID, // legacy field — must be ignored on v2
-    name: 'Treasurer',
-    description: 'Looks after the money',
-    imageURI: 'ipfs://img',
-    maxSupply: 3,
-    mutable: true,
-    defaultEligible: true,
-    defaultStanding: true,
-    canVote: true,
-    globalPerms: 6,
-    canCreateTasks: true,
-    canOrganizeFolders: true,
-    vouching: { enabled: true, quorum: 2, voucherHatId: EXECS_ID, selfVouch: false, combineWithHierarchy: true },
-    initialWearers: [{ address: ALICE, name: 'Alice' }, { address: BOB, name: 'Bob' }],
-    projectPerms: [{ projectId: '1', projectName: 'Ops', mask: 3 }],
-  };
-
-  const build = (overrides = {}) =>
-    buildV2CreateRoleBatch({
-      authority: A,
-      existingSubjects,
-      roleConfig,
-      inOrgUsers: new Set([ALICE]),
-      taskManagerAddress: TASK_MANAGER,
-      ...overrides,
-    });
-
-  it('creates the role through the authority — never through the eligibility module', () => {
-    const { batch, predictedSubjectId } = build();
-    const authorityCalls = batch.filter((c) => c.target === A);
-    expect(names(authorityCalls)[0]).toBe('createRole');
-    const [name, metadataCID, imageURI, maxMembers] = decode(authorityCalls)[0].args;
-    expect(name).toBe('Treasurer');
-    expect(metadataCID).toBe(constants.HashZero);
-    expect(imageURI).toBe('ipfs://img');
-    expect(Number(maxMembers)).toBe(3);
-    expect(predictedSubjectId).toBe(predictNextSubjectId(A, existingSubjects));
-  });
-
-  it('carries the description’s IPFS CID in the CREATE call — no second metadata write', () => {
-    const cid = `0x${'ab'.repeat(32)}`;
-    const { batch } = build({ metadataCID: cid });
-    expect(decode(batch.filter((c) => c.target === A))[0].args[1]).toBe(cid);
-    expect(names(batch.filter((c) => c.target === A))).not.toContain('renameSubject');
-  });
-
-  it('turns "can create proposals" into the HV_CREATE permission, not setCreatorHatAllowed', () => {
-    const { batch, predictedSubjectId } = build();
-    const rows = decode(batch.filter((c) => c.target === A)).filter((c) => c.name === 'setPerm');
-    const hv = rows.find((r) => r.args[1].toLowerCase() === PERM_KEYS.HV_CREATE.toLowerCase());
-    expect(hv).toBeTruthy();
-    expect(hv.args[0].toString()).toBe(predictedSubjectId);
-    expect(hv.args[2]).toBe(GLOBAL_CTX);
-    expect(decodePermWord(hv.args[3]).enabled).toBe(true);
-    // The legacy call is gone entirely: HybridVoting stops reading creatorHatIds on a v2 org.
-    expect(
-      batch.some((c) => c.data.startsWith(
-        new utils.Interface(['function setCreatorHatAllowed(uint256 h, bool ok)']).getSighash('setCreatorHatAllowed')
-      ))
-    ).toBe(false);
-  });
-
-  it('writes task permissions as perm rows — global at ctx 0, per project at the W4 ctx', () => {
-    const { batch } = build();
-    const rows = decode(batch.filter((c) => c.target === A)).filter((c) => c.name === 'setPerm');
-    const tm = rows.filter((r) => r.args[1].toLowerCase() === PERM_KEYS.TM_PERMS.toLowerCase());
-    expect(tm).toHaveLength(2);
-
-    const global = tm.find((r) => r.args[2] === GLOBAL_CTX);
-    expect(decodePermWord(global.args[3]).value).toBe('6');
-
-    const perProject = tm.find((r) => r.args[2] !== GLOBAL_CTX);
-    expect(perProject.args[2]).toBe(projectCtx('1'));
-    expect(decodePermWord(perProject.args[3]).value).toBe('3');
-    expect(decodePermWord(perProject.args[3]).inheritGlobal).toBe(true);
-  });
-
-  it('takes the composite project id the wizard actually holds, not a pre-offset one', () => {
-    const composite = `${TASK_MANAGER}-4`;
-    const { batch } = build({
-      roleConfig: { ...roleConfig, projectPerms: [{ projectId: composite, mask: 1 }] },
-    });
-    const row = decode(batch.filter((c) => c.target === A))
-      .filter((c) => c.name === 'setPerm')
-      .find((r) => r.args[2] !== GLOBAL_CTX);
-    expect(row.args[2]).toBe(projectCtx(composite));
-  });
-
-  it('configures vouching on the authority, with the picked role as the voucher', () => {
-    const { batch } = build();
-    const vouch = decode(batch.filter((c) => c.target === A)).find(
-      (c) => c.name === 'configureVouchAttestor'
-    );
-    expect(vouch.args[0].toString()).toBe(predictNextSubjectId(A, existingSubjects));
-    expect(Number(vouch.args[1])).toBe(2);
-    expect(vouch.args[2].toString()).toBe(EXECS_ID);
-  });
-
-  it('points a self-vouching role at its own predicted id', () => {
-    const { batch, predictedSubjectId } = build({
-      roleConfig: { ...roleConfig, vouching: { enabled: true, quorum: 1, selfVouch: true, voucherHatId: '' } },
-    });
-    const vouch = decode(batch.filter((c) => c.target === A)).find(
-      (c) => c.name === 'configureVouchAttestor'
-    );
-    expect(vouch.args[2].toString()).toBe(predictedSubjectId);
-  });
-
-  it('warns that "combine with hierarchy" has no meaning without a role hierarchy', () => {
-    expect(build().warnings.join(' ')).toMatch(/combine with hierarchy/i);
-  });
-
-  it('ADDS an initial holder who is in the org and INVITES one who is not', () => {
-    const { batch } = build();
-    const people = decode(batch.filter((c) => c.target === A)).filter(
-      (c) => c.name === 'grant' || c.name === 'offer'
-    );
-    expect(people.map((c) => c.name)).toEqual(['grant', 'offer']);
-    expect(people[0].args[1].toLowerCase()).toBe(ALICE);
-    expect(people[1].args[1].toLowerCase()).toBe(BOB);
-    // Not sticky: someone put into a new role at creation can still resign from it.
-    expect(people[0].args[2]).toBe(true);
-    expect(people[1].args[2]).toBe(true);
-  });
-
-  it('keeps the two TaskManager grants that ARE still live on v2, keyed by the SUBJECT id', () => {
-    const { batch, predictedSubjectId } = build();
-    const tmCalls = batch.filter((c) => c.target === TASK_MANAGER);
-    expect(tmCalls).toHaveLength(2);
-    const decoded = tmCalls.map((c) => taskManagerInterface.parseTransaction({ data: c.data }));
-    expect(decoded.map((d) => Number(d.args[0]))).toEqual([1, 7]); // CREATOR_HAT_ALLOWED, ORGANIZER_HAT_ALLOWED
-    for (const d of decoded) {
-      const [id, allowed] = utils.defaultAbiCoder.decode(['uint256', 'bool'], d.args[1]);
-      expect(id.toString()).toBe(predictedSubjectId);
-      expect(allowed).toBe(true);
-    }
-  });
-
-  it('says so rather than silently dropping the task grants when there is no task manager', () => {
-    const { batch, warnings } = build({ taskManagerAddress: '' });
-    expect(batch.every((c) => c.target === A)).toBe(true);
-    expect(warnings.join(' ')).toMatch(/no task manager/i);
-  });
-
-  it('never writes the tables a v2 org stopped reading (ROLE_PERM / setProjectRolePerm)', () => {
-    const { batch } = build();
-    const legacyTm = new utils.Interface([
-      'function setProjectRolePerm(bytes32 pid, uint256 hatId, uint8 mask)',
-    ]);
-    expect(batch.some((c) => c.data.startsWith(legacyTm.getSighash('setProjectRolePerm')))).toBe(false);
-    // ROLE_PERM is key 2 on setConfig — the one _permMask stops reading once an authority is set.
-    const setConfigKeys = batch
-      .filter((c) => c.target === TASK_MANAGER)
-      .map((c) => Number(taskManagerInterface.parseTransaction({ data: c.data }).args[0]));
-    expect(setConfigKeys).not.toContain(2);
-  });
-
-  it('is invite-only unless the role is explicitly opened', () => {
-    expect(names(build().batch.filter((c) => c.target === A))).not.toContain('setSubjectDefault');
-    const opened = build({ roleConfig: { ...roleConfig, openRole: true } });
-    expect(names(opened.batch.filter((c) => c.target === A))).toContain('setSubjectDefault');
-  });
-
-  it('drops the Hats-only fields instead of encoding them (no parent, no mutability, no supply flags)', () => {
-    const { batch } = build();
-    const encoded = batch.map((c) => c.data).join('');
-    // The legacy createHatWithEligibility selector must not appear anywhere in a v2 batch.
-    const legacyEl = new utils.Interface([
-      'function createHatWithEligibility((uint256,string,uint32,bool,string,bool,bool,address[],bool[],bool[]) params)',
-    ]);
-    expect(encoded.includes(legacyEl.getSighash('createHatWithEligibility').slice(2))).toBe(false);
-    // The parent role id is a legacy field and must not be smuggled into any call — while the
-    // VOUCHER role (a real v2 input) must be.
-    expect(encoded.includes(BigInt(MEMBERS_ID).toString(16))).toBe(false);
-    expect(encoded.includes(BigInt(EXECS_ID).toString(16))).toBe(true);
-  });
-
-  it('keeps the id-race warning the first summary makes detectable', () => {
-    const { summaries, warnings } = build({
-      activeProposals: [{ actionSummaries: ['Create the role “Auditor”'], status: 'Active' }],
-    });
-    expect(summaries[0]).toMatch(/^Create the role/);
-    expect(warnings.join(' ')).toMatch(/Another proposal that creates a role or group is still open/);
-  });
-
-  it('prices the gas floor over the WHOLE batch, TaskManager calls included', () => {
-    const { batch, gasLimit } = build();
-    expect(gasLimit).toBe(estimateBatchGas(batch));
-  });
-
-  it('refuses to build without an authority or a name', () => {
-    expect(() => build({ authority: '' })).toThrow(/roles contract/);
-    expect(() => build({ roleConfig: { ...roleConfig, name: '  ' } })).toThrow(/needs a name/);
   });
 });
 
@@ -461,7 +249,10 @@ describe('the legacy encoders are still there, and the v2 ones are behind the ga
   });
 
   it('reaches the v2 adapters only through an accessV2 gate', () => {
-    for (const adapter of ['buildV2ElectionBatches', 'buildV2CreateRoleBatch']) {
+    // `buildRoleFormBatch` is the create-role half — ONE encoder shared with /team's modal
+    // (lib/accessV2/roleFormBatch). A second create-role encoder appearing here is the bug this
+    // whole file exists to catch.
+    for (const adapter of ['buildV2ElectionBatches', 'buildRoleFormBatch']) {
       // import + at least one call site
       expect(src).toContain(adapter);
       const callSites = src.split(`${adapter}(`).length - 1;

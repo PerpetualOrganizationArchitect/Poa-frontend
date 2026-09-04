@@ -51,7 +51,9 @@ describe('the flags are declared where the lib expects them', () => {
   // subject ids, which is a copy problem, not an availability one.
   it('marks the live-but-subject-id templates idsAreSubjects and leaves them offered', () => {
     const flagged = SETTER_TEMPLATES.filter((t) => t.idsAreSubjects).map((t) => t.id);
-    expect(flagged.sort()).toEqual(['allow-organizer-hat', 'allow-task-creator', 'change-voting-split']);
+    expect(flagged.sort()).toEqual([
+      'allow-organizer-hat', 'allow-task-creator', 'change-class-voters', 'change-voting-split',
+    ]);
     for (const id of flagged) {
       expect(isTemplateAvailable(getTemplateById(id), {
         authorityEnabled: true, contractAddresses: V2_ADDRESSES,

@@ -9,7 +9,15 @@
 import { utils } from 'ethers';
 import { parseProjectId } from '@/services/web3/utils/encoding';
 import { PERM_CATALOGUE, TASK_PERM_BITS } from '@/lib/accessV2/permKeys';
-import { buildPermRows, buildEditPermsBatch } from '@/lib/accessV2/proposalBuilders';
+import { buildPermRows, buildEditPermsBatch, estimateBatchGas } from '@/lib/accessV2/proposalBuilders';
+import {
+  buildClassVoterCall,
+  classByIndex,
+  classVoterSummary,
+  classLabel,
+  classHolds,
+  classesHolding,
+} from '@/lib/voting/votingClasses';
 
 // ============================================================================
 // ACCESS-SYSTEM FLAGS
@@ -225,6 +233,94 @@ export function permChangeSummaries(subjectName, changes) {
   if (changes.taskAdded.length) out.push(`Let ${name} ${joinPhrases(changes.taskAdded)}`);
   if (changes.taskRemoved.length) {
     out.push(`Stop ${name} being able to ${joinPhrases(changes.taskRemoved)}`);
+  }
+  return out;
+}
+
+// ============================================================================
+// CLASS-VOTER HELPERS  (used by the `change-class-voters` template)
+// ============================================================================
+
+/**
+ * The classes the form is deciding against, as an array.
+ *
+ * `template.validate(values)` is called with `setterValues` and NOTHING ELSE
+ * (`useProposalForm.validateSetterProposal`, `lib/voting/proposalChecks.configError`), so the org's
+ * voting classes have to live IN the form values or this template cannot check itself at all.
+ * They get there two ways, both writing the same key:
+ *
+ *   - `SetterActionSelector.handleTemplateSelect` seeds the hidden input (`seedFrom:
+ *     'votingClasses'`) when the action is picked, and
+ *   - the `votingClassSelect` field re-writes the snapshot together with the chosen index, in one
+ *     update — which is what covers a `?propose=change-class-voters` deep link, whose seeding
+ *     (VotingPage.handleProposeRuleChange) knows nothing about this input.
+ *
+ * Writing the snapshot WITH the choice is also what makes the index trustworthy: the number the
+ * member picked and the classes `preview`/`buildBatch` describe are the same list, so a class
+ * ordering that changed under them cannot silently relabel the call.
+ */
+export function classesFromValues(values) {
+  const list = values?.votingClasses;
+  return Array.isArray(list) ? list : [];
+}
+
+/**
+ * Why this class-voter change can't be proposed, or `null` when it can.
+ *
+ * Shared by `validate` (which gates the wizard's Next) and `buildBatch` (which must never be
+ * reachable with values validate would have refused). The two failures worth catching here are the
+ * silent ones: adding a role a class ALREADY counts, and removing one it never counted, both
+ * execute happily and change nothing — the exact "vote passed, nothing happened" shape this file
+ * keeps having to close.
+ */
+export function classVoterProblem(values) {
+  const classes = classesFromValues(values);
+  const rawIdx = values?.classIdx;
+  const roleId = String(values?.role ?? '').trim();
+  const add = values?.action !== 'Remove';
+
+  if (rawIdx === undefined || rawIdx === null || rawIdx === '') {
+    return 'Pick which voters this change applies to.';
+  }
+  const idx = Number(rawIdx);
+  if (!Number.isInteger(idx) || idx < 0) return 'Pick which voters this change applies to.';
+  if (!roleId) return 'Pick the role whose voting rights should change.';
+
+  // No classes means the snapshot never arrived (still loading, or an org whose blended voting was
+  // never configured). Encoding an index into a list we cannot see is a guess.
+  if (classes.length === 0) {
+    return 'This group’s binding votes haven’t loaded their voters yet — try again in a moment.';
+  }
+  // `classIdx` is the CONTRACT index (what the picker writes and `addHatToClass` stores), which
+  // is not always the array position — resolve, never index.
+  const cls = classByIndex(classes, idx);
+  if (!cls) return 'Pick which voters this change applies to.';
+
+  const label = classLabel(cls, idx);
+  const holds = classHolds(cls, roleId);
+  if (add && holds) return `That role already votes in binding votes as ${label}.`;
+  if (!add && !holds) return `That role doesn’t vote in binding votes as ${label}, so there is nothing to remove.`;
+  return null;
+}
+
+/** The cautions a member should read before this one lands on the ballot. */
+export function classVoterWarnings(values, roleName = 'this role') {
+  const classes = classesFromValues(values);
+  const idx = Number(values?.classIdx);
+  const roleId = String(values?.role ?? '').trim();
+  const add = values?.action !== 'Remove';
+  const out = [];
+  const cls = classByIndex(classes, idx);
+  if (add || !cls) return out;
+
+  const label = classLabel(cls, idx);
+  // Emptying a class does not disable it: its slice of every binding vote still exists, with
+  // nobody able to fill it.
+  if ((cls.hatIds || []).length <= 1) {
+    out.push(`No role would be left voting as ${label}, so that share of every binding vote would have no voters.`);
+  }
+  if (classesHolding(classes, roleId).length <= 1) {
+    out.push(`Members of “${roleName}” would have no vote in binding votes at all.`);
   }
   return out;
 }
@@ -499,6 +595,119 @@ export const SETTER_TEMPLATES = [
         return `${label}: ${cls.slicePct}%`;
       });
       return `Change voting split to ${parts.join(', ')}`;
+    }
+  },
+  {
+    id: 'change-class-voters',
+    category: 'voting',
+    name: 'Change Who Votes in Binding Votes',
+    autoTitle: 'Change who votes in binding votes',
+    description:
+      'Add a role to — or take it out of — the people counted in one part of a binding vote',
+    contract: 'hybridVoting',
+    // LIVE on BOTH access systems. `addHatToClass` / `removeHatFromClass` write the class's own
+    // electorate list, which HybridVoting reads on every vote — on a legacy org through Hats, on a
+    // migrated one through `authority.isMember`. Nothing about that moved to the authority, which
+    // is why this is neither `legacyOnly` nor `v2Only`. Only the MEANING of the id changes, and
+    // `useRoleNames().allRoles` (lib/voting/roleOptions) already switches source for the picker.
+    idsAreSubjects: true,
+    v2Description:
+      'Add a role to — or take it out of — the people counted in one part of a binding vote. '
+      + 'Voting here is separate from what a role is allowed to do',
+    // No `functionName`/`encode`: this template builds its own call, so the wizard takes the
+    // buildBatch arm (which is also what lets it carry a written summary and a gas floor).
+    inputs: [
+      {
+        name: 'classIdx',
+        label: 'Which voters',
+        type: 'votingClassSelect',
+        // The one thing a member has to understand to answer this: a binding vote is counted in
+        // parts, and each part has its own list of roles.
+        helpText: 'A binding vote is counted in parts. Pick the part this change applies to',
+      },
+      {
+        name: 'role',
+        label: 'Role',
+        type: 'roleSelect',
+        helpText: 'Pick the role whose members should start — or stop — counting here',
+        v2HelpText: 'Pick a role or a group — the same ones listed under Roles and permissions',
+        // A group can be voted INTO a class (RoleForm's Voting step does it), so it must be
+        // nameable here to be voted out again.
+        includeGroups: true,
+        // Record the name with the choice. The `roleNames` map every other template falls back to
+        // is POContext's LEGACY list, frozen at the cutover — a role created since has no entry,
+        // and the sentence members vote on would read "this role". See SetterParamInputs.
+        nameField: 'roleName',
+      },
+      {
+        name: 'action',
+        label: 'Change',
+        type: 'toggle',
+        options: ['Add', 'Remove'],
+        default: 'Add',
+        helpText: 'Add lets this role vote in that part; Remove takes it away',
+      },
+      // The classes this form is deciding against, written by the class picker together with the
+      // chosen index (and seeded when the action is picked). Hidden because nobody edits it, and
+      // optional because it is derived — see classesFromValues for why it has to be in values.
+      { name: 'votingClasses', type: 'hidden', optional: true, seedFrom: 'votingClasses' },
+      // The chosen role's name, written by the picker. Derived, never typed.
+      { name: 'roleName', type: 'hidden', optional: true },
+    ],
+    /**
+     * One executor call: add (or remove) a role from a voting class's electorate.
+     *
+     * @param {object} values - setterValues (`classIdx`, `role`, `action`, `votingClasses`)
+     * @param {object} ctx    - `{ contractAddresses, roleNames, … }`; only those two are read.
+     *                          `contractAddresses.votingContractAddress` is the HybridVoting the
+     *                          org actually votes on.
+     * @returns {{batch: Array, summaries: string[], warnings: string[], gasLimit: number}}
+     */
+    buildBatch: (values, ctx = {}) => {
+      const { contractAddresses = {}, roleNames = {} } = ctx;
+      // Re-run the same guard the config screen ran. buildBatch is reachable from a restored draft
+      // whose class list has since changed, and "add a role that is already there" is a proposal
+      // that passes and does nothing.
+      const problem = classVoterProblem(values);
+      if (problem) throw new Error(problem);
+
+      const classIdx = Number(values.classIdx);
+      const subjectId = String(values.role);
+      const add = values.action !== 'Remove';
+      const votingClasses = classesFromValues(values);
+      const roleName = values.roleName || roleNames?.[subjectId] || 'this role';
+
+      const batch = [buildClassVoterCall({
+        hybridVoting: contractAddresses?.votingContractAddress,
+        classIdx,
+        subjectId,
+        add,
+      })];
+      return {
+        batch,
+        summaries: [classVoterSummary({ roleName, classIdx, votingClasses, add })],
+        warnings: classVoterWarnings(values, roleName),
+        gasLimit: estimateBatchGas(batch),
+      };
+    },
+    validate: (values) => classVoterProblem(values),
+    preview: (values, roleNames) => {
+      const classes = classesFromValues(values);
+      const raw = values?.classIdx;
+      // `Number('')` is 0, not NaN — the unanswered field would silently BECOME the first class.
+      const idx = (raw === '' || raw === null || raw === undefined) ? NaN : Number(raw);
+      // SetterPreview renders this on every keystroke, BEFORE the params are answered — unlike
+      // buildSetterCopy, it does not wait for templateParamsReady. Defaulting the index to 0 here
+      // would put a class nobody picked into the one box that says what the vote does.
+      if (!values?.role || !Number.isInteger(idx) || idx < 0 || !classByIndex(classes, idx)) {
+        return 'Change which roles are counted in binding votes';
+      }
+      return classVoterSummary({
+        roleName: values.roleName || roleNames?.[values.role] || 'this role',
+        classIdx: idx,
+        votingClasses: classes,
+        add: values.action !== 'Remove',
+      });
     }
   },
   {
@@ -1049,6 +1258,33 @@ export const RAW_FUNCTIONS = {
         { name: 'newClasses', type: 'tuple[]', label: 'Class Configuration Array' }
       ],
       description: 'Replace all voting class configurations (slices must sum to 100%)'
+    },
+    // The surgical alternative to setClasses: change ONE class's electorate without re-sending
+    // every slice, strategy and asset. `classIdx` is POSITIONAL — the same order getClasses()
+    // returns and the same order the "Change Who Votes in Binding Votes" picker lists, so a
+    // proposal written against a stale list points at the wrong class.
+    //
+    // LEGEND — classIdx: 0 = first class (Members, one vote each on a stock org),
+    //                    1 = second class (Contributors, weighted by shares), … ;
+    //          hatId:    a Hats id on a legacy org, a MembershipAuthority SUBJECT id once the org
+    //                    has migrated (HybridVoting resolves it through `authority.isMember`).
+    {
+      name: 'addHatToClass',
+      signature: 'function addHatToClass(uint8 classIdx, uint256 hatId)',
+      params: [
+        { name: 'classIdx', type: 'uint8', label: 'Voting class index (0 = the first class getClasses() returns)' },
+        { name: 'hatId', type: 'uint256', label: 'Role id (Hats id; authority subject id on a migrated org)' }
+      ],
+      description: 'Let a role vote in one voting class'
+    },
+    {
+      name: 'removeHatFromClass',
+      signature: 'function removeHatFromClass(uint8 classIdx, uint256 hatId)',
+      params: [
+        { name: 'classIdx', type: 'uint8', label: 'Voting class index (0 = the first class getClasses() returns)' },
+        { name: 'hatId', type: 'uint256', label: 'Role id (Hats id; authority subject id on a migrated org)' }
+      ],
+      description: 'Stop a role voting in one voting class'
     },
     {
       name: 'pause',

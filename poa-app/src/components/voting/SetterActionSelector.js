@@ -398,6 +398,12 @@ const SetterActionSelector = ({
       if (input.type === 'votingClassWeights') {
         // Initialize with current on-chain voting classes
         acc[input.name] = votingClasses.length > 0 ? votingClasses.map(c => ({ ...c })) : [];
+      } else if (input.seedFrom === 'votingClasses') {
+        // A hidden snapshot of the classes, for a template that decides AGAINST them rather than
+        // rewriting them (change-class-voters). `template.validate` is handed setterValues and
+        // nothing else, so a class list that isn't in here can't be checked. The field re-writes
+        // it when a class is chosen, which is what covers the deep-link path.
+        acc[input.name] = votingClasses.map(c => ({ ...c }));
       } else {
         acc[input.name] = input.default || '';
       }
@@ -611,7 +617,7 @@ const SetterActionSelector = ({
               {selectedTemplate.inputs?.length > 0 && (
                 <SetterParamInputs
                   inputs={selectedTemplate.inputs.map(input =>
-                    input.type === 'votingClassWeights'
+                    (input.type === 'votingClassWeights' || input.type === 'votingClassSelect')
                       ? { ...input, currentClasses: votingClasses }
                       : input
                   )}
@@ -634,8 +640,15 @@ const SetterActionSelector = ({
               )}
 
               {/* An access-v2 action builds a BATCH against live authority
-                  state, so it can only be staged once that state is on hand. */}
-              {selectedTemplate.buildBatch && !authorityAddress && (
+                  state, so it can only be staged once that state is on hand.
+                  Keyed on the TARGET contract, not on `buildBatch` alone: a
+                  template can build its own calls without touching the
+                  authority (change-class-voters targets HybridVoting and works
+                  on a legacy org), and on such an org there is no authority
+                  address to wait for — the warning would never clear. */}
+              {selectedTemplate.buildBatch
+                && selectedTemplate.contract === 'membershipAuthority'
+                && !authorityAddress && (
                 <Alert status="warning" borderRadius="md" bg="rgba(236, 201, 75, 0.15)">
                   <AlertIcon color="yellow.300" />
                   <Text fontSize="sm" color="yellow.200">

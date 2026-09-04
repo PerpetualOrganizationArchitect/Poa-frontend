@@ -22,6 +22,7 @@ import { utils, constants as ethersConstants } from 'ethers';
 import { getTemplateById, templateParamsReady } from '@/config/setterDefinitions';
 import { templateUnavailableReason } from './setterAvailability';
 import { amountDecimalsError, amountToWei } from './treasuryBatches';
+import { resolveRoleForm, roleFormError } from '@/lib/accessV2/roleFormBatch';
 
 const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
 
@@ -105,18 +106,16 @@ export function configError(proposal, ctx = null) {
 
   if (p.type === 'createRole') {
     const rc = p.roleConfig || {};
-    // ACCESS V2 (`ctx.accessV2.enabled`): two of the legacy gates describe a Hats tree the org no
-    // longer has. There is no parent role to sit under — a subject has no hierarchy — and the seat
-    // cap is `maxMembers`, where 0 legitimately means "no limit". Gating on either one would lock
-    // the config step behind a field the configurator correctly stops rendering. Mirrors
-    // `useProposalForm.validateCreateRoleProposal(accessV2Enabled)` message for message.
+    // ACCESS V2 (`ctx.accessV2.enabled`): the config step is a different screen entirely —
+    // `components/accessV2/RoleForm`, writing `proposal.roleFormV2`, and able to create a GROUP as
+    // well as a role. None of the legacy gates apply: there is no parent role to sit under (a
+    // subject has no hierarchy) and the seat cap is `maxMembers`, where 0 legitimately means "no
+    // limit". `roleFormError` is the ONE gate — the same function
+    // `useProposalForm.validateCreateRoleProposal` toasts and the same form
+    // `buildProposalData` encodes, over `resolveRoleForm` so a pre-v2 draft (roleConfig only)
+    // is judged on the fields it actually carries.
     if (ctx?.accessV2?.enabled) {
-      if (!nonEmpty(rc.name)) return 'Give the new role a name.';
-      const seats = Number(rc.maxSupply);
-      if (!Number.isFinite(seats) || seats < 0 || seats > 4294967295) {
-        return 'The seat limit must be 0 (no limit) or more.';
-      }
-      return null;
+      return roleFormError(resolveRoleForm(p));
     }
     if (!rc.parentHatId || String(rc.parentHatId).trim() === '') {
       return 'Pick which role this new role should sit under.';

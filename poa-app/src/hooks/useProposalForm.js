@@ -33,11 +33,18 @@ import {
   amountDecimalsError,
   transferOptionNames,
 } from '@/lib/voting/treasuryBatches';
+import { isDurationAllowed, durationTooShortMessage } from '@/lib/voting/durationLimits';
 import {
   buildV2ElectionBatches,
-  buildV2CreateRoleBatch,
   acceptedHoldersOf,
 } from '@/lib/voting/v2VoteActions';
+import {
+  buildRoleFormBatch,
+  defaultRoleForm,
+  resolveRoleForm,
+  roleFormError,
+  ROLE_FORM_KIND,
+} from '@/lib/accessV2/roleFormBatch';
 import {
   TITLE_PREFIX as ELECTION_TITLE_PREFIX,
   DESCRIPTION_PREFIX as ELECTION_DESCRIPTION_PREFIX,
@@ -47,6 +54,12 @@ import {
   DESCRIPTION_PREFIX as CREATE_ROLE_DESCRIPTION_PREFIX,
   defaultRoleConfig,
 } from '@/components/voting/RoleConfigurator';
+
+/**
+ * Warnings ride into the ballot metadata next to the enactment lines (PollDetail renders one
+ * list). Prefixed so a voter can tell “this vote does X” from “worth knowing: Y”.
+ */
+const worthKnowing = (w) => `Worth knowing: ${w}`;
 
 const defaultProposal = {
   name: "",
@@ -105,6 +118,12 @@ const defaultProposal = {
   //   6. EligibilityModule.updateHatMetadata(predictedHatId, name, cid) (if description)
   // Hat ID is pre-computed via Hats.getNextId at submit time.
   roleConfig: { ...defaultRoleConfig },
+  // ACCESS V2 — the same createRole intent, on an org whose roles are authority SUBJECTS. The
+  // wizard renders `components/accessV2/RoleForm` instead of RoleConfigurator and the batch comes
+  // from `lib/accessV2/roleFormBatch` — the encoder /team's "Create a role or group" modal also
+  // uses, so a role made from either door is the same role. `roleConfig` is left untouched: a
+  // legacy org still walks the branch above, byte for byte.
+  roleFormV2: defaultRoleForm(),
   id: 0,
 };
 
@@ -222,6 +241,7 @@ export function useProposalForm({ onSubmit }) {
         } : {}),
         ...(newType !== 'createRole' ? {
           roleConfig: { ...defaultRoleConfig },
+          roleFormV2: defaultRoleForm(),
         } : {}),
         // Without this, setter → election → setter resurrected the old template
         // and the config step silently skipped the category picker.
@@ -456,8 +476,10 @@ export function useProposalForm({ onSubmit }) {
   }, [proposal.options, toast]);
 
   // `accessV2Enabled` is passed by handleSubmit from the same flag VotingPage sets. On a v2 org
-  // two of these rules describe a Hats tree that no longer exists: there is no parent role to sit
-  // under, and the seat cap is `maxMembers`, where 0 legitimately means "no limit".
+  // the whole screen is a different form (RoleForm -> `roleFormV2`), which can also make a GROUP,
+  // so the rules come from the ONE pure gate the wizard's step gate uses — `roleFormError` over
+  // the form `buildProposalData` will actually encode. Anything else lets a proposal pass
+  // validation describing one thing and encode another.
   const validateCreateRoleProposal = useCallback((accessV2Enabled = false) => {
     const rc = proposal.roleConfig || {};
     const fail = (title, description) => {
@@ -465,18 +487,26 @@ export function useProposalForm({ onSubmit }) {
       return false;
     };
 
-    if (!accessV2Enabled && (!rc.parentHatId || String(rc.parentHatId).trim() === '')) {
+    if (accessV2Enabled) {
+      const form = resolveRoleForm(proposal);
+      const error = roleFormError(form);
+      if (error) {
+        return fail(
+          form.kind === ROLE_FORM_KIND.GROUP ? 'Check the group' : 'Check the role',
+          error,
+        );
+      }
+      return true;
+    }
+
+    if (!rc.parentHatId || String(rc.parentHatId).trim() === '') {
       return fail('No Parent Role Selected', 'Pick which role this new role should sit under.');
     }
     if (!rc.name || rc.name.trim() === '') {
       return fail('Missing Role Name', 'Give the new role a name.');
     }
     const maxSupply = Number(rc.maxSupply);
-    if (accessV2Enabled) {
-      if (!Number.isFinite(maxSupply) || maxSupply < 0 || maxSupply > 4294967295) {
-        return fail('Invalid Seat Limit', 'The seat limit must be 0 (no limit) or more.');
-      }
-    } else if (!Number.isFinite(maxSupply) || maxSupply < 1 || maxSupply > 4294967295) {
+    if (!Number.isFinite(maxSupply) || maxSupply < 1 || maxSupply > 4294967295) {
       return fail('Invalid Max Supply', 'Max supply must be between 1 and 4,294,967,295.');
     }
 
@@ -521,7 +551,7 @@ export function useProposalForm({ onSubmit }) {
     }
 
     return true;
-  }, [proposal.roleConfig, toast]);
+  }, [proposal, toast]);
 
   const validateSetterProposal = useCallback(() => {
     if (proposal.setterMode === 'template') {
@@ -794,7 +824,7 @@ export function useProposalForm({ onSubmit }) {
       const roleLabel = proposal.electionRoleId ? `role ${proposal.electionRoleId}` : 'the selected role';
       const names = (proposal.electionCandidates || []).map(c => c.name).filter(Boolean);
       if (names.length) {
-        summaries.push(`Elect one of: ${names.join(', ')} to ${roleLabel}. The winner receives it automatically.`);
+        summaries.push(`Elect ${names.join(' or ')} as ${roleLabel}. The winner receives it automatically.`);
       }
     } else if (proposal.type === 'createRole') {
       const rc = proposal.roleConfig || {};
@@ -803,6 +833,19 @@ export function useProposalForm({ onSubmit }) {
         summaries.push(
           `Create the role "${rc.name}"${wearerCount ? ` and grant it to ${wearerCount} member(s)` : ''}.`
         );
+      } else {
+        // ACCESS V2: the screen writes `roleFormV2`, and it can also make a GROUP. Only a
+        // fallback — the v2 arm of buildProposalData hands back the builders' own summaries,
+        // which are what the race detector matches on.
+        const form = resolveRoleForm(proposal);
+        if (form.name) {
+          const holderCount = (form.holders || []).length;
+          summaries.push(
+            form.kind === ROLE_FORM_KIND.GROUP
+              ? `Create the group "${form.name}".`
+              : `Create the role "${form.name}"${holderCount ? ` and grant it to ${holderCount} member(s)` : ''}.`
+          );
+        }
       }
     }
     return summaries;
@@ -905,7 +948,7 @@ export function useProposalForm({ onSubmit }) {
       // Warnings ride along with the summaries: they are the sentences that say what this ballot
       // can NOT do (a departed incumbent, a fallback that had to be dropped), and voters are
       // exactly the people who need to read them.
-      summaries = [...built.summaries, ...built.warnings];
+      summaries = [...built.summaries, ...built.warnings.map(worthKnowing)];
       gasLimit = built.gasLimit;
     } else if (proposal.type === "election") {
       // Election proposal - each candidate is an option
@@ -1090,30 +1133,43 @@ export function useProposalForm({ onSubmit }) {
         numOptions = optionNames.length;
       }
     } else if (proposal.type === "createRole" && extras?.accessV2?.enabled) {
-      // ── CREATE ROLE, access-v2 org ──
+      // ── CREATE ROLE (or GROUP), access-v2 org ──
       // The legacy arm below SUCCEEDS here, which is worse than reverting: it mints an inert
       // legacy hat and writes the TaskManager ROLE_PERM / HybridVoting creator tables that both
-      // contracts stop reading the moment an authority is set. One authority batch instead
-      // (lib/voting/v2VoteActions), with the new role's id predicted from the indexed subjects
-      // rather than Hats.getNextId.
+      // contracts stop reading the moment an authority is set. One authority batch instead —
+      // built by `lib/accessV2/roleFormBatch`, the SAME encoder /team's "Create a role or group"
+      // modal uses, with the new subject's id predicted from the indexed subjects rather than
+      // Hats.getNextId, and (unlike the legacy arm) the `addHatToClass` call that is the only
+      // thing giving the new role a vote in binding votes.
       const v2 = extras.accessV2;
-      const built = buildV2CreateRoleBatch({
+      const built = buildRoleFormBatch({
         authority: v2.authority || contractAddresses?.membershipAuthorityAddress,
+        hybridVoting: contractAddresses?.votingContractAddress || '',
+        taskManagerAddress: contractAddresses?.taskManagerContractAddress || '',
         // Prediction must see EVERY indexed subject, including the structural ones no surface
         // renders — a hidden id still consumed a sequence number.
-        existingSubjects: (v2.indexedSubjects?.length ? v2.indexedSubjects : v2.subjects) || [],
+        indexedSubjects: (v2.indexedSubjects?.length ? v2.indexedSubjects : v2.subjects) || [],
         activeProposals: v2.activeProposals || [],
-        roleConfig: proposal.roleConfig || {},
         inOrgUsers: v2.inOrgUsers,
+        votingClasses: v2.votingClasses || [],
+        // The same resolution the validator ran, so a proposal can never pass validation
+        // describing one thing and encode another.
+        form: resolveRoleForm(proposal),
         metadataCID: metadataCIDBytes32,
-        taskManagerAddress: contractAddresses?.taskManagerContractAddress || '',
       });
+      // The on-chain call ceiling is a gate, not a warning: HybridVoting reverts `TooManyCalls`
+      // at CREATION, after the IPFS upload and — for a passkey member — a burned UserOp.
+      if (built.submittable && !built.submittable.ok) {
+        throw new Error(built.submittable.message || 'This proposal has too many steps to submit in one vote.');
+      }
       batches = [built.batch, []];   // Yes wins: create + configure. No wins: nothing.
       numOptions = 2;
-      optionNames = ['Create role', 'Reject'];
+      optionNames = built.kind === ROLE_FORM_KIND.GROUP
+        ? ['Create group', 'Reject']
+        : ['Create role', 'Reject'];
       // The id-race warning is the one a voter most needs and can act on (close the other
       // proposal first), so it goes into the metadata with the rest of the preview.
-      summaries = [...built.summaries, ...built.warnings];
+      summaries = [...built.summaries, ...built.warnings.map(worthKnowing)];
       gasLimit = built.gasLimit;
     } else if (proposal.type === "createRole") {
       // Create-role proposal — a single winning batch that calls:
@@ -1335,7 +1391,11 @@ export function useProposalForm({ onSubmit }) {
             projectNames,
           });
           setterCalls = built?.batch || [];
-          summaries = built?.summaries || null;
+          // Warnings ride with the summaries, as they do for the election and
+          // create-role arms — they are the sentences that say what this vote
+          // can NOT do, and voters are exactly the people who need them.
+          const setterLines = [...(built?.summaries || []), ...(built?.warnings || []).map(worthKnowing)];
+          summaries = setterLines.length ? setterLines : null;
           gasLimit = built?.gasLimit || null;
         } else if (template.buildCalls) {
           // Multi-call template (e.g. token name + symbol in one proposal)
@@ -1695,7 +1755,10 @@ export function useProposalForm({ onSubmit }) {
       // call and no mutability precondition — the description alone decides whether we upload.
       let metadataCIDBytes32 = null;
       if (proposal.type === 'createRole') {
-        const rc = proposal.roleConfig || {};
+        // The v2 screen writes `roleFormV2` (and can be making a GROUP), the legacy one writes
+        // `roleConfig`. `resolveRoleForm` is the same resolution the validator and the encoder
+        // use, so the description that gets uploaded is the description that gets proposed.
+        const rc = accessV2Enabled ? resolveRoleForm(proposal) : (proposal.roleConfig || {});
         if (rc.description?.trim() && (accessV2Enabled || rc.mutable)) {
           try {
             const result = await addToIpfs(JSON.stringify({
@@ -1830,18 +1893,25 @@ export function useProposalForm({ onSubmit }) {
         const actionName = template?.name || proposal.setterFunction || 'settings change';
         successDescription = `Settings change proposal created. If approved, "${actionName}" will be executed automatically.`;
       } else if (proposal.type === "createRole") {
-        const wearerCount = (proposal.roleConfig?.initialWearers || []).length;
         // "Minted" is Hats language, and on a v2 org someone outside the group is INVITED rather
-        // than added — say what actually happens.
-        successDescription = accessV2Enabled
-          ? `Create-role proposal submitted for "${proposal.roleConfig?.name || 'new role'}". If approved, the role will be created${wearerCount ? ` and given to ${wearerCount} member(s)` : ''}.`
-          : `Create-role proposal submitted for "${proposal.roleConfig?.name || 'new role'}". If approved, the role will be created${wearerCount ? ` and minted to ${wearerCount} member(s)` : ''}.`;
+        // than added — say what actually happens. A v2 org can also be creating a GROUP, which has
+        // no members of its own at all.
+        if (accessV2Enabled) {
+          const form = resolveRoleForm(proposal);
+          const holderCount = (form.holders || []).length;
+          successDescription = form.kind === ROLE_FORM_KIND.GROUP
+            ? `Create-group proposal submitted for "${form.name || 'new group'}". If approved, the group will be created and every role in it gets its permissions.`
+            : `Create-role proposal submitted for "${form.name || 'new role'}". If approved, the role will be created${holderCount ? ` and given to ${holderCount} member(s)` : ''}.`;
+        } else {
+          const wearerCount = (proposal.roleConfig?.initialWearers || []).length;
+          successDescription = `Create-role proposal submitted for "${proposal.roleConfig?.name || 'new role'}". If approved, the role will be created${wearerCount ? ` and minted to ${wearerCount} member(s)` : ''}.`;
+        }
       } else {
         successDescription = "Your proposal has been created successfully.";
       }
 
       toast({
-        title: "Proposal Created",
+        title: "Vote created",
         description: successDescription,
         status: "success",
         duration: 5000,
@@ -1881,10 +1951,9 @@ export function useProposalForm({ onSubmit }) {
       errors.name = 'Give your vote a title.';
     }
 
-    // Duration — must be at least 1 hour.
-    const durationHours = Number(proposal.time);
-    if (isNaN(durationHours) || durationHours < 1) {
-      errors.time = 'Voting must run for at least 1 hour.';
+    // Duration — must be at least the product floor (1 hour; 10 minutes in E2E mode).
+    if (!isDurationAllowed(proposal.time)) {
+      errors.time = durationTooShortMessage();
     }
 
     // Normal — at least 2 non-empty options.

@@ -105,12 +105,12 @@ const RoleCard = ({ role, holderCount, holderNames, holdersKnown = true, onClick
         </Text>
         <Text fontSize="xs" color="gray.400">
           {!holdersKnown
-            ? 'Current holders unavailable'
+            ? 'Couldn’t load who holds it'
             : holderCount === 0
-            ? 'No current holder'
+            ? 'Nobody holds it yet'
             : holderCount === 1
             ? `Held by ${holderNames[0]}`
-            : `${holderCount} current holders`}
+            : `${holderCount} people hold it`}
         </Text>
       </VStack>
       <Icon as={FiChevronRight} color="gray.400" />
@@ -634,7 +634,7 @@ const ElectionConfigurator = ({
               <Text fontSize="sm" color="yellow.200">
                 Could not load current holders of {selectedRoleName || 'this role'}.
                 No incumbent can be put at stake — the winner will simply be
-                granted the hat. Close and reopen this modal to try again.
+                added to the role. Close and reopen this modal to try again.
               </Text>
             </Alert>
           )}
@@ -651,8 +651,8 @@ const ElectionConfigurator = ({
                 Select who is up for election
               </Text>
               <Text fontSize="xs" color="gray.500" mb={3}>
-                Only selected holders will lose the hat if they don&apos;t win.
-                Other holders are unaffected.
+                Only the people you tick lose the role if they don&apos;t win.
+                Everyone else keeps it.
               </Text>
               <VStack spacing={2} align="stretch">
                 {allHolders.map((holder) => {
@@ -702,8 +702,7 @@ const ElectionConfigurator = ({
             >
               <AlertIcon color="blue.300" />
               <Text fontSize="sm" color="gray.300">
-                No one currently holds this role. The winner will be granted
-                the hat.
+                No one currently holds this role. The winner is added to it.
               </Text>
             </Alert>
           )}
@@ -743,7 +742,7 @@ const ElectionConfigurator = ({
                 removed entirely.
               </Text>
               <Select
-                placeholder="None — just revoke hat"
+                placeholder="None — they simply leave the role"
                 value={proposal.electionFallbackRoleId || ''}
                 onChange={handleFallbackRoleChange}
                 size="sm"
@@ -775,7 +774,7 @@ const ElectionConfigurator = ({
               </Text>
             </Checkbox>
             <Text fontSize="xs" color="gray.500" mt={1} ml={6}>
-              Adds a &quot;No One&quot; option. If voters choose it, no hat is minted or revoked.
+              Adds a &quot;No One&quot; option. If voters choose it, nobody gains or loses the role.
             </Text>
           </Box>
 
@@ -1078,17 +1077,17 @@ const ElectionConfigurator = ({
                       })}
                       {!candidateAlreadyHolds && (
                         <Text fontSize="xs" color="green.300" pl={2}>
-                          - Grant hat to {candidate.name}
+                          - {candidate.name} joins the role
                         </Text>
                       )}
                       {candidateIsIncumbent && incumbentsToRevoke.length === 0 && (
                         <Text fontSize="xs" color="gray.400" pl={2}>
-                          - No changes (keeps existing hat)
+                          - No change (keeps the role)
                         </Text>
                       )}
                       {candidateAlreadyHolds && !candidateIsIncumbent && incumbentsToRevoke.length === 0 && (
                         <Text fontSize="xs" color="gray.400" pl={2}>
-                          - No changes (already holds hat)
+                          - No change (already in the role)
                         </Text>
                       )}
                     </Box>

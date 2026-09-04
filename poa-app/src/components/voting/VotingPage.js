@@ -306,13 +306,17 @@ const VotingPage = () => {
     members: authorityMemberships.members || [],
     memberships: authorityMemberships.memberships || [],
     activeProposals: hybridVotingOngoing || [],
+    // The org's Blended voting classes. A new role has NO weight in a binding vote until it is in
+    // one (`addHatToClass`), so the create-role batch has to be able to add it — permissions alone
+    // buy a role exactly zero votes, silently.
+    votingClasses: votingClasses || [],
   }), [
     authority.enabled, authority.address,
     authoritySubjects.subjects, authoritySubjects.indexedSubjects,
     authoritySubjects.roles, authoritySubjects.groups,
     authorityMemberships.inOrgUsers, authorityMemberships.members,
     authorityMemberships.memberships,
-    hybridVotingOngoing,
+    hybridVotingOngoing, votingClasses,
   ]);
 
   const handlePollCreated = useCallback(() => {
@@ -397,6 +401,11 @@ const VotingPage = () => {
     const setterValues = (template.inputs || []).reduce((acc, input) => {
       if (input.type === 'votingClassWeights') {
         acc[input.name] = votingClasses.length > 0 ? votingClasses.map(c => ({ ...c })) : [];
+      } else if (input.seedFrom === 'votingClasses') {
+        // Same seed SetterActionSelector writes when the card is clicked: the class snapshot a
+        // template validates against. Without it a `?propose=change-class-voters` link opens on
+        // a false “voters haven't loaded yet”.
+        acc[input.name] = votingClasses.map(c => ({ ...c }));
       } else {
         // Deep-link prefill (e.g. Settings staging an allowlist hands the root/cid straight to the
         // proposal) — falls back to the template default.

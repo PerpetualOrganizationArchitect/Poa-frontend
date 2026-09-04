@@ -1,6 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Box, Flex, Center, Checkbox, Heading, IconButton, Text, Tooltip, useBreakpointValue } from '@chakra-ui/react';
-import { CheckIcon } from '@chakra-ui/icons';
+import {
+  Box,
+  Center,
+  Checkbox,
+  Flex,
+  Grid,
+  Heading,
+  Text,
+  useBreakpointValue,
+} from '@chakra-ui/react';
 import PulseLoader from '@/components/shared/PulseLoader';
 import EmptyState from '@/components/voting/EmptyState';
 import { COLUMN_TITLES } from '@/util/taskUtils';
@@ -8,7 +16,7 @@ import { dueDateSec, effectiveDeadlineSec } from '@/util/deadlineUtils';
 import { useFlatTasks } from '../useFlatTasks';
 import { useTaskFilters } from '../useTaskFilters';
 import { FilteredEmptyState } from '../TaskFilterBar';
-import TaskRow from './TaskRow';
+import TaskRow, { TASK_ROW_COLUMNS } from './TaskRow';
 import ListControls from './ListControls';
 import {
   TaskCreationProvider,
@@ -16,12 +24,12 @@ import {
   EmptyStateCreateButton,
 } from './ListTaskCreation';
 
-// Apply the dark glass directly to the container (matching the Board's
-// `taskBoardStyles.glassLayerStyle` pattern). The older inner-layer
-// `position:absolute; zIndex:-1` approach lets the page background bleed
-// through the corners when the parent has no own background.
-const glassContainerStyle = {
-  backgroundColor: 'rgba(0, 0, 0, 0.82)',
+// The list is one continuous surface. Rows use separators instead of nested
+// cards so titles and metadata form stable columns that are easy to scan.
+const listSurfaceStyle = {
+  backgroundColor: 'rgba(10, 13, 18, 0.9)',
+  border: '1px solid rgba(255, 255, 255, 0.12)',
+  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.24)',
 };
 
 const HIDE_COMPLETED_KEY = 'poa.tasks.list.hideCompleted';
@@ -75,6 +83,7 @@ const groupLabelFor = (groupId, key) => {
   if (groupId === 'status') return COLUMN_TITLES[key] || key;
   if (groupId === 'difficulty') {
     if (key === 'unspecified') return 'No difficulty';
+    if (key === 'veryhard') return 'Very hard';
     return key.charAt(0).toUpperCase() + key.slice(1);
   }
   if (groupId === 'assignee') return key;
@@ -188,75 +197,112 @@ const ListView = ({ projectName, tasks: tasksOverride, showProject = false, allo
       }}
     >
       <Box
-        sx={glassContainerStyle}
-        borderRadius="xl"
-        boxShadow="lg"
-        p={{ base: 3, md: 4 }}
+        sx={listSurfaceStyle}
+        borderRadius="lg"
+        overflow="hidden"
         minH="200px"
       >
-        {/* Toolbar — single row on mobile to reclaim vertical space.
-            Desktop keeps the two-section layout with a separator. */}
+        {/* Keep controls readable at phone widths: two equal selects, then one
+            plain summary/action row. Desktop collapses both onto one line. */}
         <Flex
-          align="center"
+          align={{ base: 'stretch', lg: 'center' }}
           justify="space-between"
-          direction="row"
-          mb={{ base: 2.5, md: 4 }}
-          gap={{ base: 2, md: 3 }}
-          pb={{ base: 2, md: 3 }}
+          direction={{ base: 'column', lg: 'row' }}
+          gap={3}
+          px={{ base: 3, md: 4 }}
+          py={3}
           borderBottom="1px solid"
-          borderColor="whiteAlpha.150"
-          wrap={{ base: 'nowrap', md: 'wrap' }}
+          borderColor="whiteAlpha.200"
         >
           <ListControls
             sortId={sortId}
             onSortChange={setSortId}
             groupId={groupId}
             onGroupChange={setGroupId}
-            isMobile={!!isMobile}
           />
-          <Flex align="center" gap={{ base: 2, md: 3 }} flexShrink={0}>
-            {isMobile ? (
-              <Tooltip
-                label={hideCompleted ? 'Show completed tasks' : 'Hide completed tasks'}
-                placement="top"
-              >
-                <IconButton
-                  size="xs"
-                  variant={hideCompleted ? 'solid' : 'outline'}
-                  colorScheme="purple"
-                  aria-label={hideCompleted ? 'Show completed tasks' : 'Hide completed tasks'}
-                  aria-pressed={hideCompleted}
-                  icon={<CheckIcon boxSize={3} />}
-                  onClick={() => persistHideCompleted(!hideCompleted)}
-                  borderColor="whiteAlpha.300"
-                  color={hideCompleted ? 'white' : 'whiteAlpha.700'}
-                  flexShrink={0}
-                />
-              </Tooltip>
-            ) : (
-              <Flex align="center" gap={3} px={1}>
-                <Text fontSize="sm" color="whiteAlpha.700">
-                  {sortedTasks.length} task{sortedTasks.length !== 1 ? 's' : ''}
-                  {hideCompleted && tasks.length !== sortedTasks.length
-                    ? ` (${tasks.length - sortedTasks.length} hidden)`
-                    : ''}
+          <Flex
+            align="center"
+            justify={{ base: 'space-between', lg: 'flex-end' }}
+            gap={{ base: 3, md: 4 }}
+            flexShrink={0}
+            w={{ base: '100%', lg: 'auto' }}
+          >
+            <Text fontSize="sm" color="whiteAlpha.700" whiteSpace="nowrap">
+              {sortedTasks.length} task{sortedTasks.length !== 1 ? 's' : ''}
+              {hideCompleted && tasks.length !== sortedTasks.length && (
+                <Text as="span" color="whiteAlpha.500">
+                  {' '}· {tasks.length - sortedTasks.length} hidden
                 </Text>
-                <Checkbox
-                  size="sm"
-                  isChecked={hideCompleted}
-                  onChange={(e) => persistHideCompleted(e.target.checked)}
-                  colorScheme="purple"
-                  color="whiteAlpha.800"
-                >
-                  Hide completed
-                </Checkbox>
-              </Flex>
-            )}
+              )}
+            </Text>
+            <Checkbox
+              size="sm"
+              isChecked={hideCompleted}
+              onChange={(event) => persistHideCompleted(event.target.checked)}
+              colorScheme="purple"
+              color="whiteAlpha.800"
+              whiteSpace="nowrap"
+            >
+              <Text as="span" fontSize="sm">
+                {isMobile ? 'Hide done' : 'Hide completed'}
+              </Text>
+            </Checkbox>
             {/* Primary create action — renders only inside a TaskCreationProvider
                 (project-scoped list); null on the cross-project All Tasks list. */}
             <NewTaskButton isMobile={!!isMobile} />
           </Flex>
         </Flex>
+
+        {!isLoading && sortedTasks.length > 0 && (
+          <Grid
+            display={{ base: 'none', md: 'grid' }}
+            gridTemplateColumns={TASK_ROW_COLUMNS}
+            alignItems="center"
+            columnGap={3}
+            px={4}
+            py={2}
+            bg="rgba(255, 255, 255, 0.035)"
+            borderBottom="1px solid"
+            borderColor="whiteAlpha.100"
+          >
+            <Text fontSize="0.65rem" fontWeight="700" color="whiteAlpha.500" letterSpacing="0.08em">
+              TASK
+            </Text>
+            <Text fontSize="0.65rem" fontWeight="700" color="whiteAlpha.500" letterSpacing="0.08em">
+              STATUS
+            </Text>
+            <Text
+              display={{ base: 'none', xl: 'block' }}
+              fontSize="0.65rem"
+              fontWeight="700"
+              color="whiteAlpha.500"
+              letterSpacing="0.08em"
+            >
+              EFFORT
+            </Text>
+            <Text
+              display={{ base: 'none', xl: 'block' }}
+              fontSize="0.65rem"
+              fontWeight="700"
+              color="whiteAlpha.500"
+              letterSpacing="0.08em"
+            >
+              TIMING
+            </Text>
+            <Text fontSize="0.65rem" fontWeight="700" color="whiteAlpha.500" letterSpacing="0.08em">
+              REWARD
+            </Text>
+            <Text
+              fontSize="0.65rem"
+              fontWeight="700"
+              color="whiteAlpha.500"
+              letterSpacing="0.08em"
+              textAlign="center"
+            >
+              OWNER
+            </Text>
+          </Grid>
+        )}
 
         {isLoading ? (
           <Center py={10}>
@@ -283,25 +329,31 @@ const ListView = ({ projectName, tasks: tasksOverride, showProject = false, allo
         ) : groupedView ? (
           <Box>
             {groupedView.map((g) => (
-              <Box key={g.key} mb={4}>
-                <Heading
-                  size="sm"
-                  color="white"
-                  mb={2}
-                  pb={1}
-                  borderBottom="1px solid"
-                  borderColor="whiteAlpha.200"
-                  display="flex"
-                  alignItems="baseline"
+              <Box key={g.key}>
+                <Flex
+                  align="baseline"
                   gap={2}
+                  px={4}
+                  py={2.5}
+                  bg="rgba(255, 255, 255, 0.055)"
+                  borderBottom="1px solid"
+                  borderColor="whiteAlpha.100"
                 >
-                  {g.label}
-                  <Text as="span" fontSize="xs" color="whiteAlpha.500" fontWeight="400">
+                  <Heading
+                    as="h3"
+                    fontSize="xs"
+                    color="whiteAlpha.900"
+                    fontWeight="700"
+                    letterSpacing="0.04em"
+                  >
+                    {g.label}
+                  </Heading>
+                  <Text fontSize="xs" color="whiteAlpha.500" fontWeight="500">
                     {g.tasks.length}
                   </Text>
-                </Heading>
+                </Flex>
                 {g.tasks.map((t) => (
-                  <TaskRow key={t.id} task={t} isMobile={!!isMobile} showProject={showProject} />
+                  <TaskRow key={t.id} task={t} showProject={showProject} />
                 ))}
               </Box>
             ))}
@@ -309,7 +361,7 @@ const ListView = ({ projectName, tasks: tasksOverride, showProject = false, allo
         ) : (
           <Box>
             {sortedTasks.map((t) => (
-              <TaskRow key={t.id} task={t} isMobile={!!isMobile} showProject={showProject} />
+              <TaskRow key={t.id} task={t} showProject={showProject} />
             ))}
           </Box>
         )}

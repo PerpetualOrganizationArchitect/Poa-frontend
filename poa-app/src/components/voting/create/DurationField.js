@@ -11,12 +11,14 @@ import {
   Box,
 } from '@chakra-ui/react';
 import { inputStyles } from '@/components/shared/glassStyles';
-import { minVoteHours, MIN_VOTE_HOURS_E2E, SHORT_WINDOWS_ENABLED } from '@/lib/voting/durationLimits';
+import { minVoteHours, MIN_VOTE_HOURS_E2E } from '@/lib/voting/durationLimits';
 
 const PRESETS = [
   // E2E mode only (constant-folded away in production): the contract floor, so a
   // Test6 verification run can create, vote and count a real vote in one sitting.
-  ...(SHORT_WINDOWS_ENABLED ? [{ label: '10 min', hours: MIN_VOTE_HOURS_E2E }] : []),
+  // The env literal sits HERE so DefinePlugin folds it and the preset is dead code in production
+  // (an imported flag would not fold — see lib/voting/durationLimits).
+  ...(process.env.NEXT_PUBLIC_E2E_MODE === 'true' ? [{ label: '10 min', hours: MIN_VOTE_HOURS_E2E }] : []),
   { label: '1 day', hours: 24 },
   { label: '3 days', hours: 72 },
   { label: '1 week', hours: 168 },

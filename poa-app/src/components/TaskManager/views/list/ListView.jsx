@@ -202,8 +202,8 @@ const ListView = ({ projectName, tasks: tasksOverride, showProject = false, allo
         overflow="hidden"
         minH="200px"
       >
-        {/* Keep controls readable at phone widths: two equal selects, then one
-            plain summary/action row. Desktop collapses both onto one line. */}
+        {/* Keep controls readable at phone widths: stack the selects when space
+            is tight, then show one plain summary/action row. */}
         <Flex
           align={{ base: 'stretch', lg: 'center' }}
           justify="space-between"
@@ -298,6 +298,7 @@ const ListView = ({ projectName, tasks: tasksOverride, showProject = false, allo
               color="whiteAlpha.500"
               letterSpacing="0.08em"
               textAlign="center"
+              whiteSpace="nowrap"
             >
               OWNER
             </Text>

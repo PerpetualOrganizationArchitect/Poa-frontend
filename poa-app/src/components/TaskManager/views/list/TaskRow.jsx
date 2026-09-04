@@ -41,7 +41,7 @@ import {
 // columns stay aligned and readable.
 export const TASK_ROW_COLUMNS = {
   md: 'minmax(180px, 1fr) 100px 96px 48px',
-  xl: 'minmax(250px, 1fr) 118px 148px 158px 118px 52px',
+  xl: 'minmax(250px, 1fr) 118px 148px 158px 118px 64px',
 };
 
 const TIMING_COLORS = {

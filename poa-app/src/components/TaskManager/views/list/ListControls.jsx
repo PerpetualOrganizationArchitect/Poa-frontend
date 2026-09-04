@@ -1,4 +1,4 @@
-import { HStack, Select } from '@chakra-ui/react';
+import { Select, Stack } from '@chakra-ui/react';
 
 export const SORT_OPTIONS = [
   { id: 'created_desc', label: 'Newest first' },
@@ -23,7 +23,8 @@ const selectSx = {
 };
 
 const ListControls = ({ sortId, onSortChange, groupId, onGroupChange }) => (
-  <HStack
+  <Stack
+    direction={{ base: 'column', sm: 'row' }}
     spacing={2}
     align="center"
     flex={{ base: '1', lg: 'initial' }}
@@ -42,7 +43,7 @@ const ListControls = ({ sortId, onSortChange, groupId, onGroupChange }) => (
       _hover={{ borderColor: 'whiteAlpha.300', bg: 'rgba(255,255,255,0.12)' }}
       _focusVisible={{ borderColor: 'purple.300', boxShadow: '0 0 0 1px var(--chakra-colors-purple-300)' }}
       sx={selectSx}
-      w={{ base: '50%', lg: '164px' }}
+      w={{ base: '100%', sm: '50%', lg: '190px' }}
       minW={0}
       aria-label="Sort tasks"
     >
@@ -65,7 +66,7 @@ const ListControls = ({ sortId, onSortChange, groupId, onGroupChange }) => (
       _hover={{ borderColor: 'whiteAlpha.300', bg: 'rgba(255,255,255,0.12)' }}
       _focusVisible={{ borderColor: 'purple.300', boxShadow: '0 0 0 1px var(--chakra-colors-purple-300)' }}
       sx={selectSx}
-      w={{ base: '50%', lg: '154px' }}
+      w={{ base: '100%', sm: '50%', lg: '174px' }}
       minW={0}
       aria-label="Group tasks"
     >
@@ -75,7 +76,7 @@ const ListControls = ({ sortId, onSortChange, groupId, onGroupChange }) => (
         </option>
       ))}
     </Select>
-  </HStack>
+  </Stack>
 );
 
 export default ListControls;

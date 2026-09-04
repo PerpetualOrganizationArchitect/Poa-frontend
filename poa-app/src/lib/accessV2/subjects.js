@@ -198,7 +198,12 @@ export function groupChangeBlastRadius(group) {
     return 'This group has no roles in it yet — permissions you set here apply to nobody until you add a role.';
   }
   const names = (group?.memberRoles || []).map((r) => r.name).filter(Boolean);
-  const list = names.length ? names.join(', ') : `${n} role${n === 1 ? '' : 's'}`;
+  // Past a handful, the full enumeration is a wall of text that buries the warning itself.
+  const list = !names.length
+    ? `${n} role${n === 1 ? '' : 's'}`
+    : names.length > 4
+      ? `all ${names.length} of this group's roles`
+      : names.join(', ');
   return `Changing a permission here changes it for everyone in ${list} — all at once.`;
 }
 

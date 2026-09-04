@@ -41,6 +41,13 @@ import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 // Access v2. Renders NOTHING on an org that is not on the MembershipAuthority path, so everything
 // below it is the untouched legacy surface for every unmigrated org.
 import { AccessV2TeamSection } from '@/components/accessV2';
+import { useAuthoritySubjects, useAuthorityMemberships } from '@/hooks/accessV2';
+import {
+  buildV2LegacyRoles,
+  buildV2PermissionColumns,
+  buildV2PermissionsMatrix,
+  buildV2MembersByRole,
+} from '@/lib/accessV2/legacyBridge';
 
 const OrgStructurePage = () => {
   const router = useRouter();
@@ -77,6 +84,30 @@ const OrgStructurePage = () => {
     loading,
     error,
   } = useOrgStructure();
+
+  // On a live-authority org the legacy sections below the v2 panel must read the fold mirror,
+  // not the retired hat entities — those stop updating at cutover and render raw subject ids,
+  // ghost roles, and an empty permissions matrix. `enabled` is router-bound, i.e. post-cutover.
+  const v2 = useAuthoritySubjects();
+  const { membersOf, groupMembers } = useAuthorityMemberships();
+  const v2Live = v2.enabled;
+
+  const v2Sections = useMemo(() => {
+    if (!v2Live) return null;
+    const subjects = [...(v2.roles || []), ...(v2.groups || [])];
+    return {
+      roles: buildV2LegacyRoles({ roles: v2.roles, groups: v2.groups, membersOf, groupMembers }),
+      permissionColumns: buildV2PermissionColumns(subjects),
+      permissionsMatrix: buildV2PermissionsMatrix(subjects),
+      membersByRole: buildV2MembersByRole({
+        roles: v2.roles,
+        groups: v2.groups,
+        membersOf,
+        groupMembers,
+        legacyMembersByRole: membersByRole,
+      }),
+    };
+  }, [v2Live, v2.roles, v2.groups, membersOf, groupMembers, membersByRole]);
 
   // Role claiming and application functionality
   const {
@@ -243,7 +274,10 @@ const OrgStructurePage = () => {
               `activeProposals` feeds the create-role wizard's id-prediction race warning. */}
           <AccessV2TeamSection activeProposals={ongoingPolls} />
 
-          {/* Role Hierarchy Section */}
+          {/* Role Hierarchy Section — legacy orgs only: on a live authority the v2 panel above
+              IS the roles surface, and this tree would re-render the retired hat entities
+              (raw bytes32 names, ghost roles) beside it. */}
+          {!v2Live && (
           <Box as="section" data-tour="org-roles">
             <Heading size="lg" color="warmGray.900" mb={4}>
               Roles
@@ -268,8 +302,9 @@ const OrgStructurePage = () => {
               onWithdrawApplication={handleWithdrawApplication}
             />
           </Box>
+          )}
 
-          {/* Permissions Matrix Section */}
+          {/* Permissions Matrix Section — v2 orgs read the fold mirror via the legacy bridge */}
           <Box as="section">
             <Heading size="lg" color="warmGray.900" mb={4}>
               Permissions
@@ -278,14 +313,14 @@ const OrgStructurePage = () => {
               What each role can do across the organization&apos;s systems
             </Text>
             <PermissionsMatrix
-              roles={roles}
-              permissionsMatrix={permissionsMatrix}
-              permissionColumns={permissionColumns}
-              loading={loading}
+              roles={v2Sections ? v2Sections.roles : roles}
+              permissionsMatrix={v2Sections ? v2Sections.permissionsMatrix : permissionsMatrix}
+              permissionColumns={v2Sections ? v2Sections.permissionColumns : permissionColumns}
+              loading={v2Live ? v2.loading : loading}
             />
           </Box>
 
-          {/* Members Section */}
+          {/* Members Section — v2 orgs group by authority roles (groups included) */}
           <Box as="section">
             <Heading size="lg" color="warmGray.900" mb={4}>
               Members
@@ -294,14 +329,15 @@ const OrgStructurePage = () => {
               Members of the organization grouped by their roles
             </Text>
             <MembersSection
-              roles={roles}
-              membersByRole={membersByRole}
-              loading={loading}
+              roles={v2Sections ? v2Sections.roles : roles}
+              membersByRole={v2Sections ? v2Sections.membersByRole : membersByRole}
+              loading={v2Live ? v2.loading : loading}
             />
           </Box>
 
-          {/* Vouching Section - only shown if org has vouching enabled */}
-          {roles.some(role => role.vouchingEnabled) && (
+          {/* Vouching Section — legacy orgs only: v2 vouching lives in the role drawer and the
+              claimable panel, with per-subject quorums the legacy section cannot express. */}
+          {!v2Live && roles.some(role => role.vouchingEnabled) && (
             <Box as="section">
               <Heading size="lg" color="warmGray.900" mb={4}>
                 Member Vouching

@@ -39,16 +39,22 @@ export const ELIGIBILITY_SOURCE = {
 export const ELIGIBILITY_COPY = {
   [ELIGIBILITY_SOURCE.EXPLICIT_GRANT]: {
     badge: 'Invited',
+    // The badge is claimable-seat language ("Invited" = come claim it). A STANDING member with
+    // the same source is not invited to anything — they hold the seat. Surfaces rendering an
+    // accepted member must use memberBadge, or every governance-seated board reads as pending.
+    memberBadge: 'Appointed',
     why: 'You were granted this role by a vote.',
     memberWhy: 'Holds this role by an explicit grant.',
   },
   [ELIGIBILITY_SOURCE.EMAIL_VERIFIED]: {
     badge: 'Email verified',
+    memberBadge: 'Email verified',
     why: 'Your verified email address qualifies you for this role.',
     memberWhy: 'Qualifies through a verified email address.',
   },
   [ELIGIBILITY_SOURCE.VOUCH_QUORUM]: {
     badge: 'Vouched for',
+    memberBadge: 'Vouched in',
     why: 'Enough members have vouched for you.',
     memberWhy: 'Qualifies through member vouches.',
   },

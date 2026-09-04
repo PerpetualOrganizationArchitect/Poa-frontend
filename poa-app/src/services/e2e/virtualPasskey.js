@@ -12,7 +12,7 @@
  * uses the resulting smart-account address to print the vouch URL.
  */
 
-import { sha256 } from '@noble/hashes/sha2';
+import { sha256 } from '@noble/hashes/sha256';
 import { p256 } from '@noble/curves/p256';
 import { keccak256, encodePacked, pad, toHex, bytesToHex, toBytes, hexToBytes } from 'viem';
 import { E2E_PASSKEY_SEED } from './e2eMode';

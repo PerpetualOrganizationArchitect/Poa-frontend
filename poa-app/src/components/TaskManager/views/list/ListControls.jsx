@@ -1,8 +1,8 @@
-import { Flex, Select, Text, HStack } from '@chakra-ui/react';
+import { Select, Stack } from '@chakra-ui/react';
 
 export const SORT_OPTIONS = [
-  { id: 'created_desc', label: 'Newest' },
-  { id: 'created_asc', label: 'Oldest' },
+  { id: 'created_desc', label: 'Newest first' },
+  { id: 'created_asc', label: 'Oldest first' },
   { id: 'difficulty_desc', label: 'Hardest first' },
   { id: 'payout_desc', label: 'Highest payout' },
   { id: 'hours_desc', label: 'Most hours' },
@@ -11,84 +11,72 @@ export const SORT_OPTIONS = [
 ];
 
 export const GROUP_OPTIONS = [
-  { id: 'none', label: 'No grouping' },
-  { id: 'status', label: 'By status' },
-  { id: 'difficulty', label: 'By difficulty' },
-  { id: 'assignee', label: 'By assignee' },
-  { id: 'project', label: 'By project' },
+  { id: 'none', label: 'None' },
+  { id: 'status', label: 'Status' },
+  { id: 'difficulty', label: 'Difficulty' },
+  { id: 'assignee', label: 'Assignee' },
+  { id: 'project', label: 'Project' },
 ];
 
 const selectSx = {
-  '> option': { background: '#1a1a1a', color: 'white' },
+  '> option': { background: '#15171d', color: 'white' },
 };
 
-const ListControls = ({ sortId, onSortChange, groupId, onGroupChange, isMobile = false }) => (
-  <HStack
-    spacing={isMobile ? 2 : 3}
-    px={1}
-    py={isMobile ? 0 : 1}
+const ListControls = ({ sortId, onSortChange, groupId, onGroupChange }) => (
+  <Stack
+    direction={{ base: 'column', sm: 'row' }}
+    spacing={2}
     align="center"
-    wrap="wrap"
-    flex={isMobile ? '1' : undefined}
+    flex={{ base: '1', lg: 'initial' }}
+    w={{ base: '100%', lg: 'auto' }}
+    minW={0}
   >
-    <HStack spacing={1.5} flex={isMobile ? '1' : undefined} minW={0}>
-      {!isMobile && (
-        <Text fontSize="xs" color="whiteAlpha.600" fontWeight="500" letterSpacing="wide">
-          SORT
-        </Text>
-      )}
-      <Select
-        size={isMobile ? 'xs' : 'sm'}
-        value={sortId}
-        onChange={(e) => onSortChange(e.target.value)}
-        bg="whiteAlpha.100"
-        color="white"
-        border="1px solid"
-        borderColor="whiteAlpha.200"
-        borderRadius="md"
-        _hover={{ borderColor: 'whiteAlpha.300' }}
-        _focus={{ borderColor: 'purple.300', boxShadow: 'none' }}
-        sx={selectSx}
-        minW={isMobile ? 0 : '150px'}
-        aria-label="Sort tasks"
-      >
-        {SORT_OPTIONS.map((o) => (
-          <option key={o.id} value={o.id}>
-            {isMobile ? `Sort: ${o.label}` : o.label}
-          </option>
-        ))}
-      </Select>
-    </HStack>
+    <Select
+      size="sm"
+      value={sortId}
+      onChange={(e) => onSortChange(e.target.value)}
+      bg="whiteAlpha.100"
+      color="whiteAlpha.900"
+      border="1px solid"
+      borderColor="whiteAlpha.200"
+      borderRadius="md"
+      _hover={{ borderColor: 'whiteAlpha.300', bg: 'rgba(255,255,255,0.12)' }}
+      _focusVisible={{ borderColor: 'purple.300', boxShadow: '0 0 0 1px var(--chakra-colors-purple-300)' }}
+      sx={selectSx}
+      w={{ base: '100%', sm: '50%', lg: '190px' }}
+      minW={0}
+      aria-label="Sort tasks"
+    >
+      {SORT_OPTIONS.map((o) => (
+        <option key={o.id} value={o.id}>
+          {`Sort: ${o.label}`}
+        </option>
+      ))}
+    </Select>
 
-    <HStack spacing={1.5} flex={isMobile ? '1' : undefined} minW={0}>
-      {!isMobile && (
-        <Text fontSize="xs" color="whiteAlpha.600" fontWeight="500" letterSpacing="wide">
-          GROUP
-        </Text>
-      )}
-      <Select
-        size={isMobile ? 'xs' : 'sm'}
-        value={groupId}
-        onChange={(e) => onGroupChange(e.target.value)}
-        bg="whiteAlpha.100"
-        color="white"
-        border="1px solid"
-        borderColor="whiteAlpha.200"
-        borderRadius="md"
-        _hover={{ borderColor: 'whiteAlpha.300' }}
-        _focus={{ borderColor: 'purple.300', boxShadow: 'none' }}
-        sx={selectSx}
-        minW={isMobile ? 0 : '150px'}
-        aria-label="Group tasks"
-      >
-        {GROUP_OPTIONS.map((o) => (
-          <option key={o.id} value={o.id}>
-            {isMobile ? `Group: ${o.label}` : o.label}
-          </option>
-        ))}
-      </Select>
-    </HStack>
-  </HStack>
+    <Select
+      size="sm"
+      value={groupId}
+      onChange={(e) => onGroupChange(e.target.value)}
+      bg="whiteAlpha.100"
+      color="whiteAlpha.900"
+      border="1px solid"
+      borderColor="whiteAlpha.200"
+      borderRadius="md"
+      _hover={{ borderColor: 'whiteAlpha.300', bg: 'rgba(255,255,255,0.12)' }}
+      _focusVisible={{ borderColor: 'purple.300', boxShadow: '0 0 0 1px var(--chakra-colors-purple-300)' }}
+      sx={selectSx}
+      w={{ base: '100%', sm: '50%', lg: '174px' }}
+      minW={0}
+      aria-label="Group tasks"
+    >
+      {GROUP_OPTIONS.map((o) => (
+        <option key={o.id} value={o.id}>
+          {`Group: ${o.label}`}
+        </option>
+      ))}
+    </Select>
+  </Stack>
 );
 
 export default ListControls;

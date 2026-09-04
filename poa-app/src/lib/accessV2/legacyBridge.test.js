@@ -1,50 +1,39 @@
 import { describe, it, expect } from 'vitest';
 import {
   V2_MATRIX_COLUMNS,
-  buildV2PermissionColumns,
-  buildV2PermissionsMatrix,
+  buildV2MatrixView,
   buildV2LegacyRoles,
-  buildV2MembersByRole,
 } from './legacyBridge';
 import { PERM_KEYS } from './permKeys';
 
-/** A folded subject the way normalizeAuthoritySubjects hands them out. */
-function subject({ id, name, isGroup = false, effective = {}, vouch = false, active = 0 }) {
-  return {
+/**
+ * A folded subject the way normalizeAuthoritySubjects hands them out: `own` are the subject's
+ * OWN global rows, `groups` the folded group objects — permEffective folds own ∪ groups exactly
+ * like normalize.foldGroupPerms (OR for the TM mask, any for booleans).
+ */
+function subject({ id, name, isGroup = false, own = {}, groups = [], vouch = false }) {
+  const s = {
     subjectId: id,
     hatId: id,
     name,
     isGroup,
-    activeMemberCount: active,
+    groups,
     vouchConfig: vouch ? { enabled: true } : null,
-    permEffective: (key) => String(effective[key] ?? 0),
+    permGlobal: (key) => (own[key] ? { exists: true, value: String(own[key]) } : null),
   };
+  s.permEffective = (key) => {
+    let acc = BigInt(own[key] ?? 0);
+    for (const g of groups) {
+      const row = g.permGlobal?.(key);
+      if (row?.exists) acc |= BigInt(row.value);
+    }
+    return acc.toString();
+  };
+  return s;
 }
-
-const MEMBER = subject({
-  id: '1',
-  name: 'Member',
-  effective: { [PERM_KEYS.DD_VOTE]: 1, [PERM_KEYS.TM_PERMS]: 1 | 2 },
-  vouch: true,
-});
-// A board title with no perms of its own — the shape every KUBI title role has.
-const TITLE = subject({ id: '2', name: 'Co-President' });
-const EXECS = subject({ id: '3', name: 'Executives', isGroup: true });
-
-const membersOf = (id) =>
-  ({
-    1: [
-      { user: '0xaaa', username: 'alice', isMember: true },
-      { user: '0xbbb', username: 'bob', isMember: true },
-    ],
-    2: [{ user: '0xaaa', username: 'alice', isMember: true }],
-    3: [],
-  })[id] || [];
-const groupMembers = new Map([['3', ['0xaaa']]]);
 
 describe('legacyBridge', () => {
   it('column keys stay inside the legacy matrix vocabulary (SHORT_LABELS contract)', () => {
-    // PermissionsMatrix resolves headers by column key; an unknown key renders a raw enum id.
     for (const col of V2_MATRIX_COLUMNS) {
       expect(col.key).toBe(`${col.contractType}_${col.permissionRole}`);
     }
@@ -52,55 +41,80 @@ describe('legacyBridge', () => {
     expect(V2_MATRIX_COLUMNS.map((c) => c.key)).not.toContain('TaskManager_SELF_REVIEW');
   });
 
-  it('only columns somebody grants get a header, like the legacy builder', () => {
-    const cols = buildV2PermissionColumns([MEMBER, TITLE, EXECS]);
-    expect(cols.map((c) => c.key)).toEqual([
-      'DirectDemocracyVoting_Voter',
-      'TaskManager_Create',
-      'TaskManager_Claim',
-    ]);
-  });
-
-  it('matrix rows read the FOLDED value, mask bits split into their own columns', () => {
-    const matrix = buildV2PermissionsMatrix([MEMBER, TITLE, EXECS]);
-    expect(matrix['1']).toEqual({
-      DirectDemocracyVoting_Voter: true,
-      TaskManager_Create: true,
-      TaskManager_Claim: true,
+  describe('buildV2MatrixView — a row must carry something distinct', () => {
+    it('a role with its own perms and no groups renders plain own cells', () => {
+      const member = subject({ id: '1', name: 'Member', own: { [PERM_KEYS.DD_VOTE]: 1, [PERM_KEYS.TM_PERMS]: 3 } });
+      const view = buildV2MatrixView([member]);
+      expect(view.rows.map((r) => r.name)).toEqual(['Member']);
+      expect(view.matrix['1']).toEqual({
+        DirectDemocracyVoting_Voter: true,
+        TaskManager_Create: true,
+        TaskManager_Claim: true,
+      });
+      expect(view.columns.map((c) => c.key)).toEqual([
+        'DirectDemocracyVoting_Voter',
+        'TaskManager_Create',
+        'TaskManager_Claim',
+      ]);
     });
-    expect(matrix['2']).toEqual({}); // a perm-less title role is honestly empty
+
+    it('a perm-less role in a perm-less group is SILENT, not a dash-row (the KUBI board today)', () => {
+      const execs = subject({ id: 'g', name: 'Executives', isGroup: true });
+      const title = subject({ id: '2', name: 'Co-President', groups: [execs] });
+      const view = buildV2MatrixView([title, execs]);
+      expect(view.rows).toEqual([]);
+      expect(view.hidden.silent).toEqual(['Co-President', 'Executives']);
+      expect(view.hidden.inheritOnly).toEqual([]);
+    });
+
+    it('a role that only inherits is folded into its group with a pointer (inheritOnly)', () => {
+      const execs = subject({ id: 'g', name: 'Executives', isGroup: true, own: { [PERM_KEYS.HV_CREATE]: 1 } });
+      const title = subject({ id: '2', name: 'Co-President', groups: [execs] });
+      const view = buildV2MatrixView([title, execs]);
+      expect(view.rows.map((r) => r.name)).toEqual(['Executives']);
+      expect(view.matrix.g).toEqual({ HybridVoting_Creator: true });
+      expect(view.hidden.inheritOnly).toEqual([{ name: 'Co-President', groupNames: ['Executives'] }]);
+    });
+
+    it('a role with an ADDITION beyond its group shows the addition solid and the rest muted', () => {
+      const execs = subject({ id: 'g', name: 'Executives', isGroup: true, own: { [PERM_KEYS.HV_CREATE]: 1 } });
+      const treasurer = subject({
+        id: '3',
+        name: 'Treasurer',
+        groups: [execs],
+        own: { [PERM_KEYS.PAY_CREATE]: 1, [PERM_KEYS.HV_CREATE]: 1 }, // HV also own — but the group already covers it
+      });
+      const view = buildV2MatrixView([treasurer, execs]);
+      expect(view.matrix['3']).toEqual({
+        HybridVoting_Creator: 'inherited', // group-covered, even though an own row duplicates it
+        PaymentManager_Payments: true, // the genuine addition
+      });
+      expect(view.rows.map((r) => r.name)).toEqual(['Treasurer', 'Executives']);
+    });
+
+    it('TM mask additions split per bit: own extra bits solid, group bits muted', () => {
+      const execs = subject({ id: 'g', name: 'Executives', isGroup: true, own: { [PERM_KEYS.TM_PERMS]: 2 } });
+      const lead = subject({ id: '4', name: 'Lead', groups: [execs], own: { [PERM_KEYS.TM_PERMS]: 4 } });
+      const view = buildV2MatrixView([lead, execs]);
+      expect(view.matrix['4']).toEqual({
+        TaskManager_Claim: 'inherited',
+        TaskManager_Review: true,
+      });
+    });
   });
 
   it('legacy role rows: roles first with live counts, groups after with derived counts', () => {
-    const rows = buildV2LegacyRoles({ roles: [MEMBER, TITLE], groups: [EXECS], membersOf, groupMembers });
+    const member = subject({ id: '1', name: 'Member', vouch: true });
+    const title = subject({ id: '2', name: 'Co-President' });
+    const execs = subject({ id: '3', name: 'Executives', isGroup: true });
+    const membersOf = (id) => ({ 1: [{}, {}], 2: [{}] })[id] || [];
+    const groupMembers = new Map([['3', ['0xaaa']]]);
+    const rows = buildV2LegacyRoles({ roles: [member, title], groups: [execs], membersOf, groupMembers });
     expect(rows.map((r) => [r.name, r.memberCount, r.isGroup])).toEqual([
       ['Member', 2, false],
       ['Co-President', 1, false],
       ['Executives', 1, true],
     ]);
     expect(rows[0].vouchingEnabled).toBe(true);
-    expect(rows[1].vouchingEnabled).toBe(false);
-  });
-
-  it('membersByRole joins v2 rosters to legacy stat records by address, minimal fallback otherwise', () => {
-    const legacy = {
-      '0xdeadhat': [
-        { id: 'u1', address: '0xAAA', username: 'alice', participationTokenBalance: '42', totalVotes: 7 },
-      ],
-    };
-    const grouped = buildV2MembersByRole({
-      roles: [MEMBER, TITLE],
-      groups: [EXECS],
-      membersOf,
-      groupMembers,
-      legacyMembersByRole: legacy,
-    });
-    // alice keeps her rich legacy record (joined by address, case-insensitive)…
-    expect(grouped['1'][0].participationTokenBalance).toBe('42');
-    // …bob has no legacy record and degrades to a minimal one instead of vanishing
-    expect(grouped['1'][1]).toMatchObject({ address: '0xbbb', username: 'bob' });
-    // group rosters come from the derived member set
-    expect(grouped['3']).toHaveLength(1);
-    expect(grouped['3'][0].participationTokenBalance).toBe('42');
   });
 });

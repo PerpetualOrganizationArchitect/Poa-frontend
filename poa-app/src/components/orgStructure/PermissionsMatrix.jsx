@@ -121,6 +121,17 @@ const FULL_DESCRIPTIONS = {
 };
 
 function PermissionCell({ allowed }) {
+  // 'inherited' (access-v2 bridge): held through a group, not the row's own grant — muted so a
+  // role's ADDITIONS stand out against what its group already gives everyone.
+  if (allowed === 'inherited') {
+    return (
+      <Td textAlign="center" py={3}>
+        <Tooltip label="Inherited from a group">
+          <Icon as={FiCheck} color="purple.300" boxSize={5} bg="purple.50" p={1} borderRadius="md" />
+        </Tooltip>
+      </Td>
+    );
+  }
   return (
     <Td textAlign="center" py={3}>
       {allowed ? (
@@ -162,7 +173,7 @@ function MobilePermissionRow({ col, allowed, isOpen, onToggle }) {
         transition="background-color 0.15s"
         onClick={onToggle}
         aria-expanded={isOpen}
-        aria-label={`${shortLabel}: ${allowed ? 'allowed' : 'not allowed'}`}
+        aria-label={`${shortLabel}: ${allowed === 'inherited' ? 'inherited from a group' : allowed ? 'allowed' : 'not allowed'}`}
       >
         <HStack justify="space-between" spacing={3}>
           <HStack spacing={3} minW={0}>
@@ -172,7 +183,9 @@ function MobilePermissionRow({ col, allowed, isOpen, onToggle }) {
             </Text>
           </HStack>
           <HStack spacing={2} flexShrink={0}>
-            {allowed ? (
+            {allowed === 'inherited' ? (
+              <Icon as={FiCheck} color="purple.300" boxSize={5} bg="purple.50" p={1} borderRadius="md" />
+            ) : allowed ? (
               <Icon
                 as={FiCheck}
                 color="green.500"
@@ -243,7 +256,7 @@ function MobileRoleCard({ role, permissionColumns, rolePermissions }) {
           <MobilePermissionRow
             key={col.key}
             col={col}
-            allowed={Boolean(rolePermissions[col.key])}
+            allowed={rolePermissions[col.key]}
             isOpen={openKey === col.key}
             onToggle={() =>
               setOpenKey((prev) => (prev === col.key ? null : col.key))

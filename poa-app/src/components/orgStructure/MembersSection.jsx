@@ -42,9 +42,11 @@ function formatDate(timestamp) {
 }
 
 /**
- * Single member card
+ * Single member card.
+ * `roleBadges` (access-v2 spotlight): the member's role names replace the Active/Inactive
+ * status — on that surface "who is this person in the org" beats a liveness flag.
  */
-function MemberCard({ member }) {
+export function MemberCard({ member, roleBadges }) {
   const { tokenLabel = 'Shares' } = usePOContext() || {};
   const {
     username,
@@ -85,14 +87,29 @@ function MemberCard({ member }) {
             nameFontWeight="medium"
             isTruncated
           />
-          <Badge
-            colorScheme={isActive ? 'green' : 'gray'}
-            size="sm"
-            borderRadius="full"
-            px={2}
-          >
-            {isActive ? 'Active' : 'Inactive'}
-          </Badge>
+          {roleBadges?.length ? (
+            <HStack spacing={1} flexShrink={0}>
+              {roleBadges.slice(0, 2).map((name) => (
+                <Badge key={name} colorScheme="coral" variant="subtle" size="sm" borderRadius="full" px={2}>
+                  {name}
+                </Badge>
+              ))}
+              {roleBadges.length > 2 && (
+                <Badge colorScheme="gray" variant="subtle" size="sm" borderRadius="full" px={2}>
+                  +{roleBadges.length - 2}
+                </Badge>
+              )}
+            </HStack>
+          ) : (
+            <Badge
+              colorScheme={isActive ? 'green' : 'gray'}
+              size="sm"
+              borderRadius="full"
+              px={2}
+            >
+              {isActive ? 'Active' : 'Inactive'}
+            </Badge>
+          )}
         </HStack>
 
         {/* Stats grid */}

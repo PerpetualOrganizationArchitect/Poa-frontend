@@ -294,6 +294,10 @@ export const FETCH_ORG_FULL_DATA = gql`
         isUserRole
         hat {
           name
+          metadataCID
+          metadata {
+            name
+          }
         }
       }
     }
@@ -949,6 +953,7 @@ export const FETCH_ORG_STRUCTURE_DATA = gql`
           name
           metadataCID
           metadata {
+            name
             description
           }
           metadataUpdatedAt

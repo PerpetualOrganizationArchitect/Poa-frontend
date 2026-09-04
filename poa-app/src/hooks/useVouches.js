@@ -10,6 +10,7 @@ import { FETCH_VOUCHES_FOR_ORG, FETCH_ALL_ROLE_APPLICATIONS } from '../util/quer
 import { useRefreshSubscription } from '../context/RefreshContext';
 import { usePOContext } from '../context/POContext';
 import { useSubgraphClient } from '../util/apolloClient';
+import { resolveLegacyRoleName } from '@/lib/roles/roleNames';
 
 /**
  * Normalize a hat ID to a canonical decimal string for consistent comparison.
@@ -116,7 +117,7 @@ export function useVouches(eligibilityModuleAddress, rolesWithVouching = []) {
     const map = {};
     rolesWithVouching.forEach(role => {
       const normalizedHatId = normalizeHatId(role.hatId);
-      map[normalizedHatId] = role.name || 'Unknown Role';
+      map[normalizedHatId] = resolveLegacyRoleName(role, { fallback: 'Unknown Role' });
     });
     return map;
   }, [rolesWithVouching]);

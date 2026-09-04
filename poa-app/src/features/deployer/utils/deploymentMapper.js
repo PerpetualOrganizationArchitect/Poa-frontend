@@ -843,9 +843,11 @@ export function logDeploymentParams(params) {
     console.log(`  [${i}] ${r.name}`, {
       canVote: r.canVote,
       vouching: r.vouching.enabled,
-      parent: r.hierarchy.adminRoleIndex.toString(),
+      ...(r.hierarchy ? { parent: r.hierarchy.adminRoleIndex.toString() } : {}),
+      ...(typeof r.open === 'boolean' ? { open: r.open, maxMembers: r.maxMembers } : {}),
     });
   });
+  if (params.groups) console.log('Groups:', params.groups);
   console.log('Voting Classes:', params.hybridClasses.length);
   params.hybridClasses.forEach((c, i) => {
     console.log(`  [${i}] Strategy: ${c.strategy}, Slice: ${c.slicePct}%, Quadratic: ${c.quadratic}`);

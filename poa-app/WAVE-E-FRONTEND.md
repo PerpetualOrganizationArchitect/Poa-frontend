@@ -27,14 +27,13 @@ hold before a single v2 query goes on the wire:
 
 `useOrgAuthority()` folds both into `{ state, enabled, migrated, paused, address, statusCopy }`:
 
-| state     | `migrated` | `enabled` | what renders                       |
-|-----------|-----------|-----------|------------------------------------|
-| `legacy`  | false     | false     | **nothing** — legacy page untouched |
-| `pending` | true      | false     | status banner only                  |
-| `active`  | true      | true      | every v2 surface                    |
+| state     | `migrated` | `enabled` | team role surface                     |
+|-----------|-----------|-----------|---------------------------------------|
+| `legacy`  | false     | false     | legacy Hats hierarchy                 |
+| `pending` | true      | false     | status banner + legacy hierarchy       |
+| `active`  | true      | true      | v2 roles/groups; legacy hierarchy hidden |
 
-`AccessV2TeamSection` is the only component a page mounts, and it returns `null` on `legacy`. That
-is the whole contract with the unmigrated orgs.
+`AccessV2TeamSection` owns that handoff and keeps the supplied legacy hierarchy through cutover.
 
 **A paused authority still renders.** Pause gates WRITES only — reads stay live, which is
 load-bearing for the cutover ordering. The panels show a warning and disable the buttons.
@@ -100,7 +99,8 @@ emits only a config event on chain — the mapping re-folds the accepted rows it
 `RolesGroupsPanel`; `RolesGroupsPanel` opens `CreateRoleWizard` and `SubjectDetailPanel`.
 `SubjectRestrictionPicker` is wired into `CreateVoteModal`'s existing restricted-poll block.
 
-Mounted at `pages/team/index.js`, above the legacy sections.
+Mounted once at `pages/team/index.js`; it swaps the legacy hierarchy for the v2 panels only when
+`enabled` is true.
 
 One v2 read lives OUTSIDE that tree: `PollDetail` mounts `useActivationGate`, because the ballot is
 the one legacy surface whose *existing* verdict a migrated org can contradict. It adds no query

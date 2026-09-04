@@ -1,8 +1,17 @@
-import OrgDeployer from "../abi/OrgDeployerNew.json";
+import OrgDeployerLegacy from "../abi/OrgDeployerLegacy.json";
 import { ethers } from "ethers";
 import bs58 from "bs58";
 // Single source of truth for role bitmaps — see the note on buildRoleAssignments.
 import { indicesToBitmap } from "../src/features/deployer/utils/bitmapUtils";
+import {
+  ORG_DEPLOYER_SCHEMA,
+  OrgDeployerBoundaryError,
+  assertDeployedOrgDeployerSchema,
+  assertOrgDeploymentCalldataSchema,
+  detectOrgDeployerSchema,
+  encodeOrgDeploymentCalldata,
+  parseOrgDeploymentReceipt,
+} from "../src/features/deployer/utils/orgDeployerBoundary";
 
 /**
  * Convert IPFS CIDv0 to bytes32 sha256 digest
@@ -146,6 +155,18 @@ export async function main(
     }
 
     console.log("Deployer address:", deployerAddress);
+
+    // This screen only knows how to express the legacy Hats hierarchy. Detect the
+    // deployed ABI before building params so it can never send that tuple to Kyoto.
+    const detected = await detectOrgDeployerSchema({
+      provider: wallet.provider,
+      address: orgDeployerAddress,
+    });
+    if (detected.schema !== ORG_DEPLOYER_SCHEMA.LEGACY) {
+      throw new Error(
+        'This legacy deployment screen cannot preserve its Hats hierarchy on an Access v2 OrgDeployer. Use the Create wizard instead.'
+      );
+    }
     console.log("Input parameters:", {
       memberTypeNames,
       executivePermissionNames,
@@ -246,7 +267,7 @@ export async function main(
 
     console.log("Deploying new DAO with the following parameters:", deploymentParams);
     console.log("OrgDeployer address:", orgDeployerAddress);
-    console.log("OrgDeployer ABI loaded:", Array.isArray(OrgDeployer) ? `${OrgDeployer.length} entries` : typeof OrgDeployer);
+    console.log("OrgDeployer ABI loaded:", Array.isArray(OrgDeployerLegacy) ? `${OrgDeployerLegacy.length} entries` : typeof OrgDeployerLegacy);
 
     // Debug: Log detailed role structure
     console.log("=== ROLES DETAIL ===");
@@ -261,7 +282,7 @@ export async function main(
       }, 2));
     });
 
-    const orgDeployer = new ethers.Contract(orgDeployerAddress, OrgDeployer, wallet);
+    const orgDeployer = new ethers.Contract(orgDeployerAddress, OrgDeployerLegacy, wallet);
     console.log("OrgDeployer contract instance created");
 
     try {
@@ -368,29 +389,29 @@ export async function main(
       console.log("Transaction hash:", receipt.transactionHash);
 
       // Parse OrgDeployed event to get contract addresses
-      const orgDeployedEvent = receipt.events?.find(e => e.event === 'OrgDeployed');
+      const orgDeployedEvent = parseOrgDeploymentReceipt(receipt, detected.schema);
       if (orgDeployedEvent) {
         console.log("Deployed contracts:", {
-          orgId: orgDeployedEvent.args.orgId,
-          executor: orgDeployedEvent.args.executor,
-          hybridVoting: orgDeployedEvent.args.hybridVoting,
-          directDemocracyVoting: orgDeployedEvent.args.directDemocracyVoting,
-          quickJoin: orgDeployedEvent.args.quickJoin,
-          participationToken: orgDeployedEvent.args.participationToken,
-          taskManager: orgDeployedEvent.args.taskManager,
-          educationHub: orgDeployedEvent.args.educationHub,
-          paymentManager: orgDeployedEvent.args.paymentManager,
-          eligibilityModule: orgDeployedEvent.args.eligibilityModule,
-          toggleModule: orgDeployedEvent.args.toggleModule,
-          topHatId: orgDeployedEvent.args.topHatId?.toString(),
-          roleHatIds: orgDeployedEvent.args.roleHatIds?.map(id => id.toString()),
+          orgId: orgDeployedEvent.orgId,
+          executor: orgDeployedEvent.executor,
+          hybridVoting: orgDeployedEvent.hybridVoting,
+          directDemocracyVoting: orgDeployedEvent.directDemocracyVoting,
+          quickJoin: orgDeployedEvent.quickJoin,
+          participationToken: orgDeployedEvent.participationToken,
+          taskManager: orgDeployedEvent.taskManager,
+          educationHub: orgDeployedEvent.educationHub,
+          paymentManager: orgDeployedEvent.paymentManager,
+          eligibilityModule: orgDeployedEvent.eligibilityModule,
+          toggleModule: orgDeployedEvent.toggleModule,
+          topHatId: orgDeployedEvent.topHatId?.toString(),
+          roleHatIds: orgDeployedEvent.roleHatIds?.map(id => id.toString()),
         });
       }
 
       return {
         receipt,
         orgId,
-        contracts: orgDeployedEvent?.args || {},
+        contracts: orgDeployedEvent || {},
       };
     } catch (error) {
       console.error("An error occurred during deployment:", error);
@@ -520,6 +541,8 @@ function buildRoleAssignments(memberTypes, executiveRoles) {
 /**
  * Build the encoded calldata for deployFullOrg without requiring a signer.
  * Used by passkey accounts that deploy via ERC-4337 UserOperations.
+ * `orgDeployerSchema` must come from detectOrgDeployerSchema(); there is no
+ * default because guessing here can send a valid-looking tuple to the wrong ABI.
  *
  * @returns {{ calldata: string, orgDeployerAddress: string, orgId: string }}
  */
@@ -540,7 +563,10 @@ export function buildDeployCalldata({
   username,
   deployerAddress,
   customRoles = null,
+  groups = null,
+  autoUpgrade = true,
   infrastructureAddresses = {},
+  orgDeployerSchema,
   regSignatureData = null,
   paymasterConfig = null,
   metadataAdminRoleIndex = null,
@@ -585,13 +611,13 @@ export function buildDeployCalldata({
       );
 
   const roles = customRoles || buildRoles(memberTypeNames, executivePermissionNames);
-  // Callers may supply the wizard's own permission matrix; otherwise fall back to
-  // the name-derived approximation every org on chain was deployed with. The
-  // /create page deliberately does NOT override yet — several shipped templates
-  // list vouch-gated roles under `permissions.quickJoinRoles`, and sending that
-  // verbatim would make `quickJoinWithUser` revert NotEligible for newcomers.
-  const roleAssignments =
-    roleAssignmentsOverride || buildRoleAssignments(memberTypeNames, executivePermissionNames);
+  // The legacy path retains its historical name-derived approximation. Access v2
+  // requires the wizard's explicit matrix because Quick Join is checked against
+  // RoleConfig.open and silently synthesizing permissions is not acceptable.
+  if (orgDeployerSchema === ORG_DEPLOYER_SCHEMA.ACCESS_V2 && !roleAssignmentsOverride) {
+    throw new Error('Access v2 deployment requires the wizard\'s explicit role assignments.');
+  }
+  const roleAssignments = roleAssignmentsOverride || buildRoleAssignments(memberTypeNames, executivePermissionNames);
   const metadataHash = cidToBytes32(infoIPFSHash);
 
   const deploymentParams = {
@@ -604,7 +630,7 @@ export function buildDeployCalldata({
     regDeadline: regSignatureData?.regDeadline ?? 0,
     regNonce: regSignatureData?.regNonce ?? 0,
     regSignature: regSignatureData?.regSignature ?? '0x',
-    autoUpgrade: true,
+    autoUpgrade: Boolean(autoUpgrade),
     hybridThresholdPct: quorumPercentagePV || 50,
     ddThresholdPct: quorumPercentageDD || 50,
     hybridClasses,
@@ -630,9 +656,7 @@ export function buildDeployCalldata({
     },
     // Org-wide TaskManager ROLE_PERM grants
     taskManagerPerms: taskManagerPerms || { roleIndices: [], masks: [] },
-    // Deploy-time governance config (OrgDeployer v17). These four MUST stay last and
-    // in this order — the struct is encoded positionally, and appending them is what
-    // changed the deployFullOrg selector from 0x00d18947 to 0x209bcafc.
+    // Deploy-time governance config shared by legacy v17 and Kyoto v2.
     //
     // The voter-count quorums were previously setter-only, so the wizard collected
     // them and threw them away; they now take effect at genesis (0 = no minimum).
@@ -643,27 +667,19 @@ export function buildDeployCalldata({
     tokenSymbol: tokenSymbol || '',
   };
 
-  const iface = new ethers.utils.Interface(OrgDeployer);
-  let calldata;
-  if (zkEmailEnabled) {
-    // Provision the ZkEmailInvites module DORMANT (root = 0). Genesis hat IDs aren't known before the
-    // org exists, so the allowlist root can't be committed at deploy; instead the org curates the
-    // allowlist in Settings (stages it in metadata) and activates it via a governance vote post-deploy.
-    // If the target chain lacks the ZK Email infra/beacon, ModulesFactory SILENTLY SKIPS the module
-    // and the deploy still succeeds — which is why the /create page checks the simulated
-    // DeploymentResult for a zero `zkEmailInvites` and blocks rather than shipping an org whose
-    // Email Invites toggle does nothing.
-    const zkEmailConfig = {
-      enabled: true,
-      initialRoot: ethers.constants.HashZero,
-      initialCid: ethers.constants.HashZero,
-    };
-    calldata = iface.encodeFunctionData('deployFullOrgWithZkEmail', [deploymentParams, zkEmailConfig]);
-  } else {
-    calldata = iface.encodeFunctionData('deployFullOrg', [deploymentParams]);
+  if (orgDeployerSchema === ORG_DEPLOYER_SCHEMA.ACCESS_V2) {
+    deploymentParams.groups = groups || [];
   }
 
-  return { calldata, orgDeployerAddress, orgId };
+  // Provision ZkEmailInvites dormant when selected (zero root/CID). The schema
+  // boundary chooses exactly one ABI and rejects mixed legacy/v2 RoleConfigs.
+  const calldata = encodeOrgDeploymentCalldata({
+    schema: orgDeployerSchema,
+    params: deploymentParams,
+    zkEmailEnabled,
+  });
+
+  return { calldata, orgDeployerAddress, orgId, params: deploymentParams, schema: orgDeployerSchema };
 }
 
 /**
@@ -681,9 +697,36 @@ export function buildDeployCalldata({
  * @param {string} args.to - OrgDeployer proxy address
  * @param {string} args.calldata - ABI-encoded deployFullOrg / deployFullOrgWithZkEmail call
  * @param {ethers.BigNumber|null} [args.valueWei] - msg.value for paymaster funding
- * @returns {Promise<{ receipt: Object }>}
+ * @param {string} args.orgDeployerSchema - Schema selected from VERSION(); required
+ * @param {number} args.expectedChainId - Chain the user selected; required
+ * @returns {Promise<{ receipt: Object, deployment: Object|null }>}
  */
-export async function deployWithCalldata({ wallet, to, calldata, valueWei = null }) {
+export async function deployWithCalldata({
+  wallet,
+  to,
+  calldata,
+  valueWei = null,
+  orgDeployerSchema,
+  expectedChainId,
+}) {
+  assertOrgDeploymentCalldataSchema({ schema: orgDeployerSchema, calldata });
+  if (!Number.isInteger(Number(expectedChainId)) || Number(expectedChainId) <= 0) {
+    throw new OrgDeployerBoundaryError(
+      'A valid expected chain ID is required before sending deployment calldata.'
+    );
+  }
+  const actualChainId = await wallet?.getChainId?.();
+  if (Number(actualChainId) !== Number(expectedChainId)) {
+    throw new OrgDeployerBoundaryError(
+      `Wallet is connected to chain ${actualChainId ?? 'unknown'}, but this deployment targets chain ${expectedChainId}. Refusing to send.`
+    );
+  }
+  await assertDeployedOrgDeployerSchema({
+    provider: wallet?.provider,
+    address: to,
+    schema: orgDeployerSchema,
+  });
+
   const value = valueWei || ethers.BigNumber.from(0);
 
   // The read-only simulation in /create already proved this reverts nowhere, so a
@@ -701,5 +744,6 @@ export async function deployWithCalldata({ wallet, to, calldata, valueWei = null
   console.log('[DEPLOY] Transaction sent:', tx.hash);
   const receipt = await tx.wait();
   console.log('[DEPLOY] Deployment confirmed:', receipt.transactionHash);
-  return { receipt };
+  const deployment = parseOrgDeploymentReceipt(receipt, orgDeployerSchema);
+  return { receipt, deployment };
 }

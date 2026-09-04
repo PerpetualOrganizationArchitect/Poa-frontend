@@ -54,6 +54,7 @@ const PREDICTED_MODULES = [
   ['taskManager', 'Task Manager'],
   ['educationHub', 'Education Hub'],
   ['paymentManager', 'Payment Manager'],
+  ['membershipAuthority', 'Membership Authority'],
   ['eligibilityModule', 'Eligibility'],
   ['zkEmailInvites', 'Email Invites'],
 ];
@@ -152,9 +153,12 @@ export function DeploymentPreviewModal({ data, onConfirm, onCancel }) {
   // How someone gets a role. Three distinct outcomes, and "not vouched" does NOT
   // mean "open": a role with vouching off and defaults.eligible off is granted by
   // an admin, which the deployer deliberately preserves.
+  const isOpenRole = (role) => typeof role?.open === 'boolean'
+    ? role.open
+    : Boolean(role?.defaults?.eligible);
   const vouchedRoles = roles.filter((r) => r.vouching?.enabled).map((r) => r.name);
-  const openRoles = roles.filter((r) => !r.vouching?.enabled && r.defaults?.eligible).map((r) => r.name);
-  const grantedRoles = roles.filter((r) => !r.vouching?.enabled && !r.defaults?.eligible).map((r) => r.name);
+  const openRoles = roles.filter((r) => !r.vouching?.enabled && isOpenRole(r)).map((r) => r.name);
+  const grantedRoles = roles.filter((r) => !r.vouching?.enabled && !isOpenRole(r)).map((r) => r.name);
 
   // Who actually votes, read off the encoded payload rather than assumed.
   // `canVote` decides the hybrid voting classes (GovernanceFactory._filterCanVoteHats);

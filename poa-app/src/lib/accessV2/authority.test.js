@@ -3,6 +3,7 @@ import {
   classifyAuthority,
   authorityStatusCopy,
   moduleUsesAuthority,
+  shouldRenderLegacyRoleHierarchy,
   AUTHORITY_STATE,
 } from './authority';
 import { authorityNode, AUTHORITY_ADDRESS, EXECUTOR_ADDRESS } from './fixtures';
@@ -46,6 +47,22 @@ describe('classifyAuthority — the legacy org must be untouched', () => {
 
   it('an authority node with no id cannot enable anything', () => {
     expect(classifyAuthority({ isRouterBound: true }).enabled).toBe(false);
+  });
+});
+
+describe('shouldRenderLegacyRoleHierarchy', () => {
+  it('keeps legacy roles visible when the endpoint cannot serve v2', () => {
+    const authority = classifyAuthority(authorityNode(), { capable: false });
+    expect(shouldRenderLegacyRoleHierarchy(authority)).toBe(true);
+  });
+
+  it('keeps legacy roles visible while an authority is deployed but not cut over', () => {
+    const authority = classifyAuthority(authorityNode({ isRouterBound: false }));
+    expect(shouldRenderLegacyRoleHierarchy(authority)).toBe(true);
+  });
+
+  it('hides the legacy hierarchy only after the router-bound v2 authority is active', () => {
+    expect(shouldRenderLegacyRoleHierarchy(classifyAuthority(authorityNode()))).toBe(false);
   });
 });
 

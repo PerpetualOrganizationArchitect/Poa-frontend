@@ -73,6 +73,14 @@ export function classifyAuthority(authorityNode, { capable = true } = {}) {
 }
 
 /**
+ * The legacy hierarchy remains authoritative until the router actually binds the org to v2.
+ * Capability support or a merely deployed authority is not enough to hide it.
+ */
+export function shouldRenderLegacyRoleHierarchy(authority) {
+  return !authority?.enabled;
+}
+
+/**
  * The banner an org admin sees while the authority exists but is not yet live.
  * Writes are paused until the cutover; READS stay live throughout (that is what lets the hub's
  * org-admin checks resolve through a still-paused authority during the cutover ordering).

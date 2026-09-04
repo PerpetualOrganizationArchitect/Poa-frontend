@@ -13,6 +13,7 @@ import { getSubgraphUrl, getAllSubgraphUrls } from '../config/networks';
 import { useSubgraphClient } from '../util/apolloClient';
 import { getDefaultOrgForHost, getVisitUrlForOrg, resolveOrgAlias } from '../config/hostDefaultOrg';
 import { useOrgNameState } from '@/hooks/useOrgName';
+import { resolveLegacyRoleName } from '@/lib/roles/roleNames';
 
 // Re-export for back-compat with callers that imported these from POContext.
 export { getDefaultOrgForHost, getVisitUrlForOrg, resolveOrgAlias };
@@ -381,7 +382,7 @@ export const POProvider = ({ children }) => {
             if (org.roles && Array.isArray(org.roles)) {
                 org.roles.forEach((role, index) => {
                     const hatId = role.hatId;
-                    const name = role.name || role.hat?.name || `Role ${index + 1}`;
+                    const name = resolveLegacyRoleName(role, { fallback: `Role ${index + 1}` });
                     roleNamesMap[hatId] = name;
                     roleNamesMap[String(hatId)] = name;
                     roleCanVoteMap[hatId] = role.canVote !== false;

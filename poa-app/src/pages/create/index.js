@@ -39,8 +39,15 @@ import {
   useDeployer,
   DeployerWizard,
   mapStateToDeploymentParams,
+  mapStateToAccessV2DeploymentParams,
   mapPaymasterConfig,
   getPaymasterFundingValue,
+  validateAccessV2Representability,
+  ORG_DEPLOYER_SCHEMA,
+  assertDeployedOrgDeployerSchema,
+  detectOrgDeployerSchema,
+  decodeOrgDeploymentResult,
+  getOrgDeployerInterface,
 } from "@/features/deployer";
 import { resolveRoleUsernames } from "@/features/deployer/utils/usernameResolver";
 
@@ -50,7 +57,6 @@ import { createPimlicoClient } from "permissionless/clients/pimlico";
 import PasskeyAccountABI from "../../../abi/PasskeyAccount.json";
 import PasskeyAccountFactoryABI from "../../../abi/PasskeyAccountFactory.json";
 import UniversalAccountRegistryABI from "../../../abi/UniversalAccountRegistry.json";
-import OrgDeployerNewABI from "../../../abi/OrgDeployerNew.json";
 import { DeploymentPreviewModal } from "@/features/deployer/components/DeploymentPreviewModal";
 import { buildUserOp, getUserOpHash } from "@/services/web3/passkey/userOpBuilder";
 import { signUserOpWithPasskey } from "@/services/web3/passkey/passkeySign";
@@ -62,17 +68,19 @@ import { FETCH_PASSKEY_FACTORY_ADDRESS } from "@/util/passkeyQueries";
 /**
  * Read-only simulation of deployFullOrg against the deploy chain. Returns the
  * decoded DeploymentResult (predicted module addresses) on success, or throws a
- * friendly error if the call reverts. NO transaction is sent. This is also the
- * behavioral version gate: a pre-`taskManagerPerms` (21-field) OrgDeployer will
- * revert when decoding the 22-field tuple.
+ * friendly error if the call reverts. NO transaction is sent. The caller has
+ * already selected the ABI through the OrgDeployer VERSION boundary.
  */
 // Friendlier guidance for reverts surfaced by the sim. Keyed by OrgDeployer ABI
 // error NAME (decodable via iface.parseError) and, for sub-contract errors whose
 // fragments aren't in this ABI (TaskManager/Hats setup), by raw 4-byte SELECTOR.
 const SIM_FRIENDLY_ERRORS = {
   OrgExistsMismatch: 'this organization name is already taken on-chain — choose another name',
-  InvalidRoleConfiguration: 'a role is misconfigured (check hierarchy and vouching)',
+  InvalidRoleConfiguration: 'a role, group, or permission reference is misconfigured',
   InvalidAddress: 'an address field is zero or invalid',
+  QuickJoinRoleNotOpen: 'a Quick Join role is not open to everyone',
+  DuplicateGroupMemberRole: 'a group lists the same role more than once',
+  RoleCapacityBelowGenesisSeed: 'a role cap is smaller than its initial member list',
 };
 const SIM_FRIENDLY_SELECTORS = {
   '0xe3813bd4': 'a bootstrap task has no payout — set a payout greater than 0', // TaskManager InvalidPayout()
@@ -98,15 +106,15 @@ const SIM_FRIENDLY_REQUIRE_STRINGS = {
 
 const isZeroAddress = (a) => !a || /^0x0+$/i.test(a);
 
-async function simulateDeployCalldata({ rpcUrl, to, from, calldata, valueWei }) {
+async function simulateDeployCalldata({ rpcUrl, to, from, calldata, valueWei, orgDeployerSchema }) {
   const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
-  const iface = new ethers.utils.Interface(OrgDeployerNewABI);
+  const iface = getOrgDeployerInterface(orgDeployerSchema);
   const tx = { to, from, data: calldata };
   if (valueWei && valueWei.gt && valueWei.gt(0)) tx.value = valueWei.toHexString();
 
   const fail = (detail) => new Error(
     `The deploy reverted in simulation (${detail}). Nothing was sent. ` +
-    `Fix the flagged configuration — or, if this network's OrgDeployer predates task permissions, it must be upgraded first.`
+    'Fix the flagged configuration before trying again.'
   );
   // Resolve revert bytes to a friendly reason: try the ABI error name, then the
   // raw selector for known sub-contract errors. Returns null if unrecognizable.
@@ -148,11 +156,10 @@ async function simulateDeployCalldata({ rpcUrl, to, from, calldata, valueWei }) 
   }
 
   // Many RPCs (e.g. Gnosis) return revert bytes as the call RESULT without throwing.
-  // A successful deployFullOrg returns a 9-address DeploymentResult; if it doesn't
-  // decode, treat the return as a revert (decode the custom error if possible).
+  // If the selected schema's DeploymentResult does not decode, treat the return as
+  // a revert (and decode the custom error if possible).
   try {
-    const [result] = iface.decodeFunctionResult('deployFullOrg', raw);
-    return result; // success → predicted module addresses
+    return decodeOrgDeploymentResult({ schema: orgDeployerSchema, calldata, data: raw });
   } catch {
     const reason = (raw && raw !== '0x') ? friendlyFromData(raw) : 'empty return / no contract at address';
     throw fail(reason || 'unknown revert');
@@ -329,6 +336,38 @@ function DeployerPageContent() {
     console.log('[DEPLOY] Using deployer username:', deployerUsername);
 
     try {
+      if (!isPasskeyDeployer) {
+        const signerChainId = await deploySigner?.getChainId?.();
+        if (Number(signerChainId) !== Number(targetChainId)) {
+          throw new Error(
+            `Your wallet is connected to chain ${signerChainId ?? 'unknown'}, but this deployment targets chain ${targetChainId}. Switch networks and try again.`
+          );
+        }
+      }
+
+      // VERSION is the explicit ABI route: major 1 selects the bundled current-v1
+      // Hats tuple and major 2 selects Kyoto's authority-native tuple. Detect
+      // before uploads or signing and fail closed on an unknown major. The exact
+      // read-only deploy simulation below also protects historic v1 proxies whose
+      // tuple changed without a VERSION bump.
+      const simRpcUrl = getNetworkByChainId(targetChainId)?.rpcUrl;
+      if (!simRpcUrl) throw new Error(`No RPC URL is configured for deploy chain ${targetChainId}.`);
+      const schemaProvider = new ethers.providers.JsonRpcProvider(simRpcUrl);
+      const { schema: orgDeployerSchema, version: orgDeployerVersion } = await detectOrgDeployerSchema({
+        provider: schemaProvider,
+        address: infrastructureAddresses.orgDeployerAddress,
+      });
+      console.log('[DEPLOY] OrgDeployer boundary:', { orgDeployerSchema, orgDeployerVersion });
+
+      if (orgDeployerSchema === ORG_DEPLOYER_SCHEMA.ACCESS_V2) {
+        const compatibility = validateAccessV2Representability(state);
+        if (!compatibility.isValid) {
+          throw new Error(
+            `This configuration cannot be deployed with Access v2 without changing its meaning:\n• ${compatibility.errors.join('\n• ')}`
+          );
+        }
+      }
+
       // Resolve all usernames to addresses before deployment
       const rolesWithResolvedAddresses = await resolveRoleUsernames(state.roles);
 
@@ -427,7 +466,9 @@ function DeployerPageContent() {
       // address, and the mapper uses this to drop a duplicate wearer from a role
       // that is already minted to the deployer. Passing undefined silently skips
       // that, and the same hat minted twice reverts the whole deploy.
-      const deployParams = mapStateToDeploymentParams(stateWithResolvedRoles, deployerAddr, infrastructureAddresses);
+      const deployParams = orgDeployerSchema === ORG_DEPLOYER_SCHEMA.ACCESS_V2
+        ? mapStateToAccessV2DeploymentParams(stateWithResolvedRoles, deployerAddr, infrastructureAddresses)
+        : mapStateToDeploymentParams(stateWithResolvedRoles, deployerAddr, infrastructureAddresses);
 
       console.log('Deployment params:', deployParams);
 
@@ -437,9 +478,11 @@ function DeployerPageContent() {
           canVote: role.canVote,
           vouching: role.vouching,
           defaults: role.defaults,
-          hierarchy: {
+          hierarchy: role.hierarchy && {
             adminRoleIndex: role.hierarchy.adminRoleIndex?.toString?.() || role.hierarchy.adminRoleIndex
           },
+          open: role.open,
+          maxMembers: role.maxMembers,
           distribution: {
             mintToDeployer: role.distribution.mintToDeployer,
             additionalWearers: role.distribution.additionalWearers,
@@ -449,7 +492,7 @@ function DeployerPageContent() {
       });
 
       // === EIP-712 Registration Signature (EOA only) ===
-      // The deploy contract's HatsTreeSetup calls registerAccountBySig atomically.
+      // The deploy contract's governance factory calls registerAccountBySig atomically.
       // It checks: registryAddr != 0 && username.length > 0 && regSignature.length > 0
       // and is idempotent (skips if user already has a username on-chain).
       // We use the subgraph to avoid signing when the user already has a username,
@@ -570,8 +613,8 @@ function DeployerPageContent() {
       // Build the exact deployFullOrg calldata both send paths use, simulate it
       // read-only (no tx sent), then show the user the decoded config + predicted
       // module addresses. The real send only runs after they confirm.
-      // NOTE: this simulates the deployFullOrg call itself (the part that exercises
-      // the 22-field tuple + all new config). For the passkey path it does NOT
+      // NOTE: this simulates the deployFullOrg call itself (including the selected
+      // schema's full tuple). For the passkey path it does NOT
       // simulate the ERC-4337 wrapper (executeBatch/registerAccount/initCode/
       // paymaster) — those are validated by the bundler at send time.
       const simDeployerAddress = isPasskeyDeployer
@@ -596,15 +639,15 @@ function DeployerPageContent() {
         username: deployerUsername,
         deployerAddress: simDeployerAddress,
         customRoles,
-        // NOTE: roleAssignments are deliberately NOT passed. buildDeployCalldata
-        // derives them from role names, which is what every org on chain was
-        // deployed with — several shipped templates list vouched roles under
-        // `permissions.quickJoinRoles`, and sending that verbatim would put a
-        // vouch-gated hat in `quickJoinRolesBitmap`, making `quickJoinWithUser`
-        // revert NotEligible for every newcomer. Wiring the wizard's permission
-        // matrix through is a separate change that needs those templates fixed
-        // first.
+        groups: deployParams.groups || [],
+        autoUpgrade: deployParams.autoUpgrade,
+        // Legacy keeps its shipped name-derived bitmaps. Kyoto consumes the
+        // wizard's exact permission matrix and validates Quick Join against `open`.
+        roleAssignments: orgDeployerSchema === ORG_DEPLOYER_SCHEMA.ACCESS_V2
+          ? deployParams.roleAssignments
+          : null,
         infrastructureAddresses,
+        orgDeployerSchema,
         regSignatureData,
         paymasterConfig,
         metadataAdminRoleIndex: state.metadataAdminRoleIndex,
@@ -612,7 +655,7 @@ function DeployerPageContent() {
         taskManagerPerms: deployParams.taskManagerPerms,
         ddInitialTargets: deployParams.ddInitialTargets,
         bootstrap: deployParams.bootstrap,
-        // Deploy-time governance config (OrgDeployer v17).
+        // Deploy-time governance config shared by legacy v17 and Kyoto v2.
         hybridVoterQuorum: deployParams.hybridQuorum,
         ddVoterQuorum: deployParams.ddQuorum,
         tokenName: deployParams.tokenName,
@@ -627,9 +670,7 @@ function DeployerPageContent() {
       const { calldata: deployCalldata, orgDeployerAddress: deployContractAddress } =
         buildDeployCalldata(deployCalldataArgs);
 
-      // Read-only simulation against the deploy chain (also the behavioral version
-      // gate — a pre-taskManagerPerms OrgDeployer reverts decoding the 22-field tuple).
-      const simRpcUrl = getNetworkByChainId(targetChainId)?.rpcUrl;
+      // Read-only simulation against the exact ABI selected above.
       let predictedResult = null;
       try {
         predictedResult = await simulateDeployCalldata({
@@ -638,6 +679,7 @@ function DeployerPageContent() {
           from: simDeployerAddress,
           calldata: deployCalldata,
           valueWei: paymasterFundingWei,
+          orgDeployerSchema,
         });
         console.log('[DEPLOY] Simulation succeeded. Predicted modules:', predictedResult);
       } catch (simErr) {
@@ -696,6 +738,15 @@ function DeployerPageContent() {
         setIsDeploying(false);
         return { success: false, cancelled: true };
       }
+
+      // The preview can stay open while a proxy is upgraded. Re-read VERSION
+      // immediately before either send path so stale calldata never crosses a
+      // breaking-major boundary.
+      await assertDeployedOrgDeployerSchema({
+        provider: schemaProvider,
+        address: deployContractAddress,
+        schema: orgDeployerSchema,
+      });
 
       if (isPasskeyDeployer) {
         // === PASSKEY DEPLOYMENT via ERC-4337 UserOp ===
@@ -938,6 +989,8 @@ function DeployerPageContent() {
           to: deployContractAddress,
           calldata: deployCalldata,
           valueWei: paymasterFundingWei,
+          orgDeployerSchema,
+          expectedChainId: targetChainId,
         });
       }
 

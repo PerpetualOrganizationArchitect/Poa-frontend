@@ -66,25 +66,78 @@ function columnValue(subject, col) {
   return value !== 0n;
 }
 
-/**
- * Columns worth a header: at least one subject grants them. Mirrors the legacy behaviour of
- * building columns from the rows that exist rather than the whole vocabulary.
- */
-export function buildV2PermissionColumns(subjects = []) {
-  return V2_MATRIX_COLUMNS.filter((col) => (subjects || []).some((s) => columnValue(s, col)));
+/** One column's value from a subject's OWN global row (no group fold). */
+function ownColumnValue(subject, col) {
+  if (typeof subject?.permGlobal !== 'function') return false;
+  const row = subject.permGlobal(col.permKey);
+  if (!row || !row.exists) return false;
+  let value;
+  try {
+    value = BigInt(row.value);
+  } catch {
+    return false;
+  }
+  if (col.maskBit !== undefined) return (value & BigInt(col.maskBit)) !== 0n;
+  return value !== 0n;
 }
 
-/** `{ [subjectId]: { [columnKey]: true } }` — the shape PermissionsMatrix reads. */
-export function buildV2PermissionsMatrix(subjects = []) {
+/** One column's value contributed by a role's GROUPS alone. */
+function groupsColumnValue(subject, col) {
+  return (subject?.groups || []).some((g) => ownColumnValue(g, col));
+}
+
+/**
+ * The matrix, distinct-permissions edition.
+ *
+ * A row earns its place only by carrying something of its OWN: groups always represent their own
+ * rows, and a role appears only when it adds at least one permission BEYOND what its groups give
+ * it. Everything else is one honest sentence, not a wall of dash-rows — a board of ten title
+ * roles that only inherit from their group would otherwise render ten near-duplicate rows of
+ * the group (or, before the group is granted anything, ten empty ones).
+ *
+ * Cells are tri-state: `true` = the row's own grant, `'inherited'` = held via a group (rendered
+ * muted so the additions stand out).
+ *
+ * @returns {{
+ *   columns: Array, matrix: Object, rows: Array,
+ *   hidden: { inheritOnly: Array<{name: string, groupNames: string[]}>, silent: string[] }
+ * }}
+ */
+export function buildV2MatrixView(subjects = []) {
+  const rows = [];
   const matrix = {};
+  const hidden = { inheritOnly: [], silent: [] };
+
   for (const s of subjects || []) {
-    const row = {};
+    const cells = {};
+    let hasOwnBeyond = false;
+    let hasAnything = false;
     for (const col of V2_MATRIX_COLUMNS) {
-      if (columnValue(s, col)) row[col.key] = true;
+      const effective = columnValue(s, col);
+      if (!effective) continue;
+      hasAnything = true;
+      const beyond = s.isGroup ? ownColumnValue(s, col) : ownColumnValue(s, col) && !groupsColumnValue(s, col);
+      if (beyond) hasOwnBeyond = true;
+      cells[col.key] = beyond ? true : 'inherited';
     }
-    matrix[s.hatId ?? s.subjectId] = row;
+
+    if (hasOwnBeyond) {
+      rows.push(s);
+      matrix[s.hatId ?? s.subjectId] = cells;
+    } else if (hasAnything) {
+      hidden.inheritOnly.push({
+        name: s.name || 'Untitled',
+        groupNames: (s.groups || []).map((g) => g.name).filter(Boolean),
+      });
+    } else {
+      hidden.silent.push(s.name || 'Untitled');
+    }
   }
-  return matrix;
+
+  const columns = V2_MATRIX_COLUMNS.filter((col) =>
+    rows.some((s) => matrix[s.hatId ?? s.subjectId]?.[col.key])
+  );
+  return { columns, matrix, rows, hidden };
 }
 
 /**
@@ -110,53 +163,4 @@ export function buildV2LegacyRoles({ roles = [], groups = [], membersOf, groupMe
     vouchingEnabled: false,
   }));
   return [...roleRows, ...groupRows];
-}
-
-/**
- * `{ [subjectId]: [memberRecord] }` for MembersSection, keyed to `buildV2LegacyRoles` rows.
- * Rich per-user stats (tokens, tasks, votes, joined) still live on the legacy user records —
- * users are chain-wide entities and did not migrate — so each v2 roster line is joined to its
- * legacy record by address, falling back to a minimal record for anyone the legacy query has
- * not caught up with yet.
- */
-export function buildV2MembersByRole({
-  roles = [],
-  groups = [],
-  membersOf,
-  groupMembers,
-  legacyMembersByRole = {},
-} = {}) {
-  const byAddress = new Map();
-  for (const list of Object.values(legacyMembersByRole || {})) {
-    for (const rec of list || []) {
-      const addr = String(rec?.address || '').toLowerCase();
-      if (addr && !byAddress.has(addr)) byAddress.set(addr, rec);
-    }
-  }
-
-  const toRecord = (address, username) => {
-    const addr = String(address || '').toLowerCase();
-    return (
-      byAddress.get(addr) || {
-        id: addr,
-        address: addr,
-        username: username || null,
-        participationTokenBalance: '0',
-        totalTasksCompleted: 0,
-        totalVotes: 0,
-      }
-    );
-  };
-
-  const grouped = {};
-  for (const r of roles || []) {
-    // membersOf already filters to active members (accepted && eligible).
-    grouped[r.hatId ?? r.subjectId] = (membersOf ? membersOf(r.subjectId) : [])
-      .map((m) => toRecord(m.user, m.username));
-  }
-  for (const g of groups || []) {
-    const addrs = groupMembers ? groupMembers.get(g.subjectId) || [] : [];
-    grouped[g.hatId ?? g.subjectId] = addrs.map((a) => toRecord(a));
-  }
-  return grouped;
 }

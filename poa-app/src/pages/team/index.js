@@ -41,13 +41,9 @@ import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 // Access v2. Renders NOTHING on an org that is not on the MembershipAuthority path, so everything
 // below it is the untouched legacy surface for every unmigrated org.
 import { AccessV2TeamSection } from '@/components/accessV2';
+import MembersSpotlight from '@/components/accessV2/MembersSpotlight';
 import { useAuthoritySubjects, useAuthorityMemberships } from '@/hooks/accessV2';
-import {
-  buildV2LegacyRoles,
-  buildV2PermissionColumns,
-  buildV2PermissionsMatrix,
-  buildV2MembersByRole,
-} from '@/lib/accessV2/legacyBridge';
+import { buildV2LegacyRoles, buildV2MatrixView } from '@/lib/accessV2/legacyBridge';
 
 const OrgStructurePage = () => {
   const router = useRouter();
@@ -95,19 +91,42 @@ const OrgStructurePage = () => {
   const v2Sections = useMemo(() => {
     if (!v2Live) return null;
     const subjects = [...(v2.roles || []), ...(v2.groups || [])];
+    const view = buildV2MatrixView(subjects);
     return {
-      roles: buildV2LegacyRoles({ roles: v2.roles, groups: v2.groups, membersOf, groupMembers }),
-      permissionColumns: buildV2PermissionColumns(subjects),
-      permissionsMatrix: buildV2PermissionsMatrix(subjects),
-      membersByRole: buildV2MembersByRole({
-        roles: v2.roles,
-        groups: v2.groups,
+      matrixRoles: buildV2LegacyRoles({
+        roles: view.rows.filter((s) => !s.isGroup),
+        groups: view.rows.filter((s) => s.isGroup),
         membersOf,
         groupMembers,
-        legacyMembersByRole: membersByRole,
       }),
+      permissionColumns: view.columns,
+      permissionsMatrix: view.matrix,
+      hidden: view.hidden,
     };
-  }, [v2Live, v2.roles, v2.groups, membersOf, groupMembers, membersByRole]);
+  }, [v2Live, v2.roles, v2.groups, membersOf, groupMembers]);
+
+  // The matrix only lists rows with DISTINCT permissions; everyone left out gets a sentence.
+  const matrixNotes = useMemo(() => {
+    if (!v2Sections) return [];
+    const notes = [];
+    const { inheritOnly, silent } = v2Sections.hidden;
+    if (inheritOnly.length) {
+      const groups = [...new Set(inheritOnly.flatMap((r) => r.groupNames))].join(', ');
+      notes.push(
+        inheritOnly.length === 1
+          ? `${inheritOnly[0].name} isn't listed — it holds exactly what ${groups || 'its group'} grants (see the group's row).`
+          : `${inheritOnly.length} roles aren't listed — they hold exactly what ${groups || 'their group'} grants (see the group's row).`
+      );
+    }
+    if (silent.length) {
+      const shownNames = silent.slice(0, 3).join(', ');
+      const rest = silent.length - 3;
+      notes.push(
+        `${shownNames}${rest > 0 ? ` and ${rest} more` : ''} ${silent.length === 1 ? 'has' : 'have'} no extra permissions yet — a role-edit vote can grant some.`
+      );
+    }
+    return notes;
+  }, [v2Sections]);
 
   // Role claiming and application functionality
   const {
@@ -304,35 +323,48 @@ const OrgStructurePage = () => {
           </Box>
           )}
 
-          {/* Permissions Matrix Section — v2 orgs read the fold mirror via the legacy bridge */}
+          {/* Permissions Matrix Section — v2 orgs read the fold mirror via the legacy bridge.
+              Only rows with DISTINCT permissions render; the notes explain everyone else. */}
           <Box as="section">
             <Heading size="lg" color="warmGray.900" mb={4}>
               Permissions
             </Heading>
             <Text color="warmGray.600" mb={4}>
-              What each role can do across the organization&apos;s systems
+              {v2Live
+                ? 'Who can do what — only roles and groups with permissions of their own are listed'
+                : "What each role can do across the organization's systems"}
             </Text>
             <PermissionsMatrix
-              roles={v2Sections ? v2Sections.roles : roles}
+              roles={v2Sections ? v2Sections.matrixRoles : roles}
               permissionsMatrix={v2Sections ? v2Sections.permissionsMatrix : permissionsMatrix}
               permissionColumns={v2Sections ? v2Sections.permissionColumns : permissionColumns}
               loading={v2Live ? v2.loading : loading}
             />
+            {matrixNotes.map((note) => (
+              <Text key={note} fontSize="sm" color="warmGray.500" mt={2}>
+                {note}
+              </Text>
+            ))}
           </Box>
 
-          {/* Members Section — v2 orgs group by authority roles (groups included) */}
+          {/* Members Section — v2 orgs get the people-first spotlight (roles are the badges);
+              legacy orgs keep the grouped-by-role accordions. */}
           <Box as="section">
             <Heading size="lg" color="warmGray.900" mb={4}>
               Members
             </Heading>
             <Text color="warmGray.600" mb={4}>
-              Members of the organization grouped by their roles
+              {v2Live ? 'The people behind the org — expand to meet everyone' : 'Members of the organization grouped by their roles'}
             </Text>
-            <MembersSection
-              roles={v2Sections ? v2Sections.roles : roles}
-              membersByRole={v2Sections ? v2Sections.membersByRole : membersByRole}
-              loading={v2Live ? v2.loading : loading}
-            />
+            {v2Live ? (
+              <MembersSpotlight legacyMembersByRole={membersByRole} loading={loading} />
+            ) : (
+              <MembersSection
+                roles={roles}
+                membersByRole={membersByRole}
+                loading={loading}
+              />
+            )}
           </Box>
 
           {/* Vouching Section — legacy orgs only: v2 vouching lives in the role drawer and the

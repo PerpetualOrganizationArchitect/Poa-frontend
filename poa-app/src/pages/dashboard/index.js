@@ -39,6 +39,7 @@ import { FiUsers, FiAward, FiActivity, FiCheckCircle, FiChevronDown, FiChevronRi
 import { useTour } from '@/features/tour';
 import { useIPFScontext } from "@/context/ipfsContext";
 import { useOrgStructure, useOrgTheme } from '@/hooks';
+import { useAuthoritySubjects } from '@/hooks/accessV2';
 import { useOrgName } from '@/hooks/useOrgName';
 import { VouchingSection } from '@/components/orgStructure/VouchingSection';
 import { OrgStructureCard } from '@/components/dashboard/OrgStructureCard';
@@ -89,6 +90,14 @@ const PerpetualOrgDashboard = () => {
   const { recommendedTasks } = useProjectContext();
   const { userData } = useUserContext();
   const { roles, totalMembers, governance, eligibilityModuleAddress } = useOrgStructure();
+
+  // On a live-authority org the structure card previews the fold mirror's roles, not the retired
+  // hat entities (which render raw subject ids and miss every role created after migration).
+  const v2 = useAuthoritySubjects();
+  const cardRoles = useMemo(() => {
+    if (!v2.enabled) return roles;
+    return (v2.roles || []).map((r) => ({ id: r.subjectId, hatId: r.hatId, name: r.name }));
+  }, [v2.enabled, v2.roles, roles]);
 
   // Vouching section logic - only show if user can vouch for any role
   const userHatIds = userData?.hatIds || [];
@@ -508,7 +517,7 @@ const PerpetualOrgDashboard = () => {
 
             <GridItem area={'orgStructure'}>
               <OrgStructureCard
-                roles={roles}
+                roles={cardRoles}
                 totalMembers={totalMembers}
                 governance={governance}
                 userDAO={userDAO}

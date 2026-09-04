@@ -73,7 +73,7 @@ function MemberLine({ membership }) {
       <UserIdentity address={membership.user} usernameHint={membership.username} />
       <Tooltip label={copy.memberWhy}>
         <Badge colorScheme={membership.rule?.sticky ? 'purple' : 'gray'} fontSize="0.65rem">
-          {membership.rule?.sticky ? 'Locked to a vote' : copy.badge}
+          {membership.rule?.sticky ? 'Locked to a vote' : copy.memberBadge || copy.badge}
         </Badge>
       </Tooltip>
     </HStack>
@@ -118,7 +118,7 @@ export default function SubjectDetailPanel({ subject, isOpen, onClose }) {
             </HStack>
             <Text fontSize="xs" color="warmGray.500" fontWeight="normal">
               {subject.isGroup
-                ? `${rows.length} people through ${subject.memberRoles?.length || 0} role(s)`
+                ? `${rows.length} ${rows.length === 1 ? 'person' : 'people'} through ${subject.memberRoles?.length || 0} role${(subject.memberRoles?.length || 0) === 1 ? '' : 's'}`
                 : subject.unlimitedSeats
                   ? `${rows.length} member${rows.length === 1 ? '' : 's'}`
                   : `${rows.length} of ${subject.maxMembers} seats`}

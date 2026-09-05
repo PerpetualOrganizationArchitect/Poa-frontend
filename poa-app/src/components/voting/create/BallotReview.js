@@ -10,6 +10,13 @@ import {
 import { utils } from 'ethers';
 import { POLL_BADGE, BINDING_BADGE, displayName, TYPE_EXPLAINER } from '@/config/votingVocabulary';
 import { VOTE_PALETTE } from '@/components/voting/votingDisplay';
+import {
+  TRANSFER_DESTINATION,
+  BOUNTY_POOL_LABEL,
+  TRANSFER_OPTION_NAMES,
+  BOUNTY_POOL_OPTION_NAMES,
+  transferOptionNames,
+} from '@/lib/voting/treasuryBatches';
 import { formatVotingEnds } from './DurationField';
 
 /**
@@ -32,15 +39,19 @@ export const POLL_REVIEW_BADGE = `${POLL_BADGE} · ${displayName('Direct Democra
 /** Badge binding (auto-executing) proposal types pass in. */
 export const BINDING_REVIEW_BADGE = `${BINDING_BADGE} · ${displayName('Hybrid')}`;
 
-/** The static Yes/No ballot a transferFunds payout is voted on. */
-export const TRANSFER_OPTIONS = ['Yes — send the funds', 'No — do not send'];
+/** The static Yes/No ballot a transferFunds payout is voted on — the SAME pair submitted on chain. */
+export const TRANSFER_OPTIONS = TRANSFER_OPTION_NAMES;
+
+/** The same ballot when the money goes to the task-reward pool instead of a person. */
+export const BOUNTY_POOL_OPTIONS = BOUNTY_POOL_OPTION_NAMES;
 
 /**
  * Choices as voters will see them, derived from the form state. transferFunds
- * has no editable options — it is always the static Yes/No ballot above.
+ * has no editable options — it is always a static Yes/No ballot, and it is the
+ * exact pair `useProposalForm` submits as the option names.
  */
 export function deriveBallotOptions(proposal) {
-  if (proposal?.type === 'transferFunds') return TRANSFER_OPTIONS;
+  if (proposal?.type === 'transferFunds') return transferOptionNames(proposal.transferDestination);
   return (proposal?.options || []).filter(o => o.trim() !== '');
 }
 
@@ -62,6 +73,10 @@ const Row = ({ label, children }) => (
 const BallotReview = ({
   proposal,
   whoCanVoteLabel,
+  // The symbol of the asset a payout moves. `nativeCurrencySymbol` is the
+  // historical prop name and is still accepted; it was always the SELECTED
+  // asset's symbol, not the chain's, so `symbol` says what it means.
+  symbol,
   nativeCurrencySymbol = 'ETH',
   badge = POLL_REVIEW_BADGE,
   explainer = TYPE_EXPLAINER,
@@ -69,6 +84,7 @@ const BallotReview = ({
   outcome = null,
 }) => {
   const isTransfer = proposal.type === 'transferFunds';
+  const payoutSymbol = symbol || nativeCurrencySymbol;
   const shownOptions = options || deriveBallotOptions(proposal);
 
   // Binding badges get the amethyst treatment PollDetail already uses; poll
@@ -131,15 +147,24 @@ const BallotReview = ({
       {isTransfer && (
         <Row label="Payout">
           <Text fontSize="sm" color="gray.200">
-            Send{' '}
+            {proposal.transferDestination === TRANSFER_DESTINATION.BOUNTY_POOL ? 'Move' : 'Send'}{' '}
             <Text as="span" color="green.300" fontWeight="bold">
-              {proposal.transferAmount || '0'} {nativeCurrencySymbol}
+              {proposal.transferAmount || '0'} {payoutSymbol}
             </Text>{' '}
             to{' '}
-            <Text as="span" fontFamily="mono" color="white">
-              {checksumTruncate(proposal.transferAddress)}
-            </Text>
+            {proposal.transferDestination === TRANSFER_DESTINATION.BOUNTY_POOL ? (
+              <Text as="span" color="white">the {BOUNTY_POOL_LABEL}</Text>
+            ) : (
+              <Text as="span" fontFamily="mono" color="white">
+                {checksumTruncate(proposal.transferAddress)}
+              </Text>
+            )}
           </Text>
+          {proposal.transferSourceLabel && (
+            <Text fontSize="xs" color="gray.400" mt={1}>
+              Paid from {proposal.transferSourceLabel}
+            </Text>
+          )}
         </Row>
       )}
 

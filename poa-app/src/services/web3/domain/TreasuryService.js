@@ -218,16 +218,19 @@ export class TreasuryService {
    * @param {Object} [options={}] - Transaction options
    * @returns {Promise<TransactionResult>}
    */
-  async finalizeDistribution(contractAddress, distributionId, options = {}) {
+  async finalizeDistribution(contractAddress, distributionId, minClaimPeriodBlocks = 0, options = {}) {
     requireAddress(contractAddress, 'PaymentManager contract address');
 
     const contract = this.factory.createWritable(contractAddress, PaymentManagerABI);
     const id = ethers.BigNumber.from(distributionId);
 
+    // The ABI takes two arguments — `finalizeDistribution(uint256 distributionId,
+    // uint256 minClaimPeriodBlocks)`. Passing one made ethers throw "missing
+    // argument" before any RPC was made (this method had no caller until now).
     return this.txManager.execute(
       contract,
       'finalizeDistribution',
-      [id],
+      [id, ethers.BigNumber.from(minClaimPeriodBlocks || 0)],
       options
     );
   }

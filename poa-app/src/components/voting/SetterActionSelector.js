@@ -36,11 +36,18 @@ import {
   SETTER_TEMPLATES,
   CONTRACT_MAP,
   RAW_FUNCTIONS,
-  getTemplateById,
   isContractAvailable,
   SETTER_TITLE_FALLBACK,
   buildSetterCopy,
 } from '@/config/setterDefinitions';
+import {
+  availableTemplates as filterAvailableTemplates,
+  availableRawFunctions,
+  resolveSetterTemplate,
+  getAvailableTemplateById,
+} from '@/lib/voting/setterAvailability';
+import { useOrgAuthority } from '@/hooks/accessV2/useOrgAuthority';
+import { useAuthoritySubjects } from '@/hooks/accessV2/useAuthoritySubjects';
 import { applyAutoCopy } from '@/components/voting/create/autoCopy';
 import { inputStyles } from '@/components/shared/glassStyles';
 
@@ -291,22 +298,51 @@ const SetterActionSelector = ({
   // members, so it stays collapsed until deliberately opened.
   const devModeOpen = mode === 'advanced';
 
-  // Get the selected template if in template mode
-  const selectedTemplate = useMemo(() => {
-    if (mode === 'template' && proposal.setterTemplate) {
-      return getTemplateById(proposal.setterTemplate);
-    }
-    return null;
-  }, [mode, proposal.setterTemplate]);
+  // Which access system this org is on. FALSE (every org that hasn't cut over,
+  // and every endpoint that can't answer yet) must render exactly what this
+  // screen rendered before access v2 existed — which is what the availability
+  // lib guarantees: no flag hides anything, and no copy is swapped.
+  const { enabled: authorityEnabled, address: authorityAddress } = useOrgAuthority();
+  // Silent on a legacy org: the hook skips its query and returns empty arrays.
+  const { subjects: authoritySubjects } = useAuthoritySubjects();
 
-  // Only offer actions whose target contract this org actually deployed.
-  // Optional modules (Email Invites) are absent on most orgs, and a template
-  // pointing at a missing contract can only produce a proposal that executes
-  // nothing. Callers that don't pass contractAddresses (tests) see everything.
-  const availableTemplates = useMemo(() => {
-    if (!contractAddresses) return SETTER_TEMPLATES;
-    return SETTER_TEMPLATES.filter(t => isContractAvailable(t.contract, contractAddresses));
-  }, [contractAddresses]);
+  const availabilityCtx = useMemo(
+    () => ({ authorityEnabled, contractAddresses }),
+    [authorityEnabled, contractAddresses],
+  );
+
+  // Get the selected template if in template mode.
+  //
+  // Resolved through the availability lib, not `getTemplateById`: a deep link
+  // (`?propose=allow-voter-dd`, or the /rules "Propose a change" rows) can name
+  // an action that still EXISTS but that this org must not propose. Rendering
+  // its form anyway would let a member configure and pass a vote that changes
+  // nothing on chain.
+  const resolvedTemplate = useMemo(() => {
+    if (mode !== 'template' || !proposal.setterTemplate) return null;
+    return resolveSetterTemplate(proposal.setterTemplate, availabilityCtx);
+  }, [mode, proposal.setterTemplate, availabilityCtx]);
+  const selectedTemplate = resolvedTemplate?.available ? resolvedTemplate.template : null;
+  const unavailableTemplate = resolvedTemplate && !resolvedTemplate.available
+    ? resolvedTemplate
+    : null;
+
+  // Only offer actions whose target contract this org actually deployed, and
+  // that its access system still honours. Optional modules (Email Invites) are
+  // absent on most orgs, and a template pointing at a missing contract can only
+  // produce a proposal that executes nothing. Callers that don't pass
+  // contractAddresses (tests) skip the deployed-contract half.
+  const availableTemplates = useMemo(
+    () => filterAvailableTemplates({ templates: SETTER_TEMPLATES, ...availabilityCtx }),
+    [availabilityCtx],
+  );
+
+  // The raw-ABI list, with the entries that went dead at the access-v2 cutover
+  // removed and the partly-dead ones annotated.
+  const rawFunctions = useMemo(
+    () => availableRawFunctions({ rawFunctions: RAW_FUNCTIONS, authorityEnabled }),
+    [authorityEnabled],
+  );
 
   // Hide a category entirely once none of its actions are available, rather
   // than letting members click into an empty list.
@@ -326,21 +362,22 @@ const SetterActionSelector = ({
   const availableContracts = useMemo(() => (
     Object.entries(CONTRACT_MAP).filter(([key]) => (
       // templateOnly functions are not raw-callable, so a contract whose entries are
-      // all template-only has nothing to offer here.
-      (RAW_FUNCTIONS[key] || []).some((fn) => !fn.templateOnly)
+      // all template-only has nothing to offer here. Same for a contract whose
+      // whole raw surface went dead at the access-v2 cutover.
+      (rawFunctions[key] || []).some((fn) => !fn.templateOnly)
       && (!contractAddresses || isContractAvailable(key, contractAddresses))
     ))
-  ), [contractAddresses]);
+  ), [contractAddresses, rawFunctions]);
 
   // Get raw function for advanced mode
   const selectedRawFunction = useMemo(() => {
     if (mode === 'advanced' && proposal.setterContract && proposal.setterFunction) {
-      return RAW_FUNCTIONS[proposal.setterContract]?.find(
+      return rawFunctions[proposal.setterContract]?.find(
         f => f.name === proposal.setterFunction
       );
     }
     return null;
-  }, [mode, proposal.setterContract, proposal.setterFunction]);
+  }, [mode, proposal.setterContract, proposal.setterFunction, rawFunctions]);
 
   // The title/description this action suggests, as a proposal patch. The title
   // is the curated per-template string — never `preview({})`, which is empty or
@@ -354,11 +391,19 @@ const SetterActionSelector = ({
 
   // Handle template selection
   const handleTemplateSelect = (templateId) => {
-    const template = getTemplateById(templateId);
+    // The copy-applied template, so the suggested title/description match what
+    // this org's members are actually reading on the card they clicked.
+    const template = resolveSetterTemplate(templateId, availabilityCtx).template;
     const initialValues = template?.inputs?.reduce((acc, input) => {
       if (input.type === 'votingClassWeights') {
         // Initialize with current on-chain voting classes
         acc[input.name] = votingClasses.length > 0 ? votingClasses.map(c => ({ ...c })) : [];
+      } else if (input.seedFrom === 'votingClasses') {
+        // A hidden snapshot of the classes, for a template that decides AGAINST them rather than
+        // rewriting them (change-class-voters). `template.validate` is handed setterValues and
+        // nothing else, so a class list that isn't in here can't be checked. The field re-writes
+        // it when a class is chosen, which is what covers the deep-link path.
+        acc[input.name] = votingClasses.map(c => ({ ...c }));
       } else {
         acc[input.name] = input.default || '';
       }
@@ -426,8 +471,11 @@ const SetterActionSelector = ({
     // The generated copy describes the template path. Drop it on the way into
     // Developer mode (which has no auto-copy of its own), and re-derive it on
     // the way back out if the action survived the trip.
+    // `getAvailableTemplateById`, not the raw lookup: an action this org can no
+    // longer propose must not have its copy re-offered on the way back out of
+    // Developer mode — clearAutoCopy runs instead.
     const survivingTemplate = newMode === 'template' && started
-      ? getTemplateById(proposal.setterTemplate)
+      ? getAvailableTemplateById(proposal.setterTemplate, availabilityCtx)
       : null;
     Object.assign(
       update,
@@ -505,6 +553,32 @@ const SetterActionSelector = ({
             </>
           )}
 
+          {/* A deep link named an action this org can't propose. Say which one
+              and why — silently dropping back to the category list looks like a
+              broken link, and rendering its form would stage a vote that
+              passes and changes nothing. */}
+          {unavailableTemplate && (
+            <>
+              <Alert status="info" borderRadius="md" bg="rgba(66, 153, 225, 0.15)">
+                <AlertIcon color="blue.300" />
+                <Text fontSize="sm" color="gray.200">
+                  {unavailableTemplate.reason}
+                </Text>
+              </Alert>
+              <Button
+                size="xs"
+                variant="link"
+                alignSelf="flex-start"
+                onClick={handleChangeTemplate}
+                color="gray.400"
+                fontWeight="medium"
+                _hover={{ color: 'white' }}
+              >
+                Choose another action
+              </Button>
+            </>
+          )}
+
           {selectedTemplate && (
             <>
               <HStack justify="space-between">
@@ -543,7 +617,7 @@ const SetterActionSelector = ({
               {selectedTemplate.inputs?.length > 0 && (
                 <SetterParamInputs
                   inputs={selectedTemplate.inputs.map(input =>
-                    input.type === 'votingClassWeights'
+                    (input.type === 'votingClassWeights' || input.type === 'votingClassSelect')
                       ? { ...input, currentClasses: votingClasses }
                       : input
                   )}
@@ -561,7 +635,27 @@ const SetterActionSelector = ({
                   })}
                   allRoles={allRoles}
                   allProjects={allProjects}
+                  authoritySubjects={authoritySubjects}
                 />
+              )}
+
+              {/* An access-v2 action builds a BATCH against live authority
+                  state, so it can only be staged once that state is on hand.
+                  Keyed on the TARGET contract, not on `buildBatch` alone: a
+                  template can build its own calls without touching the
+                  authority (change-class-voters targets HybridVoting and works
+                  on a legacy org), and on such an org there is no authority
+                  address to wait for — the warning would never clear. */}
+              {selectedTemplate.buildBatch
+                && selectedTemplate.contract === 'membershipAuthority'
+                && !authorityAddress && (
+                <Alert status="warning" borderRadius="md" bg="rgba(236, 201, 75, 0.15)">
+                  <AlertIcon color="yellow.300" />
+                  <Text fontSize="sm" color="yellow.200">
+                    This group’s roles and permissions are still loading — give it a moment before
+                    creating the vote.
+                  </Text>
+                </Alert>
               )}
 
               <SetterPreview
@@ -636,7 +730,7 @@ const SetterActionSelector = ({
               })}
               {...inputStyles}
             >
-              {RAW_FUNCTIONS[proposal.setterContract]?.filter((fn) => !fn.templateOnly).map((fn) => (
+              {rawFunctions[proposal.setterContract]?.filter((fn) => !fn.templateOnly).map((fn) => (
                 <option key={fn.name} value={fn.name} style={{ background: '#1a1a2e' }}>
                   {fn.name} - {fn.description}
                 </option>

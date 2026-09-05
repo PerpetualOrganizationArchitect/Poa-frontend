@@ -16,7 +16,30 @@ import {
   SETTER_TITLE_FALLBACK,
   buildSetterCopy,
   SETTER_TITLE_MAX,
+  permsFromSubject,
+  normalizePermSelection,
+  describePermChanges,
+  permChangeSummaries,
+  joinPhrases,
+  classesFromValues,
 } from './setterDefinitions';
+import { isTemplateAvailable } from '@/lib/voting/setterAvailability';
+import { estimateBatchGas } from '@/lib/accessV2/proposalBuilders';
+import hybridVotingAbi from '../../abi/HybridVotingNew.json';
+import { normalizeAuthoritySubjects } from '@/lib/accessV2/normalize';
+import { authorityInterface } from '@/lib/accessV2/txBuilders';
+import {
+  decodePermWord,
+  PERM_KEYS,
+  GLOBAL_CTX,
+} from '@/lib/accessV2/permKeys';
+import {
+  subjectsResponse,
+  AUTHORITY_ADDRESS,
+  MEMBERS_ID,
+  EXECS_ID,
+  EVERYONE_GROUP_ID,
+} from '@/lib/accessV2/fixtures';
 
 // ── Title copy members read (from #465) ──────────────────────────────────
 /** Every id the create-a-vote wizard can reach today. */
@@ -26,9 +49,11 @@ const TEMPLATE_IDS = [
   'change-threshold-dd',
   'change-quorum-hybrid',
   'change-voting-split',
+  'change-class-voters',
   'change-quorum-dd',
   'allow-proposal-creator-hybrid',
   'allow-voter-dd',
+  'edit-role-permissions',
   'pause-hybrid-voting',
   'unpause-hybrid-voting',
   'pause-dd-voting',
@@ -132,7 +157,9 @@ describe('setter template wiring', () => {
   // buildProposalData silently produced batches = [[], []].
   it('has a RAW_FUNCTIONS signature for every single-call template', () => {
     for (const t of SETTER_TEMPLATES) {
-      if (t.buildCalls) continue; // multi-call templates encode their own calls
+      // multi-call templates encode their own calls; `buildBatch` templates build a whole
+      // governance batch from live state and never touch a hand-written signature.
+      if (t.buildCalls || t.buildBatch) continue;
       const fns = RAW_FUNCTIONS[t.contract];
       expect(fns, `no RAW_FUNCTIONS entry for contract "${t.contract}" (template "${t.id}")`)
         .toBeTruthy();
@@ -158,6 +185,9 @@ describe('setter template wiring', () => {
 
     // A per-contract `continue` would let a new RAW_FUNCTIONS key, or a renamed ABI
     // file, skip silently while the global counter stayed green. Demand coverage.
+    // membershipAuthority is deliberately absent from RAW_FUNCTIONS: its write surface is not
+    // safe to offer as free-text raw calls, and `edit-role-permissions` encodes through
+    // `lib/accessV2/txBuilders` (which builds its Interface from the real artifact).
     for (const contractKey of Object.keys(RAW_FUNCTIONS)) {
       expect(ABI_FOR[contractKey], `RAW_FUNCTIONS.${contractKey} has no ABI mapping in this test`)
         .toBeTruthy();
@@ -340,10 +370,14 @@ describe('member-facing vocabulary', () => {
     const out = [];
     for (const t of SETTER_TEMPLATES) {
       out.push([`${t.id}.name`, t.name], [`${t.id}.description`, t.description]);
+      // The access-v2 copy is rendered too — on a migrated org it REPLACES the strings above,
+      // so it is held to exactly the same bar.
+      if (t.v2Description) out.push([`${t.id}.v2Description`, t.v2Description]);
       for (const i of (t.inputs || [])) {
         if (i.type === 'hidden') continue; // never rendered
         if (i.label) out.push([`${t.id}.${i.name}.label`, i.label]);
         if (i.helpText) out.push([`${t.id}.${i.name}.helpText`, i.helpText]);
+        if (i.v2HelpText) out.push([`${t.id}.${i.name}.v2HelpText`, i.v2HelpText]);
         if (i.placeholder) out.push([`${t.id}.${i.name}.placeholder`, i.placeholder]);
       }
     }
@@ -559,5 +593,481 @@ describe('a template can sharpen its own title', () => {
       const line = summarizeProposal(diffInvites(next, cur), next.length);
       expect(line.length, `too long: "${line}"`).toBeLessThanOrEqual(SETTER_TITLE_MAX);
     }
+  });
+});
+
+// ── set-project-permissions: the composite project id ────────────────────
+// The picker's value is the SUBGRAPH id, `{taskManagerAddress}-{n}`. `pid` is a bytes32, so
+// handing that string to ethers threw INVALID_ARGUMENT at submit — the template could be
+// configured, reviewed and then never actually proposed.
+describe('set-project-permissions encodes a real project id', () => {
+  const template = getTemplateById('set-project-permissions');
+  const TM = `0x${'cc'.repeat(20)}`;
+  const ROLE = '1';
+
+  const encodeWith = (values) => {
+    const fn = RAW_FUNCTIONS[template.contract].find(f => f.name === template.functionName);
+    const iface = new utils.Interface([fn.signature]);
+    return iface.encodeFunctionData(template.functionName, template.encode(values));
+  };
+
+  it('accepts the composite subgraph id the project picker supplies', () => {
+    const data = encodeWith({ project: `${TM}-5`, role: ROLE, permissions: [1, 2] });
+    const [pid, hatId, mask] = utils.defaultAbiCoder.decode(
+      ['bytes32', 'uint256', 'uint8'], `0x${data.slice(10)}`,
+    );
+    expect(pid).toBe(`0x${'0'.repeat(62)}05`);
+    expect(hatId.toString()).toBe(ROLE);
+    expect(mask).toBe(3);
+  });
+
+  it('leaves an already-bytes32 id untouched', () => {
+    const pid = `0x${'cd'.repeat(32)}`;
+    const data = encodeWith({ project: pid, role: ROLE, permissions: [4] });
+    expect(utils.defaultAbiCoder.decode(['bytes32', 'uint256', 'uint8'], `0x${data.slice(10)}`)[0])
+      .toBe(pid);
+  });
+
+  it('no longer throws on the value the picker actually produces', () => {
+    expect(() => encodeWith({ project: `${TM}-5`, role: ROLE, permissions: [1] })).not.toThrow();
+  });
+});
+
+// ── access v2: edit-role-permissions ─────────────────────────────────────
+// The one template that replaces the three that went silently dead at the cutover. It does not
+// encode a setter — it diffs the role's live permission rows and returns a whole governance
+// batch, so every assertion here decodes the calldata back through the REAL MembershipAuthority
+// ABI rather than trusting the builder's own shape.
+describe('edit-role-permissions', () => {
+  const template = getTemplateById('edit-role-permissions');
+  const { subjects } = normalizeAuthoritySubjects(
+    subjectsResponse().membershipAuthorityContract.subjects,
+  );
+  const subjectOf = (id) => subjects.find((s) => s.subjectId === id);
+  const ctx = { authority: AUTHORITY_ADDRESS, subjects, roleNames: {}, projectNames: {} };
+
+  const decodeBatch = (batch) => batch.map((c) => {
+    const parsed = authorityInterface.parseTransaction({ data: c.data });
+    return { target: c.target, value: c.value, name: parsed.name, args: parsed.args };
+  });
+
+  it('targets the authority and is hidden until the org has one', () => {
+    expect(template.contract).toBe('membershipAuthority');
+    expect(template.v2Only).toBe(true);
+    expect(CONTRACT_MAP.membershipAuthority.contextKey).toBe('membershipAuthorityAddress');
+    expect(isContractAvailable('membershipAuthority', {})).toBeFalsy();
+    expect(isContractAvailable('membershipAuthority', {
+      membershipAuthorityAddress: AUTHORITY_ADDRESS,
+    })).toBeTruthy();
+  });
+
+  it('seeds from the role’s OWN global rows, never the folded group ones', () => {
+    // Members carries DD_VOTE itself and CLAIM only through the Everyone group. Seeding the
+    // editor with the folded value would show a tick the member cannot untick here — and
+    // unticking it would emit a clearPerm for a row this subject does not own.
+    expect(permsFromSubject(subjectOf(MEMBERS_ID))).toEqual({ DD_VOTE: true });
+    expect(subjectOf(MEMBERS_ID).permEffective(PERM_KEYS.TM_PERMS)).toBe('2');
+    expect(permsFromSubject(subjectOf(EVERYONE_GROUP_ID))).toEqual({ TM_PERMS: 2 });
+    expect(permsFromSubject(subjectOf(EXECS_ID))).toEqual({});
+    expect(permsFromSubject(null)).toEqual({});
+  });
+
+  it('grants a permission as ONE setPerm on the authority', () => {
+    const built = template.buildBatch(
+      { subjectId: MEMBERS_ID, perms: { DD_VOTE: true, HV_CREATE: true } },
+      ctx,
+    );
+    const calls = decodeBatch(built.batch);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].name).toBe('setPerm');
+    expect(calls[0].target).toBe(AUTHORITY_ADDRESS);
+    expect(calls[0].value).toBe('0');
+    expect(calls[0].args[0].toString()).toBe(MEMBERS_ID);
+    expect(calls[0].args[1]).toBe(PERM_KEYS.HV_CREATE);
+    expect(calls[0].args[2]).toBe(GLOBAL_CTX);
+    expect(decodePermWord(calls[0].args[3].toString()).enabled).toBe(true);
+    // DD_VOTE was already there and is NOT rewritten.
+    expect(calls.some((c) => c.args[1] === PERM_KEYS.DD_VOTE)).toBe(false);
+  });
+
+  it('revokes a permission as a clearPerm', () => {
+    const built = template.buildBatch({ subjectId: MEMBERS_ID, perms: {} }, ctx);
+    const calls = decodeBatch(built.batch);
+    expect(calls.map((c) => c.name)).toEqual(['clearPerm']);
+    expect(calls[0].args[1]).toBe(PERM_KEYS.DD_VOTE);
+    expect(calls[0].args[2]).toBe(GLOBAL_CTX);
+  });
+
+  it('writes the task mask as one OR-mask row', () => {
+    const built = template.buildBatch(
+      { subjectId: EVERYONE_GROUP_ID, perms: { TM_PERMS: 6 } },
+      ctx,
+    );
+    const calls = decodeBatch(built.batch);
+    expect(calls.map((c) => c.name)).toEqual(['setPerm']);
+    expect(calls[0].args[1]).toBe(PERM_KEYS.TM_PERMS);
+    expect(decodePermWord(calls[0].args[3].toString()).value).toBe('6');
+  });
+
+  it('says out loud that a group hands its permissions to every role in it', () => {
+    const built = template.buildBatch(
+      { subjectId: EVERYONE_GROUP_ID, perms: { TM_PERMS: 6 } },
+      ctx,
+    );
+    expect(built.warnings.join(' ')).toContain('Every role inside “Everyone”');
+    // …and a plain role gets no such warning.
+    expect(template.buildBatch({ subjectId: MEMBERS_ID, perms: {} }, ctx).warnings).toEqual([]);
+  });
+
+  it('names the role AND the permissions in its summaries', () => {
+    const built = template.buildBatch(
+      { subjectId: MEMBERS_ID, perms: { HV_CREATE: true, TM_PERMS: 3 } },
+      ctx,
+    );
+    const text = built.summaries.join(' | ');
+    expect(text).toContain('Members');
+    expect(text).toContain('open a binding vote');
+    expect(text).toContain('create tasks');
+    expect(text).toContain('Stop “Members” being able to vote in community votes');
+    // One sentence per KIND of change, not one per call.
+    expect(built.summaries.length).toBeLessThanOrEqual(4);
+  });
+
+  it('carries the announceWinner gas floor', () => {
+    const built = template.buildBatch(
+      { subjectId: MEMBERS_ID, perms: { DD_VOTE: true, HV_CREATE: true, PAY_CREATE: true } },
+      ctx,
+    );
+    expect(built.batch).toHaveLength(2);
+    expect(built.gasLimit).toBe(400_000 + 250_000 * 2);
+  });
+
+  // An empty batch is the silent no-op this codebase keeps having to close: the vote runs, passes,
+  // reports success and executes nothing.
+  it('refuses to build a proposal that would change nothing', () => {
+    expect(() => template.buildBatch({ subjectId: MEMBERS_ID, perms: { DD_VOTE: true } }, ctx))
+      .toThrow(/Nothing would change/);
+  });
+
+  it('refuses a role that is no longer in the org, rather than diffing a stale picture', () => {
+    expect(() => template.buildBatch({ subjectId: '999', perms: { DD_VOTE: true } }, ctx))
+      .toThrow(/isn’t in this group’s list/);
+    expect(() => template.buildBatch({ subjectId: '', perms: {} }, ctx)).toThrow(/Pick the role/);
+    expect(() => template.buildBatch({ subjectId: MEMBERS_ID, perms: {} }, { subjects }))
+      .toThrow(/aren’t loaded yet/);
+  });
+
+  it('ignores form values that are not permission keys', () => {
+    expect(normalizePermSelection({ NOT_A_KEY: true, DD_VOTE: true, TM_PERMS: 0 }))
+      .toEqual({ DD_VOTE: true });
+    expect(normalizePermSelection(null)).toEqual({});
+    const built = template.buildBatch(
+      { subjectId: MEMBERS_ID, perms: { DD_VOTE: true, NOT_A_KEY: true, HV_CREATE: true } },
+      ctx,
+    );
+    expect(built.batch).toHaveLength(1);
+  });
+
+  it('gates its own config screen on an actual change', () => {
+    expect(template.validate({})).toMatch(/Pick the role/);
+    expect(template.validate({ subjectId: MEMBERS_ID })).toMatch(/Choose what/);
+    expect(template.validate({
+      subjectId: MEMBERS_ID, permsCurrent: { DD_VOTE: true }, perms: { DD_VOTE: true },
+    })).toMatch(/Nothing has changed/);
+    expect(template.validate({
+      subjectId: MEMBERS_ID, permsCurrent: { DD_VOTE: true }, perms: { DD_VOTE: true, HV_CREATE: true },
+    })).toBeNull();
+  });
+
+  it('previews the change in the same voice as the other templates', () => {
+    const line = template.preview({
+      subjectId: MEMBERS_ID,
+      subjectName: 'Members',
+      permsCurrent: { DD_VOTE: true, TM_PERMS: 2 },
+      perms: { HV_CREATE: true, TM_PERMS: 3 },
+    }, {});
+    expect(line).toBe(
+      'Let “Members” open a binding vote; stop “Members” being able to vote in community votes; '
+      + 'let “Members” create tasks',
+    );
+    expect(line).not.toMatch(/0x|permKey|bytes32/i);
+  });
+
+  it('falls back to the role-name map, then to a neutral phrase', () => {
+    expect(template.preview({ subjectId: MEMBERS_ID, perms: {} }, { [MEMBERS_ID]: 'Members' }))
+      .toContain('“Members”');
+    expect(template.preview({ perms: {} }, {})).toBe(
+      'Leave “this role” with the permissions it already has',
+    );
+  });
+
+  it('flows through buildSetterCopy like every other template', () => {
+    const { title, description } = buildSetterCopy(template, {
+      subjectId: MEMBERS_ID, subjectName: 'Members',
+      permsCurrent: {}, perms: { HV_CREATE: true },
+    }, {}, {});
+    expect(title).toBe('Change what a role can do');
+    expect(description).toBe('If this vote passes: Let “Members” open a binding vote');
+  });
+});
+
+// ── change-class-voters ──────────────────────────────────────────────────
+// A Blended vote is tallied per CLASS, and each class carries its own list of roles. A role that
+// is not in that list has NO binding-vote power however many permissions it holds — so "who can
+// vote" is a different question from "what is this role allowed to do", and it needs its own
+// action. Every assertion here decodes the calldata back through the REAL HybridVoting ABI: the
+// helper's own Interface agreeing with itself would prove nothing about the deployed contract.
+describe('change-class-voters', () => {
+  const template = getTemplateById('change-class-voters');
+  const hybridVotingIface = new utils.Interface(hybridVotingAbi);
+
+  const HV = '0xf642dde77848dc195c8089f4042a311ed650d7a6';
+  const MEMBER = '29035862971903655586674243772344327311664727652070589302159213246545920';
+  const EXECUTIVE = '29035862971903655490893272468226273664268038455176265325988018110070784';
+  const TREASURER = '29035862971903655682455215076462380959061416848964913278330408383021056';
+
+  // Test6's live classes (getClasses(), 2026-09-03): DIRECT 80% + PARTICIPATION 20%, both
+  // counting Member and Executive.
+  const CLASSES = [
+    { classIndex: 0, strategy: 'DIRECT', slicePct: 80, hatIds: [MEMBER, EXECUTIVE] },
+    { classIndex: 1, strategy: 'PARTICIPATION', slicePct: 20, hatIds: [MEMBER, EXECUTIVE] },
+  ];
+  const ctx = {
+    contractAddresses: { votingContractAddress: HV },
+    roleNames: { [MEMBER]: 'Member', [EXECUTIVE]: 'Executive', [TREASURER]: 'Treasurer' },
+  };
+  // The exact form state the wizard holds: the picker writes a STRING index plus the class
+  // snapshot it indexes into, alongside the role id and the Add/Remove toggle.
+  const values = (over = {}) => ({
+    classIdx: '0', role: TREASURER, action: 'Add', votingClasses: CLASSES, ...over,
+  });
+
+  it('is offered on a legacy org AND on a migrated one', () => {
+    // `addHatToClass` writes the class's own electorate, which HybridVoting reads either way —
+    // unlike setCreatorHatAllowed, nothing about it went dead at the cutover.
+    expect(template.legacyOnly).toBeUndefined();
+    expect(template.v2Only).toBeUndefined();
+    expect(template.idsAreSubjects).toBe(true);
+    for (const authorityEnabled of [false, true]) {
+      expect(isTemplateAvailable(template, { authorityEnabled }), `authorityEnabled=${authorityEnabled}`)
+        .toBe(true);
+    }
+    expect(template.contract).toBe('hybridVoting');
+    expect(CONTRACT_MAP.hybridVoting.contextKey).toBe('votingContractAddress');
+  });
+
+  it('encodes addHatToClass against the real HybridVoting ABI', () => {
+    const built = template.buildBatch(values(), ctx);
+    expect(built.batch).toHaveLength(1);
+    const [call] = built.batch;
+    expect(call.target).toBe(utils.getAddress(HV));
+    expect(call.value).toBe('0');
+
+    const parsed = hybridVotingIface.parseTransaction({ data: call.data });
+    expect(parsed.name).toBe('addHatToClass');
+    expect(parsed.args.classIdx).toBe(0);
+    expect(parsed.args.hatId.toString()).toBe(TREASURER);
+  });
+
+  it('encodes removeHatFromClass, on the class the member actually picked', () => {
+    const built = template.buildBatch(
+      values({ classIdx: '1', role: EXECUTIVE, action: 'Remove' }),
+      ctx,
+    );
+    const parsed = hybridVotingIface.parseTransaction({ data: built.batch[0].data });
+    expect(parsed.name).toBe('removeHatFromClass');
+    expect(parsed.args.classIdx).toBe(1);
+    expect(parsed.args.hatId.toString()).toBe(EXECUTIVE);
+  });
+
+  it('names the role and the class in the sentence voters read, and funds the batch', () => {
+    const built = template.buildBatch(values(), ctx);
+    expect(built.summaries).toEqual([
+      'Let members of “Treasurer” vote in binding votes as Members (one vote each).',
+    ]);
+    expect(built.gasLimit).toBe(estimateBatchGas(built.batch));
+    expect(built.gasLimit).toBeGreaterThan(0);
+  });
+
+  // Both of these SUCCEED on chain and change nothing — the vote-passed-nothing-happened shape.
+  it('refuses an add for a role the class already counts', () => {
+    const bad = values({ role: MEMBER });
+    expect(template.validate(bad)).toMatch(/already votes in binding votes as Members/);
+    expect(() => template.buildBatch(bad, ctx)).toThrow(/already votes/);
+  });
+
+  it('refuses a remove for a role the class doesn’t count', () => {
+    const bad = values({ role: TREASURER, action: 'Remove' });
+    expect(template.validate(bad)).toMatch(/nothing to remove/);
+    expect(() => template.buildBatch(bad, ctx)).toThrow(/nothing to remove/);
+  });
+
+  it('refuses to guess an index into a class list it hasn’t got', () => {
+    expect(template.validate(values({ votingClasses: [] }))).toMatch(/haven’t loaded their voters/);
+    expect(template.validate(values({ votingClasses: undefined })))
+      .toMatch(/haven’t loaded their voters/);
+    // An index past the end of the snapshot is the same failure wearing a different hat.
+    expect(template.validate(values({ classIdx: '5' }))).toMatch(/which voters/);
+    expect(() => template.buildBatch(values({ votingClasses: [] }), ctx))
+      .toThrow(/haven’t loaded their voters/);
+  });
+
+  it('asks for the two answers it needs before anything else', () => {
+    expect(template.validate(values({ classIdx: '' }))).toMatch(/which voters/);
+    expect(template.validate(values({ role: '' }))).toMatch(/whose voting rights/);
+    expect(template.validate(values())).toBeNull();
+    expect(template.validate(values({ role: MEMBER, action: 'Remove' }))).toBeNull();
+  });
+
+  it('stays quiet when a removal leaves the class with voters and the role with a vote', () => {
+    // Executive votes in both classes and is one of two roles in each: no warning worth the noise.
+    expect(template.buildBatch(values({ role: EXECUTIVE, action: 'Remove' }), ctx).warnings)
+      .toEqual([]);
+  });
+
+  it('refuses to remove the last role from a class — an empty class is open to EVERYONE on chain', () => {
+    // HybridVotingCore: `if (n == 0) return true; // open class`. The old copy said the opposite
+    // (“would have no voters”); this is the one ballot sentence that could hand an org to sybils.
+    const soleClasses = [{ classIndex: 0, strategy: 'DIRECT', slicePct: 100, hatIds: [MEMBER] }];
+    const bad = values({ role: MEMBER, action: 'Remove', votingClasses: soleClasses });
+    expect(template.validate(bad)).toMatch(/open that part of every binding vote to anyone/);
+    expect(() => template.buildBatch(bad, ctx)).toThrow(/open that part of every binding vote/);
+  });
+
+  it('warns when a removal leaves the role with no vote anywhere', () => {
+    const twoRoles = [{ classIndex: 0, strategy: 'DIRECT', slicePct: 100, hatIds: [MEMBER, EXECUTIVE] }];
+    const built = template.buildBatch(
+      values({ role: MEMBER, action: 'Remove', votingClasses: twoRoles }),
+      ctx,
+    );
+    expect(built.warnings).toEqual(['Members of “Member” would have no vote in binding votes at all.']);
+  });
+
+  it('says so when adding the first role closes a class that was open to everyone', () => {
+    const openClass = [{ classIndex: 0, strategy: 'DIRECT', slicePct: 100, hatIds: [] }];
+    const built = template.buildBatch(
+      values({ role: MEMBER, action: 'Add', votingClasses: openClass }),
+      ctx,
+    );
+    expect(built.warnings.join(' ')).toMatch(/currently open to everyone/);
+  });
+
+  it('will not encode against an org whose voting contract is missing', () => {
+    expect(() => template.buildBatch(values(), { ...ctx, contractAddresses: {} }))
+      .toThrow(/Blended voting contract/);
+  });
+
+  it('previews in the member voice, with no ids or contract words', () => {
+    const line = template.preview(values(), ctx.roleNames);
+    expect(line).toBe(
+      'Let members of “Treasurer” vote in binding votes as Members (one vote each).',
+    );
+    expect(line).not.toMatch(/0x|hat|class \d|addHatToClass/i);
+
+    expect(template.preview(values({ classIdx: '1', action: 'Remove' }), ctx.roleNames))
+      .toBe('Stop members of “Treasurer” voting in binding votes as Contributors (weighted by shares).');
+    // No role-name map (the deep-link path passes {}) still reads as a sentence.
+    expect(template.preview(values(), {})).toContain('“this role”');
+  });
+
+  // The preview box renders on every keystroke, before anything is answered. Defaulting the index
+  // to 0 would announce a class the member never picked.
+  it('claims nothing until a class and a role are actually chosen', () => {
+    const neutral = 'Change which roles are counted in binding votes';
+    expect(template.preview({}, {})).toBe(neutral);
+    expect(template.preview(values({ classIdx: '' }), ctx.roleNames)).toBe(neutral);
+    expect(template.preview(values({ role: '' }), ctx.roleNames)).toBe(neutral);
+    expect(template.preview(values({ votingClasses: [] }), ctx.roleNames)).toBe(neutral);
+    expect(template.preview(values({ classIdx: '9' }), ctx.roleNames)).toBe(neutral);
+  });
+
+  // POContext's roleNames is the LEGACY hat list, frozen at the access-v2 cutover — a role created
+  // since has no entry there, and the ballot would say "this role". The picker records the name
+  // with the choice, and that wins.
+  it('prefers the name the picker recorded over the frozen legacy map', () => {
+    const v2Native = { ...values({ role: '777', roleName: 'Stewards' }) };
+    expect(template.preview(v2Native, ctx.roleNames))
+      .toContain('“Stewards”');
+    expect(template.buildBatch(v2Native, ctx).summaries[0]).toContain('“Stewards”');
+    // A stale recorded name never wins over nothing being chosen, and the map is still the
+    // fallback for every draft written before this field existed.
+    expect(template.preview(values(), ctx.roleNames)).toContain('“Treasurer”');
+  });
+
+  it('flows through buildSetterCopy like every other template', () => {
+    const { title, description } = buildSetterCopy(template, values(), ctx.roleNames, {});
+    expect(title).toBe('Change who votes in binding votes');
+    expect(description).toBe(
+      'If this vote passes: Let members of “Treasurer” vote in binding votes as Members (one vote each).',
+    );
+  });
+
+  // The class list has to reach `validate`, which only ever sees setterValues. It gets there via a
+  // hidden, optional input — hidden because nobody edits it, optional so the wizard's
+  // required-field gate doesn't demand it before the picker has written it.
+  it('carries the class snapshot as a hidden, seeded, optional value', () => {
+    const snapshot = template.inputs.find((i) => i.name === 'votingClasses');
+    expect(snapshot).toMatchObject({ type: 'hidden', optional: true, seedFrom: 'votingClasses' });
+    // Same treatment for the recorded role name — derived, never typed, never required.
+    expect(template.inputs.find((i) => i.name === 'roleName'))
+      .toMatchObject({ type: 'hidden', optional: true });
+    expect(template.inputs.find((i) => i.name === 'role').nameField).toBe('roleName');
+    expect(classesFromValues({ votingClasses: CLASSES })).toBe(CLASSES);
+    expect(classesFromValues({})).toEqual([]);
+    expect(classesFromValues({ votingClasses: '' })).toEqual([]);
+
+    const visible = template.inputs.filter((i) => i.type !== 'hidden').map((i) => [i.name, i.type]);
+    expect(visible).toEqual([
+      ['classIdx', 'votingClassSelect'],
+      ['role', 'roleSelect'],
+      ['action', 'toggle'],
+    ]);
+    expect(template.inputs.find((i) => i.name === 'action').default).toBe('Add');
+  });
+
+  it('exposes the same two calls in Developer mode, matching the shipped ABI', () => {
+    for (const name of ['addHatToClass', 'removeHatFromClass']) {
+      const fn = RAW_FUNCTIONS.hybridVoting.find((f) => f.name === name);
+      expect(fn, `RAW_FUNCTIONS.hybridVoting is missing ${name}`).toBeTruthy();
+      expect(fn.templateOnly).toBeUndefined();
+      expect(fn.legacyOnly).toBeUndefined();
+      // The legend a member of Developer mode needs: the index is POSITIONAL, and the role id
+      // means different things before and after the cutover.
+      expect(fn.params[0].label).toMatch(/index/i);
+      expect(fn.params[1].label).toMatch(/subject id/i);
+      expect(new utils.Interface([fn.signature]).getSighash(name))
+        .toBe(hybridVotingIface.getSighash(name));
+    }
+  });
+});
+
+describe('permission change wording', () => {
+  it('lists in the group\'s voice', () => {
+    expect(joinPhrases([])).toBe('');
+    expect(joinPhrases(['a'])).toBe('a');
+    expect(joinPhrases(['a', 'b'])).toBe('a and b');
+    expect(joinPhrases(['a', 'b', 'c'])).toBe('a, b and c');
+  });
+
+  it('reports added and removed task bits separately', () => {
+    const changes = describePermChanges({ TM_PERMS: 3 }, { TM_PERMS: 5 });
+    expect(changes.taskAdded).toEqual(['review finished tasks']);
+    expect(changes.taskRemoved).toEqual(['claim tasks']);
+    expect(changes.changed).toBe(true);
+  });
+
+  it('says nothing changed when nothing did', () => {
+    expect(describePermChanges({ DD_VOTE: true }, { DD_VOTE: true }).changed).toBe(false);
+    expect(describePermChanges(undefined, undefined).changed).toBe(false);
+    expect(permChangeSummaries('X', describePermChanges({}, {}))).toEqual([]);
+  });
+
+  // Checkbox labels do not survive being dropped into a sentence — "Let “X” Granted on join".
+  it('uses verb phrases, not checkbox labels', () => {
+    const changes = describePermChanges({}, { QJ_AUTOJOIN: true, SUBJECT_RENAME: true });
+    expect(changes.granted).toEqual([
+      'be given to everyone who joins through the join link',
+      'rename roles and groups',
+    ]);
   });
 });

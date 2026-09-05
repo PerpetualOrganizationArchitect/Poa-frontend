@@ -230,19 +230,6 @@
   },
   {
     "type": "function",
-    "name": "unclaimTask",
-    "inputs": [
-      {
-        "name": "id",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "clearDeployer",
     "inputs": [],
     "outputs": [],
@@ -623,6 +610,19 @@
   },
   {
     "type": "function",
+    "name": "setConfigAdmin",
+    "inputs": [
+      {
+        "name": "admin",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setFolders",
     "inputs": [
       {
@@ -634,6 +634,19 @@
         "name": "newRoot",
         "type": "bytes32",
         "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setMembershipAuthority",
+    "inputs": [
+      {
+        "name": "authority",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -675,6 +688,19 @@
         "name": "submissionHash",
         "type": "bytes32",
         "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "unclaimTask",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -784,6 +810,19 @@
   },
   {
     "type": "event",
+    "name": "ConfigAdminSet",
+    "inputs": [
+      {
+        "name": "admin",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ExecutorUpdated",
     "inputs": [
       {
@@ -873,6 +912,19 @@
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MembershipAuthoritySet",
+    "inputs": [
+      {
+        "name": "authority",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       }
     ],
     "anonymous": false
@@ -1174,31 +1226,6 @@
   },
   {
     "type": "event",
-    "name": "TaskUnclaimed",
-    "inputs": [
-      {
-        "name": "id",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "previousClaimer",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "caller",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "TaskClaimed",
     "inputs": [
       {
@@ -1355,6 +1382,31 @@
         "type": "bytes32",
         "indexed": false,
         "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TaskUnclaimed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "previousClaimer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "caller",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       }
     ],
     "anonymous": false

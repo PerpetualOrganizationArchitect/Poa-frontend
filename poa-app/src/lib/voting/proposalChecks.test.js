@@ -205,6 +205,39 @@ describe('configError — createRole', () => {
     expect(configError(withType('createRole', { roleConfig: { ...rc, maxSupply: 4294967295 } }))).toBeNull();
   });
 
+  // ACCESS V2 — the configurator stops rendering the parent picker (a subject has no hierarchy),
+  // so gating on it would lock the step behind a field nobody can fill.
+  const v2 = { accessV2: { enabled: true } };
+
+  it('does not ask a v2 org for a parent role', () => {
+    expect(configError(withType('createRole', { roleConfig: { name: 'Treasurer', maxSupply: 1 } }), v2))
+      .toBeNull();
+  });
+
+  it('still needs a name on a v2 org', () => {
+    expect(configError(withType('createRole', { roleConfig: { name: '  ', maxSupply: 1 } }), v2))
+      .toBe('Give the new role a name.');
+  });
+
+  it('lets a v2 seat limit be 0 (no limit) but not negative or over uint32', () => {
+    const rc = { name: 'Treasurer' };
+    expect(configError(withType('createRole', { roleConfig: { ...rc, maxSupply: 0 } }), v2)).toBeNull();
+    expect(configError(withType('createRole', { roleConfig: { ...rc, maxSupply: 4294967295 } }), v2)).toBeNull();
+    // A draft that never carried a cap is “no limit” on v2 (0), not an error about a hidden input.
+    expect(configError(withType('createRole', { roleConfig: { ...rc, maxSupply: undefined } }), v2)).toBeNull();
+    for (const maxSupply of [-1, 'abc', 4294967296]) {
+      expect(configError(withType('createRole', { roleConfig: { ...rc, maxSupply } }), v2))
+        .toBe('The seat limit must be 0 (no limit) or more.');
+    }
+  });
+
+  it('leaves the legacy gate exactly as it was when the flag is off or absent', () => {
+    const legacy = withType('createRole', { roleConfig: { name: 'Treasurer', maxSupply: 1 } });
+    for (const ctx of [null, {}, { accessV2: { enabled: false } }]) {
+      expect(configError(legacy, ctx)).toBe('Pick which role this new role should sit under.');
+    }
+  });
+
   // Duplicate wearers and project-permission uniqueness stay submit-side.
   it('does not gate on wearer or project-permission rows', () => {
     const p = withType('createRole', {
@@ -217,6 +250,58 @@ describe('configError — createRole', () => {
       },
     });
     expect(configError(p)).toBeNull();
+  });
+});
+
+/**
+ * ACCESS V2 — the config screen is `components/accessV2/RoleForm`, writing `proposal.roleFormV2`,
+ * and it can make a GROUP as well as a role. The gate is `roleFormError` over the SAME form
+ * `buildProposalData` encodes, so "the step says it's ready" and "the batch is buildable" cannot
+ * come apart.
+ */
+describe('configError — createRole on an access-v2 org', () => {
+  const v2 = { accessV2: { enabled: true } };
+  const form = (overrides = {}) => withType('createRole', {
+    roleConfig: {},
+    roleFormV2: { kind: 'role', name: 'Treasurer', ...overrides },
+  });
+
+  it('passes a named role and a named group', () => {
+    expect(configError(form(), v2)).toBeNull();
+    expect(configError(form({ kind: 'group', memberRoleIds: ['1'] }), v2)).toBeNull();
+  });
+
+  it('asks for the name in the language of the thing being made', () => {
+    expect(configError(form({ name: '  ' }), v2)).toBe('Give the new role a name.');
+    expect(configError(form({ kind: 'group', name: '' }), v2)).toBe('Give the new group a name.');
+  });
+
+  it('gates the decisions that only exist on the new screen', () => {
+    expect(configError(form({ limitSeats: true, maxMembers: -1 }), v2))
+      .toBe('The seat limit must be 0 (no limit) or more.');
+    expect(configError(form({ bindingVote: true, bindingClassIdx: null }), v2))
+      .toBe('Pick which group of voters this role joins.');
+    expect(configError(form({ vouching: { enabled: true, quorum: 1, voucherSubjectId: '' } }), v2))
+      .toBe('Pick the role whose members can vouch, or let the new role vouch for itself.');
+    expect(configError(form({ holders: [{ address: '0x123', name: 'Ann' }] }), v2))
+      .toBe('"Ann" has an invalid address.');
+  });
+
+  it('judges a pre-v2 draft on the legacy fields it actually carries', () => {
+    // `restoreProposal` merges an old draft over defaultProposal, so `roleFormV2` is present but
+    // blank while `roleConfig` holds everything the member entered.
+    const draft = withType('createRole', {
+      roleConfig: { parentHatId: '0x01', name: 'Treasurer', maxSupply: 5 },
+      roleFormV2: { kind: 'role', name: '' },
+    });
+    expect(configError(draft, v2)).toBeNull();
+  });
+
+  it('leaves the legacy gate exactly as it was when the flag is off', () => {
+    const legacy = form();
+    for (const ctx of [null, {}, { accessV2: { enabled: false } }]) {
+      expect(configError(legacy, ctx)).toBe('Pick which role this new role should sit under.');
+    }
   });
 });
 
@@ -330,5 +415,72 @@ describe('isComplete', () => {
     expect(isComplete('config', p)).toBe(true);
     expect(isComplete('details', p)).toBe(false);
     expect(isComplete('review', p)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// transferFunds with live facts (asset precision + what the group can pay out)
+// ---------------------------------------------------------------------------
+describe('configError(transferFunds, ctx)', () => {
+  const usdc = (extra = {}) => ({
+    transfer: { decimals: 6, symbol: 'USDC', loading: false, availableWei: '5000000', overLimitMessage: 'Only 5 USDC can go out in one vote.', ...extra },
+  });
+
+  it('is unchanged without a ctx', () => {
+    expect(configError(withType('transferFunds'))).toBeNull();
+  });
+
+  it('refuses an amount finer than the asset', () => {
+    expect(configError(withType('transferFunds', { transferAmount: '0.0000001' }), usdc()))
+      .toBe('USDC only supports 6 decimal places.');
+  });
+
+  it('refuses more than any pot holds, naming the ceiling', () => {
+    expect(configError(withType('transferFunds', { transferAmount: '6' }), usdc()))
+      .toBe('Only 5 USDC can go out in one vote.');
+    expect(configError(withType('transferFunds', { transferAmount: '5' }), usdc())).toBeNull();
+  });
+
+  it('does not refuse while the balances are still loading or unknown', () => {
+    expect(configError(withType('transferFunds', { transferAmount: '6' }), usdc({ loading: true }))).toBeNull();
+    expect(configError(withType('transferFunds', { transferAmount: '6' }), usdc({ availableWei: null }))).toBeNull();
+  });
+
+  it('threads the ctx through isComplete for the config and review steps', () => {
+    const p = withType('transferFunds', { transferAmount: '6', name: 'x', time: 24 });
+    expect(isComplete('config', p)).toBe(true);
+    expect(isComplete('config', p, usdc())).toBe(false);
+    expect(isComplete('review', p, usdc())).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setter templates that this org can no longer propose
+// ---------------------------------------------------------------------------
+describe('configError(setter) on an access-v2 org', () => {
+  it('refuses a legacy-only template once the authority is live, with the member-facing reason', () => {
+    const p = withType('setter', { setterTemplate: 'allow-voter-dd', setterValues: { role: '1', hatType: '0', allowed: 'Grant' } });
+    expect(configError(p)).toBeNull();
+    expect(configError(p, { accessV2: { enabled: false } })).toBeNull();
+    expect(configError(p, { accessV2: { enabled: true } })).toMatch(/no longer how this group works/);
+  });
+
+  it('refuses a v2-only template on a legacy org', () => {
+    const p = withType('setter', { setterTemplate: 'edit-role-permissions', setterValues: { subjectId: '1', perms: { DD_VOTE: true }, permsCurrent: {} } });
+    expect(configError(p, { accessV2: { enabled: false } })).toMatch(/hasn’t moved to yet/);
+  });
+});
+
+describe('configError(transferFunds) when the balance read failed', () => {
+  it('fails closed instead of guessing a pot', () => {
+    const p = withType('transferFunds', { transferAmount: '1' });
+    expect(configError(p, { transfer: { decimals: 18, symbol: 'BREAD', loading: false, readFailed: true, availableWei: '0' } }))
+      .toBe("Couldn't read what the group holds — try again in a moment.");
+  });
+
+  it('fails closed when the treasury has more payout rounds than were read', () => {
+    const p = withType('transferFunds', { transferAddress: '0x000000000000000000000000000000000000dEaD', transferAmount: '1' });
+    expect(configError(p, { transfer: { decimals: 18, symbol: 'BREAD', loading: false, readFailed: false, roundsUnread: true, availableWei: '5000000000000000000' } }))
+      .toMatch(/more payout rounds than can be checked/);
   });
 });

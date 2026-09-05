@@ -68,8 +68,8 @@ export function useAccessV2Proposal() {
               hatIds: restrictedSubjectIds || [],
             }),
           {
-            pendingMessage: 'Creating proposal...',
-            successMessage: 'Proposal created',
+            pendingMessage: 'Creating vote...',
+            successMessage: 'Vote created',
             errorMessage: 'Could not create the proposal',
             refreshEvent: 'proposal:created',
           }

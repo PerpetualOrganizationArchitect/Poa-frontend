@@ -15,6 +15,7 @@ import {
   FiPlusCircle,
   FiSettings,
 } from 'react-icons/fi';
+import { BINDING_TYPES } from './wizardSteps';
 
 /**
  * Intent-first entry for Create-a-Vote. Replaces the 5-option <Select> with a
@@ -38,8 +39,11 @@ export const INTENT_OPTIONS = [
     type: 'transferFunds',
     icon: FiDollarSign,
     title: 'Send money from the treasury',
-    description: 'Propose a payout — passes as a Yes/No vote.',
-    binding: false,
+    description: 'Pay someone or fund task rewards — passing the vote moves the money.',
+    // A payout RUNS on-chain when it passes, so it is binding: it submits to
+    // Blended voting (the only contract that can execute) and is gated on the
+    // binding-creator permission. See wizardSteps.BINDING_TYPES.
+    binding: true,
   },
   {
     type: 'election',
@@ -53,6 +57,11 @@ export const INTENT_OPTIONS = [
     icon: FiPlusCircle,
     title: 'Create a new role',
     description: 'Add a role and set what it can do.',
+    // ACCESS V2 only: the same intent also creates a GROUP (a bundle of permissions roles go
+    // into), because on an authority org that is one screen and one proposal. The legacy copy is
+    // untouched — a legacy org has no groups to make.
+    v2Title: 'Create a role or group',
+    v2Description: 'Add a role or group and set what it can do.',
     binding: true,
   },
   {
@@ -64,8 +73,21 @@ export const INTENT_OPTIONS = [
   },
 ];
 
-const IntentCard = ({ option, onSelect, isDisabled = false }) => {
+// The badge and the routing must never disagree: a card marked non-binding
+// that submits a batch would be gated on the wrong creator permission and sent
+// to a contract that cannot execute it.
+for (const option of INTENT_OPTIONS) {
+  if (option.binding !== BINDING_TYPES.has(option.type)) {
+    throw new Error(`IntentGallery: "${option.type}" binding flag disagrees with wizardSteps.BINDING_TYPES`);
+  }
+}
+
+const IntentCard = ({ option, onSelect, isDisabled = false, accessV2 = false }) => {
   const IconComponent = option.icon;
+  // A card can carry ACCESS-V2 copy for the same intent (createRole also makes a group there).
+  // Falls back to the legacy words, so a card without v2 copy is byte-identical on both orgs.
+  const title = (accessV2 && option.v2Title) || option.title;
+  const description = (accessV2 && option.v2Description) || option.description;
   const card = (
     <Box
       as="button"
@@ -98,10 +120,10 @@ const IntentCard = ({ option, onSelect, isDisabled = false }) => {
         <Icon as={IconComponent} boxSize={5} color="purple.300" mt={0.5} flexShrink={0} />
         <VStack align="start" spacing={0.5}>
           <Text fontSize="sm" fontWeight="bold" color="white">
-            {option.title}
+            {title}
           </Text>
           <Text fontSize="xs" color="gray.400">
-            {option.description}
+            {description}
           </Text>
         </VStack>
       </HStack>
@@ -125,7 +147,7 @@ const IntentCard = ({ option, onSelect, isDisabled = false }) => {
  * differ per contract, so a poll-only creator sees binding cards disabled
  * instead of walking the wizard into an Unauthorized revert.
  */
-const IntentGallery = ({ onSelect, canCreatePoll = true, canCreateProposal = true }) => {
+const IntentGallery = ({ onSelect, canCreatePoll = true, canCreateProposal = true, accessV2 = false }) => {
   return (
     <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
       {INTENT_OPTIONS.map((option) => (
@@ -134,6 +156,7 @@ const IntentGallery = ({ onSelect, canCreatePoll = true, canCreateProposal = tru
           option={option}
           onSelect={onSelect}
           isDisabled={option.binding ? !canCreateProposal : !canCreatePoll}
+          accessV2={accessV2}
         />
       ))}
     </SimpleGrid>

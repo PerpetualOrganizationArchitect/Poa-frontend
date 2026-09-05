@@ -37,6 +37,7 @@
  */
 
 import { constants, utils } from 'ethers';
+import { parseProjectId } from '@/services/web3/utils/encoding';
 import { predictNextSubjectIds, hasCompetingSubjectCreation } from './ids';
 import {
   buildCreateRole,
@@ -61,6 +62,10 @@ import {
 } from './txBuilders';
 import { PERM_KEYS, GLOBAL_CTX, boolPermWord, maskPermWord, foldTag, FOLD_TAG } from './permKeys';
 
+/** A person on the ballot: their name when the form knows it, else a short address. */
+const holderLabel = (h) => h?.name
+  || (String(h?.address || '').length > 10 ? `${h.address.slice(0, 6)}…${h.address.slice(-4)}` : String(h?.address || ''));
+
 /**
  * Gas floor for an authority batch. `announceWinner` prices only the CAUGHT-FAILURE path when
  * wallets estimate, so anything non-trivial under-funds and no-ops. Deliberately generous.
@@ -72,14 +77,44 @@ export function estimateBatchGas(batch = []) {
 }
 
 /**
- * ctx for a TaskManager per-project row. Always a full bytes32 — the ABI field is `bytes32` and a
- * short hex string encodes as an INVALID_ARGUMENT rather than being left-padded for you.
+ * ctx for a TaskManager per-project row.
+ *
+ * TWO things this has to get right, and both are silent when wrong — a row written at the wrong
+ * ctx is a perfectly valid row that simply governs nothing the reader ever asks about:
+ *
+ * 1. THE +1 OFFSET (spec freeze amendment W4). TaskManager reads
+ *    `hasPerm(user, TM_PERMS, bytes32(uint256(pid) + 1))` — `TaskManager._permMask`, and the
+ *    convention is stated in `AccessV2PermKeys.sol`'s header. The offset exists because TM project
+ *    ids START AT 0 and ctx 0 is the authority's GLOBAL context, so the identity mapping would
+ *    collide every org's first project with its global rows. Writing the un-offset id lands every
+ *    row exactly one project off: project N's permissions govern project N-1, and project 0's
+ *    become the subject's global grant.
+ *
+ * 2. THE ID FORMAT. Project ids reach the UI as the SUBGRAPH's composite `{taskManager}-{n}`;
+ *    the contract wants the bytes32. `parseProjectId` is the conversion the rest of the app
+ *    already makes (TaskService, the folder tree), so it is the one used here.
+ *
+ * Always returns a full bytes32 — the ABI field is `bytes32`, and a short hex string encodes as an
+ * INVALID_ARGUMENT rather than being left-padded for you.
+ *
+ * Only a NULLISH/empty id means "global". Numeric `0` is a real project — the first one every org
+ * creates — and must not be mistaken for the global ctx.
  */
 export function projectCtx(projectId) {
-  if (!projectId) return GLOBAL_CTX;
-  const s = String(projectId);
-  if (s.startsWith('0x')) return utils.hexZeroPad(s, 32);
-  return utils.hexZeroPad(utils.hexlify(BigInt(s)), 32);
+  if (projectId === null || projectId === undefined) return GLOBAL_CTX;
+  const s = String(projectId).trim();
+  if (s === '') return GLOBAL_CTX;
+  // Composite subgraph id. Narrowly detected so the plain forms below keep their exact behaviour:
+  // parseProjectId's last resort is to KECCAK an unrecognised string, which would turn a short hex
+  // id like '0xabc' into an unrelated ctx.
+  const raw = /^0x[0-9a-fA-F]{40}-/.test(s) ? parseProjectId(s) : s;
+  let pid;
+  try {
+    pid = BigInt(raw);
+  } catch {
+    throw new Error(`accessV2: "${projectId}" is not a project id`);
+  }
+  return utils.hexZeroPad(utils.hexlify(pid + 1n), 32);
 }
 
 /**
@@ -104,7 +139,9 @@ export function buildPermRows(perms = {}, projectPerms = []) {
     }
   }
   for (const p of projectPerms || []) {
-    if (!p || !p.projectId) continue;
+    // Nullish/empty means "no project named", NOT project 0 — TaskManager ids start at 0, so a
+    // falsy test here would silently drop every rule about the first project an org ever made.
+    if (!p || p.projectId === null || p.projectId === undefined || p.projectId === '') continue;
     const mask = Number(p.mask) || 0;
     if (mask <= 0) continue;
     // NEW project rows default to inherit=true. That is deliberate: v1's implicit REPLACE is the
@@ -162,7 +199,7 @@ export function buildCreateRoleBatch({ authority, existingSubjects = [], activeP
   if (defaultAllow) {
     // A brand-new subject has no members, so `force` is never needed here.
     batch.push(buildSetSubjectDefault(authority, subjectId, true, false));
-    summaries.push('Make it open — anyone in the org can join it');
+    summaries.push('Make it open — anyone in the co-op can join it');
   }
 
   for (const groupId of groupIds || []) {
@@ -193,11 +230,11 @@ export function buildCreateRoleBatch({ authority, existingSubjects = [], activeP
     const delegable = !holder.sticky;
     if (holder.inOrg) {
       batch.push(buildGrant(authority, subjectId, holder.address, delegable));
-      summaries.push(`Add ${holder.address}`);
+      summaries.push(`Add ${holderLabel(holder)}`);
     } else {
       // Out-of-org: consent is required, so this is an invitation they accept themselves.
       batch.push(buildOffer(authority, subjectId, holder.address, delegable));
-      summaries.push(`Invite ${holder.address}`);
+      summaries.push(`Invite ${holderLabel(holder)}`);
     }
   }
 
@@ -352,14 +389,14 @@ export function buildMemberActionsBatch({ authority, subjectId, subjectName = 't
     switch (a.action) {
       case 'grant':
         batch.push(buildGrant(authority, subjectId, a.address, delegable));
-        summaries.push(`Add ${a.address} to ${subjectName}`);
+        summaries.push(`Add ${holderLabel(a)} to ${subjectName}`);
         if (a.sticky) {
           warnings.push(`${a.address} would be locked in: only another vote could remove them.`);
         }
         break;
       case 'offer':
         batch.push(buildOffer(authority, subjectId, a.address, delegable));
-        summaries.push(`Invite ${a.address} to ${subjectName}`);
+        summaries.push(`Invite ${holderLabel(a)} to ${subjectName}`);
         break;
       case 'withdrawOffer':
         batch.push(buildWithdrawOffer(authority, subjectId, a.address));

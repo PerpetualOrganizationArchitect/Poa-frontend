@@ -405,7 +405,7 @@ const TreasuryPage = () => {
           paymentManagerAddress={paymentManager?.id}
           orgChainId={orgChainId}
           targetAddress={taskManagerAddress}
-          targetLabel="Task Bounties"
+          targetLabel="the task-reward pool"
           useDirectTransfer
         />
       )}

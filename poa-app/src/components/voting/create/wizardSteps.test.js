@@ -205,3 +205,33 @@ describe('STEP_ERROR_KEYS', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Routing: the batch decides the contract, and the intent gallery's badge must
+// agree with it.
+// ---------------------------------------------------------------------------
+import { BINDING_TYPES, isBindingType, votingLaneForBatches } from './wizardSteps';
+
+describe('BINDING_TYPES', () => {
+  it('includes every type whose passing option runs a batch — transferFunds too', () => {
+    expect([...BINDING_TYPES].sort()).toEqual(['createRole', 'election', 'setter', 'transferFunds']);
+    expect(isBindingType('transferFunds')).toBe(true);
+    expect(isBindingType('normal')).toBe(false);
+  });
+
+  // The intent gallery's `binding` badges are checked against this set at module
+  // load (IntentGallery.js throws on a mismatch) — it is JSX, so not imported here.
+});
+
+describe('votingLaneForBatches', () => {
+  it('sends anything that would execute a call to Blended (Hybrid) voting', () => {
+    expect(votingLaneForBatches([[{ target: '0x1', value: '0', data: '0x' }], []])).toBe('hybrid');
+    expect(votingLaneForBatches([[], [{ target: '0x1', value: '0', data: '0x' }]])).toBe('hybrid');
+  });
+
+  it('sends a batch-less poll to DirectDemocracy', () => {
+    expect(votingLaneForBatches([])).toBe('dd');
+    expect(votingLaneForBatches([[], []])).toBe('dd');
+    expect(votingLaneForBatches(undefined)).toBe('dd');
+  });
+});

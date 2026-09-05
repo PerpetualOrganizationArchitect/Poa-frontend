@@ -2,7 +2,10 @@
  * useVoteCreateGate
  *
  * Who may CREATE votes, per voting contract — the gate createProposal enforces
- * on-chain. The creator hats come from POContext's org query
+ * on-chain. Two sources, one answer; the rule itself lives in
+ * `src/lib/voting/createGate.js` (pure, unit-tested — this file is only wiring).
+ *
+ * LEGACY ORG. The creator hats come from POContext's org query
  * (`votingHatPermissions`), i.e. the subgraph's HatPermission rows.
  *
  * These used to be read from the contracts with three extra eth_calls per mount,
@@ -16,12 +19,25 @@
  * from the same subgraph, so index lag already gated the result. Two sources
  * only added RPC cost and a window where they disagreed.
  *
- * Fail-open: while the org query is in flight, or when it returns no creator
- * rows, the gate falls back to the legacy membership check so a subgraph hiccup
- * can never lock out real creators — the contract remains the enforcement point.
- * Note this hedge is the OPPOSITE of the contract's rule (an empty creator array
- * fails CLOSED: only the executor, i.e. a passed proposal, may create), so copy
- * built on these arrays must state the contract's rule, not inherit the hedge.
+ * ACCESS V2 ORG (`useOrgAuthority().enabled`). That HatPermission table is
+ * FROZEN at cutover — a permission granted or revoked through the
+ * MembershipAuthority never writes a row there. Reading it on a v2 org shows
+ * the wrong affordance and walks members into an `Unauthorized()` revert, so
+ * the gate switches to the authority: the viewer must be an active member of a
+ * subject whose EFFECTIVE (group-folded) HV_CREATE / DD_CREATE is set, which is
+ * exactly what `authority.hasPerm(user, KEY, ctx0)` folds on chain.
+ *
+ * Every v2 query here self-skips on a legacy org (`useOrgAuthority` gates on the
+ * endpoint capability probe; the subject and membership hooks gate on
+ * `authority.enabled`), so a legacy org puts nothing extra on the wire and gets
+ * a byte-identical result. `hooks/accessV2/gating.test.js` enforces that.
+ *
+ * Fail-open: while a read is in flight, or when it returns no rows, the gate
+ * falls back to the legacy membership check so a subgraph hiccup can never lock
+ * out real creators — the contract remains the enforcement point. Note this
+ * hedge is the OPPOSITE of the contract's rule (an empty creator set fails
+ * CLOSED: only the executor, i.e. a passed proposal, may create), so copy built
+ * on these arrays must state the contract's rule, not inherit the hedge.
  *
  * Polls (DirectDemocracy) and binding proposals (Hybrid) have independent
  * creator sets, so both booleans are exposed; `canCreateAny` gates shared
@@ -33,7 +49,10 @@
 import { useMemo } from 'react';
 import { usePOContext } from '@/context/POContext';
 import { useUserContext } from '@/context/UserContext';
-import { userWearsAnyHat } from '@/util/permissions';
+import { useOrgAuthority } from '@/hooks/accessV2/useOrgAuthority';
+import { useAuthoritySubjects } from '@/hooks/accessV2/useAuthoritySubjects';
+import { useMyMemberships } from '@/hooks/accessV2/useAuthorityMemberships';
+import { foldCreateGate } from '@/lib/voting/createGate';
 
 export function useVoteCreateGate() {
   const {
@@ -45,54 +64,62 @@ export function useVoteCreateGate() {
   } = usePOContext();
   const { hasMemberRole, userData } = useUserContext();
 
-  return useMemo(() => {
-    const userHatIds = userData?.hatIds || [];
-    const bindingCreatorHatIds = votingHatPermissions?.bindingCreators || [];
-    const pollCreatorHatIds = votingHatPermissions?.pollCreators || [];
+  const authority = useOrgAuthority();
+  const {
+    subjects,
+    loading: subjectsLoading,
+    error: subjectsError,
+  } = useAuthoritySubjects();
+  const {
+    myRoles,
+    loading: myRolesLoading,
+    error: myRolesError,
+  } = useMyMemberships();
 
-    const gate = (address, creatorHats) => {
-      if (!address) return false;
-      if (poContextLoading || creatorHats.length === 0) return hasMemberRole;
-      return hasMemberRole && userWearsAnyHat(userHatIds, creatorHats);
-    };
+  // The viewer's ACTIVE subjects (accepted && eligible) — the contract's `_isMember` set.
+  const mySubjectIds = useMemo(
+    () => (myRoles || []).map((m) => m.subjectId),
+    [myRoles]
+  );
 
-    const canCreatePoll = gate(
-      directDemocracyVotingContractAddress,
-      pollCreatorHatIds
-    );
-    const canCreateProposal = gate(
-      hybridVotingContractAddress,
-      bindingCreatorHatIds
-    );
+  const authorityEnabled = !!authority.enabled;
+  // One flag for "the v2 answer isn't in yet". The membership half matters as much as the
+  // subject half: subjects-arrived-but-memberships-pending would read as "member of nothing",
+  // i.e. a lockout, which is precisely what the hedge exists to prevent.
+  const v2Loading = authorityEnabled && (!!subjectsLoading || !!myRolesLoading);
 
-    return {
-      canCreatePoll,
-      canCreateProposal,
-      canCreateAny: canCreatePoll || canCreateProposal,
-      creatorGateLoading: poContextLoading,
-      // For surfaces that describe the rule rather than gate on it. `settled`
-      // marks the org query having answered, so frame 0 — when the arrays are
-      // still empty for want of data — describes nothing at all. `readFailed`
-      // keeps a failed query distinct from a genuinely empty creator set, which
-      // is a real (and much stronger) permission claim.
-      bindingCreatorHatIds,
-      pollCreatorHatIds,
-      creatorGateSettled: !poContextLoading,
-      bindingReadFailed: !!orgError,
-      pollReadFailed: !!orgError,
-      hasBinding: !!hybridVotingContractAddress,
+  return useMemo(
+    () => foldCreateGate({
+      authorityEnabled,
+      subjects,
+      mySubjectIds,
+      legacyBindingCreatorHatIds: votingHatPermissions?.bindingCreators || [],
+      legacyPollCreatorHatIds: votingHatPermissions?.pollCreators || [],
+      userHatIds: userData?.hatIds || [],
+      hasMemberRole,
+      legacyLoading: poContextLoading,
+      v2Loading,
+      legacyReadFailed: !!orgError,
+      v2ReadFailed: !!subjectsError || !!myRolesError,
+      hasHybrid: !!hybridVotingContractAddress,
       hasPolls: !!directDemocracyVotingContractAddress,
-      isMember: hasMemberRole,
-    };
-  }, [
-    votingHatPermissions,
-    poContextLoading,
-    orgError,
-    hasMemberRole,
-    userData,
-    hybridVotingContractAddress,
-    directDemocracyVotingContractAddress,
-  ]);
+    }),
+    [
+      authorityEnabled,
+      subjects,
+      mySubjectIds,
+      votingHatPermissions,
+      userData,
+      hasMemberRole,
+      poContextLoading,
+      v2Loading,
+      orgError,
+      subjectsError,
+      myRolesError,
+      hybridVotingContractAddress,
+      directDemocracyVotingContractAddress,
+    ]
+  );
 }
 
 export default useVoteCreateGate;

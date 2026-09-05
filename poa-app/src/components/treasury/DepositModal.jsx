@@ -16,12 +16,16 @@ import {
   InputGroup,
   InputRightElement,
   Box,
+  Link,
 } from '@chakra-ui/react';
 import PulseLoader from "@/components/shared/PulseLoader";
 import { FiCheck } from 'react-icons/fi';
 import { ethers } from 'ethers';
+import { useRouter } from 'next/router';
 import { useWeb3 } from '@/hooks/useWeb3Services';
 import { useAuth } from '@/context/AuthContext';
+import { useVoteCreateGate } from '@/hooks/useVoteCreateGate';
+import { FUND_BOUNTIES_DEEP_LINK } from '@/lib/voting/treasuryBatches';
 import { RefreshEvent } from '@/context/RefreshContext';
 import { getBountyTokenOptions } from '@/util/tokens';
 import { formatTokenAmount, parseTokenAmount } from '@/util/formatToken';
@@ -70,6 +74,13 @@ const DepositModal = ({
   const depositLabel = targetLabel || 'Treasury';
   const { treasury, executeWithNotification, isReady } = useWeb3();
   const { accountAddress } = useAuth();
+  const router = useRouter();
+  // The direct-transfer variant moves the MEMBER's own tokens. A member who can
+  // open binding votes gets the other door too: move the GROUP's money by vote.
+  const { canCreateProposal } = useVoteCreateGate();
+  const proposeMoveHref = useDirectTransfer && canCreateProposal && router?.query?.userDAO
+    ? `/voting?userDAO=${encodeURIComponent(String(router.query.userDAO))}&propose=${FUND_BOUNTIES_DEEP_LINK}`
+    : null;
 
   const [selectedToken, setSelectedToken] = useState(null);
   const [amount, setAmount] = useState('');
@@ -320,6 +331,33 @@ const DepositModal = ({
             </VStack>
           ) : (
             <VStack spacing={5}>
+              {useDirectTransfer && (
+                <Box
+                  w="100%"
+                  p={3}
+                  borderRadius="md"
+                  bg="rgba(148, 115, 220, 0.12)"
+                  border="1px solid rgba(148, 115, 220, 0.3)"
+                  data-testid="fund-bounties-disclosure"
+                >
+                  <Text fontSize="sm" color="gray.200">
+                    This sends <Text as="span" fontWeight="bold">your own</Text> tokens to {depositLabel}.
+                  </Text>
+                  {proposeMoveHref && (
+                    <Text fontSize="sm" color="gray.300" mt={1}>
+                      Using the group's money instead?{' '}
+                      <Link
+                        color="purple.200"
+                        fontWeight="medium"
+                        onClick={() => { onClose(); router.push(proposeMoveHref); }}
+                        data-testid="fund-bounties-propose-link"
+                      >
+                        Propose a move by vote →
+                      </Link>
+                    </Text>
+                  )}
+                </Box>
+              )}
               {/* Token selector */}
               <Box w="100%">
                 <Text mb={2} fontSize="sm" fontWeight="medium" color="gray.300">

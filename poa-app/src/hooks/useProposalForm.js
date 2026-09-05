@@ -5,7 +5,8 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { useToast } from '@chakra-ui/react';
-import { utils, constants as ethersConstants, providers as ethersProviders } from 'ethers';
+import { utils, constants as ethersConstants, providers as ethersProviders, Contract as EthersContract } from 'ethers';
+import MembershipAuthorityABI from '../../abi/MembershipAuthority.json';
 import {
   SETTER_TEMPLATES,
   RAW_FUNCTIONS,
@@ -25,6 +26,26 @@ import { createHatsService } from '@/services/web3/domain/HatsService';
 import { ipfsCidToBytes32 } from '@/services/web3/utils/encoding';
 import { getTokenByAddress } from '@/util/tokens';
 import {
+  TRANSFER_DESTINATION,
+  TRANSFER_SOURCE,
+  BOUNTY_POOL_LABEL,
+  buildTreasuryTransferBatch,
+  amountDecimalsError,
+  transferOptionNames,
+} from '@/lib/voting/treasuryBatches';
+import { isDurationAllowed, durationTooShortMessage } from '@/lib/voting/durationLimits';
+import {
+  buildV2ElectionBatches,
+  acceptedHoldersOf,
+} from '@/lib/voting/v2VoteActions';
+import {
+  buildRoleFormBatch,
+  defaultRoleForm,
+  resolveRoleForm,
+  roleFormError,
+  ROLE_FORM_KIND,
+} from '@/lib/accessV2/roleFormBatch';
+import {
   TITLE_PREFIX as ELECTION_TITLE_PREFIX,
   DESCRIPTION_PREFIX as ELECTION_DESCRIPTION_PREFIX,
 } from '@/components/voting/ElectionConfigurator';
@@ -33,6 +54,12 @@ import {
   DESCRIPTION_PREFIX as CREATE_ROLE_DESCRIPTION_PREFIX,
   defaultRoleConfig,
 } from '@/components/voting/RoleConfigurator';
+
+/**
+ * Warnings ride into the ballot metadata next to the enactment lines (PollDetail renders one
+ * list). Prefixed so a voter can tell “this vote does X” from “worth knowing: Y”.
+ */
+const worthKnowing = (w) => `Worth knowing: ${w}`;
 
 const defaultProposal = {
   name: "",
@@ -52,6 +79,16 @@ const defaultProposal = {
   // Asset to pay out. "" = the chain's native currency (xDAI on Gnosis); any
   // other value is an ERC20 contract address from getBountyTokenOptions.
   transferToken: "",
+  // Where the money goes: a typed address, or the org's task-reward pool (the
+  // TaskManager — the modal writes its address into transferAddress).
+  transferDestination: TRANSFER_DESTINATION.ADDRESS,
+  // Which pot pays. "" = not yet resolved; the modal resolves it from live
+  // balances (Executor first, then the PaymentManager) and writes the answer —
+  // plus any fully-claimed payout rounds to close first — here, so submit
+  // encodes exactly what the review screen showed. See lib/voting/treasuryBatches.
+  transferSource: "",
+  transferFinalizeIds: [],
+  transferSourceLabel: "",
   // Election fields
   electionCandidates: [],           // Array of { name, address }
   electionRoleId: "",               // Hat ID for the role being elected
@@ -81,8 +118,44 @@ const defaultProposal = {
   //   6. EligibilityModule.updateHatMetadata(predictedHatId, name, cid) (if description)
   // Hat ID is pre-computed via Hats.getNextId at submit time.
   roleConfig: { ...defaultRoleConfig },
+  // ACCESS V2 — the same createRole intent, on an org whose roles are authority SUBJECTS. The
+  // wizard renders `components/accessV2/RoleForm` instead of RoleConfigurator and the batch comes
+  // from `lib/accessV2/roleFormBatch` — the encoder /team's "Create a role or group" modal also
+  // uses, so a role made from either door is the same role. `roleConfig` is left untouched: a
+  // legacy org still walks the branch above, byte for byte.
+  roleFormV2: defaultRoleForm(),
   id: 0,
 };
+
+/**
+ * A subject's display name on an access-v2 org, from the live subject list VotingPage passes in
+ * `extras`. Falls back to a short id rather than inventing one — a summary that says "role 1a2b…"
+ * is honest, and "this role" twice in one sentence is not.
+ */
+/**
+ * Apply an on-chain acceptance read (`{ [lowercased address]: accepted }`) over a roster set from
+ * the subgraph mirror. Chain truth wins for every address it covers; untouched addresses keep
+ * the mirror's answer. Returns a NEW Set.
+ */
+export function withFreshAcceptance(roster, fresh) {
+  const out = new Set([...(roster || [])].map((a) => String(a).toLowerCase()));
+  for (const [addr, accepted] of Object.entries(fresh || {})) {
+    const key = String(addr).toLowerCase();
+    if (accepted) out.add(key);
+    else out.delete(key);
+  }
+  return out;
+}
+
+function resolveV2SubjectName(accessV2, subjectId) {
+  const id = String(subjectId ?? '');
+  if (!id) return 'this role';
+  const pool = [...(accessV2?.roles || []), ...(accessV2?.subjects || [])];
+  const hit = pool.find((s) => String(s?.subjectId ?? s?.id ?? '') === id);
+  const name = hit?.name && String(hit.name).trim();
+  if (name) return name;
+  return `role ${id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id}`;
+}
 
 export function useProposalForm({ onSubmit }) {
   const toast = useToast();
@@ -168,6 +241,7 @@ export function useProposalForm({ onSubmit }) {
         } : {}),
         ...(newType !== 'createRole' ? {
           roleConfig: { ...defaultRoleConfig },
+          roleFormV2: defaultRoleForm(),
         } : {}),
         // Without this, setter → election → setter resurrected the old template
         // and the config step silently skipped the category picker.
@@ -184,6 +258,10 @@ export function useProposalForm({ onSubmit }) {
           transferAddress: '',
           transferAmount: '',
           transferToken: '',
+          transferDestination: TRANSFER_DESTINATION.ADDRESS,
+          transferSource: '',
+          transferFinalizeIds: [],
+          transferSourceLabel: '',
         } : {}),
       };
     });
@@ -297,8 +375,27 @@ export function useProposalForm({ onSubmit }) {
       return false;
     }
 
+    // parseUnits throws a raw "fractional component exceeds decimals" for an
+    // amount finer than the asset — say it in the asset's own terms instead.
+    const payoutToken = proposal.transferToken ? getTokenByAddress(proposal.transferToken) : null;
+    const decimalsError = amountDecimalsError(
+      proposal.transferAmount,
+      payoutToken ? payoutToken.decimals : (orgNetwork?.nativeCurrency?.decimals ?? 18),
+      payoutToken ? payoutToken.symbol : nativeCurrencySymbol,
+    );
+    if (decimalsError) {
+      toast({
+        title: "Invalid Amount",
+        description: decimalsError,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+      return false;
+    }
+
     return true;
-  }, [proposal.transferAddress, proposal.transferAmount, toast]);
+  }, [proposal.transferAddress, proposal.transferAmount, proposal.transferToken, orgNetwork, nativeCurrencySymbol, toast]);
 
   const validateElectionProposal = useCallback(() => {
     if (!proposal.electionRoleId) {
@@ -378,12 +475,29 @@ export function useProposalForm({ onSubmit }) {
     return true;
   }, [proposal.options, toast]);
 
-  const validateCreateRoleProposal = useCallback(() => {
+  // `accessV2Enabled` is passed by handleSubmit from the same flag VotingPage sets. On a v2 org
+  // the whole screen is a different form (RoleForm -> `roleFormV2`), which can also make a GROUP,
+  // so the rules come from the ONE pure gate the wizard's step gate uses — `roleFormError` over
+  // the form `buildProposalData` will actually encode. Anything else lets a proposal pass
+  // validation describing one thing and encode another.
+  const validateCreateRoleProposal = useCallback((accessV2Enabled = false) => {
     const rc = proposal.roleConfig || {};
     const fail = (title, description) => {
       toast({ title, description, status: 'error', duration: 5000, isClosable: true });
       return false;
     };
+
+    if (accessV2Enabled) {
+      const form = resolveRoleForm(proposal);
+      const error = roleFormError(form);
+      if (error) {
+        return fail(
+          form.kind === ROLE_FORM_KIND.GROUP ? 'Check the group' : 'Check the role',
+          error,
+        );
+      }
+      return true;
+    }
 
     if (!rc.parentHatId || String(rc.parentHatId).trim() === '') {
       return fail('No Parent Role Selected', 'Pick which role this new role should sit under.');
@@ -437,7 +551,7 @@ export function useProposalForm({ onSubmit }) {
     }
 
     return true;
-  }, [proposal.roleConfig, toast]);
+  }, [proposal, toast]);
 
   const validateSetterProposal = useCallback(() => {
     if (proposal.setterMode === 'template') {
@@ -678,13 +792,18 @@ export function useProposalForm({ onSubmit }) {
   const buildActionSummaries = useCallback(() => {
     const summaries = [];
     if (proposal.type === 'transferFunds') {
+      // Fallback only — buildProposalData returns the builder's own summaries
+      // for this type (which also name any payout rounds closed first).
       const amt = proposal.transferAmount || '?';
       const addr = proposal.transferAddress || '';
       const short = addr.length > 10 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
       const sym = proposal.transferToken
         ? getTokenByAddress(proposal.transferToken).symbol
         : nativeCurrencySymbol;
-      summaries.push(`If "Yes" wins, send ${amt} ${sym} from the treasury to ${short}.`);
+      const toBountyPool = proposal.transferDestination === TRANSFER_DESTINATION.BOUNTY_POOL;
+      summaries.push(toBountyPool
+        ? `If Yes wins, move ${amt} ${sym} from the treasury to the ${BOUNTY_POOL_LABEL}.`
+        : `If Yes wins, send ${amt} ${sym} from the treasury to ${short}.`);
     } else if (proposal.type === 'setter') {
       if (proposal.setterMode === 'template' && proposal.setterTemplate) {
         const tmpl = getTemplateById(proposal.setterTemplate);
@@ -705,7 +824,7 @@ export function useProposalForm({ onSubmit }) {
       const roleLabel = proposal.electionRoleId ? `role ${proposal.electionRoleId}` : 'the selected role';
       const names = (proposal.electionCandidates || []).map(c => c.name).filter(Boolean);
       if (names.length) {
-        summaries.push(`Elect one of: ${names.join(', ')} to ${roleLabel}. The winner receives it automatically.`);
+        summaries.push(`Elect ${names.join(' or ')} as ${roleLabel}. The winner receives it automatically.`);
       }
     } else if (proposal.type === 'createRole') {
       const rc = proposal.roleConfig || {};
@@ -714,48 +833,123 @@ export function useProposalForm({ onSubmit }) {
         summaries.push(
           `Create the role "${rc.name}"${wearerCount ? ` and grant it to ${wearerCount} member(s)` : ''}.`
         );
+      } else {
+        // ACCESS V2: the screen writes `roleFormV2`, and it can also make a GROUP. Only a
+        // fallback — the v2 arm of buildProposalData hands back the builders' own summaries,
+        // which are what the race detector matches on.
+        const form = resolveRoleForm(proposal);
+        if (form.name) {
+          const holderCount = (form.holders || []).length;
+          summaries.push(
+            form.kind === ROLE_FORM_KIND.GROUP
+              ? `Create the group "${form.name}".`
+              : `Create the role "${form.name}"${holderCount ? ` and grant it to ${holderCount} member(s)` : ''}.`
+          );
+        }
       }
     }
     return summaries;
   }, [proposal, nativeCurrencySymbol, roleNames, projectNames]);
 
-  const buildProposalData = useCallback((eligibilityModuleAddress, contractAddresses, freshHoldersOverride = null, hatsProtocolAddress = null, predictedRoleHatId = null, metadataCIDBytes32 = null) => {
+  // `extras` carries live facts the pure builders need but the form doesn't hold:
+  //   extras.accessV2 = { enabled, authority, subjects, roles, groups, inOrgUsers, … }
+  // (assembled by VotingPage from the access-v2 hooks; empty on a legacy org).
+  // Builders may also hand back `summaries` (the sentences voters read) and a
+  // `gasLimit` (the announceWinner floor) alongside the batch.
+  const buildProposalData = useCallback((eligibilityModuleAddress, contractAddresses, freshHoldersOverride = null, hatsProtocolAddress = null, predictedRoleHatId = null, metadataCIDBytes32 = null, extras = {}) => {
     let numOptions;
     let batches = [];
     let optionNames = [];
+    let summaries = null;
+    let gasLimit = null;
 
     if (proposal.type === "transferFunds") {
-      // Batches execute with the Executor as msg.sender, and the Executor is the
-      // org's treasury (POContext aliases treasuryContractAddress to it). So a
-      // native payout is a plain value-send, and an ERC20 payout is a transfer()
-      // on the token contract moving the Executor's own balance. Amounts use the
-      // token's own decimals — parseEther would be 10^12 off for USDC.
+      // Batches execute with the Executor as msg.sender. Which pot pays was
+      // resolved on the config step from live balances (CreateVoteModal →
+      // lib/voting/treasuryBatches.resolveTransferSource) and written into the
+      // form, so the batch encodes exactly what the review screen showed:
+      //   • executor       — the Executor's own balance: a plain value send, or
+      //                      an ERC20 transfer() (the legacy shape);
+      //   • paymentManager — PaymentManager.withdraw(token, to, amount), run by
+      //                      its owner (the Executor). That is where "Deposit to
+      //                      treasury" actually puts the money — after closing
+      //                      any fully-claimed payout rounds still pinning it.
+      // Amounts use the token's own decimals — parseEther would be 10^12 off
+      // for USDC.
       const payoutToken = proposal.transferToken
         ? getTokenByAddress(proposal.transferToken)
         : null;
-      const transferCall = payoutToken
-        ? {
-            target: payoutToken.address,
-            value: "0",
-            data: new utils.Interface([
-              "function transfer(address to, uint256 amount)",
-            ]).encodeFunctionData("transfer", [
-              proposal.transferAddress,
-              utils.parseUnits(String(proposal.transferAmount), payoutToken.decimals),
-            ]),
-          }
-        : {
-            target: proposal.transferAddress,
-            value: utils.parseEther(proposal.transferAmount).toString(),
-            data: "0x",
-          };
+      const built = buildTreasuryTransferBatch({
+        source: proposal.transferSource || TRANSFER_SOURCE.EXECUTOR,
+        token: payoutToken ? payoutToken.address : '',
+        decimals: payoutToken ? payoutToken.decimals : (orgNetwork?.nativeCurrency?.decimals ?? 18),
+        symbol: payoutToken ? payoutToken.symbol : nativeCurrencySymbol,
+        amount: String(proposal.transferAmount),
+        recipient: proposal.transferAddress,
+        paymentManagerAddress: contractAddresses?.paymentManagerAddress,
+        finalizeIds: proposal.transferFinalizeIds || [],
+        destination: proposal.transferDestination || TRANSFER_DESTINATION.ADDRESS,
+      });
 
       batches = [
-        [transferCall], // Yes wins: execute transfer
-        [],             // No wins: do nothing
+        built.batch, // Yes wins: execute transfer
+        [],          // No wins: do nothing
       ];
+      summaries = built.summaries;
+      gasLimit = built.gasLimit;
       numOptions = 2;
-      optionNames = ["Yes", "No"];
+      // The same pair the review screen shows — voters never see a wording the
+      // creator did not (lib/voting/treasuryBatches.transferOptionNames).
+      optionNames = transferOptionNames(proposal.transferDestination);
+    } else if (proposal.type === "election" && extras?.accessV2?.enabled) {
+      // ── ELECTION, access-v2 org ──
+      // The legacy arm below encodes EligibilityModule + Hats calls against a role hat that
+      // cutover DEACTIVATED: every one of them reverts HatNotActive inside announceWinner's
+      // try/catch, so the vote "passes" and nothing happens. On a v2 org the ballot is written
+      // against the MembershipAuthority instead (lib/voting/v2VoteActions).
+      const v2 = extras.accessV2;
+      // Who holds the seat is a CONTRACT precondition here, not a nicety: `grant` reverts
+      // AlreadyMember and `remove` reverts NotMember, and either one silently voids the whole
+      // winning batch. Refuse to encode a ballot from a roster we have not read yet.
+      if (!Array.isArray(v2.memberships) || v2.memberships.length === 0) {
+        throw new Error(
+          'We’re still reading who holds this group’s roles. Give it a moment and try again.'
+        );
+      }
+      const built = buildV2ElectionBatches({
+        authority: v2.authority || contractAddresses?.membershipAuthorityAddress,
+        subjectId: proposal.electionRoleId,
+        subjectName: resolveV2SubjectName(v2, proposal.electionRoleId),
+        candidates: proposal.electionCandidates || [],
+        selectedIncumbents: proposal.electionSelectedIncumbents || [],
+        // The mirror's roster, corrected by the on-chain read handleSubmit just made for the
+        // addresses on this ballot (`freshAccepted`): chain truth wins for those, the mirror
+        // fills in everyone else.
+        acceptedHolders: withFreshAcceptance(
+          acceptedHoldersOf(v2.memberships, proposal.electionRoleId),
+          v2.freshAccepted?.[String(proposal.electionRoleId)],
+        ),
+        includeNoOneOption: Boolean(proposal.electionIncludeNoOneOption),
+        inOrgUsers: v2.inOrgUsers,
+        fallbackSubjectId: proposal.electionFallbackRoleId || '',
+        fallbackSubjectName: proposal.electionFallbackRoleId
+          ? resolveV2SubjectName(v2, proposal.electionFallbackRoleId)
+          : '',
+        fallbackAcceptedHolders: proposal.electionFallbackRoleId
+          ? withFreshAcceptance(
+            acceptedHoldersOf(v2.memberships, proposal.electionFallbackRoleId),
+            v2.freshAccepted?.[String(proposal.electionFallbackRoleId)],
+          )
+          : null,
+      });
+      batches = built.batches;
+      optionNames = built.optionNames;
+      numOptions = optionNames.length;
+      // Warnings ride along with the summaries: they are the sentences that say what this ballot
+      // can NOT do (a departed incumbent, a fallback that had to be dropped), and voters are
+      // exactly the people who need to read them.
+      summaries = [...built.summaries, ...built.warnings.map(worthKnowing)];
+      gasLimit = built.gasLimit;
     } else if (proposal.type === "election") {
       // Election proposal - each candidate is an option
       // When they win: revoke hat from current holders who lost, mint to winner
@@ -938,6 +1132,56 @@ export function useProposalForm({ onSubmit }) {
         batches.push([]);
         numOptions = optionNames.length;
       }
+    } else if (proposal.type === "createRole" && extras?.accessV2?.enabled) {
+      // ── CREATE ROLE (or GROUP), access-v2 org ──
+      // The legacy arm below SUCCEEDS here, which is worse than reverting: it mints an inert
+      // legacy hat and writes the TaskManager ROLE_PERM / HybridVoting creator tables that both
+      // contracts stop reading the moment an authority is set. One authority batch instead —
+      // built by `lib/accessV2/roleFormBatch`, the SAME encoder /team's "Create a role or group"
+      // modal uses, with the new subject's id predicted from the indexed subjects rather than
+      // Hats.getNextId, and (unlike the legacy arm) the `addHatToClass` call that is the only
+      // thing giving the new role a vote in binding votes.
+      const v2 = extras.accessV2;
+      // `inOrgUsers` decides whether each starting holder is SEATED (`grant`) or merely INVITED
+      // (`offer`, needs a claim) — an on-chain difference. An empty roster while the memberships
+      // query is still loading or has errored would invite people who should be seated, while
+      // the toast says they were given the role. Same rule as the election arm.
+      const holdersWanted = (resolveRoleForm(proposal).holders || []).some((h) => h?.address);
+      if (holdersWanted && (!Array.isArray(v2.memberships) || v2.memberships.length === 0)) {
+        throw new Error(
+          'We’re still reading who is in this co-op — it decides whether each starting holder is '
+          + 'seated or invited. Give it a moment and try again.'
+        );
+      }
+      const built = buildRoleFormBatch({
+        authority: v2.authority || contractAddresses?.membershipAuthorityAddress,
+        hybridVoting: contractAddresses?.votingContractAddress || '',
+        taskManagerAddress: contractAddresses?.taskManagerContractAddress || '',
+        // Prediction must see EVERY indexed subject, including the structural ones no surface
+        // renders — a hidden id still consumed a sequence number.
+        indexedSubjects: (v2.indexedSubjects?.length ? v2.indexedSubjects : v2.subjects) || [],
+        activeProposals: v2.activeProposals || [],
+        inOrgUsers: v2.inOrgUsers,
+        votingClasses: v2.votingClasses || [],
+        // The same resolution the validator ran, so a proposal can never pass validation
+        // describing one thing and encode another.
+        form: resolveRoleForm(proposal),
+        metadataCID: metadataCIDBytes32,
+      });
+      // The on-chain call ceiling is a gate, not a warning: HybridVoting reverts `TooManyCalls`
+      // at CREATION, after the IPFS upload and — for a passkey member — a burned UserOp.
+      if (built.submittable && !built.submittable.ok) {
+        throw new Error(built.submittable.message || 'This proposal has too many steps to submit in one vote.');
+      }
+      batches = [built.batch, []];   // Yes wins: create + configure. No wins: nothing.
+      numOptions = 2;
+      optionNames = built.kind === ROLE_FORM_KIND.GROUP
+        ? ['Create group', 'Reject']
+        : ['Create role', 'Reject'];
+      // The id-race warning is the one a voter most needs and can act on (close the other
+      // proposal first), so it goes into the metadata with the rest of the preview.
+      summaries = [...built.summaries, ...built.warnings.map(worthKnowing)];
+      gasLimit = built.gasLimit;
     } else if (proposal.type === "createRole") {
       // Create-role proposal — a single winning batch that calls:
       //   1. EligibilityModule.createHatWithEligibility(params)
@@ -1142,7 +1386,29 @@ export function useProposalForm({ onSubmit }) {
           );
         }
 
-        if (template.buildCalls) {
+        if (template.buildBatch) {
+          // Access-v2 template: the builder returns the WHOLE governance batch
+          // (several MembershipAuthority calls), the sentences voters read, and
+          // the announceWinner gas floor — the shape lib/accessV2/proposalBuilders
+          // speaks. The authority address and the org's subjects come from the
+          // access-v2 hooks via `extras`.
+          const built = template.buildBatch(proposal.setterValues || {}, {
+            authority: extras?.accessV2?.authority || contractAddresses?.membershipAuthorityAddress || '',
+            subjects: extras?.accessV2?.subjects || [],
+            roles: extras?.accessV2?.roles || [],
+            groups: extras?.accessV2?.groups || [],
+            contractAddresses,
+            roleNames,
+            projectNames,
+          });
+          setterCalls = built?.batch || [];
+          // Warnings ride with the summaries, as they do for the election and
+          // create-role arms — they are the sentences that say what this vote
+          // can NOT do, and voters are exactly the people who need them.
+          const setterLines = [...(built?.summaries || []), ...(built?.warnings || []).map(worthKnowing)];
+          summaries = setterLines.length ? setterLines : null;
+          gasLimit = built?.gasLimit || null;
+        } else if (template.buildCalls) {
           // Multi-call template (e.g. token name + symbol in one proposal)
           setterCalls = template.buildCalls(proposal.setterValues, contractAddress);
         } else {
@@ -1222,8 +1488,8 @@ export function useProposalForm({ onSubmit }) {
       batches = [];
     }
 
-    return { numOptions, batches, optionNames };
-  }, [proposal]);
+    return { numOptions, batches, optionNames, summaries, gasLimit };
+  }, [proposal, orgNetwork, nativeCurrencySymbol, roleNames, projectNames]);
 
   const validateBasicFields = useCallback(() => {
     // Setter proposals can be submitted without a manually-entered title:
@@ -1283,8 +1549,15 @@ export function useProposalForm({ onSubmit }) {
     toast,
   ]);
 
-  const handleSubmit = useCallback(async (eligibilityModuleAddress, contractAddresses = {}) => {
+  const handleSubmit = useCallback(async (eligibilityModuleAddress, contractAddresses = {}, extras = {}) => {
     setLoadingSubmit(true);
+
+    // Access v2: the org's roles live on a MembershipAuthority, so the two Hats reads below
+    // (wearership refresh, next-hat-id prediction) have nothing to say about them — the first
+    // would report an empty roster for a role that has no hat at all, and the second predicts an
+    // id nothing in the batch uses. Both are skipped, and the v2 arms of buildProposalData work
+    // from the indexed subjects/memberships in `extras` instead.
+    const accessV2Enabled = Boolean(extras?.accessV2?.enabled);
 
     try {
       // Basic field validation
@@ -1308,7 +1581,7 @@ export function useProposalForm({ onSubmit }) {
         return;
       }
 
-      if (proposal.type === "createRole" && !validateCreateRoleProposal()) {
+      if (proposal.type === "createRole" && !validateCreateRoleProposal(accessV2Enabled)) {
         setLoadingSubmit(false);
         return;
       }
@@ -1328,7 +1601,60 @@ export function useProposalForm({ onSubmit }) {
       // read the wrong chain's state. Mirrors the read pattern in
       // pages/create/index.js:355.
       let freshHoldersOverride = null;
-      if (proposal.type === "election") {
+      // ACCESS V2: the same freshness rule, against the MembershipAuthority. The subgraph fold
+      // mirror lags the chain, and on v2 the preconditions are harsher and all silent —
+      // `grant` reverts AlreadyMember, `remove` reverts NotMember, and announceWinner swallows
+      // both — so the candidates' and incumbents' acceptance is re-read on chain right before
+      // the batch is built. Only the addresses in the ballot are read; the rest of the roster
+      // still comes from the mirror.
+      let v2FreshAccepted = null;
+      if (proposal.type === "election" && accessV2Enabled) {
+        const authorityAddr = extras?.accessV2?.authority || contractAddresses?.membershipAuthorityAddress;
+        if (authorityAddr && orgNetwork?.rpcUrl && orgChainId) {
+          try {
+            const readProvider = new ethersProviders.JsonRpcProvider(
+              orgNetwork.rpcUrl,
+              { chainId: orgChainId, name: orgNetwork.name || `chain-${orgChainId}` }
+            );
+            const authority = new EthersContract(authorityAddr, MembershipAuthorityABI, readProvider);
+            const readAccepted = async (subjectId, addresses) => {
+              const out = {};
+              const unique = [...new Set(addresses.filter(Boolean).map((a) => String(a).toLowerCase()))];
+              await Promise.all(unique.map(async (addr) => {
+                const status = await authority.getStatus(subjectId, addr);
+                out[addr] = Boolean(status?.accepted ?? status?.[0]);
+              }));
+              return out;
+            };
+            const candidateAddrs = (proposal.electionCandidates || []).map((c) => c.address);
+            const incumbentAddrs = (proposal.electionSelectedIncumbents || []).map((i) => i.address);
+            v2FreshAccepted = {
+              [String(proposal.electionRoleId)]: await readAccepted(
+                proposal.electionRoleId,
+                [...candidateAddrs, ...incumbentAddrs],
+              ),
+            };
+            if (proposal.electionFallbackRoleId) {
+              v2FreshAccepted[String(proposal.electionFallbackRoleId)] = await readAccepted(
+                proposal.electionFallbackRoleId,
+                incumbentAddrs,
+              );
+            }
+          } catch (err) {
+            console.error('[useProposalForm] Authority roster refresh failed:', err);
+            toast({
+              title: "Cannot verify current role holders",
+              description: "Could not read the roles contract. Please try again.",
+              status: "error",
+              duration: 5000,
+              isClosable: true,
+            });
+            setLoadingSubmit(false);
+            return;
+          }
+        }
+      }
+      if (proposal.type === "election" && !accessV2Enabled) {
         const hatsAddr = getInfrastructureAddress(CONTRACT_NAMES.HATS_PROTOCOL, orgChainId);
         if (hatsAddr && orgNetwork?.rpcUrl && orgChainId) {
           try {
@@ -1390,7 +1716,7 @@ export function useProposalForm({ onSubmit }) {
       // prediction is accurate. The configurator warns when a concurrent
       // createRole proposal targets the same parent.
       let predictedRoleHatId = null;
-      if (proposal.type === 'createRole') {
+      if (proposal.type === 'createRole' && !accessV2Enabled) {
         const parentHatId = proposal.roleConfig?.parentHatId;
         if (hatsProtocolAddress && orgNetwork?.rpcUrl && orgChainId && parentHatId) {
           try {
@@ -1435,10 +1761,16 @@ export function useProposalForm({ onSubmit }) {
       // name + description only — so an image would add on-chain cost for no effect.
       // updateHatMetadata calls changeHatDetails, which requires a mutable hat — so
       // only attempt it when the role is mutable.
+      //
+      // ACCESS V2: the CID is an argument of `createRole` itself, so there is no second metadata
+      // call and no mutability precondition — the description alone decides whether we upload.
       let metadataCIDBytes32 = null;
       if (proposal.type === 'createRole') {
-        const rc = proposal.roleConfig || {};
-        if (rc.description?.trim() && rc.mutable) {
+        // The v2 screen writes `roleFormV2` (and can be making a GROUP), the legacy one writes
+        // `roleConfig`. `resolveRoleForm` is the same resolution the validator and the encoder
+        // use, so the description that gets uploaded is the description that gets proposed.
+        const rc = accessV2Enabled ? resolveRoleForm(proposal) : (proposal.roleConfig || {});
+        if (rc.description?.trim() && (accessV2Enabled || rc.mutable)) {
           try {
             const result = await addToIpfs(JSON.stringify({
               name: rc.name || '',
@@ -1462,13 +1794,18 @@ export function useProposalForm({ onSubmit }) {
         }
       }
 
-      const { numOptions, batches, optionNames } = buildProposalData(
+      const {
+        numOptions, batches, optionNames, summaries: builtSummaries, gasLimit,
+      } = buildProposalData(
         eligibilityModuleAddress,
         contractAddresses,
         freshHoldersOverride,
         hatsProtocolAddress,
         predictedRoleHatId,
         metadataCIDBytes32,
+        v2FreshAccepted
+          ? { ...extras, accessV2: { ...(extras?.accessV2 || {}), freshAccepted: v2FreshAccepted } }
+          : extras,
       );
 
       // Form collects hours; contract ABI expects minutes (uint32 minutesDuration).
@@ -1502,9 +1839,13 @@ export function useProposalForm({ onSubmit }) {
       // metadata JSON. Additive only — does NOT alter numOptions/batches/
       // optionNames or any on-chain param. Safe for VotingService to thread
       // into _uploadProposalMetadata; ignored by callers that don't forward it.
-      const actionSummaries = buildActionSummaries();
+      // A builder that knows what its calls do (treasury transfers, access-v2
+      // templates) describes them itself; the per-type fallback covers the rest.
+      const actionSummaries = (builtSummaries && builtSummaries.length > 0)
+        ? builtSummaries
+        : buildActionSummaries();
 
-      await onSubmit({
+      const submitted = await onSubmit({
         name: finalName,
         description: finalDescription,
         time: durationMinutes,
@@ -1512,9 +1853,13 @@ export function useProposalForm({ onSubmit }) {
         batches,
         optionNames,
         actionSummaries,
+        // announceWinner gas floor the page parks against the created id (null
+        // when the type has no builder — the page then uses a generous default).
+        gasLimit: gasLimit || null,
         type: proposal.type,
         transferAddress: proposal.transferAddress,
         transferAmount: proposal.transferAmount,
+        transferDestination: proposal.transferDestination,
         electionRoleId: proposal.electionRoleId,
         electionCandidates: proposal.electionCandidates,
         electionIncludeNoOneOption: proposal.electionIncludeNoOneOption,
@@ -1528,6 +1873,15 @@ export function useProposalForm({ onSubmit }) {
         hatIds: proposal.isRestricted ? proposal.restrictedHatIds : [],
       });
 
+      // The page's submit handler answers `false` when the transaction did not
+      // land (it has already shown the failure). A resolved promise used to be
+      // read as success here — form reset, draft wiped, green toast — over a
+      // revert. Keep the member's work and let them retry.
+      if (submitted === false) {
+        setLoadingSubmit(false);
+        return false;
+      }
+
       setLoadingSubmit(false);
       resetForm();
 
@@ -1536,22 +1890,39 @@ export function useProposalForm({ onSubmit }) {
         const payoutSymbol = proposal.transferToken
           ? getTokenByAddress(proposal.transferToken).symbol
           : nativeCurrencySymbol;
-        successDescription = `Transfer proposal created. If "Yes" wins, ${proposal.transferAmount} ${payoutSymbol} will be sent to ${proposal.transferAddress.slice(0, 6)}...${proposal.transferAddress.slice(-4)}`;
+        successDescription = proposal.transferDestination === TRANSFER_DESTINATION.BOUNTY_POOL
+          ? `Vote created. If Yes wins, ${proposal.transferAmount} ${payoutSymbol} moves from the treasury to the ${BOUNTY_POOL_LABEL}.`
+          : `Transfer proposal created. If Yes wins, ${proposal.transferAmount} ${payoutSymbol} will be sent to ${proposal.transferAddress.slice(0, 6)}...${proposal.transferAddress.slice(-4)}`;
       } else if (proposal.type === "election") {
-        successDescription = `Election created with ${proposal.electionCandidates.length} candidates. The winner will receive the role automatically.`;
+        // On a v2 org a winner who isn't in the group yet gets an invitation to accept rather
+        // than the seat itself, so the flat "receives the role automatically" would be a lie.
+        successDescription = accessV2Enabled
+          ? `Election created with ${proposal.electionCandidates.length} candidates. The winner is added to the role automatically — anyone not in the group yet is invited to accept it.`
+          : `Election created with ${proposal.electionCandidates.length} candidates. The winner will receive the role automatically.`;
       } else if (proposal.type === "setter") {
         const template = getTemplateById(proposal.setterTemplate);
         const actionName = template?.name || proposal.setterFunction || 'settings change';
         successDescription = `Settings change proposal created. If approved, "${actionName}" will be executed automatically.`;
       } else if (proposal.type === "createRole") {
-        const wearerCount = (proposal.roleConfig?.initialWearers || []).length;
-        successDescription = `Create-role proposal submitted for "${proposal.roleConfig?.name || 'new role'}". If approved, the role will be created${wearerCount ? ` and minted to ${wearerCount} member(s)` : ''}.`;
+        // "Minted" is Hats language, and on a v2 org someone outside the group is INVITED rather
+        // than added — say what actually happens. A v2 org can also be creating a GROUP, which has
+        // no members of its own at all.
+        if (accessV2Enabled) {
+          const form = resolveRoleForm(proposal);
+          const holderCount = (form.holders || []).length;
+          successDescription = form.kind === ROLE_FORM_KIND.GROUP
+            ? `Create-group proposal submitted for "${form.name || 'new group'}". If approved, the group will be created and every role in it gets its permissions.`
+            : `Create-role proposal submitted for "${form.name || 'new role'}". If approved, the role will be created${holderCount ? ` and given to ${holderCount} member(s)` : ''}.`;
+        } else {
+          const wearerCount = (proposal.roleConfig?.initialWearers || []).length;
+          successDescription = `Create-role proposal submitted for "${proposal.roleConfig?.name || 'new role'}". If approved, the role will be created${wearerCount ? ` and minted to ${wearerCount} member(s)` : ''}.`;
+        }
       } else {
         successDescription = "Your proposal has been created successfully.";
       }
 
       toast({
-        title: "Proposal Created",
+        title: "Vote created",
         description: successDescription,
         status: "success",
         duration: 5000,
@@ -1591,10 +1962,9 @@ export function useProposalForm({ onSubmit }) {
       errors.name = 'Give your vote a title.';
     }
 
-    // Duration — must be at least 1 hour.
-    const durationHours = Number(proposal.time);
-    if (isNaN(durationHours) || durationHours < 1) {
-      errors.time = 'Voting must run for at least 1 hour.';
+    // Duration — must be at least the product floor (1 hour; 10 minutes in E2E mode).
+    if (!isDurationAllowed(proposal.time)) {
+      errors.time = durationTooShortMessage();
     }
 
     // Normal — at least 2 non-empty options.
@@ -1605,7 +1975,7 @@ export function useProposalForm({ onSubmit }) {
       }
     }
 
-    // Transfer funds — valid recipient + positive amount.
+    // Transfer funds — valid recipient + positive amount the asset can represent.
     if (proposal.type === 'transferFunds') {
       if (!proposal.transferAddress || !utils.isAddress(proposal.transferAddress)) {
         errors.transferAddress = 'Enter a valid recipient address (0x…).';
@@ -1613,6 +1983,14 @@ export function useProposalForm({ onSubmit }) {
       const amt = parseFloat(proposal.transferAmount);
       if (isNaN(amt) || amt <= 0) {
         errors.transferAmount = 'Enter an amount greater than 0.';
+      } else {
+        const payoutToken = proposal.transferToken ? getTokenByAddress(proposal.transferToken) : null;
+        const decimalsError = amountDecimalsError(
+          proposal.transferAmount,
+          payoutToken ? payoutToken.decimals : (orgNetwork?.nativeCurrency?.decimals ?? 18),
+          payoutToken ? payoutToken.symbol : nativeCurrencySymbol,
+        );
+        if (decimalsError) errors.transferAmount = decimalsError;
       }
     }
 
@@ -1629,10 +2007,13 @@ export function useProposalForm({ onSubmit }) {
     proposal.options,
     proposal.transferAddress,
     proposal.transferAmount,
+    proposal.transferToken,
     proposal.isRestricted,
     proposal.restrictedHatIds,
     proposal.setterMode,
     proposal.setterTemplate,
+    orgNetwork,
+    nativeCurrencySymbol,
   ]);
 
   const isValid = Object.keys(fieldErrors).length === 0;

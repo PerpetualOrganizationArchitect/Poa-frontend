@@ -20,14 +20,24 @@
 
 import { utils, constants as ethersConstants } from 'ethers';
 import { getTemplateById, templateParamsReady } from '@/config/setterDefinitions';
+import { templateUnavailableReason } from './setterAvailability';
+import { amountDecimalsError, amountToWei } from './treasuryBatches';
+import { resolveRoleForm, roleFormError } from '@/lib/accessV2/roleFormBatch';
 
 const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
 
 /**
  * Is the config decision for this proposal's type made?
  * `null` when there is nothing left to pick, otherwise the reason.
+ *
+ * @param {object} proposal
+ * @param {object} [ctx] - optional live facts the pure rules can't know:
+ *   `ctx.transfer = { decimals, symbol, availableWei, overLimitMessage, loading }`
+ *   lets a treasury payout be refused when it is finer than the asset or more
+ *   than every pot holds (the batch would otherwise run and silently fail
+ *   inside announceWinner's try/catch). Omitted → the legacy checks only.
  */
-export function configError(proposal) {
+export function configError(proposal, ctx = null) {
   const p = proposal || {};
 
   if (p.type === 'setter') {
@@ -44,6 +54,14 @@ export function configError(proposal) {
     // ?propose=<template> deep link counts as configured and skips straight
     // past the screen where its values are entered.
     const tmpl = getTemplateById(p.setterTemplate);
+    // A template the org can no longer propose (a legacy-only action after the
+    // access-v2 cutover, or a v2-only one before it) must not clear the config
+    // gate just because a restored draft or an old deep link still names it —
+    // it would pass on chain and change nothing.
+    if (tmpl && ctx?.accessV2) {
+      const reason = templateUnavailableReason(tmpl, { authorityEnabled: Boolean(ctx.accessV2.enabled) });
+      if (reason) return reason;
+    }
     if (tmpl && !templateParamsReady(tmpl, p.setterValues)) {
       const missing = (tmpl.inputs || []).find(
         i => !i.optional && !nonEmpty(String(p.setterValues?.[i.name] ?? '')),
@@ -88,6 +106,17 @@ export function configError(proposal) {
 
   if (p.type === 'createRole') {
     const rc = p.roleConfig || {};
+    // ACCESS V2 (`ctx.accessV2.enabled`): the config step is a different screen entirely —
+    // `components/accessV2/RoleForm`, writing `proposal.roleFormV2`, and able to create a GROUP as
+    // well as a role. None of the legacy gates apply: there is no parent role to sit under (a
+    // subject has no hierarchy) and the seat cap is `maxMembers`, where 0 legitimately means "no
+    // limit". `roleFormError` is the ONE gate — the same function
+    // `useProposalForm.validateCreateRoleProposal` toasts and the same form
+    // `buildProposalData` encodes, over `resolveRoleForm` so a pre-v2 draft (roleConfig only)
+    // is judged on the fields it actually carries.
+    if (ctx?.accessV2?.enabled) {
+      return roleFormError(resolveRoleForm(p));
+    }
     if (!rc.parentHatId || String(rc.parentHatId).trim() === '') {
       return 'Pick which role this new role should sit under.';
     }
@@ -105,6 +134,30 @@ export function configError(proposal) {
     }
     const amount = parseFloat(p.transferAmount);
     if (isNaN(amount) || amount <= 0) return 'Please enter a valid transfer amount.';
+    const t = ctx?.transfer;
+    if (t) {
+      const decimalsError = amountDecimalsError(p.transferAmount, t.decimals, t.symbol);
+      if (decimalsError) return decimalsError;
+      // A failed balance read fails CLOSED. Guessing would pick the Executor —
+      // the pot that is empty on every org we have seen — and the vote would
+      // pass and pay nothing.
+      if (t.readFailed) return "Couldn't read what the group holds — try again in a moment.";
+      // The contract's `withdraw` guard counts EVERY unfinalized payout round; if the hook could
+      // only read the newest ones, `spendable` is a guess and the vote could pass and pay nothing.
+      if (t.roundsUnread) {
+        return 'This treasury has more payout rounds than can be checked right now, so a payout can’t be '
+          + 'sized safely. Ask an admin to close old rounds first.';
+      }
+      // Only refuse on a SETTLED read. While balances load (or when the read
+      // failed) the pots are unknown, not empty — blocking then would lock the
+      // step behind an RPC hiccup.
+      if (!t.loading && t.availableWei !== undefined && t.availableWei !== null) {
+        const wei = amountToWei(p.transferAmount, t.decimals);
+        if (wei !== null && wei > BigInt(t.availableWei)) {
+          return t.overLimitMessage || `Only ${t.availableWei} base units can go out in one vote.`;
+        }
+      }
+    }
     return null;
   }
 
@@ -172,12 +225,12 @@ export function hasChosenIntent(proposal) {
  * `@/components/voting/create/wizardSteps` — this lib module stays free of any
  * dependency on the component tree. They are the STEP_* constants' values.
  */
-export function isComplete(step, proposal) {
+export function isComplete(step, proposal, ctx = null) {
   switch (step) {
     case 'intent':
       return hasChosenIntent(proposal);
     case 'config':
-      return configError(proposal) === null;
+      return configError(proposal, ctx) === null;
     case 'details':
       // Stricter than `detailsError` on purpose, for setter proposals only: the
       // title exemption there is a submit-time backstop for someone who clears
@@ -185,7 +238,7 @@ export function isComplete(step, proposal) {
       // has been to details yet, so that is where a deep link should land.
       return detailsError(proposal) === null && nonEmpty(proposal?.name);
     case 'review':
-      return configError(proposal) === null && detailsError(proposal) === null;
+      return configError(proposal, ctx) === null && detailsError(proposal) === null;
     default:
       return false;
   }

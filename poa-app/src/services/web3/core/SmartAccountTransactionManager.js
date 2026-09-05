@@ -11,6 +11,8 @@ import { encodeFunctionData } from 'viem';
 import { TransactionResult, TransactionState } from './TransactionManager';
 import PasskeyAccountABI from '../../../../abi/PasskeyAccount.json';
 import { buildUserOpWithFallback, getUserOpHash } from '../passkey/userOpBuilder';
+import { initCodeOf, isPaymasterRejection } from '../passkey/sponsorshipBudget';
+import { describeReceiptFailure } from '../passkey/receiptFailure';
 import { decodeContractRevert, decodeRevertData } from '../../../lib/errors/contractErrors';
 import { signUserOpWithPasskey } from '../passkey/passkeySign';
 import { encodeHatPaymasterData, encodeClaimPaymasterData } from '../passkey/paymasterData';
@@ -137,10 +139,11 @@ export class SmartAccountTransactionManager {
       // State: Pending (submitting to bundler)
       this._notifyState(onStateChange, TransactionState.PENDING);
 
-      // 6. Submit to bundler
-      const userOpHashFromBundler = await this.bundlerClient.sendUserOperation({
-        ...userOp,
-        entryPointAddress: ENTRY_POINT_ADDRESS,
+      // 6. Submit to bundler (self-funded retry if the paymaster refuses at submission)
+      const userOpHashFromBundler = await this._sendWithSelfFundedRetry(userOp, {
+        callData,
+        onStateChange,
+        gasOverrides: { callGasLimit, callGasLimitMultiplier, callGasLimitFloor },
       });
 
       console.log(`UserOp submitted: ${userOpHashFromBundler}`);
@@ -155,7 +158,7 @@ export class SmartAccountTransactionManager {
       });
 
       if (!receipt.success) {
-        const error = this._parseAAError(receipt.reason || 'UserOp execution failed', null, contract?.interface);
+        const error = this._parseAAError(describeReceiptFailure(receipt.reason, 'UserOp execution failed'), null, contract?.interface);
         this._notifyState(onStateChange, TransactionState.ERROR, { error });
         return TransactionResult.failure(error);
       }
@@ -233,9 +236,10 @@ export class SmartAccountTransactionManager {
 
       this._notifyState(onStateChange, TransactionState.PENDING);
 
-      const userOpHashFromBundler = await this.bundlerClient.sendUserOperation({
-        ...userOp,
-        entryPointAddress: ENTRY_POINT_ADDRESS,
+      const userOpHashFromBundler = await this._sendWithSelfFundedRetry(userOp, {
+        callData,
+        onStateChange,
+        gasOverrides: { callGasLimit, callGasLimitMultiplier, callGasLimitFloor },
       });
 
       this._notifyState(onStateChange, TransactionState.CONFIRMING);
@@ -246,7 +250,7 @@ export class SmartAccountTransactionManager {
       });
 
       if (!receipt.success) {
-        const error = this._parseAAError(receipt.reason || 'Batch UserOp execution failed');
+        const error = this._parseAAError(describeReceiptFailure(receipt.reason, 'Batch UserOp execution failed'));
         this._notifyState(onStateChange, TransactionState.ERROR, { error });
         return TransactionResult.failure(error);
       }
@@ -268,6 +272,60 @@ export class SmartAccountTransactionManager {
       this._notifyState(onStateChange, TransactionState.ERROR, { error: parsedError });
 
       return TransactionResult.failure(parsedError);
+    }
+  }
+
+  /**
+   * Submit a signed UserOp; if the PAYMASTER refuses it at submission, rebuild self-funded, ask
+   * for one more signature and resend.
+   *
+   * Estimation-time refusals already fall back inside the builder. Submission is a second,
+   * independent verdict: the hub re-validates against the FINAL gas limits and its live budget /
+   * deposit / solidarity state, none of which the estimate saw. Before this, a sponsored op
+   * refused here was simply dead — for an account holding enough to pay for itself.
+   *
+   * The refusal is threaded through as `paymasterRejection`, so if the self-funded attempt
+   * cannot pay either (AA21) the message says WHY sponsorship fell through, not a bare "no funds".
+   */
+  async _sendWithSelfFundedRetry(userOp, { callData, onStateChange, gasOverrides = {} }) {
+    try {
+      const hash = await this.bundlerClient.sendUserOperation({ ...userOp, entryPointAddress: ENTRY_POINT_ADDRESS });
+      // Accepted: whatever happens on chain from here is the CALL's story, not sponsorship's —
+      // a mined-but-reverted op must not be reported as "no gas allowance / no funds".
+      this._paymasterFellBack = false;
+      this._paymasterRejection = null;
+      return hash;
+    } catch (e) {
+      if (!userOp.paymaster || !isPaymasterRejection(e)) throw e;
+      console.warn('[SmartAccountTxMgr] Paymaster refused at submission; retrying self-funded:', e.shortMessage || e.message);
+      this._paymasterFellBack = true;
+      this._paymasterRejection = e;
+
+      let retry;
+      try {
+        retry = await buildUserOpWithFallback({
+          sender: this.accountAddress,
+          callData,
+          bundlerClient: this.bundlerClient,
+          publicClient: this.publicClient,
+          initCode: initCodeOf(userOp),
+          gasOverrides,
+        });
+      } catch (buildErr) {
+        if (!buildErr.paymasterRejection) {
+          Object.defineProperty(buildErr, 'paymasterRejection', { value: e, enumerable: false });
+        }
+        throw buildErr;
+      }
+      Object.defineProperty(retry, 'paymasterRejection', { value: e, enumerable: false });
+
+      this._notifyState(onStateChange, TransactionState.AWAITING_SIGNATURE);
+      retry.signature = await signUserOpWithPasskey(getUserOpHash(retry, ENTRY_POINT_ADDRESS, this.chainId), this.rawCredentialId);
+      this._notifyState(onStateChange, TransactionState.PENDING);
+      const hash = await this.bundlerClient.sendUserOperation({ ...retry, entryPointAddress: ENTRY_POINT_ADDRESS });
+      this._paymasterFellBack = false;
+      this._paymasterRejection = null;
+      return hash;
     }
   }
 

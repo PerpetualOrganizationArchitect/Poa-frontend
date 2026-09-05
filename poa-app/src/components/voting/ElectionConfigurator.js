@@ -105,12 +105,12 @@ const RoleCard = ({ role, holderCount, holderNames, holdersKnown = true, onClick
         </Text>
         <Text fontSize="xs" color="gray.400">
           {!holdersKnown
-            ? 'Current holders unavailable'
+            ? 'Couldn’t load who holds it'
             : holderCount === 0
-            ? 'No current holder'
+            ? 'Nobody holds it yet'
             : holderCount === 1
             ? `Held by ${holderNames[0]}`
-            : `${holderCount} current holders`}
+            : `${holderCount} people hold it`}
         </Text>
       </VStack>
       <Icon as={FiChevronRight} color="gray.400" />
@@ -126,6 +126,12 @@ const ElectionConfigurator = ({
   onChange,
   allRoles = [],
   leaderboardData = [],
+  // ACCESS V2 — who holds a role. On a migrated org the roster comes from the MembershipAuthority
+  // (a role created after cutover has no hat, and nobody who joined since holds a hat token), so
+  // the modal passes a resolver and this component asks IT instead of deriving from the hat lists
+  // in `leaderboardData`. Absent on a legacy org, where every path below is byte-identical.
+  resolveHolders = null,
+  holdersReady = undefined,
 }) => {
   const [step, setStep] = useState(proposal.electionRoleId ? 2 : 1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -139,8 +145,15 @@ const ElectionConfigurator = ({
   // failure alert to anyone on a slow subgraph while data is still in flight.
   const { poContextLoading } = usePOContext();
   const rolesResolved = allRoles.length > 0;
-  const holdersResolved = leaderboardData.length > 0;
+  const holdersResolved = holdersReady !== undefined ? Boolean(holdersReady) : leaderboardData.length > 0;
   const orgDataLoading = poContextLoading && (!rolesResolved || !holdersResolved);
+
+  // The one place "who holds this role?" is answered — the authority's roster when the modal
+  // supplies one, the legacy hat lists otherwise.
+  const holdersOf = useCallback(
+    (roleId) => (resolveHolders ? resolveHolders(roleId) : getCurrentHolders(roleId, leaderboardData)),
+    [resolveHolders, leaderboardData]
+  );
 
   // Holders of the selected hat, re-derived from LIVE leaderboardData rather
   // than trusted from the one-shot snapshot handleRoleSelect took: that click
@@ -148,8 +161,8 @@ const ElectionConfigurator = ({
   // forever — the incumbent picker would never render and the UI would claim
   // "no one holds this role" while the election revokes nothing.
   const liveHolders = useMemo(
-    () => getCurrentHolders(proposal.electionRoleId, leaderboardData),
-    [proposal.electionRoleId, leaderboardData]
+    () => holdersOf(proposal.electionRoleId),
+    [proposal.electionRoleId, holdersOf]
   );
 
   // All holders of the selected hat (for display / selection). The persisted
@@ -272,18 +285,18 @@ const ElectionConfigurator = ({
       return;
     }
     // Pre-compute which addresses currently hold the fallback hat
-    const holders = getCurrentHolders(fallbackHatId, leaderboardData);
+    const holders = holdersOf(fallbackHatId);
     const holderAddresses = holders.map(h => h.address);
     onChange({
       electionFallbackRoleId: fallbackHatId,
       electionFallbackHolders: holderAddresses,
     });
-  }, [onChange, leaderboardData]);
+  }, [onChange, holdersOf]);
 
   // Handle role selection (step 1 -> 2)
   const handleRoleSelect = useCallback(
     (role) => {
-      const holders = getCurrentHolders(role.hatId, leaderboardData);
+      const holders = holdersOf(role.hatId);
       const updates = {
         electionRoleId: role.hatId,
         electionCurrentHolders: holders,
@@ -491,7 +504,7 @@ const ElectionConfigurator = ({
           {!orgDataLoading && rolesResolved && (
             <SimpleGrid columns={2} spacing={3}>
               {allRoles.map((role) => {
-                const holders = getCurrentHolders(role.hatId, leaderboardData);
+                const holders = holdersOf(role.hatId);
                 return (
                   <RoleCard
                     key={role.hatId}
@@ -621,7 +634,7 @@ const ElectionConfigurator = ({
               <Text fontSize="sm" color="yellow.200">
                 Could not load current holders of {selectedRoleName || 'this role'}.
                 No incumbent can be put at stake — the winner will simply be
-                granted the hat. Close and reopen this modal to try again.
+                added to the role. Close and reopen this modal to try again.
               </Text>
             </Alert>
           )}
@@ -638,8 +651,8 @@ const ElectionConfigurator = ({
                 Select who is up for election
               </Text>
               <Text fontSize="xs" color="gray.500" mb={3}>
-                Only selected holders will lose the hat if they don&apos;t win.
-                Other holders are unaffected.
+                Only the people you tick lose the role if they don&apos;t win.
+                Everyone else keeps it.
               </Text>
               <VStack spacing={2} align="stretch">
                 {allHolders.map((holder) => {
@@ -689,8 +702,7 @@ const ElectionConfigurator = ({
             >
               <AlertIcon color="blue.300" />
               <Text fontSize="sm" color="gray.300">
-                No one currently holds this role. The winner will be granted
-                the hat.
+                No one currently holds this role. The winner is added to it.
               </Text>
             </Alert>
           )}
@@ -730,7 +742,7 @@ const ElectionConfigurator = ({
                 removed entirely.
               </Text>
               <Select
-                placeholder="None — just revoke hat"
+                placeholder="None — they simply leave the role"
                 value={proposal.electionFallbackRoleId || ''}
                 onChange={handleFallbackRoleChange}
                 size="sm"
@@ -762,7 +774,7 @@ const ElectionConfigurator = ({
               </Text>
             </Checkbox>
             <Text fontSize="xs" color="gray.500" mt={1} ml={6}>
-              Adds a &quot;No One&quot; option. If voters choose it, no hat is minted or revoked.
+              Adds a &quot;No One&quot; option. If voters choose it, nobody gains or loses the role.
             </Text>
           </Box>
 
@@ -1065,17 +1077,17 @@ const ElectionConfigurator = ({
                       })}
                       {!candidateAlreadyHolds && (
                         <Text fontSize="xs" color="green.300" pl={2}>
-                          - Grant hat to {candidate.name}
+                          - {candidate.name} joins the role
                         </Text>
                       )}
                       {candidateIsIncumbent && incumbentsToRevoke.length === 0 && (
                         <Text fontSize="xs" color="gray.400" pl={2}>
-                          - No changes (keeps existing hat)
+                          - No change (keeps the role)
                         </Text>
                       )}
                       {candidateAlreadyHolds && !candidateIsIncumbent && incumbentsToRevoke.length === 0 && (
                         <Text fontSize="xs" color="gray.400" pl={2}>
-                          - No changes (already holds hat)
+                          - No change (already in the role)
                         </Text>
                       )}
                     </Box>

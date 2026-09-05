@@ -17,6 +17,7 @@ import {
 import { entryPoint07Abi } from 'viem/account-abstraction';
 import { ENTRY_POINT_ADDRESS, GAS_BUFFER_PERCENT, MAX_USEROP_GAS } from '../../../config/passkey';
 import { extractRevertDataFromText, decodeRevertData } from '../../../lib/errors/contractErrors';
+import { budgetRejection, checkSponsorship, isPaymasterRejection } from './sponsorshipBudget';
 
 /**
  * Build a complete UserOp ready for signing.
@@ -196,21 +197,30 @@ export async function buildUserOpWithFallback({
 
       try {
         await estimateGas(userOp, bundlerClient, gasOverrides);
-        console.log(`UserOp built with gas sponsorship (entry ${i + 1}/${dataEntries.length})`);
-        return userOp;
       } catch (e) {
-        const msg = e.message || e.shortMessage || e.details || '';
-        const isPaymasterRejection = msg.includes('AA31') || msg.includes('AA32') || msg.includes('AA33')
-          || msg.includes('paymaster') || msg.includes('Paymaster')
-          || msg.includes('validatePaymasterUserOp');
-
-        if (isPaymasterRejection) {
+        if (isPaymasterRejection(e)) {
           lastPaymasterRejection = e;
-          console.warn(`Paymaster rejected entry ${i + 1}/${dataEntries.length}, trying next:`, msg);
-        } else {
-          throw e;
+          console.warn(`Paymaster rejected entry ${i + 1}/${dataEntries.length}, trying next:`, e.message || e.shortMessage || '');
+          continue;
         }
+        throw e;
       }
+
+      // The estimate passed with the BUNDLER's gas limits; the hub re-checks its per-subject
+      // budget at submission against the FINAL ones (`requiredPrefund`). Ask it now, before a
+      // biometric prompt and a doomed submission — and move on to the next entry (or to
+      // self-funded) when this subject's remaining allowance cannot cover the reservation.
+      const verdict = await checkSponsorship({ publicClient, paymasterAddress, userOp }).catch((e) => {
+        console.warn('[UserOp] Sponsorship budget pre-flight unavailable, trusting the estimate:', e?.message || e);
+        return { checked: false, fits: true };
+      });
+      if (verdict.checked && !verdict.fits) {
+        lastPaymasterRejection = budgetRejection(verdict);
+        console.warn(`Paymaster budget for entry ${i + 1}/${dataEntries.length} cannot cover this op, trying next:`, lastPaymasterRejection.message);
+        continue;
+      }
+      console.log(`UserOp built with gas sponsorship (entry ${i + 1}/${dataEntries.length})`);
+      return userOp;
     }
     console.warn('All paymaster entries rejected, falling back to self-funded');
   }
@@ -378,11 +388,9 @@ async function estimateGas(userOp, bundlerClient, gasOverrides = {}) {
       throw e;
     }
     // Re-throw paymaster rejections so callers can fall back to self-funded.
-    // AA31=validation failed, AA32=deposit too low, AA33=time range expired
+    // AA31=validation failed, AA32=deposit too low, AA33=validatePaymasterUserOp reverted
     const msg = e.message || e.shortMessage || e.details || '';
-    if (msg.includes('AA31') || msg.includes('AA32') || msg.includes('AA33')
-        || msg.includes('paymaster') || msg.includes('Paymaster')
-        || msg.includes('validatePaymasterUserOp')) {
+    if (isPaymasterRejection(e)) {
       throw e;
     }
 

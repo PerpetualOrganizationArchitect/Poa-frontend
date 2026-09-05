@@ -30,18 +30,36 @@ import {
   Tag,
   TagLabel,
   Link,
+  RadioGroup,
+  Radio,
+  Stack,
 } from "@chakra-ui/react";
 import { InfoOutlineIcon, AddIcon, CloseIcon } from "@chakra-ui/icons";
 import SubjectRestrictionPicker from '@/components/accessV2/SubjectRestrictionPicker';
 import { useRoleNames } from "@/hooks";
 import { subjectNamesLabel } from "@/lib/accessV2/subjectNames";
+import { hasCompetingSubjectCreation } from "@/lib/accessV2/ids";
 import { usePOContext } from "@/context/POContext";
 import { useProjectContext } from "@/context/ProjectContext";
 import { getNetworkByChainId } from "../../config/networks";
-import { getBountyTokenOptions } from "@/util/tokens";
+import { getBountyTokenOptions, getTokenByAddress } from "@/util/tokens";
+import { formatTokenAmount } from "@/util/formatToken";
+import { useOrgPotBalances } from "@/hooks/useOrgPotBalances";
+import {
+  TRANSFER_DESTINATION,
+  TRANSFER_SOURCE,
+  BOUNTY_POOL_LABEL,
+  paymentManagerAvailability,
+  resolveTransferSource,
+  amountToWei,
+  amountDecimalsError,
+  treasuryTransferCopy,
+} from "@/lib/voting/treasuryBatches";
 import SetterActionSelector from "./SetterActionSelector";
 import ElectionConfigurator from "./ElectionConfigurator";
 import RoleConfigurator, { parseAutoTitle as parseRoleAutoTitle } from "./RoleConfigurator";
+import RoleForm from "@/components/accessV2/RoleForm";
+import { ROLE_FORM_KIND, resolveRoleForm, roleConfigToRoleForm, roleFormCopy } from "@/lib/accessV2/roleFormBatch";
 import { inputStyles } from '@/components/shared/glassStyles';
 import IntentGallery, { INTENT_OPTIONS } from "./create/IntentGallery";
 import DurationField from "./create/DurationField";
@@ -53,11 +71,13 @@ import {
   STEP_DETAILS,
   STEP_REVIEW,
   CONFIG_TYPES,
+  BINDING_TYPES,
   stepsForType,
   resolveEntryStep,
   STEP_ERROR_KEYS,
 } from "./create/wizardSteps";
 import { configError as computeConfigError, isComplete } from "@/lib/voting/proposalChecks";
+import { isDurationAllowed, durationTooShortMessage } from "@/lib/voting/durationLimits";
 import { applyAutoCopy, backfillProvenance } from "./create/autoCopy";
 
 const glassLayerStyle = {
@@ -71,9 +91,14 @@ const glassLayerStyle = {
   border: "1px solid rgba(148, 115, 220, 0.3)",
 };
 
-// Fields the confirm step + who-can-vote helpers rely on. Types that route
-// through official Blended-voting governance.
-const BINDING_TYPES = new Set(["election", "createRole", "setter"]);
+// The types that route through official Blended-voting governance are
+// `BINDING_TYPES` from ./create/wizardSteps — ONE definition shared with the
+// intent gallery's badges and VotingPage's routing, so they cannot disagree.
+
+const shortAddress = (address) => {
+  const a = String(address || '');
+  return /^0x[0-9a-fA-F]{40}$/.test(a) ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
+};
 
 // Per-step heading shown under "Create a vote". The config step's title depends
 // on the intent, since "Choose the rule change" and "Set up the election" are
@@ -85,7 +110,9 @@ const CONFIG_STEP_TITLES = {
   transferFunds: "Choose the payment",
 };
 
-function stepTitle(step, type) {
+function stepTitle(step, type, accessV2 = false) {
+  // On a cut-over org the create-role screen also makes GROUPS, so the heading can't say "role".
+  if (step === STEP_CONFIG && type === "createRole" && accessV2) return "Set up the role or group";
   if (step === STEP_CONFIG) return CONFIG_STEP_TITLES[type] || "Configure";
   if (step === STEP_DETAILS) return "Vote details";
   if (step === STEP_REVIEW) return "Review your ballot";
@@ -127,24 +154,34 @@ const CreateVoteModal = ({
   // the sets can differ, so the gallery disables cards the user can't submit.
   canCreatePoll = true,
   canCreateProposal = true,
+  // Access-v2 facts from VotingPage (the SAME object the proposal builders get). Null / disabled
+  // on a legacy org, where every branch below falls through to the legacy rendering.
+  accessV2 = null,
 }) => {
   const { allRoles, resolveSubjectName } = useRoleNames();
-  const { orgChainId } = usePOContext();
+  const accessV2Enabled = Boolean(accessV2?.enabled);
+  const { orgChainId, taskManagerContractAddress } = usePOContext();
   const { projectsData } = useProjectContext() || {};
   const orgNetwork = getNetworkByChainId(orgChainId);
   const nativeCurrencySymbol = orgNetwork?.nativeCurrency?.symbol || 'ETH';
 
+  const isTransfer = proposal.type === 'transferFunds';
+  const isBountyPool = isTransfer && proposal.transferDestination === TRANSFER_DESTINATION.BOUNTY_POOL;
+
   // Assets a treasury payout can move: the chain's native currency plus every
-  // ERC20 configured for this chain. Payout batches run as the Executor, which
-  // IS the treasury, so both are a single call it can make on its own balance.
+  // ERC20 configured for this chain. The task-reward pool is ERC20-only — the
+  // TaskManager pays bounties with an ERC20 transfer — so the native currency is
+  // not offered for it.
   const transferAssetOptions = useMemo(() => ([
-    { address: '', symbol: nativeCurrencySymbol, label: `${nativeCurrencySymbol} — the group's native currency` },
+    ...(isBountyPool ? [] : [
+      { address: '', symbol: nativeCurrencySymbol, label: `${nativeCurrencySymbol} — ${orgNetwork?.name ? `${orgNetwork.name}'s` : 'the chain’s'} native currency` },
+    ]),
     ...getBountyTokenOptions(orgChainId).map(t => ({
       address: t.address,
       symbol: t.symbol,
       label: `${t.symbol} — ${t.name}`,
     })),
-  ]), [nativeCurrencySymbol, orgChainId]);
+  ]), [nativeCurrencySymbol, orgChainId, isBountyPool, orgNetwork]);
 
   // Symbol for the currently selected asset — drives the amount label, the
   // auto-written title/description and the review screen's payout row.
@@ -152,6 +189,102 @@ const CreateVoteModal = ({
     transferAssetOptions.find(a => a.address === (proposal.transferToken || ''))?.symbol
       || nativeCurrencySymbol
   ), [transferAssetOptions, proposal.transferToken, nativeCurrencySymbol]);
+  const transferDecimals = useMemo(() => (
+    proposal.transferToken
+      ? getTokenByAddress(proposal.transferToken).decimals
+      : (orgNetwork?.nativeCurrency?.decimals ?? 18)
+  ), [proposal.transferToken, orgNetwork]);
+  // Same precision rule as /treasury's ledger (TokenBalancesGrid): two places
+  // for a dollar-pegged asset, four otherwise — so the wizard and the ledger
+  // print the same balance the same way. Zeros are padded to the column.
+  const potPrecision = useMemo(() => {
+    const stable = proposal.transferToken
+      ? Boolean(getTokenByAddress(proposal.transferToken).isStable)
+      : Boolean(orgNetwork?.nativeCurrency?.usdPegged);
+    return stable ? 2 : 4;
+  }, [proposal.transferToken, orgNetwork]);
+  const fmtPot = useCallback((wei) => {
+    const s = formatTokenAmount(wei, transferDecimals, potPrecision);
+    return s === '0' ? `0.${'0'.repeat(potPrecision)}` : s;
+  }, [transferDecimals, potPrecision]);
+
+  // ---- Which pot pays? ----
+  // The org's money sits in three places (lib/voting/treasuryBatches explains
+  // why). Read them live for the selected asset, work out which one can cover
+  // the amount, and write the answer into the form so submit encodes exactly
+  // what this screen showed.
+  const pots = useOrgPotBalances({ token: proposal.transferToken || '', enabled: isOpen && isTransfer });
+  const pmAvailability = useMemo(() => paymentManagerAvailability({
+    balance: pots.paymentManager,
+    distributions: pots.distributions,
+    token: proposal.transferToken || '',
+  }), [pots.paymentManager, pots.distributions, proposal.transferToken]);
+  const transferAmountWei = useMemo(
+    () => amountToWei(proposal.transferAmount, transferDecimals),
+    [proposal.transferAmount, transferDecimals],
+  );
+  const sourceResolution = useMemo(() => resolveTransferSource({
+    amountWei: transferAmountWei ?? 0n,
+    executorBalance: pots.executor,
+    paymentManager: pmAvailability,
+  }), [transferAmountWei, pots.executor, pmAvailability]);
+  // A single pot must cover the whole amount (the batch never splits a payout).
+  const transferAvailableWei = useMemo(() => {
+    const exec = BigInt(pots.executor || '0');
+    const pm = BigInt(pmAvailability.spendableAfterRelease || '0');
+    return (exec > pm ? exec : pm).toString();
+  }, [pots.executor, pmAvailability.spendableAfterRelease]);
+  const potsSettled = !pots.loading && !pots.error;
+  // One sentence for the cap, used by the inline field error and the pure
+  // config gate alike.
+  const overLimitMessage = useMemo(
+    () => `Only ${fmtPot(transferAvailableWei)} ${transferSymbol} can go out in one vote.`,
+    [fmtPot, transferAvailableWei, transferSymbol],
+  );
+
+  const sourceLabelFor = useCallback((source, finalizeIds) => {
+    if (source === TRANSFER_SOURCE.PAYMENT_MANAGER) {
+      const closing = (finalizeIds || []).length > 0
+        ? ` (after closing fully-claimed payout round${finalizeIds.length === 1 ? '' : 's'} ${finalizeIds.map((id) => `#${id}`).join(', ')})`
+        : '';
+      return `the treasury — ${fmtPot(pmAvailability.spendableAfterRelease)} ${transferSymbol} there before this payout${closing}`;
+    }
+    return `the group's wallet — ${fmtPot(pots.executor)} ${transferSymbol} there before this payout`;
+  }, [fmtPot, pmAvailability.spendableAfterRelease, pots.executor, transferSymbol]);
+
+  // The task-reward pool IS the TaskManager: lock the recipient to it, and pick
+  // the first ERC20 when the native currency was selected before the switch.
+  useEffect(() => {
+    if (!isBountyPool) return;
+    const patch = {};
+    if (taskManagerContractAddress && proposal.transferAddress !== taskManagerContractAddress) {
+      patch.transferAddress = taskManagerContractAddress;
+    }
+    if (!proposal.transferToken && transferAssetOptions[0]?.address) {
+      patch.transferToken = transferAssetOptions[0].address;
+    }
+    if (Object.keys(patch).length > 0) handleSetterChange(patch);
+  }, [isBountyPool, taskManagerContractAddress, proposal.transferAddress, proposal.transferToken, transferAssetOptions, handleSetterChange]);
+
+  // Persist the resolved source (and the payout rounds to close first) into
+  // the form. Only on a settled read: while balances load the answer is
+  // "unknown", not "nothing", and a stale answer must not be written over it.
+  useEffect(() => {
+    if (!isTransfer || !potsSettled) return;
+    const ok = sourceResolution.ok;
+    const next = {
+      transferSource: ok ? sourceResolution.source : '',
+      transferFinalizeIds: ok ? sourceResolution.finalizeIds : [],
+      transferSourceLabel: ok ? sourceLabelFor(sourceResolution.source, sourceResolution.finalizeIds) : '',
+    };
+    const same = proposal.transferSource === next.transferSource
+      && proposal.transferSourceLabel === next.transferSourceLabel
+      && JSON.stringify(proposal.transferFinalizeIds || []) === JSON.stringify(next.transferFinalizeIds);
+    if (!same) handleSetterChange(next);
+  }, [
+    isTransfer, potsSettled, sourceResolution, sourceLabelFor, handleSetterChange,
+    proposal.transferSource, proposal.transferSourceLabel, proposal.transferFinalizeIds,
+  ]);
   const { currentStepDef, isActive: isTourActive } = useTour();
   const isTourStep = isTourActive && currentStepDef?.id === 'create-vote-preview';
 
@@ -240,21 +373,25 @@ const CreateVoteModal = ({
     const address = proposal.transferAddress || '';
     const amount = parseFloat(proposal.transferAmount);
     if (!/^0x[a-fA-F0-9]{40}$/.test(address) || isNaN(amount) || amount <= 0) return;
-    const short = `${address.slice(0, 6)}…${address.slice(-4)}`;
     // Unlike the configurators, this effect refires on every keystroke — so an
     // empty field here means the member is deleting our suggestion, not that
     // there is nothing yet. Refilling it would make the box impossible to clear.
     const clearedTitle = !proposal.name && Boolean(proposal.autoTitle);
     const clearedDescription = !proposal.description && Boolean(proposal.autoDescription);
+    const copy = treasuryTransferCopy({
+      amount,
+      symbol: transferSymbol,
+      recipient: address,
+      destination: proposal.transferDestination,
+    });
     const patch = applyAutoCopy(proposal, {
-      title: clearedTitle ? null : `Send ${amount} ${transferSymbol} to ${short}`,
-      description: clearedDescription
-        ? null
-        : `If this vote passes: send ${amount} ${transferSymbol} from the treasury to ${short}.`,
+      title: clearedTitle ? null : copy.title,
+      description: clearedDescription ? null : copy.description,
     });
     if (Object.keys(patch).length > 0) handleSetterChange(patch);
   }, [
     proposal.type, proposal.transferAddress, proposal.transferAmount, proposal.transferToken,
+    proposal.transferDestination,
     proposal.name, proposal.description, proposal.autoTitle, proposal.autoDescription,
     transferSymbol, handleSetterChange, proposal,
   ]);
@@ -268,7 +405,14 @@ const CreateVoteModal = ({
   // useProposalForm.buildProposalData for each type.
   const reviewOptions = useMemo(() => {
     if (proposal.type === 'setter') return ['Apply Changes', 'Reject'];
-    if (proposal.type === 'createRole') return ['Create role', 'Reject'];
+    if (proposal.type === 'createRole') {
+      // The v2 form can be making a GROUP — the ballot has to name what it actually creates.
+      // The same resolution the encoder uses, so the review can never say “group” to a ballot
+      // that creates a role.
+      return accessV2Enabled && resolveRoleForm(proposal).kind === ROLE_FORM_KIND.GROUP
+        ? ['Create group', 'Reject']
+        : ['Create role', 'Reject'];
+    }
     if (proposal.type === 'election') {
       const names = (proposal.electionCandidates || []).map(c => c.name).filter(Boolean);
       return proposal.electionIncludeNoOneOption ? [...names, 'No One'] : names;
@@ -279,6 +423,8 @@ const CreateVoteModal = ({
     proposal.type,
     proposal.electionCandidates,
     proposal.electionIncludeNoOneOption,
+    proposal.roleFormV2?.kind,
+    accessV2Enabled,
   ]);
   const selectedIntent = useMemo(
     () => INTENT_OPTIONS.find(o => o.type === proposal.type),
@@ -308,6 +454,80 @@ const CreateVoteModal = ({
     return out;
   }, [ongoingProposals, allRoles]);
 
+  // ── Access v2 ──────────────────────────────────────────────────────────────
+  // WHO HOLDS A ROLE comes from the authority's fold mirror, not from the legacy hat roster: a
+  // role created after cutover has no hat at all, and anyone who joined since holds no hat token,
+  // so `leaderboardData` would show an empty or stale seat list. That is not cosmetic — the
+  // election batch is built from this list and the contract reverts on a wrong one (`grant` ->
+  // AlreadyMember, `remove` -> NotMember), silently, inside announceWinner's try/catch.
+  // ACCEPTED, not active: `remove` only needs acceptance, so a lapsed member still holds a seat.
+  const v2HoldersReady = accessV2Enabled && (accessV2?.memberships || []).length > 0;
+  const v2HolderResolver = useMemo(() => {
+    // Null on a legacy org — ElectionConfigurator then keeps its own leaderboard derivation,
+    // unchanged.
+    if (!accessV2Enabled) return null;
+    const rows = accessV2?.memberships || [];
+    const knownNames = new Map(
+      (leaderboardData || []).map(u => [String(u.address).toLowerCase(), u.name]),
+    );
+    return (subjectId) => {
+      const id = String(subjectId ?? '');
+      if (!id) return [];
+      return rows
+        .filter(m => String(m.subjectId) === id && m.accepted)
+        .map(m => ({
+          address: m.user,
+          name: knownNames.get(String(m.user).toLowerCase()) || m.username || '',
+        }));
+    };
+  }, [accessV2Enabled, accessV2?.memberships, leaderboardData]);
+
+  // The id-prediction race, v2 flavour: ANY open proposal that creates a role or a group shifts
+  // the next subject id — not just one under the same parent, because there are no parents.
+  const v2SubjectRaceWarning = useMemo(() => (
+    accessV2Enabled && hasCompetingSubjectCreation(ongoingProposals || [])
+      ? 'Another open proposal creates a role or group. If it passes first, this role’s '
+        + 'permissions and members would land on the wrong role — finish or close that one first.'
+      : ''
+  ), [accessV2Enabled, ongoingProposals]);
+
+  /**
+   * Everything RoleForm needs to describe the org back to the member, and everything the encoder
+   * needs to predict the new subject's id. The SAME facts /team's modal assembles — this is one
+   * form with two doors, so the two ctx objects have to mean the same thing.
+   *
+   * `indexedSubjects`, not the display list: the migrated top hat is hidden from every surface but
+   * still consumed a sequence number, so a prediction that can't see it lands the whole batch on
+   * the wrong subject.
+   */
+  const roleFormCtx = useMemo(() => ({
+    authority: accessV2?.authority || contractAddresses?.membershipAuthorityAddress || '',
+    hybridVoting: contractAddresses?.votingContractAddress || '',
+    taskManagerAddress: taskManagerContractAddress || '',
+    indexedSubjects: accessV2?.indexedSubjects?.length ? accessV2.indexedSubjects : (accessV2?.subjects || []),
+    roles: accessV2?.roles || [],
+    groups: accessV2?.groups || [],
+    projects: allProjects,
+    votingClasses,
+    inOrgUsers: accessV2?.inOrgUsers || new Set(),
+    activeProposals: ongoingProposals || [],
+  }), [accessV2, contractAddresses, taskManagerContractAddress, allProjects, votingClasses, ongoingProposals]);
+
+  /**
+   * The v2 create-role screen owns `proposal.roleFormV2` and, like every other configurator here,
+   * writes the title/description suggestion as it goes — `applyAutoCopy` keeps a wording the
+   * member typed themselves, so edit → Back → reconfigure survives.
+   */
+  const [roleFormStatus, setRoleFormStatus] = useState({ atReview: false, blocked: null });
+
+  const handleRoleFormChange = useCallback((nextForm) => {
+    const copy = roleFormCopy(nextForm);
+    handleSetterChange({
+      roleFormV2: nextForm,
+      ...applyAutoCopy(proposal, { title: copy.title, description: copy.description }),
+    });
+  }, [proposal, handleSetterChange]);
+
   // ---- Inline validation (mirrors useProposalForm.fieldErrors; kept local so
   // this component stays compatible with the current VotingPage prop set) ----
   const fieldErrors = useMemo(() => {
@@ -317,9 +537,8 @@ const CreateVoteModal = ({
     if (!setterProvidesTitle && (!proposal.name || proposal.name.trim() === '')) {
       errors.name = 'Give your vote a title.';
     }
-    const durationHours = Number(proposal.time);
-    if (isNaN(durationHours) || durationHours < 1) {
-      errors.time = 'Voting must run for at least 1 hour.';
+    if (!isDurationAllowed(proposal.time)) {
+      errors.time = durationTooShortMessage();
     }
     if (proposal.type === 'normal') {
       const nonEmpty = (proposal.options || []).filter(o => o.trim() !== '');
@@ -330,27 +549,66 @@ const CreateVoteModal = ({
         errors.transferAddress = 'Enter a valid recipient address (0x…).';
       }
       const amt = parseFloat(proposal.transferAmount);
-      if (isNaN(amt) || amt <= 0) errors.transferAmount = 'Enter an amount greater than 0.';
+      if (isNaN(amt) || amt <= 0) {
+        errors.transferAmount = 'Enter an amount greater than 0.';
+      } else {
+        const decimalsError = amountDecimalsError(proposal.transferAmount, transferDecimals, transferSymbol);
+        if (decimalsError) {
+          errors.transferAmount = decimalsError;
+        } else if (
+          // Over the cap: said right under the field, in red, the moment it is
+          // typed — a disabled Next with a hover-only tooltip is no feedback on
+          // a money screen. Only on a SETTLED balance read.
+          potsSettled && transferAmountWei !== null && transferAmountWei > BigInt(transferAvailableWei || '0')
+        ) {
+          errors.transferAmount = overLimitMessage;
+        }
+      }
     }
     if (proposal.isRestricted && (proposal.restrictedHatIds?.length ?? 0) === 0) {
       errors.restrictedHatIds = 'Pick at least one role, or turn restriction off.';
     }
     return errors;
-  }, [proposal]);
+  }, [proposal, transferDecimals, transferSymbol, potsSettled, transferAmountWei, transferAvailableWei, overLimitMessage]);
 
   // Errors shown in the UI — only for fields the member has touched.
   const visibleErrors = useMemo(() => {
     const out = {};
     for (const [k, v] of Object.entries(fieldErrors)) {
-      if (touched[k]) out[k] = v;
+      // The amount is the one field whose error must show WHILE typing (an
+      // over-budget payout), so having typed anything counts as touched.
+      const typedAmount = k === 'transferAmount' && String(proposal.transferAmount ?? '') !== '';
+      if (touched[k] || typedAmount) out[k] = v;
     }
     return out;
-  }, [fieldErrors, touched]);
+  }, [fieldErrors, touched, proposal.transferAmount]);
 
   // The config screen's gate is a predicate, not a field-key list — it is the
   // same expression the submit-time validators use (lifted into
   // lib/voting/proposalChecks so there is exactly one copy of each message).
-  const configError = useMemo(() => computeConfigError(proposal), [proposal]);
+  // Live facts the pure checks can't know: the asset's precision and how much
+  // the group can actually pay out. Only refuses on a SETTLED balance read.
+  const transferCtx = useMemo(() => (isTransfer ? {
+    transfer: {
+      decimals: transferDecimals,
+      symbol: transferSymbol,
+      loading: Boolean(pots.loading),
+      readFailed: Boolean(pots.error),
+      // More payout rounds than the hook reads: an older unfinalized round still pins the
+      // PaymentManager's balance on chain, so `spendable` would be a guess — refuse, don't guess.
+      roundsUnread: Boolean(pots.distributionsTruncated ?? pots.data?.distributionsTruncated),
+      availableWei: transferAvailableWei,
+      overLimitMessage,
+    },
+  } : null), [isTransfer, transferDecimals, transferSymbol, pots.loading, pots.error, pots.distributionsTruncated, pots.data?.distributionsTruncated, transferAvailableWei, overLimitMessage]);
+  // The whole live-facts context for the pure gates. The access-v2 flag drops the create-role
+  // rules that describe a Hats tree this org no longer has (parent role, uint32 max supply) —
+  // exactly the fields the configurator stops rendering below.
+  const checkCtx = useMemo(
+    () => ({ ...(transferCtx || {}), accessV2: { enabled: accessV2Enabled } }),
+    [transferCtx, accessV2Enabled],
+  );
+  const configError = useMemo(() => computeConfigError(proposal, checkCtx), [proposal, checkCtx]);
 
   // Only complain about something the member can actually see. A blank title on
   // the details step must not disable Next on the config step, and the
@@ -368,6 +626,14 @@ const CreateVoteModal = ({
     return null;
   }, [step, configError, fieldErrors]);
 
+  // The v2 role/group form runs its own steps INSIDE the config step. While the member is still
+  // walking them there must be exactly one Next on screen — the form's — so the footer primary is
+  // hidden until the form reaches its review, and refused while the form reports a blocker
+  // (a batch over the on-chain call ceiling).
+  const roleFormMounted = step === STEP_CONFIG && proposal.type === 'createRole' && accessV2Enabled;
+  const roleFormMidFlow = roleFormMounted && !roleFormStatus.atReview;
+  const roleFormBlocked = roleFormMounted ? roleFormStatus.blocked : null;
+
   // Creator gate for the CURRENT proposal type — not just the intent gallery.
   // A restored draft (or a deep link) jumps past the gallery straight into
   // later steps, and the poll/proposal creator sets can differ, so the gate
@@ -377,10 +643,12 @@ const CreateVoteModal = ({
     || (BINDING_TYPES.has(proposal.type) ? canCreateProposal : canCreatePoll);
 
   // Gates leaving the current step (and, on the last step, submitting).
-  const canSubmit = !firstError && !isTourStep && typeAllowed;
+  const canSubmit = !firstError && !isTourStep && typeAllowed && !roleFormMidFlow && !roleFormBlocked;
 
   const whoCanVoteLabel = useMemo(() => {
-    if (isBinding) return 'All members (Blended voting)';
+    // A payout is binding (Blended voting) but can still be restricted to roles,
+    // so the restriction wins the label when it is on.
+    if (isBinding && !proposal.isRestricted) return 'All members (Blended voting)';
     if (!proposal.isRestricted) return 'All members';
     // NEVER fall back to "All members" for a RESTRICTED poll: that is the inverse of the truth,
     // shown at the exact moment the creator is confirming the restriction. The picker writes v2
@@ -418,11 +686,21 @@ const CreateVoteModal = ({
     // backfillProvenance teaches a draft saved before autoTitle/autoDescription
     // existed which of its copy we generated, so restoring one keeps its
     // regenerate-on-change behaviour instead of freezing as "user typed this".
-    const restored = backfillProvenance(draft.pendingDraft);
+    const restored = { ...backfillProvenance(draft.pendingDraft) };
+    // A draft saved before the v2 form existed carries `roleConfig` and no `roleFormV2`. Bridge it
+    // HERE so the screen shows the role the encoder will build — otherwise the form renders blank
+    // while `resolveRoleForm` quietly encodes fields the member can no longer see or edit.
+    if (
+      accessV2Enabled
+      && !String(restored.roleFormV2?.name || '').trim()
+      && String(restored.roleConfig?.name || '').trim()
+    ) {
+      restored.roleFormV2 = roleConfigToRoleForm(restored.roleConfig);
+    }
     draft.markRestored();
     handleSetterChange({ ...restored });
     setStep(resolveEntryStep(restored, { isComplete }));
-  }, [draft, handleSetterChange]);
+  }, [draft, handleSetterChange, accessV2Enabled]);
 
   const handleStartFresh = useCallback(() => {
     draft.startFresh();
@@ -491,7 +769,7 @@ const CreateVoteModal = ({
           Create a vote
           {step !== STEP_INTENT && (
             <Text fontSize="xs" fontWeight="medium" color="gray.400" mt={0.5} noOfLines={1}>
-              Step {stepIndex + 1} of {steps.length} · {stepTitle(step, proposal.type)}
+              Step {stepIndex + 1} of {steps.length} · {stepTitle(step, proposal.type, accessV2Enabled)}
             </Text>
           )}
         </ModalHeader>
@@ -536,6 +814,8 @@ const CreateVoteModal = ({
                   // walkable there regardless of the viewer's creator hats.
                   canCreatePoll={isTourActive || canCreatePoll}
                   canCreateProposal={isTourActive || canCreateProposal}
+                  // On a cut-over org the create-role card also makes GROUPS, and says so.
+                  accessV2={accessV2Enabled}
                 />
               </Box>
             ) : (
@@ -545,7 +825,11 @@ const CreateVoteModal = ({
                 {step !== STEP_REVIEW && (
                   <HStack justify="space-between" flexWrap="wrap" spacing={2}>
                     <Tag size="md" colorScheme="purple" variant="subtle" borderRadius="full">
-                      <TagLabel>{selectedIntent?.title || proposal.type}</TagLabel>
+                      <TagLabel>
+                        {(accessV2Enabled && selectedIntent?.v2Title)
+                          || selectedIntent?.title
+                          || proposal.type}
+                      </TagLabel>
                     </Tag>
                     <Link fontSize="sm" color="purple.200" onClick={handleChangeType}>
                       change
@@ -569,7 +853,7 @@ const CreateVoteModal = ({
                   <BallotReview
                     proposal={proposal}
                     whoCanVoteLabel={whoCanVoteLabel}
-                    nativeCurrencySymbol={transferSymbol}
+                    symbol={transferSymbol}
                     {...(isBinding ? { badge: BINDING_REVIEW_BADGE } : {})}
                     {...(reviewOptions ? { options: reviewOptions } : {})}
                   />
@@ -691,10 +975,25 @@ const CreateVoteModal = ({
                         onChange={handleSetterChange}
                         allRoles={allRoles}
                         leaderboardData={leaderboardData}
+                        resolveHolders={v2HolderResolver}
+                        holdersReady={accessV2Enabled ? v2HoldersReady : undefined}
                       />
                     )}
 
-                    {proposal.type === "createRole" && (
+                    {/* CREATE ROLE. On a cut-over org this is the SAME form /team's
+                        "Create a role or group" modal renders — one screen, one encoder
+                        (lib/accessV2/roleFormBatch), so the door you came in by can't decide
+                        what your role is allowed to do. A legacy org keeps RoleConfigurator
+                        and its Hats-era batch, untouched. */}
+                    {proposal.type === "createRole" && (accessV2Enabled ? (
+                      <RoleForm
+                        value={proposal.roleFormV2}
+                        onChange={handleRoleFormChange}
+                        ctx={roleFormCtx}
+                        variant="dark"
+                        onStatus={setRoleFormStatus}
+                      />
+                    ) : (
                       <RoleConfigurator
                         proposal={proposal}
                         onChange={handleSetterChange}
@@ -702,11 +1001,59 @@ const CreateVoteModal = ({
                         allProjects={allProjects}
                         leaderboardData={leaderboardData}
                         activeCreateRoleProposals={activeCreateRoleProposals}
+                        accessV2Enabled={accessV2Enabled}
+                        subjectRaceWarning={v2SubjectRaceWarning}
                       />
-                    )}
+                    ))}
 
                     {proposal.type === "transferFunds" && (
                       <>
+                        {/* Where the money goes. The task-reward pool is the
+                            TaskManager: what completed tasks pay their bounties
+                            from. Today members top it up from their own wallet
+                            (/treasury → "Fund task rewards"); this lets the org's
+                            treasury do it by vote. */}
+                        <FormControl>
+                          <FormLabel color="gray.200" fontSize="sm">
+                            Where does it go?
+                          </FormLabel>
+                          <RadioGroup
+                            value={proposal.transferDestination || TRANSFER_DESTINATION.ADDRESS}
+                            onChange={(value) => handleSetterChange({
+                              transferDestination: value,
+                              // Leaving the pool: don't keep the TaskManager as
+                              // a typed recipient.
+                              ...(value === TRANSFER_DESTINATION.ADDRESS
+                                && proposal.transferAddress === taskManagerContractAddress
+                                ? { transferAddress: '' } : {}),
+                            })}
+                          >
+                            <Stack direction={{ base: 'column', sm: 'row' }} spacing={{ base: 2, sm: 6 }}>
+                              <Radio
+                                value={TRANSFER_DESTINATION.ADDRESS}
+                                colorScheme="purple"
+                                data-testid="transfer-destination-address"
+                              >
+                                <Text fontSize="sm" color="gray.200">Someone's address</Text>
+                              </Radio>
+                              {taskManagerContractAddress && (
+                                <Radio
+                                  value={TRANSFER_DESTINATION.BOUNTY_POOL}
+                                  colorScheme="purple"
+                                  data-testid="transfer-destination-bounty-pool"
+                                >
+                                  <Text fontSize="sm" color="gray.200">The task-reward pool</Text>
+                                </Radio>
+                              )}
+                            </Stack>
+                          </RadioGroup>
+                          {isBountyPool && (
+                            <Text fontSize="xs" color="gray.400" mt={2}>
+                              It can only leave the pool as payment for a completed task.
+                            </Text>
+                          )}
+                        </FormControl>
+
                         <FormControl>
                           <FormLabel color="gray.200" fontSize="sm">
                             Asset
@@ -714,6 +1061,7 @@ const CreateVoteModal = ({
                           <Select
                             value={proposal.transferToken || ''}
                             onChange={(e) => handleSetterChange({ transferToken: e.target.value })}
+                            data-testid="transfer-asset"
                             {...inputStyles}
                           >
                             {transferAssetOptions.map((asset) => (
@@ -724,21 +1072,42 @@ const CreateVoteModal = ({
                           </Select>
                         </FormControl>
 
-                        <FormControl isInvalid={Boolean(visibleErrors.transferAddress)}>
-                          <FormLabel color="gray.200" fontSize="sm">
-                            Recipient Address
-                          </FormLabel>
-                          <Input
-                            placeholder="0x..."
-                            value={proposal.transferAddress}
-                            onChange={handleTransferAddressChange}
-                            onBlur={() => markTouched('transferAddress')}
-                            {...inputStyles}
-                          />
-                          {visibleErrors.transferAddress && (
-                            <FormErrorMessage>{visibleErrors.transferAddress}</FormErrorMessage>
-                          )}
-                        </FormControl>
+                        {isBountyPool ? (
+                          <Box
+                            bg="whiteAlpha.50"
+                            borderRadius="md"
+                            p={3}
+                            border="1px solid rgba(148, 115, 220, 0.3)"
+                            data-testid="transfer-bounty-pool-recipient"
+                          >
+                            <Text fontSize="xs" color="gray.400" textTransform="uppercase" letterSpacing="wide" mb={1}>
+                              Recipient
+                            </Text>
+                            <Text fontSize="sm" color="white">
+                              The {BOUNTY_POOL_LABEL}{' '}
+                              <Text as="span" fontFamily="mono" color="gray.400">
+                                {shortAddress(taskManagerContractAddress)}
+                              </Text>
+                            </Text>
+                          </Box>
+                        ) : (
+                          <FormControl isInvalid={Boolean(visibleErrors.transferAddress)}>
+                            <FormLabel color="gray.200" fontSize="sm">
+                              Recipient Address
+                            </FormLabel>
+                            <Input
+                              placeholder="0x..."
+                              value={proposal.transferAddress}
+                              onChange={handleTransferAddressChange}
+                              onBlur={() => markTouched('transferAddress')}
+                              data-testid="transfer-recipient"
+                              {...inputStyles}
+                            />
+                            {visibleErrors.transferAddress && (
+                              <FormErrorMessage>{visibleErrors.transferAddress}</FormErrorMessage>
+                            )}
+                          </FormControl>
+                        )}
 
                         <FormControl isInvalid={Boolean(visibleErrors.transferAmount)}>
                           <FormLabel color="gray.200" fontSize="sm">
@@ -750,36 +1119,86 @@ const CreateVoteModal = ({
                             onChange={handleTransferAmountChange}
                             onBlur={() => markTouched('transferAmount')}
                             type="number"
-                            step="0.001"
+                            step={transferDecimals <= 6 ? '0.000001' : '0.001'}
                             min="0"
+                            // A deep link from /treasury lands here with everything
+                            // but the amount decided — put the cursor in it.
+                            autoFocus={deepLinkedOpen && isBountyPool}
+                            data-testid="transfer-amount"
                             {...inputStyles}
                           />
-                          {visibleErrors.transferAmount && (
+                          {visibleErrors.transferAmount ? (
                             <FormErrorMessage>{visibleErrors.transferAmount}</FormErrorMessage>
+                          ) : (
+                            <Text fontSize="xs" color="gray.400" mt={1}>
+                              {potsSettled
+                                ? `A payout comes from one pot, so up to ${fmtPot(transferAvailableWei)} ${transferSymbol} can move in one vote. Members vote Yes or No.`
+                                : pots.error
+                                  ? "Couldn't read what the group holds — try again in a moment."
+                                  : "Checking what the group holds…"}
+                            </Text>
                           )}
                         </FormControl>
 
+                        {/* The three pots, named honestly: what /treasury calls
+                            "the treasury" is the payout account; the group's
+                            wallet is what a passed vote spends directly. */}
                         <Box
                           bg="whiteAlpha.50"
                           borderRadius="md"
                           p={3}
                           border="1px solid rgba(148, 115, 220, 0.3)"
+                          data-testid="transfer-pots"
                         >
-                          <Text fontSize="sm" color="gray.300" fontWeight="medium" mb={2}>
-                            Voting Options:
+                          <Text fontSize="xs" color="gray.400" textTransform="uppercase" letterSpacing="wide" mb={2}>
+                            What the group holds in{' '}
+                            <Text as="span" textTransform="none">{transferSymbol}</Text>
                           </Text>
-                          <VStack align="start" spacing={1} pl={2}>
-                            <Text fontSize="sm" color="green.300">✓ Yes - Execute transfer</Text>
-                            <Text fontSize="sm" color="red.300">✗ No - Reject transfer</Text>
+                          <VStack align="stretch" spacing={1}>
+                            <HStack justify="space-between">
+                              <Text fontSize="sm" color="gray.300">
+                                Spendable in the treasury <Text as="span" color="gray.500">· can pay</Text>
+                              </Text>
+                              <Text fontSize="sm" color="white" fontFamily="mono">
+                                {potsSettled ? fmtPot(pmAvailability.spendable) : '…'}
+                                {potsSettled && BigInt(pmAvailability.releasable || '0') > 0n && (
+                                  <Text as="span" color="gray.400"> (+{fmtPot(pmAvailability.releasable)} in fully-claimed payout rounds)</Text>
+                                )}
+                              </Text>
+                            </HStack>
+                            {/* The Executor — what a passed vote spends directly. Empty on
+                                every org we have seen, so the row only earns its place when
+                                it holds something. */}
+                            {potsSettled && BigInt(pots.executor || '0') > 0n && (
+                              <HStack justify="space-between">
+                                <Text fontSize="sm" color="gray.300">
+                                  Group's wallet <Text as="span" color="gray.500">· can pay</Text>
+                                </Text>
+                                <Text fontSize="sm" color="white" fontFamily="mono">{fmtPot(pots.executor)}</Text>
+                              </HStack>
+                            )}
+                            {isBountyPool && (
+                              <HStack justify="space-between">
+                                <Text fontSize="sm" color="gray.300">
+                                  Task-reward pool <Text as="span" color="gray.500">· receiving</Text>
+                                </Text>
+                                <Text fontSize="sm" color="white" fontFamily="mono">{potsSettled ? fmtPot(pots.bountyPool) : '…'}</Text>
+                              </HStack>
+                            )}
                           </VStack>
+                          {potsSettled && transferAmountWei !== null && transferAmountWei > 0n && (
+                            <Text
+                              fontSize="xs"
+                              color={sourceResolution.ok ? 'green.300' : '#F6C177'}
+                              mt={2}
+                              data-testid="transfer-source"
+                            >
+                              {sourceResolution.ok
+                                ? `Paid from ${proposal.transferSourceLabel || sourceLabelFor(sourceResolution.source, sourceResolution.finalizeIds)}`
+                                : 'More than any one pot holds — lower the amount, or deposit to the treasury first.'}
+                            </Text>
+                          )}
                         </Box>
-
-                        <Alert status="info" borderRadius="md" bg="rgba(66, 153, 225, 0.15)">
-                          <AlertIcon color="blue.300" />
-                          <Text fontSize="sm" color="gray.300">
-                            This creates a Yes/No vote. If "Yes" wins, the transfer executes automatically from the organization's treasury.
-                          </Text>
-                        </Alert>
                       </>
                     )}
 
@@ -895,14 +1314,14 @@ const CreateVoteModal = ({
                 to "what do you want to do?" reads broken, not disabled. The
                 tour is the exception: its disabled "Demo only" button is the
                 affordance the create-vote-preview step points at. */}
-            {(step !== STEP_INTENT || isTourStep) && (
+            {(step !== STEP_INTENT || isTourStep) && !roleFormMidFlow && (
               <Tooltip
                 label={isTourStep
                   ? "Demo only — finish the tour to create a real proposal"
                   : !typeAllowed
                     ? "Your roles can't submit this kind of vote. Ask an admin to grant you a vote-creator role."
-                    : firstError || ''}
-                isDisabled={!isTourStep && typeAllowed && !firstError}
+                    : roleFormBlocked || firstError || ''}
+                isDisabled={!isTourStep && typeAllowed && !firstError && !roleFormBlocked}
                 hasArrow
                 placement="top"
               >

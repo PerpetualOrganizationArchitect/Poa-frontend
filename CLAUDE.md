@@ -127,6 +127,33 @@ All org pages read `router.query.userDAO`. POContext uses this to resolve `orgId
 `subgraphUrl`, `orgChainId`. If `userDAO` is missing, POContext provides nulls —
 this is expected on non-org pages.
 
+### DirectDemocracy is polls-only — any executing proposal goes to HybridVoting
+
+`OrgDeployer` sets `Executor.setCaller(hybridVoting)` on every org, and DirectDemocracy's
+target allow-list is empty on every deploy, so a DD proposal carrying a batch reverts
+`TargetNotAllowed` at creation (and could never execute anyway). Route on the BATCH, not the
+intent name: `votingLaneForBatches(batches)` in `components/voting/create/wizardSteps.js`
+(`BINDING_TYPES` there is the one list the gallery badges, creator gate and routing share).
+
+### Three money pots, one word "treasury"
+
+The Executor is what POContext aliases as `treasuryContractAddress` and is what a passed
+batch spends directly, but "Deposit to treasury" lands in the **PaymentManager** (owner ==
+Executor; `withdraw` only by vote) and task rewards are paid from the **TaskManager**'s own
+balance. `lib/voting/treasuryBatches.js` encodes a payout from either source (PaymentManager
+funds committed to an unfinalized distribution are NOT spendable — fully-claimed rounds get
+closed in-batch first) and `hooks/useOrgPotBalances.js` reads all three.
+
+### Access v2 orgs (MembershipAuthority) — gate on `useOrgAuthority().enabled`
+
+On a cut-over org (Test6 since 2026-08-27) creator/voter/task permissions are read from the
+authority, not the legacy hat tables: `setCreatorHatAllowed`, DD `HAT_ALLOWED` and
+`setProjectRolePerm` still succeed on chain but change nothing (flagged `legacyOnly` in
+`setterDefinitions.js`, filtered by `lib/voting/setterAvailability.js`), the vote-creator gate
+folds authority perms (`lib/voting/createGate.js`), and role pickers list authority subjects
+(`lib/voting/roleOptions.js`). When `enabled` is false every one of these must render exactly
+the legacy UI.
+
 ### Optimistic updates have grace period locks
 
 UserContext (15s) and TaskBoardContext (65s) use `optimisticLockRef` to prevent stale

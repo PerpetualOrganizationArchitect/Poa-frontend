@@ -97,6 +97,11 @@ export const defaultRoleConfig = {
   defaultEligible: true,
   defaultStanding: true,
   canVote: false,
+  // ACCESS V2 only: "anyone in the group can join this role" (`setSubjectDefault(allow)`).
+  // Deliberately OFF by default and deliberately NOT mapped from `defaultEligible` — the legacy
+  // flag reads as "wearers start eligible" while the v2 one makes the role claimable by ANYONE,
+  // and quietly upgrading one to the other would open every new role an org creates.
+  openRole: false,
   // Task-system grants (all additive — encoder appends nothing when untouched):
   globalPerms: 0,            // org-wide TaskPerm mask via setConfig(ROLE_PERM)
   canCreateTasks: false,     // setConfig(CREATOR_HAT_ALLOWED) — create projects/tasks
@@ -244,6 +249,14 @@ const RoleConfigurator = ({
   allProjects = [],
   leaderboardData = [],
   activeCreateRoleProposals = [],   // optional: [{ parentHatId, name }] from voting page
+  // ACCESS V2 — on a migrated org a role is a SUBJECT, not a hat: it has no parent, no
+  // mutability, no supply flags, and its seat cap may be 0 (no limit). Those controls are hidden
+  // rather than relabelled, because there is nothing behind them any more. Everything else on
+  // this screen maps one-for-one (lib/voting/v2VoteActions).
+  accessV2Enabled = false,
+  // The v2 id-prediction race: ANY open role/group proposal shifts the new subject's id, not just
+  // one under the same parent. Empty string = nothing in flight.
+  subjectRaceWarning = '',
 }) => {
   const rc = proposal.roleConfig || defaultRoleConfig;
   const [step, setStep] = useState(rc.parentHatId ? 2 : 1);
@@ -408,6 +421,7 @@ const RoleConfigurator = ({
         />
       </FormControl>
 
+      {!accessV2Enabled && (
       <FormControl isRequired>
         <FormLabel color="gray.200" fontSize="sm">
           Parent Role
@@ -435,12 +449,15 @@ const RoleConfigurator = ({
           The new role becomes a child hat in the Hats tree under this role.
         </FormHelperText>
       </FormControl>
+      )}
 
       <HStack spacing={4}>
         <FormControl>
-          <FormLabel color="gray.200" fontSize="sm">Max Wearers</FormLabel>
+          <FormLabel color="gray.200" fontSize="sm">
+            {accessV2Enabled ? 'Seat limit' : 'Max Wearers'}
+          </FormLabel>
           <NumberInput
-            min={1}
+            min={accessV2Enabled ? 0 : 1}
             max={4294967295}
             value={rc.maxSupply}
             onChange={(_, value) => update({ maxSupply: Number.isFinite(value) ? value : rc.maxSupply })}
@@ -451,6 +468,9 @@ const RoleConfigurator = ({
               <NumberDecrementStepper color="gray.300" />
             </NumberInputStepper>
           </NumberInput>
+          {accessV2Enabled && (
+            <FormHelperText color="gray.500">0 means no limit.</FormHelperText>
+          )}
         </FormControl>
 
         <FormControl>
@@ -464,6 +484,7 @@ const RoleConfigurator = ({
         </FormControl>
       </HStack>
 
+      {!accessV2Enabled && (
       <HStack justify="space-between">
         <Box>
           <Text color="gray.200" fontSize="sm" fontWeight="medium">Mutable hat</Text>
@@ -475,8 +496,19 @@ const RoleConfigurator = ({
           onChange={(e) => update({ mutable: e.target.checked })}
         />
       </HStack>
+      )}
 
-      {concurrentProposalForParent ? (
+      {accessV2Enabled && subjectRaceWarning ? (
+        <Alert status="warning" borderRadius="md" variant="left-accent">
+          <AlertIcon />
+          <Box>
+            <Text fontSize="sm" fontWeight="bold">Another role proposal is open</Text>
+            <Text fontSize="xs">{subjectRaceWarning}</Text>
+          </Box>
+        </Alert>
+      ) : null}
+
+      {!accessV2Enabled && concurrentProposalForParent ? (
         <Alert status="warning" borderRadius="md" variant="left-accent">
           <AlertIcon />
           <Box>
@@ -497,7 +529,11 @@ const RoleConfigurator = ({
           rightIcon={<FiChevronRight />}
           colorScheme="purple"
           size="sm"
-          isDisabled={!rc.parentHatId || !rc.name?.trim() || Number(rc.maxSupply) < 1}
+          isDisabled={
+            (!accessV2Enabled && !rc.parentHatId)
+            || !rc.name?.trim()
+            || Number(rc.maxSupply) < (accessV2Enabled ? 0 : 1)
+          }
           onClick={() => setStep(2)}
         >
           Next: Permissions
@@ -530,7 +566,9 @@ const RoleConfigurator = ({
               Members can create governance proposals
             </Text>
             <Text color="gray.500" fontSize="xs">
-              Adds the new role to HybridVoting's creator-hat allowlist.
+              {accessV2Enabled
+                ? 'Lets members of this role open a binding vote.'
+                : "Adds the new role to HybridVoting's creator-hat allowlist."}
             </Text>
           </Box>
           <Switch
@@ -674,6 +712,29 @@ const RoleConfigurator = ({
 
       {/*──────────────── MEMBERSHIP & VOUCHING ────────────────*/}
       <SectionLabel>Membership &amp; vouching</SectionLabel>
+      {accessV2Enabled ? (
+      <Box
+        p={4}
+        borderRadius="md"
+        bg="whiteAlpha.50"
+        border="1px solid rgba(148, 115, 220, 0.2)"
+      >
+        <HStack justify="space-between">
+          <Box>
+            <Text color="gray.200" fontSize="sm" fontWeight="medium">Anyone in the group can join</Text>
+            <Text color="gray.500" fontSize="xs">
+              Leave this off and people join only when a vote adds them, they accept an invitation,
+              or they collect enough vouches.
+            </Text>
+          </Box>
+          <Switch
+            colorScheme="purple"
+            isChecked={Boolean(rc.openRole)}
+            onChange={(e) => update({ openRole: e.target.checked })}
+          />
+        </HStack>
+      </Box>
+      ) : (
       <Box
         p={4}
         borderRadius="md"
@@ -705,6 +766,7 @@ const RoleConfigurator = ({
           </HStack>
         </VStack>
       </Box>
+      )}
 
       <Box
         p={4}
@@ -774,6 +836,7 @@ const RoleConfigurator = ({
                 </FormHelperText>
               </FormControl>
 
+              {!accessV2Enabled && (
               <HStack justify="space-between">
                 <Box>
                   <Text color="gray.200" fontSize="sm" fontWeight="medium">Combine with hierarchy</Text>
@@ -787,6 +850,7 @@ const RoleConfigurator = ({
                   onChange={(e) => updateVouching({ combineWithHierarchy: e.target.checked })}
                 />
               </HStack>
+              )}
             </VStack>
           ) : null}
         </VStack>

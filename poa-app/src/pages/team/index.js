@@ -38,8 +38,8 @@ import {
   RoleApplicationModal,
 } from '@/components/orgStructure';
 import { useOrgGate } from "@/components/shared/OrgDeadEnd";
-// Access v2. Renders NOTHING on an org that is not on the MembershipAuthority path, so everything
-// below it is the untouched legacy surface for every unmigrated org.
+// Access v2 renders only its status/v2 panels; this page retains legacy Hats surfaces until the
+// authority is router-bound, then swaps every retired role-derived section to authority data.
 import { AccessV2TeamSection } from '@/components/accessV2';
 import MembersSpotlight from '@/components/accessV2/MembersSpotlight';
 import { useAuthoritySubjects, useAuthorityMemberships } from '@/hooks/accessV2';
@@ -289,7 +289,7 @@ const OrgStructurePage = () => {
           </Box>
 
           {/* Access v2 — roles + groups, the claimable panel and the review window.
-              Self-gating: `null` unless this org's MembershipAuthority is router-bound.
+              Self-gating: `null` for legacy, status-only while pending, panels once router-bound.
               `activeProposals` feeds the create-role wizard's id-prediction race warning. */}
           <AccessV2TeamSection activeProposals={ongoingPolls} />
 
@@ -297,30 +297,30 @@ const OrgStructurePage = () => {
               IS the roles surface, and this tree would re-render the retired hat entities
               (raw bytes32 names, ghost roles) beside it. */}
           {!v2Live && (
-          <Box as="section" data-tour="org-roles">
-            <Heading size="lg" color="warmGray.900" mb={4}>
-              Roles
-            </Heading>
-            <Text color="warmGray.600" mb={4}>
-              The organizational hierarchy defines who can do what within the organization
-            </Text>
-            <RoleHierarchyTree
-              roles={roles}
-              loading={loading}
-              userHatIds={userHatIds}
-              userAddress={userAddress}
-              getVouchProgress={getVouchProgress}
-              onClaimRole={claimRole}
-              isClaimingHat={isClaimingHat}
-              isConnected={isAuthenticated}
-              showClaimButtons={Boolean(eligibilityModuleAddress)}
-              hasApplied={hasApplied}
-              isApplyingForHat={isApplyingForHat}
-              isWithdrawingFromHat={isWithdrawingFromHat}
-              onApplyForRole={handleOpenApplicationModal}
-              onWithdrawApplication={handleWithdrawApplication}
-            />
-          </Box>
+            <Box as="section" data-tour="org-roles">
+              <Heading size="lg" color="warmGray.900" mb={4}>
+                Roles
+              </Heading>
+              <Text color="warmGray.600" mb={4}>
+                The organizational hierarchy defines who can do what within the organization
+              </Text>
+              <RoleHierarchyTree
+                roles={roles}
+                loading={loading}
+                userHatIds={userHatIds}
+                userAddress={userAddress}
+                getVouchProgress={getVouchProgress}
+                onClaimRole={claimRole}
+                isClaimingHat={isClaimingHat}
+                isConnected={isAuthenticated}
+                showClaimButtons={Boolean(eligibilityModuleAddress)}
+                hasApplied={hasApplied}
+                isApplyingForHat={isApplyingForHat}
+                isWithdrawingFromHat={isWithdrawingFromHat}
+                onApplyForRole={handleOpenApplicationModal}
+                onWithdrawApplication={handleWithdrawApplication}
+              />
+            </Box>
           )}
 
           {/* Permissions Matrix Section — v2 orgs read the fold mirror via the legacy bridge.

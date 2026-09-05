@@ -69,6 +69,29 @@ export {
   logDeploymentParams,
 } from './utils/deploymentMapper';
 
+export {
+  mapStateToAccessV2DeploymentParams,
+  mapAccessV2Groups,
+  buildAccessV2TaskManagerPerms,
+  validateAccessV2Representability,
+} from './utils/deploymentMapperV2';
+
+export {
+  ORG_DEPLOYER_SCHEMA,
+  ORG_DEPLOYER_SCHEMA_BY_MAJOR,
+  ORG_DEPLOYER_SELECTORS,
+  OrgDeployerBoundaryError,
+  assertDeployedOrgDeployerSchema,
+  assertOrgDeploymentCalldataSchema,
+  detectOrgDeployerSchema,
+  encodeOrgDeploymentCalldata,
+  decodeOrgDeploymentResult,
+  decodeOrgDeployedLog,
+  parseOrgDeploymentReceipt,
+  getOrgDeployerAbi,
+  getOrgDeployerInterface,
+} from './utils/orgDeployerBoundary';
+
 // Validation
 export {
   organizationSchema,

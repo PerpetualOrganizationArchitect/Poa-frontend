@@ -1,8 +1,8 @@
 /**
  * Access v2 components.
  *
- * `AccessV2TeamSection` is the only thing a page should mount — it is the gate, and it renders
- * `null` on every org that is not on the v2 path.
+ * `AccessV2TeamSection` is the v2 role surface. It renders only after the authority is
+ * router-bound; the team page owns the transition from its legacy hierarchy.
  */
 
 export { default as AccessV2TeamSection } from './AccessV2TeamSection';

@@ -11,6 +11,7 @@ import { useIPFScontext } from '../context/ipfsContext';
 import { usePOContext } from '../context/POContext';
 import { formatTokenAmount } from '../util/formatToken';
 import { useSubgraphClient } from '../util/apolloClient';
+import { resolveLegacyRoleName } from '@/lib/roles/roleNames';
 
 /**
  * Permission type mapping for display
@@ -95,9 +96,12 @@ function transformRolesData(roles, roleHatIds, roleNamesFromIPFS = {}, users = [
     // Use found index if valid, otherwise use the array index
     const roleIndex = foundIndex >= 0 ? foundIndex : index;
 
-    // Get name from Role entity (RolesCreated event), hat entity (IPFS), or use fallback
-    // Priority: role.name (from smart contract) > role.hat.name (from IPFS) > IPFS metadata > fallback
-    const name = role.name || role.hat?.name || roleNamesFromIPFS[hatIdNorm] || roleNamesFromIPFS[hatId] || getFallbackRoleName(roleIndex);
+    // Hat/IPFS metadata follows later renames. Role.name can be stale or, for a create+metadata
+    // batch, contain the raw bytes32 metadata digest instead of a display name.
+    const name = resolveLegacyRoleName(role, {
+      ipfsName: roleNamesFromIPFS[hatIdNorm] || roleNamesFromIPFS[hatId],
+      fallback: getFallbackRoleName(roleIndex),
+    });
 
     // Method 1: Count from role.wearers (RoleWearer entities)
     const roleWearers = role.wearers || [];

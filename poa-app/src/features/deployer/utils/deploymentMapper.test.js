@@ -38,7 +38,8 @@ import {
   ACTION_TYPES,
 } from '../context/deployerReducer';
 import { buildDeployCalldata } from '../../../../scripts/newDeployment';
-import OrgDeployerNewABI from '../../../../abi/OrgDeployerNew.json';
+import OrgDeployerLegacyABI from '../../../../abi/OrgDeployerLegacy.json';
+import { ORG_DEPLOYER_SCHEMA } from './orgDeployerBoundary';
 
 const REGISTRY = '0x55F72CEB09cBC1fAAED734b6505b99b0a1DFA1cA';
 const DEPLOYER = '0x1111111111111111111111111111111111111111';
@@ -310,10 +311,11 @@ describe('permission bitmaps (M-09)', () => {
 });
 
 /**
- * The /create page does NOT pass a roleAssignments override, so the bitmaps that
- * actually ship come from buildDeployCalldata's name-derived fallback — a second
- * implementation that has to obey the same int32 rules. Exercise it through the
- * real calldata builder at the top of the supported range: `(1 << 31) - 1` is
+ * On the current-v1 legacy path, /create does NOT pass a roleAssignments override,
+ * so the bitmaps that actually ship come from buildDeployCalldata's name-derived
+ * fallback — a second implementation that has to obey the same int32 rules.
+ * Exercise it through the real calldata builder at the top of the supported range:
+ * `(1 << 31) - 1` is
  * negative (ethers rejects the uint256) and `(1 << 32) - 1` is 0 (every "all roles"
  * bitmap silently empties, deploying an org where nobody can hold tokens, create
  * tasks, or vote).
@@ -342,14 +344,15 @@ describe('production role-assignment bitmaps at the 32-role cap', () => {
         orgDeployerAddress: '0x1Ad59E785E3aec1c53069f78bEcC24EcFE6a5d1c',
         registryAddress: REGISTRY,
       },
+      orgDeployerSchema: ORG_DEPLOYER_SCHEMA.LEGACY,
     });
-    const iface = new ethers.utils.Interface(OrgDeployerNewABI);
+    const iface = new ethers.utils.Interface(OrgDeployerLegacyABI);
     const [sent] = iface.decodeFunctionData(iface.getFunction(calldata.slice(0, 10)), calldata);
     return sent.roleAssignments;
   };
 
-  // 32 is the wizard's cap (RoleList disables "Add role" at 32) and the contract's
-  // (OrgDeployer._validateRoleConfigs rejects >32).
+  // 32 is the legacy wizard/deployer cap. Kyoto v2 is tested separately at its
+  // stricter 16-role limit.
   it.each([2, 30, 31, 32])('encodes %i roles without overflowing', (roleCount) => {
     const ra = buildAtScale(roleCount, roleCount - 1);
     const allRoles = ethers.BigNumber.from(2).pow(roleCount).sub(1);
@@ -468,7 +471,7 @@ describe('canVote gates proposals, not polls', () => {
       { name: 'canvote-vs-polls', state },
       { registryAddress: REGISTRY, orgDeployerAddress: '0x1Ad59E785E3aec1c53069f78bEcC24EcFE6a5d1c', deployerAddress: DEPLOYER }
     );
-    const iface = new ethers.utils.Interface(OrgDeployerNewABI);
+    const iface = new ethers.utils.Interface(OrgDeployerLegacyABI);
     const [sent] = iface.decodeFunctionData(iface.getFunction(calldata.slice(0, 10)), calldata);
 
     expect(sent.roles[1].canVote).toBe(false);
@@ -501,6 +504,8 @@ function buildCases() {
   };
 
   add('baseline-2-roles', () => {});
+
+  add('auto-upgrade-off', (s) => { s.organization.autoUpgrade = false; });
 
   add('education-hub', (s) => { s.features.educationHubEnabled = true; });
 
@@ -728,9 +733,11 @@ function encodeCase(c, { registryAddress, orgDeployerAddress, deployerAddress })
     username: '',
     deployerAddress,
     customRoles: params.roles,
-    // NOTE: no `roleAssignments` override — /create doesn't pass one either, so the
-    // name-derived fallback is what actually ships. Keep this mirroring production.
+    autoUpgrade: params.autoUpgrade,
+    // NOTE: no `roleAssignments` override — /create keeps the current-v1 legacy
+    // name-derived fallback. Kyoto passes its explicit matrix in the v2 test suite.
     infrastructureAddresses: { orgDeployerAddress, registryAddress },
+    orgDeployerSchema: ORG_DEPLOYER_SCHEMA.LEGACY,
     regSignatureData: null,
     paymasterConfig: mapPaymasterConfig(c.state.paymaster),
     metadataAdminRoleIndex: c.state.metadataAdminRoleIndex,
@@ -761,11 +768,12 @@ describe('deploy calldata matrix', () => {
     // mapper's in-memory params — the whole point is that what gets signed carries
     // the invariants. (Asserting on `params` alone passed even when the encoder
     // dropped them.)
-    const iface = new ethers.utils.Interface(OrgDeployerNewABI);
+    const iface = new ethers.utils.Interface(OrgDeployerLegacyABI);
     const fn = iface.getFunction(calldata.slice(0, 10));
     const [sent] = iface.decodeFunctionData(fn, calldata);
 
     expect(sent.orgName).toBe(c.state.organization.name);
+    expect(sent.autoUpgrade).toBe(c.state.organization.autoUpgrade);
     expect(sent.roles.length).toBe(params.roles.length);
 
     // OrgDeployer v17 deploy-time governance config. These are the last four fields
@@ -845,7 +853,7 @@ describe('deploy calldata matrix', () => {
   it('selects the ZK-Email entrypoint iff the feature is on', () => {
     const withZk = cases.find((c) => c.name === 'zkemail-invites');
     const without = cases.find((c) => c.name === 'baseline-2-roles');
-    const iface = new ethers.utils.Interface(OrgDeployerNewABI);
+    const iface = new ethers.utils.Interface(OrgDeployerLegacyABI);
     const zkSelector = iface.getSighash(iface.getFunction('deployFullOrgWithZkEmail'));
     const plainSelector = iface.getSighash(iface.getFunction('deployFullOrg'));
 

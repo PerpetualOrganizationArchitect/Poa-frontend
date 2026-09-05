@@ -91,6 +91,7 @@ export class EOA7702TransactionManager {
       paymasterClaimTarget,
       callGasLimit,
       callGasLimitMultiplier,
+      callGasLimitFloor,
     } = options;
 
     try {
@@ -114,6 +115,7 @@ export class EOA7702TransactionManager {
       const userOp = await this._buildUserOpWithFallback(callData, authorization, overrideHatIds, paymasterClaimTarget, {
         callGasLimit,
         callGasLimitMultiplier,
+        callGasLimitFloor,
       });
 
       // 5. Sign UserOp hash with wallet (ECDSA via personal_sign)
@@ -128,7 +130,7 @@ export class EOA7702TransactionManager {
         callData,
         authorization,
         onStateChange,
-        gasOverrides: { callGasLimit, callGasLimitMultiplier },
+        gasOverrides: { callGasLimit, callGasLimitMultiplier, callGasLimitFloor },
       });
 
       console.log(`[7702] UserOp submitted: ${submittedHash}`);
@@ -175,7 +177,7 @@ export class EOA7702TransactionManager {
    * Execute multiple calls atomically via executeBatch.
    */
   async executeBatch(transactions, batchOptions = {}) {
-    const { onStateChange, callGasLimit, callGasLimitMultiplier } = batchOptions;
+    const { onStateChange, callGasLimit, callGasLimitMultiplier, callGasLimitFloor } = batchOptions;
 
     try {
       this._notifyState(onStateChange, TransactionState.ESTIMATING);
@@ -199,6 +201,7 @@ export class EOA7702TransactionManager {
       const userOp = await this._buildUserOpWithFallback(callData, authorization, null, null, {
         callGasLimit,
         callGasLimitMultiplier,
+        callGasLimitFloor,
       });
 
       this._notifyState(onStateChange, TransactionState.AWAITING_SIGNATURE);
@@ -211,7 +214,7 @@ export class EOA7702TransactionManager {
         callData,
         authorization,
         onStateChange,
-        gasOverrides: { callGasLimit, callGasLimitMultiplier },
+        gasOverrides: { callGasLimit, callGasLimitMultiplier, callGasLimitFloor },
       });
 
       this._notifyState(onStateChange, TransactionState.CONFIRMING);

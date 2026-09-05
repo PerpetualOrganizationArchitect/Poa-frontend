@@ -7,6 +7,7 @@ import {
   buildGroupCompositionBatch,
   buildManagerConfigBatch,
   buildMemberActionsBatch,
+  buildRoleRemovalBatch,
   buildVouchConfigBatch,
   buildEditSubjectBatch,
   buildSubjectDefaultBatch,
@@ -401,6 +402,92 @@ describe('buildMemberActionsBatch', () => {
     expect(() =>
       buildMemberActionsBatch({ authority: A, subjectId: EXECS_ID, actions: [{ action: 'yeet', address: ALICE }] })
     ).toThrow(/unknown member action/);
+  });
+});
+
+describe('buildRoleRemovalBatch', () => {
+  it('puts every selected person in one Executor batch and preserves soft vs required hard removal', () => {
+    const r = buildRoleRemovalBatch({
+      authority: A,
+      subjectId: EXECS_ID,
+      subjectName: 'Executives',
+      members: [
+        { address: ALICE, username: 'alice', ban: false },
+        { address: BOB, username: 'bob', ban: true },
+      ],
+      confirmBans: true,
+      liveReconciled: true,
+    });
+    const calls = decodeBatch(r.batch);
+    expect(r.batch.every((call) => call.target.toLowerCase() === A.toLowerCase())).toBe(true);
+    expect(r.batch.every((call) => call.value === '0')).toBe(true);
+    expect(calls.map((call) => call.name)).toEqual(['remove', 'remove']);
+    expect(calls.map((call) => call.args[1].toLowerCase())).toEqual([ALICE, BOB]);
+    expect(calls.map((call) => call.args[2])).toEqual([false, true]);
+    expect(r.summaries).toEqual([
+      'Remove 2 role memberships in one atomic batch.',
+      'Remove alice from Executives.',
+      'Remove bob from Executives and block them from reclaiming it.',
+    ]);
+    expect(r.warnings.join(' ')).toMatch(/contract requires a block/);
+  });
+
+  it('quotes a gas floor that scales through the maximum 20-person batch', () => {
+    const members = Array.from({ length: 20 }, (_, i) => ({
+      address: `0x${(i + 1).toString(16).padStart(40, '0')}`,
+      ban: false,
+    }));
+    const r = buildRoleRemovalBatch({
+      authority: A,
+      subjectId: EXECS_ID,
+      members,
+      liveReconciled: true,
+    });
+    expect(r.batch).toHaveLength(20);
+    expect(r.gasLimit).toBe(5_400_000);
+    expect(r.gasLimit).toBe(estimateBatchGas(r.batch));
+  });
+
+  it('rejects an empty, duplicate, malformed, or over-limit restored draft before encoding', () => {
+    expect(() => buildRoleRemovalBatch({
+      authority: A,
+      subjectId: EXECS_ID,
+      members: [],
+      liveReconciled: true,
+    }))
+      .toThrow(/at least one person/);
+    expect(() => buildRoleRemovalBatch({
+      authority: A,
+      subjectId: EXECS_ID,
+      members: [{ address: ALICE }, { address: `0x${ALICE.slice(2).toUpperCase()}` }],
+      liveReconciled: true,
+    })).toThrow(/selected twice/);
+    expect(() => buildRoleRemovalBatch({
+      authority: A,
+      subjectId: EXECS_ID,
+      members: [{ address: 'not-an-address' }],
+      liveReconciled: true,
+    })).toThrow(/invalid address/);
+    expect(() => buildRoleRemovalBatch({
+      authority: A,
+      subjectId: EXECS_ID,
+      members: [{ address: `0x${'0'.repeat(40)}` }],
+      liveReconciled: true,
+    })).toThrow(/zero address/);
+    expect(() => buildRoleRemovalBatch({
+      authority: A,
+      subjectId: EXECS_ID,
+      members: Array.from({ length: 21 }, (_, i) => ({
+        address: `0x${(i + 1).toString(16).padStart(40, '0')}`,
+      })),
+      liveReconciled: true,
+    })).toThrow(/at most 20/);
+    expect(() => buildRoleRemovalBatch({
+      authority: A,
+      subjectId: EXECS_ID,
+      members: [{ address: ALICE, ban: true }],
+      liveReconciled: true,
+    })).toThrow(/Confirm.*block/i);
   });
 });
 

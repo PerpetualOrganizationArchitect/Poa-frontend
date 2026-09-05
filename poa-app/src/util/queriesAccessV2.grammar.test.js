@@ -113,6 +113,24 @@ describe('every shipped document obeys the grammar', () => {
 });
 
 describe('FETCH_AUTHORITY_MEMBERSHIPS specifically', () => {
+  it('exposes offset pagination in a stable, unique entity-id order', () => {
+    const operation = accessV2.FETCH_AUTHORITY_MEMBERSHIPS.definitions.find(
+      (definition) => definition.kind === 'OperationDefinition',
+    );
+    const field = operation.selectionSet.selections.find(
+      (selection) => selection.name.value === 'subjectMemberships',
+    );
+    const args = Object.fromEntries(field.arguments.map((argument) => [
+      argument.name.value,
+      argument.value,
+    ]));
+
+    expect(args.first).toMatchObject({ kind: 'Variable', name: { value: 'first' } });
+    expect(args.skip).toMatchObject({ kind: 'Variable', name: { value: 'skip' } });
+    expect(args.orderBy).toMatchObject({ kind: 'EnumValue', value: 'id' });
+    expect(args.orderDirection).toMatchObject({ kind: 'EnumValue', value: 'asc' });
+  });
+
   it('scopes EVERY or-branch to the authority — dropping it from one leaks other orgs’ rows', () => {
     const [{ node }] = collectWhereArguments(accessV2.FETCH_AUTHORITY_MEMBERSHIPS);
     const or = (node.fields || []).find((f) => f.name.value === 'or');

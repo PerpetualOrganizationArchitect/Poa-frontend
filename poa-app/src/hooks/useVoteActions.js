@@ -25,9 +25,10 @@ import { RefreshEvent } from '@/context/RefreshContext';
 import { readGasFloor, clearGasFloor, gasFloorOptions } from '@/lib/accessV2/gasFloors';
 import { parseExecutionFailure } from '@/lib/voting/proposalReceipt';
 import { describeExecutionFailure } from '@/lib/errors/contractErrors';
+import { roleRemovalGasFloorFromProposal } from '@/lib/accessV2/roleRemoval';
 
 export function useVoteActions(votingTypeSelected) {
-  const { voting, getNotReadyMessage } = useWeb3Services();
+  const { voting, membershipAuthority, getNotReadyMessage } = useWeb3Services();
   const { executeWithNotification } = useTransactionWithNotification();
   const { addNotification } = useNotification();
   // The open poll's type, as the service layer names it. VotingService owns the
@@ -73,8 +74,18 @@ export function useVoteActions(votingTypeSelected) {
   // with a known-expensive batch, its builder parked a floor — apply it to THIS transaction, the
   // only one that can use it. `gasFloorOptions` feeds both managers (`gasLimit` for the EOA path,
   // `callGasLimitFloor` for the 4337 path, both floors over the estimate, never caps).
-  const handleFinalize = useCallback(async (contractAddress, proposalId, isHybrid = false) => {
-    const floor = readGasFloor(contractAddress, proposalId);
+  const handleFinalize = useCallback(async (
+    contractAddress,
+    proposalId,
+    isHybrid = false,
+    proposal = null,
+  ) => {
+    const storedFloor = readGasFloor(contractAddress, proposalId);
+    // The creator and finalizer are often different people. Role-removal metadata carries its
+    // call count through the subgraph, so a second device can reconstruct the same conservative
+    // floor rather than estimating only HybridVoting's cheap caught-failure path.
+    const portableFloor = isHybrid ? roleRemovalGasFloorFromProposal(proposal) : null;
+    const floor = Math.max(Number(storedFloor) || 0, Number(portableFloor) || 0) || null;
 
     const result = await executeWithNotification(
       () => (voting
@@ -94,7 +105,7 @@ export function useVoteActions(votingTypeSelected) {
 
     // Settled — announceWinner can only run once per proposal, so the floor is spent either way.
     // (Only on success: a failed send can be retried and would want the floor again.)
-    if (result?.success && floor) clearGasFloor(contractAddress, proposalId);
+    if (result?.success && storedFloor) clearGasFloor(contractAddress, proposalId);
 
     // A SUCCESSFUL announceWinner can still have applied nothing: the winning batch runs inside a
     // try/catch, so a revert (or an out-of-gas, the common case) is swallowed and surfaces ONLY as
@@ -121,7 +132,7 @@ export function useVoteActions(votingTypeSelected) {
   // instances in one component means two txManagers, and the EIP-7702
   // "sponsorship failed, go direct for this session" kill switch is per-instance
   // — one would keep retrying a path the other already proved dead.
-  return { handleVote, handleFinalize, voting, executeWithNotification };
+  return { handleVote, handleFinalize, voting, membershipAuthority, executeWithNotification };
 }
 
 export default useVoteActions;

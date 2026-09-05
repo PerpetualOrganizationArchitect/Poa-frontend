@@ -12,20 +12,22 @@ import {
   FiHelpCircle,
   FiDollarSign,
   FiUserCheck,
+  FiUserMinus,
   FiPlusCircle,
   FiSettings,
 } from 'react-icons/fi';
 import { BINDING_TYPES } from './wizardSteps';
 
 /**
- * Intent-first entry for Create-a-Vote. Replaces the 5-option <Select> with a
+ * Intent-first entry for Create-a-Vote. Replaces the old <Select> with a
  * card gallery, reusing the visual pattern of SetterActionSelector's category
  * cards (glass card, icon + title + one-line description, purple selection
  * accent). Picking a card sets proposal.type via the modal's type-change path.
  *
  * `binding` marks the choices that route through the org's official
- * Blended-voting governance (election / createRole / setter) — the modal shows
- * a one-line banner for those.
+ * Blended-voting governance — the modal shows a one-line banner for those.
+ * `v2Only` keeps MembershipAuthority actions visible but unavailable on legacy
+ * orgs, with an explanation instead of letting the wizard reach a dead end.
  */
 export const INTENT_OPTIONS = [
   {
@@ -51,6 +53,14 @@ export const INTENT_OPTIONS = [
     title: 'Elect someone to a role',
     description: 'Candidates run; the winner receives the role.',
     binding: true,
+  },
+  {
+    type: 'removeRoleMembers',
+    icon: FiUserMinus,
+    title: 'Remove people from a role',
+    description: 'Choose one or more current role holders to remove.',
+    binding: true,
+    v2Only: true,
   },
   {
     type: 'createRole',
@@ -82,8 +92,9 @@ for (const option of INTENT_OPTIONS) {
   }
 }
 
-const IntentCard = ({ option, onSelect, isDisabled = false, accessV2 = false }) => {
+const IntentCard = ({ option, onSelect, disabledReason = '', accessV2 = false }) => {
   const IconComponent = option.icon;
+  const isDisabled = Boolean(disabledReason);
   // A card can carry ACCESS-V2 copy for the same intent (createRole also makes a group there).
   // Falls back to the legacy words, so a card without v2 copy is byte-identical on both orgs.
   const title = (accessV2 && option.v2Title) || option.title;
@@ -133,7 +144,7 @@ const IntentCard = ({ option, onSelect, isDisabled = false, accessV2 = false }) 
   return (
     <Tooltip
       hasArrow
-      label="Your roles can't start this kind of vote. Ask an admin to grant you a vote-creator role."
+      label={disabledReason}
     >
       {card}
     </Tooltip>
@@ -148,17 +159,25 @@ const IntentCard = ({ option, onSelect, isDisabled = false, accessV2 = false }) 
  * instead of walking the wizard into an Unauthorized revert.
  */
 const IntentGallery = ({ onSelect, canCreatePoll = true, canCreateProposal = true, accessV2 = false }) => {
+  const accessV2Enabled = Boolean(accessV2);
   return (
     <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
-      {INTENT_OPTIONS.map((option) => (
-        <IntentCard
-          key={option.type}
-          option={option}
-          onSelect={onSelect}
-          isDisabled={option.binding ? !canCreateProposal : !canCreatePoll}
-          accessV2={accessV2}
-        />
-      ))}
+      {INTENT_OPTIONS.map((option) => {
+        const disabledReason = option.v2Only && !accessV2Enabled
+          ? 'Role-removal votes are available after this group moves to the new roles system.'
+          : (option.binding ? !canCreateProposal : !canCreatePoll)
+            ? "Your roles can't start this kind of vote. Ask an admin to grant you a vote-creator role."
+            : '';
+        return (
+          <IntentCard
+            key={option.type}
+            option={option}
+            onSelect={onSelect}
+            disabledReason={disabledReason}
+            accessV2={accessV2Enabled}
+          />
+        );
+      })}
     </SimpleGrid>
   );
 };

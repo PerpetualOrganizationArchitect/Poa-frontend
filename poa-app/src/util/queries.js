@@ -800,6 +800,29 @@ export const FETCH_PROJECTS_DATA_WITH_RELEASES = projectsDataQuery(
   TASK_RELEASE_FIELDS
 );
 
+// Kept separate from the board query so a frontend can be deployed before the
+// TaskSubmission schema finishes syncing without one unknown field blanking the
+// whole board. Once available, latestRejection points to the exact immutable
+// submission that was reviewed, even after the mutable Task state was cleared.
+export const FETCH_LATEST_REJECTED_SUBMISSION = gql`
+  query FetchLatestRejectedSubmission($taskId: ID!) {
+    task(id: $taskId) {
+      id
+      latestRejection {
+        id
+        submission {
+          id
+          submissionHash
+          metadata {
+            id
+            submission
+          }
+        }
+      }
+    }
+  }
+`;
+
 /**
  * Per-project managers — the `_isPM` half of TaskManager's permission check
  * (`_checkPerm` = the hat mask OR being a manager of that project). Managers are

@@ -28,6 +28,8 @@ import { useOrgName } from '@/hooks/useOrgName';
 import { useVouches } from '@/hooks/useVouches';
 import WelcomeClaimPage from '@/components/profileHub/WelcomeClaimPage';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthoritySubjects, useMyMemberships } from '@/hooks/accessV2';
+import { buildV2ProfileView } from '@/lib/accessV2/profileBridge';
 
 // Profile hub components
 import ProfileHeader from '@/components/profileHub/ProfileHeader';
@@ -221,12 +223,40 @@ const UserprofileHub = () => {
   const tokenLabel = poContext?.tokenLabel || 'Shares';
 
   // Fetch org structure for roles and claim page
-  const { roles, eligibilityModuleAddress, orgName, orgMetadata, permissionsMatrix, loading: orgLoading } = useOrgStructure();
-  const claimableRoles = roles || [];
+  const {
+    roles,
+    eligibilityModuleAddress,
+    orgName,
+    orgMetadata,
+    permissionsMatrix,
+    loading: orgLoading,
+    error: orgError,
+  } = useOrgStructure();
+  const legacyClaimableRoles = roles || [];
+
+  // A router-bound Access v2 org no longer reads role truth from Hats. Join the live subject list
+  // to this user's fold-mirror memberships so native roles, renamed roles, group-inherited
+  // permissions, claimability, and top-hat filtering all agree with the Organization Structure
+  // page. Both hooks are self-gating and put nothing on the wire for legacy orgs.
+  const v2 = useAuthoritySubjects();
+  const v2Memberships = useMyMemberships(userAddress);
+  const v2Live = v2.enabled;
+  const v2Profile = useMemo(() => buildV2ProfileView({
+    roles: v2.roles,
+    memberships: v2Memberships.rows,
+    claimableMemberships: v2Memberships.claimable,
+  }), [v2.roles, v2Memberships.rows, v2Memberships.claimable]);
 
   // Vouching data
-  const rolesWithVouching = roles?.filter(r => r.vouchingEnabled) || [];
-  const { getVouchProgress, pendingVouchRequests } = useVouches(eligibilityModuleAddress, rolesWithVouching);
+  const rolesWithVouching = v2Live ? [] : (roles?.filter(r => r.vouchingEnabled) || []);
+  const legacyVouchAddress = v2Live || v2.authority.loading || v2.authority.error
+    ? null
+    : eligibilityModuleAddress;
+  const {
+    getVouchProgress,
+    pendingVouchRequests,
+    loading: legacyVouchesLoading,
+  } = useVouches(legacyVouchAddress, rolesWithVouching);
 
   // Modal states
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -265,10 +295,10 @@ const UserprofileHub = () => {
 
   // Check if user has claimed any roles
   const userHatIds = userData?.hatIds || [];
-  const hasClaimedRole = userHatIds.length > 0;
+  const hasClaimedRole = v2Live ? v2Profile.hasClaimedRole : userHatIds.length > 0;
 
   // Get user's actual roles for header display
-  const userRoles = useMemo(() => {
+  const legacyUserRoles = useMemo(() => {
     if (!userHatIds.length || !roles?.length) return [];
     const normalizedUserHatIds = userHatIds.map((id) => normalizeHatId(id));
     return roles.filter((role) => {
@@ -277,13 +307,25 @@ const UserprofileHub = () => {
     });
   }, [userHatIds, roles]);
 
+  const profileRoles = v2Live ? v2Profile.roles : roles;
+  const profileUserHatIds = v2Live ? v2Profile.userRoleIds : userHatIds;
+  const userRoles = v2Live ? v2Profile.userRoles : legacyUserRoles;
+  const canApproveRequests = v2Live ? v2Profile.canApproveRequests : hasApproverRole;
+  const canRequestTokens = v2Live ? v2Profile.canRequestTokens : hasMemberRole;
+  const v2Error = v2.authority.error || (v2Live ? (v2.error || v2Memberships.error) : null);
+
   // Check if there's role progression content to show
   const showRoleProgression = useMemo(() => {
+    if (v2Live) {
+      return v2Profile.progressionItems.length > 0 || v2Profile.claimableRoles.length > 0;
+    }
     return hasRoleProgressionContent(userAddress, userHatIds, roles, getVouchProgress);
-  }, [userAddress, userHatIds, roles, getVouchProgress]);
+  }, [v2Live, v2Profile.progressionItems, v2Profile.claimableRoles, userAddress, userHatIds, roles, getVouchProgress]);
 
   // Composite loading state
-  const isFullyLoaded = !orgLoading && !userDataLoading && orgName;
+  const isFullyLoaded = !orgLoading && !userDataLoading && !v2.authority.loading && orgName &&
+    (!v2Live || (!v2.loading && !v2Memberships.loading)) &&
+    (!legacyVouchAddress || !legacyVouchesLoading);
 
   const seoHead = (
     <SEOHead
@@ -296,6 +338,17 @@ const UserprofileHub = () => {
 
   // No org to render: a dead end, not a pending state. After every hook.
   if (orgGate) return orgGate;
+  if (v2Error || orgError) {
+    return (
+      <>
+        {seoHead}
+        <Navbar />
+        <Center height="100vh" background={pageBackground()}>
+          <Text color={onBackground}>Error loading roles: {(v2Error || orgError).message}</Text>
+        </Center>
+      </>
+    );
+  }
   if (!isFullyLoaded) {
     return (
       <>
@@ -309,21 +362,22 @@ const UserprofileHub = () => {
   }
 
   // Show welcome/claim page if user hasn't claimed any role yet
-  if (!hasClaimedRole && claimableRoles.length > 0) {
+  if (!v2Live && !hasClaimedRole && legacyClaimableRoles.length > 0) {
     return (
       <>
         {seoHead}
         <WelcomeClaimPage
           orgName={orgName}
           orgMetadata={orgMetadata}
-          claimableRoles={claimableRoles}
+          claimableRoles={legacyClaimableRoles}
           eligibilityModuleAddress={eligibilityModuleAddress}
         />
       </>
     );
   }
 
-  // Handle error state
+  // Preserve the legacy onboarding path above: it historically remains usable when the broader
+  // user-data query is degraded, because role claiming has its own data source.
   if (error) {
     return (
       <>
@@ -369,7 +423,7 @@ const UserprofileHub = () => {
                 (profileMetadata?.avatar ? `https://ipfs.io/ipfs/${profileMetadata.avatar}` : undefined)
               }
               userRoles={userRoles}
-              canApproveRequests={hasApproverRole}
+              canApproveRequests={canApproveRequests}
               profileMetadata={profileMetadata}
               canEdit={!!userAddress}
               onEditProfileClick={() => setEditProfileOpen(true)}
@@ -393,9 +447,11 @@ const UserprofileHub = () => {
             {showRoleProgression ? (
               <RoleProgressionCard
                 userAddress={userAddress}
-                userHatIds={userHatIds}
-                roles={roles}
+                userHatIds={profileUserHatIds}
+                roles={profileRoles}
                 getVouchProgress={getVouchProgress}
+                progressionItems={v2Live ? v2Profile.progressionItems : undefined}
+                claimableRoleItems={v2Live ? v2Profile.claimableRoles : undefined}
                 pendingVouchRequests={pendingVouchRequests}
                 userDAO={userDAO}
               />
@@ -410,8 +466,8 @@ const UserprofileHub = () => {
           {/* User Roles (Left Bottom) */}
           <GridItem area="roles">
             <UserRolesCard
-              userHatIds={userHatIds}
-              roles={roles}
+              userHatIds={profileUserHatIds}
+              roles={profileRoles}
               permissionsMatrix={permissionsMatrix}
               userDAO={userDAO}
             />
@@ -579,14 +635,14 @@ const UserprofileHub = () => {
 
           {/* Token Requests (Bottom Left - Half Width) */}
           <GridItem area="tokenRequests">
-            <TokenRequestCard hasMemberRole={hasMemberRole} />
+            <TokenRequestCard hasMemberRole={canRequestTokens} />
           </GridItem>
         </Grid>
       </Box>
 
       {/* Modals */}
       <AccountSettingsModal isOpen={isSettingsModalOpen} onClose={() => setSettingsModalOpen(false)} />
-      <ExecutiveMenuModal isOpen={isExecutiveMenuOpen} onClose={() => setExecutiveMenuOpen(false)} hasApproverRole={hasApproverRole} />
+      <ExecutiveMenuModal isOpen={isExecutiveMenuOpen} onClose={() => setExecutiveMenuOpen(false)} hasApproverRole={canApproveRequests} />
       <EditProfileModal isOpen={isEditProfileOpen} onClose={() => setEditProfileOpen(false)} />
     </>
   );

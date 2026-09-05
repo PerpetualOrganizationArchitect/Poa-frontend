@@ -118,14 +118,21 @@ describe('peekCapability — synchronous seed', () => {
     vi.unstubAllGlobals();
   });
 
-  it('does NOT report an in-flight probe as false', async () => {
+  it('does NOT report an in-flight probe as false, then safely settles a stalled probe', async () => {
     const url = 'https://peek-inflight.example/sg';
+    vi.useFakeTimers();
     vi.stubGlobal('window', { localStorage: { getItem: () => null, setItem: () => {} } });
-    vi.stubGlobal('fetch', () => new Promise(() => {})); // never settles
-    hasCapability(url, CAPABILITY.TASK_RELEASES); // memoises a pending Promise
+    vi.stubGlobal('fetch', (_url, { signal }) => new Promise((resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(new Error('aborted')));
+    }));
+    const probe = hasCapability(url, CAPABILITY.TASK_RELEASES); // memoises a pending Promise
     // A Promise in the cache means "unknown" — reporting false here would make a
     // capable endpoint fetch the base document on every load, forever.
     expect(peekCapability(url, CAPABILITY.TASK_RELEASES)).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(12000);
+    await expect(probe).resolves.toBe(false);
+    expect(peekCapability(url, CAPABILITY.TASK_RELEASES)).toBe(false);
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 });

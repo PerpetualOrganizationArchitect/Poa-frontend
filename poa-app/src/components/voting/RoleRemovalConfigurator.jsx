@@ -64,6 +64,7 @@ export default function RoleRemovalConfigurator({ proposal, onChange }) {
     membersOf,
     loading: membershipsLoading,
     error: membershipsError,
+    complete: membershipsComplete,
     refetch: refetchMemberships,
   } = useAuthorityMemberships();
   const [search, setSearch] = useState('');
@@ -108,7 +109,14 @@ export default function RoleRemovalConfigurator({ proposal, onChange }) {
   // drop people who no longer hold the role and refresh each surviving row's ban requirement.
   // This is a creation-time guard; the Executor batch remains atomic if membership changes later.
   useEffect(() => {
-    if (!enabled || subjectsLoading || membershipsLoading || subjectsError || membershipsError) {
+    if (
+      !enabled
+      || subjectsLoading
+      || membershipsLoading
+      || !membershipsComplete
+      || subjectsError
+      || membershipsError
+    ) {
       // Preserve the selected role and people on a transient read failure, but make a restored or
       // previously-settled selection wait for a successful fresh reconciliation before advancing.
       if (config.liveReconciled) updateConfig({ ...config, liveReconciled: false });
@@ -143,6 +151,7 @@ export default function RoleRemovalConfigurator({ proposal, onChange }) {
   }, [
     config,
     enabled,
+    membershipsComplete,
     membershipsLoading,
     membershipsError,
     roleMembers,

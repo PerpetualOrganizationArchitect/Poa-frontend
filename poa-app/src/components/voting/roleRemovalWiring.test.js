@@ -19,6 +19,7 @@ const detail = read('components', 'voting', 'PollDetail.jsx');
 const actions = read('hooks', 'useVoteActions.js');
 const services = read('hooks', 'useWeb3Services.js');
 const configurator = read('components', 'voting', 'RoleRemovalConfigurator.jsx');
+const membershipsHook = read('hooks', 'accessV2', 'useAuthorityMemberships.js');
 const checks = read('lib', 'voting', 'proposalChecks.js');
 
 describe('role-removal vote production wiring', () => {
@@ -58,10 +59,19 @@ describe('role-removal vote production wiring', () => {
   it('reconciles restored rows and exposes a real retry for both live roster queries', () => {
     expect(modal).toContain('liveReconciled: false');
     expect(configurator).toContain('retainBanConfirmation(');
-    expect(configurator).toContain('!enabled || subjectsLoading');
+    expect(configurator).toMatch(/!enabled\s*\|\|\s*subjectsLoading/);
     expect(configurator).toContain('roleNameChanged');
     expect(configurator).toContain('refetchSubjects');
     expect(configurator).toContain('refetchMemberships');
     expect(configurator).toContain('onClick={retryLoads}');
+  });
+
+  it('never reconciles a draft against a truncated membership page', () => {
+    expect(membershipsHook).toContain('fetchAllAuthorityMembershipRows({');
+    expect(membershipsHook).toContain('first: AUTHORITY_MEMBERSHIP_PAGE_SIZE');
+    expect(membershipsHook).toContain("fetchPolicy: 'no-cache'");
+    expect(membershipsHook).toContain('complete: authority.enabled ? complete : false');
+    expect(configurator).toContain('complete: membershipsComplete');
+    expect(configurator).toContain('|| !membershipsComplete');
   });
 });

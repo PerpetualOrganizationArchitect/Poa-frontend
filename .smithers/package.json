@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "bun test tests/test6-lib.test.ts tests/test6-scripts.test.ts tests/test6-verify.graph.test.ts tests/ensure-dev.test.ts",
     "gateway": "bun ./gateway.ts",
     "workflow:list": "smithers workflow list",
     "workflow:run": "smithers workflow run",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "typescript": "5.9.3",
+    "@types/bun": "1.3.14",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@types/mdx": "2.0.14",

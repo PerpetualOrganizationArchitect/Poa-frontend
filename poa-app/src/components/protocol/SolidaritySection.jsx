@@ -8,7 +8,7 @@ import { clientToSigner } from '@/components/ProviderConverter';
 import { useAuth } from '@/context/AuthContext';
 import { ethers } from 'ethers';
 
-const MotionBox = motion(Box);
+const MotionBox = motion.create(Box);
 
 const StatCard = ({ label, value, subtext, color = 'warmGray.800' }) => (
   <Box bg="white" border="1px solid" borderColor="warmGray.100" borderRadius="lg" p={4}>

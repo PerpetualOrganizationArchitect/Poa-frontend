@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { keyframes } from '@emotion/react';
 import {
   Box,
   VStack,
@@ -6,7 +7,6 @@ import {
   Text,
   Icon,
   Button,
-  keyframes,
 } from '@chakra-ui/react';
 import { PiSparkle } from 'react-icons/pi';
 

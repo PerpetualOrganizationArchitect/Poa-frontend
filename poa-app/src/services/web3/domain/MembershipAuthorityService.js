@@ -30,9 +30,11 @@ export class MembershipAuthorityService {
   /**
    * @param {ContractFactory} contractFactory
    * @param {TransactionManager} transactionManager
+   * @param {ContractFactory} [readFactory] - optional org-chain factory for cross-chain reads
    */
-  constructor(contractFactory, transactionManager) {
+  constructor(contractFactory, transactionManager, readFactory = contractFactory) {
     this.factory = contractFactory;
+    this.readFactory = readFactory;
     this.txManager = transactionManager;
   }
 
@@ -43,7 +45,7 @@ export class MembershipAuthorityService {
 
   _readonly(authority) {
     requireAddress(authority, 'MembershipAuthority address');
-    return this.factory.createReadOnly(authority, MembershipAuthorityABI);
+    return this.readFactory.createReadOnly(authority, MembershipAuthorityABI);
   }
 
   // ── user-driven ────────────────────────────────────────────────────────────────────────────
@@ -219,6 +221,6 @@ export class MembershipAuthorityService {
   }
 }
 
-export function createMembershipAuthorityService(factory, txManager) {
-  return new MembershipAuthorityService(factory, txManager);
+export function createMembershipAuthorityService(factory, txManager, readFactory = factory) {
+  return new MembershipAuthorityService(factory, txManager, readFactory);
 }

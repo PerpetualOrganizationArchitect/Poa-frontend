@@ -29,7 +29,7 @@ import {
 } from '@chakra-ui/react';
 import { CheckIcon, WarningIcon } from '@chakra-ui/icons';
 import PulseLoader from "@/components/shared/PulseLoader";
-import { useWeb3 } from '@/hooks';
+import { useWeb3 } from '@/hooks/useWeb3Services';
 import { useDeployerUsername } from '@/features/deployer/hooks/useDeployerUsername';
 
 const SignupModal = ({ isOpen, onClose }) => {

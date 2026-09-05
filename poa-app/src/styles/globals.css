@@ -1,10 +1,9 @@
 /* ─────────────────────────────────────────────────────────────────────────
-   Shared mono typeface — self-hosted, latin subset only.
+   Shared application typefaces — self-hosted, latin subset only.
 
-   IBM Plex Mono is the mono for numerals, dates, and labels. Only the
-   marketing components reference it (via the `--mono` CSS var under the
-   .pa-root scope), so app routes never download it. The app itself keeps
-   Inter + Roboto Mono from Google Fonts.
+   IBM Plex Mono is the mono for numerals, dates, and labels. Public Sans is
+   the application body/heading face below as well as the marketing body face,
+   avoiding two render-blocking Google Fonts stylesheets on every route.
    ───────────────────────────────────────────────────────────────────────── */
 
 @font-face {
@@ -30,9 +29,8 @@
 
    Archivo (variable weight) is the marketing display face; Public Sans
    (variable weight) its body. Both are latin-subset variable fonts driven
-   with font-variation-settings. Only the marketing components reference these
-   families (under the .pa-root scope), so app routes never depend on them.
-   IBM Plex Mono (declared above) is shared for data/labels.
+   with font-variation-settings. IBM Plex Mono (declared above) is shared for
+   data/labels, and application routes reuse Public Sans.
    ───────────────────────────────────────────────────────────────────────── */
 
 @font-face {
@@ -622,4 +620,4 @@
   .speech-bubble:last-child {
     margin-bottom: 40px;
   }
-} 
+}

@@ -18,6 +18,7 @@
  */
 
 import React, { useCallback, useState } from "react";
+import { keyframes } from "@emotion/react";
 import {
   Box,
   Flex,
@@ -32,7 +33,6 @@ import {
   Badge,
   Tooltip,
   SimpleGrid,
-  keyframes,
 } from "@chakra-ui/react";
 import { InfoOutlineIcon, ChevronDownIcon, ChevronUpIcon } from "@chakra-ui/icons";
 import { PiUsers, PiChartBar, PiSquareHalfFill } from "react-icons/pi";

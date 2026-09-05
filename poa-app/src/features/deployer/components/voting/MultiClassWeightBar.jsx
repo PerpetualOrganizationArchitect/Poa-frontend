@@ -67,6 +67,8 @@ function getClassLabel(votingClass, index, roles = []) {
 export function MultiClassWeightBar({ classes, roles = [], showLabels = true }) {
   const bgColor = useColorModeValue('warmGray.100', 'warmGray.700');
   const borderColor = useColorModeValue('warmGray.200', 'warmGray.600');
+  const labelColorShade = useColorModeValue('700', '300');
+  const lockColorShade = useColorModeValue('500', '400');
 
   if (!classes || classes.length === 0) {
     return null;
@@ -215,7 +217,7 @@ export function MultiClassWeightBar({ classes, roles = [], showLabels = true }) 
                 <HStack spacing={1} justify="center">
                   <Text
                     fontSize="xs"
-                    color={useColorModeValue(`${color}.700`, `${color}.300`)}
+                    color={`${color}.${labelColorShade}`}
                     fontWeight="500"
                     noOfLines={1}
                   >
@@ -225,7 +227,7 @@ export function MultiClassWeightBar({ classes, roles = [], showLabels = true }) 
                     <Icon
                       as={PiLock}
                       boxSize={3}
-                      color={useColorModeValue(`${color}.500`, `${color}.400`)}
+                      color={`${color}.${lockColorShade}`}
                     />
                   )}
                 </HStack>

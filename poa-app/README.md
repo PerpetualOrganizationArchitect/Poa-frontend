@@ -11,4 +11,4 @@ yarn build        # static export to ./out, used by the IPFS deploy
 yarn lint
 ```
 
-Node 18.18.0 is pinned via Volta in `package.json`. No env vars are required for read-only browsing.
+Node 22.23.2 is pinned via Volta in `package.json`. No env vars are required for read-only browsing.

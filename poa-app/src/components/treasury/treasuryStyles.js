@@ -8,7 +8,8 @@
  * only — text and values stay in ink tokens.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, HStack, Text, keyframes, usePrefersReducedMotion } from '@chakra-ui/react';
+import { Box, HStack, Text, usePrefersReducedMotion } from '@chakra-ui/react';
+import { keyframes } from '@emotion/react';
 
 export const ACCENT = {
   in: '#22A55E',        // money into the treasury

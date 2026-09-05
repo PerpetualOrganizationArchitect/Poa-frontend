@@ -38,10 +38,10 @@ export default function Hero() {
             <NextLink href="/create" className="pa-cta-solid pa-cta-lg">
               {HERO.ctaPrimary}
             </NextLink>
-            <a href="/#how-it-works" className="pa-cta-ghost">
+            <NextLink href="/#how-it-works" className="pa-cta-ghost">
               {HERO.ctaSecondary}
               <span className="pa-arrow">→</span>
-            </a>
+            </NextLink>
           </div>
         </div>
 

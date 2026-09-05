@@ -77,7 +77,7 @@ const ProjectSidebar = ({
   const { taskManagerContractAddress, creatorHatIds } = usePOContext();
 
   // Get user's current hat IDs for permission checking
-  const userHatIds = userData?.hatIds || [];
+  const userHatIds = useMemo(() => userData?.hatIds || [], [userData?.hatIds]);
 
   // "My Work" hint counts: tasks assigned to me (in progress) + In Review tasks
   // I can review. Cheap — projectsData already carries columns + tasks.

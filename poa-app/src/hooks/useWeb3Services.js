@@ -57,14 +57,13 @@ import { TreasuryService, createTreasuryService } from '../services/web3/domain/
  */
 export function useWeb3Services(options = {}) {
   const { ipfsService: providedIpfs = null, network = DEFAULT_NETWORK } = options;
-
   // Org context first — the EOA signer + tx path must target the org's chain.
-  // usePOContext returns undefined when outside POProvider (non-org routes).
+  // Accounts live on the Arbitrum home chain, while org writes and authority
+  // reads must follow the organization (for example, Decentral Park on Gnosis).
   const poContext = usePOContext();
   const orgId = poContext?.orgId || null;
   const subgraphUrl = poContext?.subgraphUrl || null;
   const orgChainId = poContext?.orgChainId || null;
-
   // EOA signer. In E2E the burner has no chain-switch UI, so bind it directly to
   // the org chain's RPC (so it broadcasts to the right network). In production
   // keep the wallet's current chain here and switch + rebind at tx time via
@@ -75,6 +74,7 @@ export function useWeb3Services(options = {}) {
   // Without this, passkey-only users get no provider (useClient() returns undefined
   // when no wallet is connected and no chainId is specified).
   const provider = useEthersProvider({ chainId: DEFAULT_CHAIN_ID });
+  const orgReadProvider = useEthersProvider({ chainId: orgChainId || DEFAULT_CHAIN_ID });
   const { isPasskeyUser, isAuthenticated, passkeyConnecting, passkeyState, publicClient, bundlerClient } = useAuth();
   const { switchChainAsync } = useSwitchChain();
   const wagmiConfig = useConfig();
@@ -223,6 +223,14 @@ export function useWeb3Services(options = {}) {
     return createContractFactory(signer);
   }, [signer, provider, isPasskeyUser]);
 
+  // Keep writable contracts on the auth-aware factory above, but bind authority preflights to
+  // the org's provider. Without this split a Gnosis org queried through a passkey would run
+  // canRemove against Arbitrum, fail closed, and make every valid removal proposal impossible.
+  const authorityReadFactory = useMemo(
+    () => (orgReadProvider ? createContractFactory(null, orgReadProvider) : factory),
+    [orgReadProvider, factory]
+  );
+
   // EIP-7702 capability detection for EOA users
   const { data: walletClient } = useWalletClient();
   const [eoa7702Capable, setEoa7702Capable] = useState(false);
@@ -342,12 +350,12 @@ export function useWeb3Services(options = {}) {
       task: createTaskService(factory, txManager, ipfsService),
       education: createEducationService(factory, txManager, ipfsService),
       eligibility: createEligibilityService(factory, txManager),
-      membershipAuthority: createMembershipAuthorityService(factory, txManager),
+      membershipAuthority: createMembershipAuthorityService(factory, txManager, authorityReadFactory),
       zkEmailInvites: createZkEmailInvitesService(factory, txManager),
       tokenRequest: createTokenRequestService(factory, txManager, ipfsService),
       treasury: createTreasuryService(factory, txManager),
     };
-  }, [factory, txManager, ipfsService, registryAddress, effectiveChainId]);
+  }, [factory, authorityReadFactory, txManager, ipfsService, registryAddress, effectiveChainId]);
 
   // Contract addresses helper
   const getContractAddress = useCallback((contractName) => {

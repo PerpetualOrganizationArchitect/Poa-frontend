@@ -4,7 +4,7 @@ import { Box, Container, Heading, Text, SimpleGrid, VStack, HStack, Icon } from 
 import { motion } from 'framer-motion';
 import { HiGlobeAlt, HiUserGroup, HiCube, HiLink, HiLightningBolt } from 'react-icons/hi';
 
-const MotionBox = motion(Box);
+const MotionBox = motion.create(Box);
 
 const StatPill = ({ icon, value, label }) => (
   <VStack spacing={1} px={6} py={4} bg="rgba(255,255,255,0.08)" borderRadius="xl" minW="120px">

@@ -6,8 +6,6 @@ const POSTS_DIR = path.join(process.cwd(), 'posts');
 const OUTPUT = path.join(process.cwd(), 'public', 'sitemap.xml');
 const TEST_FILES = new Set(['test', 'test2', 'letsSee']);
 
-const today = new Date().toISOString().split('T')[0];
-
 // Simple frontmatter parser (avoids gray-matter dependency)
 function parseFrontmatter(content) {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -45,7 +43,7 @@ const posts = postFiles
     const data = parseFrontmatter(content);
     const date = data.date
       ? new Date(data.date).toISOString().split('T')[0]
-      : today;
+      : null;
     return { id, date };
   })
   .filter(Boolean);
@@ -55,8 +53,7 @@ const OG_IMAGE = `${SITE_URL}/images/poa_og.webp`;
 const urlEntry = (loc, lastmod, changefreq, priority) =>
   `<url>
   <loc>${SITE_URL}${loc}</loc>
-  <lastmod>${lastmod}</lastmod>
-  <changefreq>${changefreq}</changefreq>
+${lastmod ? `  <lastmod>${lastmod}</lastmod>\n` : ''}  <changefreq>${changefreq}</changefreq>
   <priority>${priority}</priority>
   <image:image>
     <image:loc>${OG_IMAGE}</image:loc>
@@ -66,7 +63,7 @@ const urlEntry = (loc, lastmod, changefreq, priority) =>
 
 const urls = [
   '<!-- Static pages -->',
-  ...staticRoutes.map(r => urlEntry(r.path, today, r.changefreq, r.priority)),
+  ...staticRoutes.map(r => urlEntry(r.path, null, r.changefreq, r.priority)),
   '',
   '<!-- Documentation pages -->',
   ...posts.map(p => urlEntry(`/docs/${p.id}/`, p.date, 'monthly', '0.70')),

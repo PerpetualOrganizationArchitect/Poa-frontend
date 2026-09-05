@@ -54,6 +54,15 @@ import {
   DESCRIPTION_PREFIX as CREATE_ROLE_DESCRIPTION_PREFIX,
   defaultRoleConfig,
 } from '@/components/voting/RoleConfigurator';
+import {
+  defaultRoleRemovalConfig,
+  buildRoleRemovalSummaries,
+  ROLE_REMOVAL_UNAVAILABLE_MESSAGE,
+  roleRemovalConfigError,
+} from '@/lib/accessV2/roleRemoval';
+import { buildRoleRemovalBatch } from '@/lib/accessV2/proposalBuilders';
+import { checkBatchSubmittable } from '@/lib/accessV2/submission';
+import { supportsVotingRestrictions } from '@/components/voting/create/wizardSteps';
 
 /**
  * Warnings ride into the ballot metadata next to the enactment lines (PollDetail renders one
@@ -124,6 +133,8 @@ const defaultProposal = {
   // uses, so a role made from either door is the same role. `roleConfig` is left untouched: a
   // legacy org still walks the branch above, byte for byte.
   roleFormV2: defaultRoleForm(),
+  // Access-v2 role removal — one authority role and up to 20 current members.
+  roleRemovalConfig: { ...defaultRoleRemovalConfig },
   id: 0,
 };
 
@@ -192,10 +203,10 @@ export function useProposalForm({ onSubmit }) {
 
   const handleProposalTypeChange = useCallback((e) => {
     const newType = e.target.value;
-    // election + setter + createRole all use hybrid voting, which doesn't
-    // support hat-restricted voting. Clear restriction state on switch in
-    // so a stale toggle doesn't leak into submit.
-    const isHybrid = newType === 'election' || newType === 'setter' || newType === 'createRole';
+    // Most governance actions are decided by the full electorate. A treasury payout is also
+    // binding, but intentionally retains its role-restriction picker, so this cannot key off the
+    // broader BINDING_TYPES set.
+    const clearsRestrictions = !supportsVotingRestrictions(newType);
     setProposal(prev => {
       // Auto-generated copy describes the OLD intent, so it can't survive a type
       // switch. autoTitle/autoDescription are the provenance twins applyAutoCopy
@@ -226,7 +237,7 @@ export function useProposalForm({ onSubmit }) {
         autoTitle: '',
         autoDescription: '',
         options: newType === 'normal' ? ["", ""] : [],
-        ...(isHybrid ? {
+        ...(clearsRestrictions ? {
           isRestricted: false,
           restrictedHatIds: [],
         } : {}),
@@ -242,6 +253,9 @@ export function useProposalForm({ onSubmit }) {
         ...(newType !== 'createRole' ? {
           roleConfig: { ...defaultRoleConfig },
           roleFormV2: defaultRoleForm(),
+        } : {}),
+        ...(newType !== 'removeRoleMembers' ? {
+          roleRemovalConfig: { ...defaultRoleRemovalConfig },
         } : {}),
         // Without this, setter → election → setter resurrected the old template
         // and the config step silently skipped the category picker.
@@ -553,6 +567,21 @@ export function useProposalForm({ onSubmit }) {
     return true;
   }, [proposal, toast]);
 
+  const validateRoleRemovalProposal = useCallback((accessV2Enabled = false) => {
+    const error = accessV2Enabled
+      ? roleRemovalConfigError(proposal.roleRemovalConfig)
+      : ROLE_REMOVAL_UNAVAILABLE_MESSAGE;
+    if (!error) return true;
+    toast({
+      title: "Can't create this removal vote yet",
+      description: error,
+      status: 'error',
+      duration: 6000,
+      isClosable: true,
+    });
+    return false;
+  }, [proposal.roleRemovalConfig, toast]);
+
   const validateSetterProposal = useCallback(() => {
     if (proposal.setterMode === 'template') {
       if (!proposal.setterTemplate) {
@@ -847,6 +876,9 @@ export function useProposalForm({ onSubmit }) {
           );
         }
       }
+    } else if (proposal.type === 'removeRoleMembers') {
+      const rc = proposal.roleRemovalConfig || {};
+      summaries.push(...buildRoleRemovalSummaries(rc));
     }
     return summaries;
   }, [proposal, nativeCurrencySymbol, roleNames, projectNames]);
@@ -1180,6 +1212,31 @@ export function useProposalForm({ onSubmit }) {
         : ['Create role', 'Reject'];
       // The id-race warning is the one a voter most needs and can act on (close the other
       // proposal first), so it goes into the metadata with the rest of the preview.
+      summaries = [...built.summaries, ...built.warnings.map(worthKnowing)];
+      gasLimit = built.gasLimit;
+    } else if (proposal.type === "removeRoleMembers") {
+      const rc = proposal.roleRemovalConfig || {};
+      const authority = contractAddresses?.membershipAuthorityAddress;
+      if (!authority) {
+        throw new Error('This group is not using the new roles system yet.');
+      }
+
+      // Pin the call target to the live org authority. A localStorage draft is user-controlled and
+      // must never be able to override it with a persisted `authority` field.
+      const built = buildRoleRemovalBatch({
+        authority,
+        subjectId: rc.subjectId,
+        subjectName: rc.subjectName,
+        members: rc.members,
+        confirmBans: rc.confirmBans,
+        liveReconciled: rc.liveReconciled,
+      });
+      const check = checkBatchSubmittable(built.batch);
+      if (!check.ok) throw new Error(check.message);
+
+      batches = [built.batch, []];
+      numOptions = 2;
+      optionNames = ['Remove from role', 'Keep current members'];
       summaries = [...built.summaries, ...built.warnings.map(worthKnowing)];
       gasLimit = built.gasLimit;
     } else if (proposal.type === "createRole") {
@@ -1586,6 +1643,11 @@ export function useProposalForm({ onSubmit }) {
         return;
       }
 
+      if (proposal.type === "removeRoleMembers" && !validateRoleRemovalProposal(accessV2Enabled)) {
+        setLoadingSubmit(false);
+        return;
+      }
+
       if (proposal.type === "normal" && !validateNormalProposal()) {
         setLoadingSubmit(false);
         return;
@@ -1599,7 +1661,7 @@ export function useProposalForm({ onSubmit }) {
       // using the wallet's provider — for cross-chain users (passkey, or an
       // EOA whose wallet is on a different chain) the wallet provider would
       // read the wrong chain's state. Mirrors the read pattern in
-      // pages/create/index.js:355.
+      // features/deployer/CreatePage.jsx.
       let freshHoldersOverride = null;
       // ACCESS V2: the same freshness rule, against the MembershipAuthority. The subgraph fold
       // mirror lags the chain, and on v2 the preconditions are harsher and all silent —
@@ -1869,6 +1931,9 @@ export function useProposalForm({ onSubmit }) {
         // Create-role proposal fields
         roleConfig: proposal.roleConfig,
         predictedRoleHatId,
+        // Access-v2 removal fields. VotingPage re-runs canRemove for each pair
+        // immediately before sending and parks this floor for announceWinner.
+        roleRemovalConfig: proposal.roleRemovalConfig,
         // Voting restrictions
         hatIds: proposal.isRestricted ? proposal.restrictedHatIds : [],
       });
@@ -1917,6 +1982,9 @@ export function useProposalForm({ onSubmit }) {
           const wearerCount = (proposal.roleConfig?.initialWearers || []).length;
           successDescription = `Create-role proposal submitted for "${proposal.roleConfig?.name || 'new role'}". If approved, the role will be created${wearerCount ? ` and minted to ${wearerCount} member(s)` : ''}.`;
         }
+      } else if (proposal.type === "removeRoleMembers") {
+        const count = proposal.roleRemovalConfig?.members?.length || 0;
+        successDescription = `Role-removal proposal created for ${count} ${count === 1 ? 'person' : 'people'}. If approved, the selected removals will run together.`;
       } else {
         successDescription = "Your proposal has been created successfully.";
       }
@@ -1942,7 +2010,7 @@ export function useProposalForm({ onSubmit }) {
       setLoadingSubmit(false);
       return false;
     }
-  }, [proposal, validateBasicFields, validateTransferProposal, validateElectionProposal, validateNormalProposal, validateSetterProposal, validateCreateRoleProposal, buildProposalData, buildActionSummaries, onSubmit, resetForm, toast, orgChainId, orgNetwork, nativeCurrencySymbol, addToIpfs]);
+  }, [proposal, validateBasicFields, validateTransferProposal, validateElectionProposal, validateNormalProposal, validateSetterProposal, validateCreateRoleProposal, validateRoleRemovalProposal, buildProposalData, buildActionSummaries, onSubmit, resetForm, toast, orgChainId, orgNetwork, nativeCurrencySymbol, addToIpfs]);
 
   // ---------------------------------------------------------------------------
   // Inline field-level validation (non-blocking; the submit-time toast

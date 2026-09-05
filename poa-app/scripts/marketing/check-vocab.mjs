@@ -2,7 +2,7 @@
 /**
  * check-vocab.mjs — marketing-surface vocabulary lint gate (P-1 of the landing-v2 redesign).
  *
- * Zero dependencies. Node 20+, ESM. Two modes:
+ * Zero dependencies. Node 22+, ESM. Two modes:
  *
  *   1. DEFAULT (HTML) mode — `node scripts/marketing/check-vocab.mjs`
  *      Walks the static export in `poa-app/out/` and scans the marketing surface for

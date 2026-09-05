@@ -61,6 +61,7 @@ import {
   buildSetManagerConfig,
 } from './txBuilders';
 import { PERM_KEYS, GLOBAL_CTX, boolPermWord, maskPermWord, foldTag, FOLD_TAG } from './permKeys';
+import { buildRoleRemovalSummaries, roleRemovalConfigError } from './roleRemoval';
 
 /** A person on the ballot: their name when the form knows it, else a short address. */
 const holderLabel = (h) => h?.name
@@ -423,6 +424,48 @@ export function buildMemberActionsBatch({ authority, subjectId, subjectName = 't
     }
   }
   return { batch, summaries, warnings, createsSubject: false, gasLimit: estimateBatchGas(batch) };
+}
+
+/**
+ * REMOVE PEOPLE FROM A ROLE — the Create-a-Vote flow's one atomic Executor batch.
+ *
+ * MembershipAuthority has no live `removeBatch` method (the array-taking `reconcile` only repairs
+ * people who are already ineligible and cannot express a governance removal). Each selected person
+ * is therefore one `remove(subject,user,ban)` call inside the voting/Executor batch. `ban` is chosen
+ * by the form from the contract's three soft-removal blockers; it is not a blanket policy choice.
+ */
+export function buildRoleRemovalBatch({
+  authority,
+  subjectId,
+  subjectName = 'this role',
+  members = [],
+  confirmBans = false,
+  liveReconciled = false,
+}) {
+  const config = { subjectId, subjectName, members, confirmBans, liveReconciled };
+  const error = roleRemovalConfigError(config);
+  if (error) throw new Error(error);
+
+  const built = buildMemberActionsBatch({
+    authority,
+    subjectId,
+    subjectName,
+    actions: members.map((member) => ({
+      action: member.ban ? 'ban' : 'remove',
+      address: member.address,
+    })),
+  });
+
+  const summaries = buildRoleRemovalSummaries(config);
+  const banCount = members.filter((member) => Boolean(member.ban)).length;
+  const warnings = banCount > 0
+    ? [
+        `${banCount} selected ${banCount === 1 ? 'person still qualifies' : 'people still qualify'} through `
+        + 'an open role, vouches, or verified email, so the contract requires a block to make their removal effective.',
+      ]
+    : [];
+
+  return { ...built, summaries, warnings };
 }
 
 /** Raw rule write, for the cases the verbs above do not cover. */

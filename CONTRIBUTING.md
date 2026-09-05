@@ -17,8 +17,8 @@ For protocol-level discussion, ABI changes, security questions, or any change th
 ## Setup
 
 ```bash
-# Volta is recommended; it auto-pins Node 18.18.0 from poa-app/package.json.
-# (Or install Node 18.18.0 by hand.)
+# Volta is recommended; it auto-pins Node 22.23.2 from poa-app/package.json.
+# (Or install Node 22.23.2 by hand.)
 
 git clone https://github.com/poa-box/Poa-frontend.git
 cd Poa-frontend/poa-app
@@ -32,10 +32,10 @@ If you want to test passkey auth (ERC-4337 UserOps), set `NEXT_PUBLIC_PIMLICO_AP
 
 Browser support targets are pinned in `poa-app/package.json` `browserslist`:
 
-- Chrome ≥ 91
-- Firefox ≥ 90
-- Safari ≥ 15
-- Edge ≥ 91
+- Chrome ≥ 111
+- Firefox ≥ 111
+- Safari ≥ 16.4
+- Edge ≥ 111
 
 ## Project layout
 
@@ -72,11 +72,11 @@ These are the rules that aren't obvious from the code. Some have history behind 
 - **Service layer is mandatory for contract calls.** Components get services through `useWeb3Services()`. Don't import ethers or viem in a component; go through the right service. This keeps the EOA, passkey, and EIP-7702 logic in one place and lets `useWeb3Services()` swap the right `TransactionManager` in transparently.
 - **Use `useTransactionWithNotification().executeWithNotification(...)`** for any user-initiated transaction. It handles the pending, success, and error toast flow consistently.
 - **Cross-context updates go through `RefreshContext`.** Emit a `RefreshEvent` (e.g. `TASK_CREATED`, `PROPOSAL_VOTED`) after a transaction; subscribers refetch via `useRefreshSubscription`. Don't import contexts into each other to trigger refetches; that creates circular dependencies.
-- **Provider order matters.** `_app.js` nests 16 providers, and inner contexts depend on outer ones (e.g. `UserProvider` needs `POProvider`, `POProvider` needs `RefreshProvider`). Look before you reorder.
+- **Provider order matters.** The provider tree in `_app.js` is dependency-sensitive: inner contexts depend on outer ones (e.g. `UserProvider` needs `POProvider`, `POProvider` needs `RefreshProvider`). Look before you reorder.
 
 ### Data plumbing
 
-- **Subgraph queries pass `context: { subgraphUrl }`.** `POContext` exposes `subgraphUrl` resolved from the org's chain. Without it, the query hits the default subgraph and silently returns wrong-chain data. For cross-chain work (browse, discovery), use `getClient(subgraphUrl)` from `src/util/apolloClient.js` and `fetchPolicy: 'no-cache'` to avoid Apollo's query-key cache poisoning.
+- **Subgraph queries use an endpoint-specific client.** `POContext` exposes `subgraphUrl` resolved from the org's chain. In React components, pass `useSubgraphClient(subgraphUrl)` as the query's `client`; use `getClient(subgraphUrl)` for imperative queries. Each endpoint has its own `ApolloClient` and cache, so no `fetchPolicy: 'no-cache'` workaround is needed. The deprecated `context: { subgraphUrl }` plumbing must not be used in new code.
 - **Token amounts are 18-decimal wei.** Format with `formatTokenAmount` / `parseTokenAmount` from `src/util/formatToken.js`. Getting it wrong produces numbers that are 10^18 too large or too small and looks indistinguishable from a backend bug.
 - **Composite IDs need parsing.** Subgraph entity IDs are `{contractAddress}-{numericId}`. Pass them through `parseTaskId`, `parseProjectId`, or `parseModuleId` from `src/services/web3/utils/encoding.js` before calling a contract. Wrong format = silent revert.
 - **IPFS uses CIDv0 + bytes32.** Convert with `ipfsCidToBytes32` / `bytes32ToIpfsCid` from the same `encoding.js`. CIDv1 (`bafy…`) does not round-trip and will not work.
@@ -132,8 +132,8 @@ If you're a member of the Poa org and the existing `subgraph-updater` automation
 ## Code style
 
 - **JavaScript, not TypeScript.** Despite TS being installed (it powers path resolution and types for editor support), source files are `.js` / `.jsx`. Don't migrate files to TypeScript without prior agreement; the project is intentionally JS.
-- **No Prettier, no formatter.** Match the surrounding code's style. ESLint runs through `yarn lint` (Next.js's built-in config).
-- **No tests yet.** This is intentional. Adding a test framework is a separate, large discussion. Don't add Jest, Vitest, or Playwright in a feature PR. Until that lands, write detailed manual test plans in your PR description.
+- **No Prettier, no formatter.** Match the surrounding code's style. `yarn lint` runs ESLint with the Next.js Core Web Vitals rules.
+- **Pure logic is unit tested with Vitest.** Colocate `*.test.js` files with pure modules, primarily under `src/lib/**` and `src/util/**`, and run them with `yarn test`. React-coupled and transaction flows are verified through the Test6 E2E harness described in `CLAUDE.md`.
 - **No emoji in source files.** Comments and code stay text-only.
 - **Comments only when the *why* is non-obvious.** Don't restate what the code does. If a comment would say "this is a workaround because X", "this timeout exists because the subgraph lags", or "Safari needs this", that's the kind of comment to write.
 
@@ -142,7 +142,7 @@ If you're a member of the Poa org and the existing `subgraph-updater` automation
 1. **Branch off `main`.** Use a short, specific name (e.g. `fix/voting-tally-rounding`, not `feature/stuff`).
 2. **Run `yarn lint` and `yarn build` locally before requesting review.** The build catches static-export breakers (`output: 'export'` is strict about unsupported APIs); lint catches the rest.
 3. **For UI changes, include a screenshot or short video.** If you can, include before/after.
-4. **Manual test plan in the PR description.** Until tests exist, this is the contract: what did you click, on what chain, with what auth method, and what did you see.
+4. **Manual test plan in the PR description.** For UI and transaction flows, state what you clicked, on what chain, with what auth method, and what you saw.
 5. **Cross-repo links** if applicable: POP and/or subgraph-pop PRs that this depends on.
 6. **Squash-merge** is the default. Keep your commit messages focused; they become the squashed message.
 

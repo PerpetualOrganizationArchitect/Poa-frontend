@@ -1,115 +1,46 @@
-import { ChakraProvider, extendTheme, CSSReset } from "@chakra-ui/react";
-import { IPFSprovider } from "@/context/ipfsContext";
-import { Web3Provider } from "@/context/web3Context";
-import { DataBaseProvider } from "@/context/dataBaseContext";
-import { ProfileHubProvider } from "@/context/profileHubContext";
-import { ProjectProvider } from "@/context/ProjectContext";
-import { UserProvider } from "@/context/UserContext";
-import { POProvider } from "@/context/POContext";
-import { VotingProvider } from "@/context/VotingContext";
-import { NotificationProvider } from "@/context/NotificationContext";
-import { RefreshProvider } from "@/context/RefreshContext";
-import { IdentityProvider } from "@/context/IdentityContext";
-import { AuthProvider } from "@/context/AuthContext";
-import { ErrorBoundary } from "@/components/common/ErrorBoundary";
-import { TourProvider } from "@/features/tour/TourContext";
-import TourOverlay from "@/features/tour/components/TourOverlay";
-import TourPrompt from "@/features/tour/components/TourPrompt";
+import { ChakraProvider, extendTheme } from '@chakra-ui/react';
+import dynamic from 'next/dynamic';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import '@rainbow-me/rainbowkit/styles.css';
 import '../styles/globals.css';
 import '/public/css/prism.css';
-import {
-  connectorsForWallets,
-  RainbowKitProvider,
-  darkTheme,
-} from '@rainbow-me/rainbowkit';
-import {
-  injectedWallet,
-  coinbaseWallet,
-  braveWallet,
-  rabbyWallet,
-  frameWallet,
-  safeWallet,
-} from '@rainbow-me/rainbowkit/wallets';
-import { WagmiProvider, createConfig, http } from 'wagmi';
-import { defineChain } from 'viem';
-import { base } from 'viem/chains';
-import { NETWORKS } from '../config/networks';
-import { E2E_ENABLED } from '@/services/e2e/e2eMode';
-import { burnerConnector } from '@/services/e2e/burnerConnector';
-import E2EAutoConnect from '@/services/e2e/E2EAutoConnect';
 
-// Build viem chains for ALL supported networks (needed for useSwitchChain).
-// Base mainnet is appended for the cashout-withdraw flow (see CashOutService.fetchOutstandingDeposits / buildWithdrawDeposit) — it is NOT a Poa org chain, so it is NOT in NETWORKS to keep org/subgraph routing untouched.
-const allChains = [
-  ...Object.values(NETWORKS).map(cfg => defineChain({
-    id: cfg.chainId,
-    name: cfg.name,
-    nativeCurrency: cfg.nativeCurrency,
-    rpcUrls: { default: { http: [cfg.rpcUrl] } },
-    blockExplorers: { default: { name: 'Explorer', url: cfg.blockExplorer } },
-  })),
-  base,
-];
-import {
-  QueryClientProvider,
-  QueryClient,
-} from "@tanstack/react-query";
-
-import NetworkModalControl from "@/components/NetworkModalControl";
-import WhiteLabelUrlCleaner from "@/components/WhiteLabelUrlCleaner";
-import { ApolloProvider } from '@apollo/client';
-import client from '../util//apolloClient';
-import Notification from '@/components/Notifications';
-
-
-
-const queryClient = new QueryClient();
-
-// Injected-first wallet list. No WalletConnect — `injectedWallet` uses EIP-6963
-// (via wagmi's `injected()` + mipd) to surface every installed wallet as its own
-// branded tile. The explicit Brave/Rabby/Frame entries only add install CTAs when
-// those extensions aren't present; EIP-6963 takes over when they are.
-// `coinbaseWallet` uses Coinbase's own SDK (not WalletConnect). `safeWallet` is
-// iframe-only. Deliberately excluded: metaMaskWallet / rainbowWallet / trustWallet
-// / ledgerWallet / argentWallet / walletConnectWallet — all use WC under the hood.
-const connectors = connectorsForWallets(
-  [
-    { groupName: 'Recommended', wallets: [injectedWallet, coinbaseWallet] },
-    { groupName: 'Privacy',     wallets: [braveWallet, rabbyWallet, frameWallet] },
-    { groupName: 'Other',       wallets: [safeWallet] },
-  ],
-  { appName: 'Poa', projectId: '' }
+const CoreProviders = dynamic(
+  () => import('@/components/providers/CoreProviders'),
+);
+const OrganizationProviders = dynamic(
+  () => import('@/components/providers/OrganizationProviders'),
+);
+const RegistryProvider = dynamic(
+  () => import('@/components/providers/RegistryProvider'),
 );
 
-const transports = Object.fromEntries(
-  allChains.map(c => [c.id, http(c.rpcUrls.default.http[0])]),
-);
+// Fully static reading and redirect routes do not initialize wallets, Apollo,
+// passkeys, or organization data. About opts into only the public registry;
+// protocol opts into wallet services for donations. Unknown routes default to
+// the full application shell.
+const PUBLIC_ROUTES = new Set([
+  '/404',
+  '/_error',
+  '/blog/[id]',
+  '/browser',
+  '/docs',
+  '/docs/[id]',
+  '/edu-Hub',
+  '/org-structure',
+  '/profileHub',
+  '/user',
+  '/voting-history',
+]);
 
-// E2E mode REPLACES the wallet connectors with a synthetic burner.
-// Prepending isn't enough — wagmi persists `recentConnectorId` and will
-// happily reconnect to the user's real MetaMask if it's still in the list,
-// shadowing the burner. In production builds, NEXT_PUBLIC_E2E_MODE is unset
-// so this branch is dead code and webpack tree-shakes it.
-const finalConnectors = E2E_ENABLED ? [burnerConnector()] : connectors;
-
-const config = createConfig({
-  connectors: finalConnectors,
-  chains: allChains,
-  transports,
-  ssr: true,
-  // EIP-6963 wallet discovery is on for production so installed wallets
-  // self-announce. In E2E mode it must be off, otherwise MetaMask hijacks
-  // the burner connector.
-  multiInjectedProviderDiscovery: !E2E_ENABLED,
-});
-
+const REGISTRY_ONLY_ROUTES = new Set(['/about']);
+const CORE_ONLY_ROUTES = new Set(['/', '/protocol']);
 
 const theme = extendTheme({
   fonts: {
-    heading: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    body: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    mono: "'Roboto Mono', monospace",
+    heading: "'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    body: "'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    mono: "'IBM Plex Mono', monospace",
   },
   colors: {
     // Primary - Warm Coral (action, warmth)
@@ -242,87 +173,26 @@ const theme = extendTheme({
   },
 });
 
-import React, { useMemo } from 'react';
+function MyApp({ Component, pageProps, router }) {
+  const page = <Component {...pageProps} />;
+  const pathname = router?.pathname;
 
-// Provider tree wrapped in React.memo. Only re-renders when `children` changes.
-// Since `children` is a memoized page element (see MyApp), this prevents wagmi's
-// Hydrate/reconnect store updates from cascading through all nested providers.
-const StableProviders = React.memo(function StableProviders({ children }) {
-  return (
-    <AuthProvider>
-      <ApolloProvider client={client}>
-        <QueryClientProvider client={queryClient}>
-          <RainbowKitProvider
-            // No forced initialChain: it made connecting to a non-home-chain org
-            // double-prompt (switch to Arbitrum, then to the org chain). Chain
-            // selection is handled by useAutoChainSwitch + the per-tx switch in
-            // useWeb3Services.
-            theme={darkTheme({
-              accentColor: '#F06543',
-              accentColorForeground: 'white',
-              borderRadius: 'large',
-              fontStack: 'system',
-              overlayBlur: 'small',
-            })}
-            appInfo={{ appName: 'Poa', learnMoreUrl: 'https://poa.box' }}
-          >
-            <RefreshProvider>
-            <IdentityProvider>
-            <IPFSprovider>
-              <ProfileHubProvider>
-                <POProvider>
-                  <VotingProvider>
-                    <ProjectProvider>
-                      <UserProvider>
-                        <NotificationProvider>
-                          <Web3Provider>
-                            <DataBaseProvider>
-                              <ChakraProvider theme={theme}>
-                                <TourProvider>
-                                  <E2EAutoConnect />
-                                  <WhiteLabelUrlCleaner />
-                                  <NetworkModalControl />
-                                  <Notification />
-                                  <TourOverlay />
-                                  <TourPrompt />
-                                  {children}
-                                </TourProvider>
-                              </ChakraProvider>
-                            </DataBaseProvider>
-                          </Web3Provider>
-                        </NotificationProvider>
-                      </UserProvider>
-                    </ProjectProvider>
-                  </VotingProvider>
-                </POProvider>
-              </ProfileHubProvider>
-            </IPFSprovider>
-            </IdentityProvider>
-            </RefreshProvider>
-          </RainbowKitProvider>
-        </QueryClientProvider>
-      </ApolloProvider>
-    </AuthProvider>
-  );
-});
+  let content = page;
+  if (REGISTRY_ONLY_ROUTES.has(pathname)) {
+    content = <RegistryProvider>{page}</RegistryProvider>;
+  } else if (!PUBLIC_ROUTES.has(pathname)) {
+    const coreContent = CORE_ONLY_ROUTES.has(pathname)
+      ? (pathname === '/' ? <RegistryProvider>{page}</RegistryProvider> : page)
+      : <OrganizationProviders>{page}</OrganizationProviders>;
 
-function MyApp({ Component, pageProps }) {
-  // Memoize the page element so it's a stable reference across wagmi-triggered
-  // re-renders. Only recreated on actual page navigation (Component change).
-  // pageProps excluded from deps — always {} in this static-export app (no
-  // getServerSideProps/getStaticProps), so the spread is a no-op.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const page = useMemo(() => (
-    <Component {...pageProps} />
-  ), [Component]);
+    content = (
+      <CoreProviders>{coreContent}</CoreProviders>
+    );
+  }
 
   return (
     <ErrorBoundary>
-      <WagmiProvider config={config}>
-        <StableProviders>
-          {page}
-        </StableProviders>
-      </WagmiProvider>
+      <ChakraProvider theme={theme}>{content}</ChakraProvider>
     </ErrorBoundary>
   );
 }

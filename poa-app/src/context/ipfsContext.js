@@ -3,22 +3,6 @@ import { IPFSError, IPFSErrorCode, IPFSOperation } from '@/lib/errors';
 import { hybridFetchBytes } from '@/lib/ipfs/hybridFetch';
 import { bytes32ToIpfsCid, ipfsCidToBytes32 } from '@/services/web3/utils/encoding';
 
-// Lazy-loaded singleton — keeps ipfs-http-client (~600 KB) out of the root
-// bundle. Only resolved on the first non-binary upload. Binary uploads use
-// direct fetch + FormData and never touch this client.
-let ipfsClientPromise = null;
-function getIpfsClient() {
-  if (!ipfsClientPromise) {
-    ipfsClientPromise = import('ipfs-http-client').then(({ create }) => create({
-      host: 'api.thegraph.com',
-      port: 443,
-      protocol: 'https',
-      apiPath: '/ipfs/api/v0',
-    }));
-  }
-  return ipfsClientPromise;
-}
-
 const IPFScontext = createContext();
 
 export const useIPFScontext = () => {
@@ -198,41 +182,32 @@ export const IPFSprovider = ({ children }) => {
             console.log("[IPFS] Content preview:", content.substring(0, 200) + (content.length > 200 ? '...' : ''));
         }
 
-        // For binary files (images), use direct fetch to IPFS API with FormData.
-        // ipfs-http-client corrupts binary data even with Uint8Array — an 86KB PNG
-        // becomes 149KB due to UTF-8 multi-byte encoding of high bytes (>0x7F).
-        // Direct FormData upload preserves the raw bytes correctly.
-        // For strings (JSON metadata), ipfs-http-client works fine.
+        // Use the HTTP API directly for every content type. This preserves raw
+        // binary bytes and avoids shipping the deprecated ipfs-http-client just
+        // to wrap one multipart request.
         const isBinary = content instanceof Blob;
 
         try {
             const addedData = await withRetry(async () => {
-                let cid;
-                let size;
-                if (isBinary) {
-                    console.log("[IPFS] Binary file detected — using direct FormData upload...");
-                    const formData = new FormData();
-                    formData.append('file', content);
-                    const response = await fetch('https://api.thegraph.com/ipfs/api/v0/add', {
-                        method: 'POST',
-                        body: formData,
-                    });
-                    if (!response.ok) {
-                        // Read the body so a Cloudflare 1015 WAF page (often served as 403/503) is visible
-                        // to isRateLimited and gets the long cooldown instead of the short transient backoff.
-                        const body = await response.text().catch(() => '');
-                        throw new Error(`IPFS upload failed: ${response.status} ${response.statusText} ${body}`.trim());
-                    }
-                    const result = await response.json();
-                    cid = result.Hash;
-                    size = result.Size;
-                } else {
-                    console.log("[IPFS] Attempting add to api.thegraph.com/ipfs...");
-                    const ipfsClient = await getIpfsClient();
-                    const result = await ipfsClient.add(content);
-                    cid = (result.cid || result.path).toString();
-                    size = result.size;
+                console.log(`[IPFS] Uploading ${isBinary ? 'binary' : 'text'} content via FormData...`);
+                const formData = new FormData();
+                const uploadBody = isBinary
+                    ? content
+                    : new Blob([content], { type: 'application/json' });
+                formData.append('file', uploadBody, content?.name || 'metadata.json');
+                const response = await fetch('https://api.thegraph.com/ipfs/api/v0/add', {
+                    method: 'POST',
+                    body: formData,
+                });
+                if (!response.ok) {
+                    // Read the body so a Cloudflare 1015 WAF page (often served as 403/503) is visible
+                    // to isRateLimited and gets the long cooldown instead of the short transient backoff.
+                    const body = await response.text().catch(() => '');
+                    throw new Error(`IPFS upload failed: ${response.status} ${response.statusText} ${body}`.trim());
                 }
+                const result = await response.json();
+                const cid = result.Hash;
+                const size = result.Size;
                 // The on-chain bytes32 <-> CID encoding round-trips ONLY for CIDv0 ("Qm..."); a CIDv1 would
                 // silently produce a non-decodable hash and brick claims. Fail loudly if the endpoint ever
                 // returns one (it returns CIDv0 today).

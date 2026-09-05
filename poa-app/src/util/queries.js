@@ -335,6 +335,7 @@ export const FETCH_VOTING_DATA_NEW = gql`
             id
             description
             optionNames
+            actionSummaries
           }
           numOptions
           startTimestamp
@@ -370,6 +371,7 @@ export const FETCH_VOTING_DATA_NEW = gql`
             id
             description
             optionNames
+            actionSummaries
           }
           numOptions
           startTimestamp
@@ -520,6 +522,7 @@ export const FETCH_PROPOSAL_BY_ID = gql`
         id
         description
         optionNames
+        actionSummaries
       }
       numOptions
       startTimestamp
@@ -550,6 +553,7 @@ export const FETCH_PROPOSAL_BY_ID = gql`
         id
         description
         optionNames
+        actionSummaries
       }
       numOptions
       startTimestamp

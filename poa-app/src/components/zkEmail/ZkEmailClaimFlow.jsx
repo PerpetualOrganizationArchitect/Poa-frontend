@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { keyframes } from '@emotion/react';
 import {
   Accordion,
   AccordionButton,
@@ -19,7 +20,6 @@ import {
   SlideFade,
   Spinner,
   Text,
-  keyframes,
   useClipboard,
   useDisclosure,
   VStack,

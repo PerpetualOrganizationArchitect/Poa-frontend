@@ -41,6 +41,8 @@ export function QuadraticVotingExplainer({ isEnabled = false }) {
   const textColor = useColorModeValue('warmGray.600', 'warmGray.400');
   const highlightBg = useColorModeValue('orange.50', 'orange.900');
   const highlightBorder = useColorModeValue('orange.200', 'orange.700');
+  const comparisonBg = useColorModeValue('white', 'warmGray.700');
+  const insightBg = useColorModeValue('blue.50', 'blue.900');
 
   // Calculate total tokens
   const totalTokens = EXAMPLE_USERS.reduce((sum, user) => sum + user.tokens, 0);
@@ -79,7 +81,7 @@ export function QuadraticVotingExplainer({ isEnabled = false }) {
         {/* WITHOUT Quadratic */}
         <Box
           p={4}
-          bg={useColorModeValue('white', 'warmGray.700')}
+          bg={comparisonBg}
           borderRadius="lg"
           border="1px solid"
           borderColor={borderColor}
@@ -129,7 +131,7 @@ export function QuadraticVotingExplainer({ isEnabled = false }) {
         {/* WITH Quadratic */}
         <Box
           p={4}
-          bg={isEnabled ? highlightBg : useColorModeValue('white', 'warmGray.700')}
+          bg={isEnabled ? highlightBg : comparisonBg}
           borderRadius="lg"
           border="2px solid"
           borderColor={isEnabled ? 'orange.400' : borderColor}
@@ -185,7 +187,7 @@ export function QuadraticVotingExplainer({ isEnabled = false }) {
       {/* Key insight */}
       <Box
         p={4}
-        bg={useColorModeValue('blue.50', 'blue.900')}
+        bg={insightBg}
         borderRadius="lg"
         borderLeftWidth="4px"
         borderLeftColor="blue.400"

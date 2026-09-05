@@ -26,7 +26,7 @@ export function useTaskIndicators(task, columnId) {
   const { projectsData } = useProjectContext() || {};
 
   const address = accountAddress || ctxAddress || '';
-  const userHatIds = userData?.hatIds || [];
+  const userHatIds = useMemo(() => userData?.hatIds || [], [userData?.hatIds]);
   const col = columnId || task?.columnId;
   const projectId = task?.projectId;
 

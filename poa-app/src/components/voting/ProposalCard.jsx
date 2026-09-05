@@ -26,6 +26,7 @@
  */
 
 import React, { useMemo } from 'react';
+import { keyframes } from '@emotion/react';
 import {
   Box,
   Flex,
@@ -37,7 +38,6 @@ import {
   Icon,
   Tooltip,
   usePrefersReducedMotion,
-  keyframes,
 } from '@chakra-ui/react';
 import { PiLockKey } from 'react-icons/pi';
 import GlassBack from './GlassBack';

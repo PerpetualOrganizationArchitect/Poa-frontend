@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useprofileHubContext } from "@/context/profileHubContext";
+import { useProfileHubContext } from "@/context/profileHubContext";
 import { isHiddenOrg } from "@/util/hiddenOrgs";
 
 // Known-real orgs referenced elsewhere in the repo; preferred for the
@@ -23,12 +23,12 @@ const isPresentableName = (name) =>
 export const internalOrgUrl = (orgId) => `/home/?org=${encodeURIComponent(orgId)}`;
 
 // Live data for the landing page, from the same public registry /explore
-// reads. Calling useprofileHubContext() is the lazy opt-in that triggers
+// reads. Calling useProfileHubContext() is the lazy opt-in that triggers
 // the (deduped) cross-chain fetch; during static export and first paint it
 // returns defaults, so the page renders its fallbacks with no hydration
 // mismatch and upgrades in place once the registry answers.
 export default function useLandingRegistry() {
-  const { perpetualOrganizations = [], isLoading = true } = useprofileHubContext() || {};
+  const { perpetualOrganizations = [], isLoading = true } = useProfileHubContext() || {};
 
   const orgs = useMemo(
     () => perpetualOrganizations.filter((po) => !isHiddenOrg(po.id)),

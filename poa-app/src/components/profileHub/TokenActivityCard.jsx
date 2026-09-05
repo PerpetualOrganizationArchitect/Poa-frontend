@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { keyframes } from '@emotion/react';
 import {
   Box,
   HStack,
@@ -15,7 +16,6 @@ import {
   Icon,
   Divider,
   Tooltip,
-  keyframes,
   usePrefersReducedMotion,
   chakra,
 } from '@chakra-ui/react';

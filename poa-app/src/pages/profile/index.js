@@ -294,7 +294,7 @@ const UserprofileHub = () => {
   }, [userData, graphUsername, userAddress]);
 
   // Check if user has claimed any roles
-  const userHatIds = userData?.hatIds || [];
+  const userHatIds = useMemo(() => userData?.hatIds || [], [userData?.hatIds]);
   const hasClaimedRole = v2Live ? v2Profile.hasClaimedRole : userHatIds.length > 0;
 
   // Get user's actual roles for header display

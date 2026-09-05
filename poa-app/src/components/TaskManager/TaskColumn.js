@@ -582,6 +582,8 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   );
 });
 
+TaskColumn.displayName = 'TaskColumn';
+
 export default TaskColumn;
   
  

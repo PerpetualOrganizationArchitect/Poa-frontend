@@ -9,7 +9,7 @@ const ProfileHubContext = createContext();
 // itself does nothing until a consumer subscribes. Keeps the marketing landing
 // (the dominant entry path) from fanning out FetchAllOrgs to every mainnet
 // subgraph on every visit.
-export const useprofileHubContext = () => {
+export const useProfileHubContext = () => {
     const ctx = useContext(ProfileHubContext);
     useEffect(() => {
         ctx?.ensureLoaded?.();
@@ -70,7 +70,7 @@ export const ProfileHubProvider = ({ children }) => {
     const [allOrgs, setAllOrgs] = useState([]);
     // Default to loading=true so consumers see a skeleton from frame 1 (no
     // empty-state flash). The actual network fetch is deferred until a
-    // consumer subscribes via useprofileHubContext() — pages that never read
+    // consumer subscribes via useProfileHubContext() — pages that never read
     // the org list (every non-/explore route) avoid the cross-chain fan-out
     // entirely.
     const [loading, setLoading] = useState(true);

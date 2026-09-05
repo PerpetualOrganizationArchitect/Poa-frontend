@@ -359,6 +359,7 @@ export const TaskBoardProvider = ({
     createTaskMetadata,
     onUpdateColumns,
     scheduleLockClear,
+    selectedProject?.id,
   ]);
 
   /**
@@ -674,6 +675,7 @@ export const TaskBoardProvider = ({
     emit,
     onUpdateColumns,
     scheduleLockClear,
+    selectedProject?.id,
   ]);
 
   /**
@@ -800,6 +802,7 @@ export const TaskBoardProvider = ({
     emit,
     onUpdateColumns,
     scheduleLockClear,
+    selectedProject?.id,
   ]);
 
   /**
@@ -936,7 +939,7 @@ export const TaskBoardProvider = ({
       setTaskColumns(previousTaskColumns);
       return { success: false, error };
     }
-  }, [taskService, taskManagerContractAddress, isReady, addNotification, updateNotification, emit, onUpdateColumns, scheduleLockClear]);
+  }, [taskService, taskManagerContractAddress, isReady, addNotification, updateNotification, emit, onUpdateColumns, scheduleLockClear, selectedProject?.id]);
 
   /**
    * Assign a task to a specific user
@@ -1027,7 +1030,7 @@ export const TaskBoardProvider = ({
       setTaskColumns(previousTaskColumns);
       return { success: false, error };
     }
-  }, [taskService, taskManagerContractAddress, isReady, addNotification, updateNotification, emit, onUpdateColumns, scheduleLockClear]);
+  }, [taskService, taskManagerContractAddress, isReady, addNotification, updateNotification, emit, onUpdateColumns, scheduleLockClear, selectedProject?.id]);
 
 
   /**
@@ -1247,6 +1250,7 @@ export const TaskBoardProvider = ({
     addToIpfs,
     onUpdateColumns,
     scheduleLockClear,
+    selectedProject?.id,
   ]);
 
   /**

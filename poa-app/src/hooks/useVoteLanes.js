@@ -42,7 +42,7 @@ export function useVoteLanes() {
   const { userData, userDataLoading } = useUserContext();
   const { classBreakdown } = useVotingPower();
 
-  const userHatIds = userData?.hatIds || [];
+  const userHatIds = useMemo(() => userData?.hatIds || [], [userData?.hatIds]);
   // While the viewer's own hats/balance load, verdicts are indeterminate
   // (fail open) — otherwise every member cold-loads into "not eligible" and
   // the "Needs your vote" lane/badge undercounts until the user query lands.

@@ -62,7 +62,7 @@ const MyWorkView = ({ isDesktop = true, sidebarVisible, toggleSidebar }) => {
   } = useUserContext() || {};
 
   const address = accountAddress || ctxAddress || '';
-  const userHatIds = userData?.hatIds || [];
+  const userHatIds = useMemo(() => userData?.hatIds || [], [userData?.hatIds]);
 
   const projectById = useMemo(() => {
     const m = new Map();

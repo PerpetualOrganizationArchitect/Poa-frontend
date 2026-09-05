@@ -5,9 +5,8 @@ overhaul fixed the foundation: keyword targeting, schema, FAQ, expanded docs,
 and inner-page intros. What's below is the ongoing work that compounds rankings
 over months, not days.
 
-Re-read the audit findings before kicking off new work — the
-[plan file](/Users/hudsonheadley/.claude/plans/i-need-you-to-starry-fountain.md)
-captures the snapshot we started from.
+Re-read the repository's [landing overhaul audit](../docs/landing-overhaul/AUDIT.md)
+before kicking off new work; it captures the snapshot we started from.
 
 ## Keyword targeting map (current state)
 

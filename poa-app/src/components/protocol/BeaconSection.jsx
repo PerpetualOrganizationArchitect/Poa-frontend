@@ -3,7 +3,7 @@ import { Box, Container, Heading, Text, VStack, HStack, Badge, Link, Table, Thea
 import { ExternalLinkIcon } from '@chakra-ui/icons';
 import { motion } from 'framer-motion';
 
-const MotionBox = motion(Box);
+const MotionBox = motion.create(Box);
 
 const BeaconSection = ({ chains }) => {
   // Combine all beacon upgrades from all chains, sorted newest first

@@ -41,12 +41,12 @@ export function PowerBundleCard({
   onToggleRole,
   isDisabled = false,
 }) {
-  const bundle = POWER_BUNDLES[bundleKey];
-  if (!bundle) return null;
-
   const cardBg = useColorModeValue('white', 'warmGray.700');
   const borderColor = useColorModeValue('warmGray.200', 'warmGray.600');
   const descriptionColor = useColorModeValue('warmGray.600', 'warmGray.400');
+  const bundle = POWER_BUNDLES[bundleKey];
+
+  if (!bundle) return null;
 
   const icon = BUNDLE_ICONS[bundleKey] || '📋';
   const colorScheme = BUNDLE_COLORS[bundleKey] || 'gray';

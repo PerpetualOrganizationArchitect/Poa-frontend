@@ -107,27 +107,6 @@ const theme = extendTheme({
 
 
 export default function Post({ postData }) {
-  if (!postData) {
-    return <p>No Post Found</p>;
-  }
-
-  const articleJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "Article",
-    "headline": postData.title,
-    "description": postData.description,
-    "datePublished": postData.date,
-    "dateModified": postData.date,
-    "author": { "@type": "Organization", "name": "Poa", "url": "https://poa.box" },
-    "publisher": {
-      "@type": "Organization",
-      "name": "Poa",
-      "url": "https://poa.box",
-      "logo": { "@type": "ImageObject", "url": "https://poa.box/images/poa_og.webp" },
-    },
-    "mainEntityOfPage": { "@type": "WebPage", "@id": `https://poa.box/blog/${postData.id}/` },
-  };
-
   const showSidebar = useBreakpointValue({ base: false, md: true });
   const [marginLeft, setMarginLeft] = useState('0px');
 
@@ -152,6 +131,27 @@ export default function Post({ postData }) {
       window.removeEventListener('resize', checkAndSetMargin);
     };
   }, [showSidebar]);
+
+  if (!postData) {
+    return <p>No Post Found</p>;
+  }
+
+  const articleJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": postData.title,
+    "description": postData.description,
+    "datePublished": postData.date,
+    "dateModified": postData.date,
+    "author": { "@type": "Organization", "name": "Poa", "url": "https://poa.box" },
+    "publisher": {
+      "@type": "Organization",
+      "name": "Poa",
+      "url": "https://poa.box",
+      "logo": { "@type": "ImageObject", "url": "https://poa.box/images/poa_og.webp" },
+    },
+    "mainEntityOfPage": { "@type": "WebPage", "@id": `https://poa.box/blog/${postData.id}/` },
+  };
 
   return (
     <>

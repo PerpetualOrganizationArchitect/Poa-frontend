@@ -23,12 +23,13 @@ import { useSubgraphClient } from '@/util/apolloClient';
 import { CAPABILITY } from '@/util/subgraphCapabilities';
 import { FETCH_ORG_AUTHORITY } from '@/util/queries';
 import { classifyAuthority, authorityStatusCopy } from '@/lib/accessV2/authority';
-import { useSubgraphCapability } from './useSubgraphCapability';
+import { useSubgraphCapabilityState } from './useSubgraphCapability';
 
 export function useOrgAuthority() {
   const { orgId, subgraphUrl } = usePOContext();
   const client = useSubgraphClient(subgraphUrl);
-  const capable = useSubgraphCapability(subgraphUrl, CAPABILITY.ACCESS_V2);
+  const capability = useSubgraphCapabilityState(subgraphUrl, CAPABILITY.ACCESS_V2);
+  const capable = capability.supported;
 
   const { data, loading, error, refetch } = useQuery(FETCH_ORG_AUTHORITY, {
     variables: { orgId },
@@ -46,14 +47,14 @@ export function useOrgAuthority() {
     () => ({
       ...authority,
       capable,
-      // `loading` is only meaningful once we know the endpoint can answer. An incapable endpoint
-      // is a settled NO, never a spinner.
-      loading: capable ? loading : false,
+      // Keep consumers out of the legacy branch until an unknown endpoint has been probed. Once
+      // settled, an incapable endpoint is a NO (not a permanent spinner).
+      loading: capability.loading || (capable ? loading : false),
       error: capable ? error : null,
       statusCopy: authorityStatusCopy(authority),
       refetch,
     }),
-    [authority, capable, loading, error, refetch]
+    [authority, capable, capability.loading, loading, error, refetch]
   );
 }
 

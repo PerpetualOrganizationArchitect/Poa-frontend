@@ -111,20 +111,32 @@ export function satisfies(typeMap, requirements) {
   });
 }
 
+const CAPABILITY_PROBE_TIMEOUT_MS = 12000;
+
 async function introspect(subgraphUrl, typeNames) {
-  const res = await fetch(subgraphUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: buildIntrospectionQuery(typeNames) }),
-  });
-  if (!res.ok) throw new Error(`introspection HTTP ${res.status}`);
-  const json = await res.json();
-  const typeMap = new Map();
-  typeNames.forEach((t, i) => {
-    const node = json?.data?.[`t${i}`];
-    typeMap.set(t, node ? new Set((node.fields || []).map((f) => f?.name)) : null);
-  });
-  return typeMap;
+  const controller = typeof AbortController === 'undefined' ? null : new AbortController();
+  const timer = controller
+    ? setTimeout(() => controller.abort(), CAPABILITY_PROBE_TIMEOUT_MS)
+    : null;
+
+  try {
+    const res = await fetch(subgraphUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: buildIntrospectionQuery(typeNames) }),
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    if (!res.ok) throw new Error(`introspection HTTP ${res.status}`);
+    const json = await res.json();
+    const typeMap = new Map();
+    typeNames.forEach((t, i) => {
+      const node = json?.data?.[`t${i}`];
+      typeMap.set(t, node ? new Set((node.fields || []).map((f) => f?.name)) : null);
+    });
+    return typeMap;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**

@@ -109,7 +109,7 @@ function ClaimableRoleItem({ role, userDAO }) {
           {role.name}
         </Text>
         <Text fontSize="xs" color="gray.400">
-          Self-claimable
+          {role.claimLabel || 'Self-claimable'}
         </Text>
       </VStack>
       <Link href={`/team?org=${encodeURIComponent(userDAO)}`} passHref>
@@ -128,6 +128,8 @@ function ClaimableRoleItem({ role, userDAO }) {
  * @param {string[]} props.userHatIds - User's current hat IDs
  * @param {Object[]} props.roles - All roles from org structure
  * @param {Function} props.getVouchProgress - Function to get vouch progress
+ * @param {Object[]} [props.progressionItems] - Explicit v2 fold-mirror progression rows
+ * @param {Object[]} [props.claimableRoleItems] - Explicit v2 claimable role rows
  * @param {Object[]} props.pendingVouchRequests - Pending vouch requests
  * @param {string} props.userDAO - DAO identifier for links
  */
@@ -136,11 +138,14 @@ export function RoleProgressionCard({
   userHatIds = [],
   roles = [],
   getVouchProgress,
+  progressionItems,
+  claimableRoleItems,
   pendingVouchRequests = [],
   userDAO,
 }) {
   // Find roles user is progressing toward (has vouches but not claimed)
   const vouchProgressData = useMemo(() => {
+    if (Array.isArray(progressionItems)) return progressionItems;
     if (!userAddress || !roles.length || !getVouchProgress) return [];
 
     const normalizedUserHatIds = userHatIds.map((id) => normalizeHatId(id));
@@ -165,10 +170,11 @@ export function RoleProgressionCard({
       })
       .filter((item) => item.current > 0) // Only show roles with some progress
       .sort((a, b) => b.current - a.current); // Sort by most progress first
-  }, [userAddress, userHatIds, roles, getVouchProgress]);
+  }, [progressionItems, userAddress, userHatIds, roles, getVouchProgress]);
 
   // Find self-claimable roles user doesn't have yet
   const claimableRoles = useMemo(() => {
+    if (Array.isArray(claimableRoleItems)) return claimableRoleItems.slice(0, 2);
     if (!roles.length) return [];
 
     const normalizedUserHatIds = userHatIds.map((id) => normalizeHatId(id));
@@ -181,7 +187,7 @@ export function RoleProgressionCard({
           !normalizedUserHatIds.includes(normalizeHatId(role.hatId))
       )
       .slice(0, 2); // Show max 2 claimable roles
-  }, [roles, userHatIds]);
+  }, [claimableRoleItems, roles, userHatIds]);
 
   const hasNoProgress = vouchProgressData.length === 0;
   const hasNoClaimable = claimableRoles.length === 0;

@@ -47,6 +47,15 @@ describe('v2 hooks gate on `enabled` (router-bound), not `migrated`', () => {
     expect(owner.src).toMatch(/skip:[^\n]*!capable/);
   });
 
+  it('keeps consumers loading until the first capability and authority checks settle', () => {
+    const owner = sources.find((s) => s.file === 'useOrgAuthority.js');
+    const capabilityHook = sources.find((s) => s.file === 'useSubgraphCapability.js');
+    expect(capabilityHook.src).toContain('useSubgraphCapabilityState');
+    expect(capabilityHook.src).toMatch(/state\.key === key \? state : initialState/);
+    expect(capabilityHook.src).toMatch(/key,\s*supported:\s*Boolean\(ok\),\s*loading:\s*false/);
+    expect(owner.src).toContain('capability.loading || (capable ? loading : false)');
+  });
+
   it('every other useQuery in this directory has a skip that consults authority.enabled', () => {
     for (const { file, src } of sources.filter((s) => !GATE_OWNER.has(s.file))) {
       const queries = src.match(/useQuery\([\s\S]*?\}\);/g) || [];

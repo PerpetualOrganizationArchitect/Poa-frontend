@@ -13,6 +13,8 @@ import { useRefreshEmit, RefreshEvent } from './RefreshContext';
 import { useNotification } from './NotificationContext';
 import { useWeb3Services } from '../hooks/useWeb3Services';
 import { calculatePayout } from '../util/taskUtils';
+import { useSubgraphClient } from '@/util/apolloClient';
+import { fetchLatestRejectedSubmission } from '@/util/taskSubmissionHistory';
 
 const TaskBoardContext = createContext();
 
@@ -82,8 +84,8 @@ export const TaskBoardProvider = ({
   const [taskColumns, setTaskColumns] = useState(initialColumns);
   const { selectedProject } = useDataBaseContext();
   const { nextTaskId } = useProjectContext();
-  const { taskManagerContractAddress, taskPayoutHoursOnly, taskPayoutHourlyRate } = usePOContext();
-  const { addToIpfs } = useIPFScontext();
+  const { taskManagerContractAddress, taskPayoutHoursOnly, taskPayoutHourlyRate, subgraphUrl } = usePOContext();
+  const { addToIpfs, safeFetchFromIpfs } = useIPFScontext();
   const { emit } = useRefreshEmit();
   const { addNotification, updateNotification } = useNotification();
 
@@ -99,6 +101,7 @@ export const TaskBoardProvider = ({
   // useWeb3Services already gets it from useIPFScontext(). Passing an inline object
   // creates a new reference every render, causing all services to be recreated.
   const { task: taskService, isReady, getNotReadyMessage } = useWeb3Services();
+  const subgraphClient = useSubgraphClient(subgraphUrl);
 
   // Ref to access current taskColumns inside callbacks without adding taskColumns
   // to their dependency arrays (which would recreate every callback on each column change).
@@ -1200,7 +1203,9 @@ export const TaskBoardProvider = ({
     const notifId = addNotification('Rejecting task...', 'loading');
 
     try {
-      // Upload rejection reason to IPFS
+      // Upload rejection reason to IPFS. The subgraph links TaskRejected to the
+      // immutable TaskSubmission record; rejection metadata does not duplicate
+      // the submitted work.
       const rejectionMetadata = JSON.stringify({ rejection: rejectionReason.trim() });
       const ipfsResult = await addToIpfs(rejectionMetadata);
 
@@ -1244,6 +1249,22 @@ export const TaskBoardProvider = ({
     scheduleLockClear,
   ]);
 
+  /**
+   * Load the submission associated with the latest rejection.
+   *
+   * Load the immutable submission linked to the latest rejection by the
+   * subgraph. If its file data source is still indexing, resolve the indexed
+   * submissionHash directly from IPFS as a short-lived fallback.
+   */
+  const getPreviousSubmission = useCallback(async (task) => {
+    if (!task?.id || !subgraphUrl || !subgraphClient) return null;
+    return fetchLatestRejectedSubmission({
+      client: subgraphClient,
+      taskId: task.id,
+      fetchFromIpfs: safeFetchFromIpfs,
+    });
+  }, [safeFetchFromIpfs, subgraphClient, subgraphUrl]);
+
   const value = useMemo(() => ({
     taskColumns,
     moveTask,
@@ -1258,7 +1279,8 @@ export const TaskBoardProvider = ({
     takeOverTask,
     releaseTask,
     rejectTask,
-  }), [taskColumns, moveTask, addTask, addTaskBatch, editTask, editTaskMetadata, deleteTask, applyForTask, approveApplication, assignTask, takeOverTask, releaseTask, rejectTask]);
+    getPreviousSubmission,
+  }), [taskColumns, moveTask, addTask, addTaskBatch, editTask, editTaskMetadata, deleteTask, applyForTask, approveApplication, assignTask, takeOverTask, releaseTask, rejectTask, getPreviousSubmission]);
 
   return (
     <TaskBoardContext.Provider value={value}>

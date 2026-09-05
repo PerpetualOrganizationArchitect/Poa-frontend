@@ -29,7 +29,17 @@ import {
   AlertDialogBody,
   AlertDialogFooter,
 } from '@chakra-ui/react';
-import { CheckIcon, WarningIcon, ExternalLinkIcon, InfoOutlineIcon, CloseIcon, TimeIcon, RepeatIcon } from '@chakra-ui/icons';
+import {
+  CheckIcon,
+  WarningIcon,
+  ExternalLinkIcon,
+  InfoOutlineIcon,
+  CloseIcon,
+  TimeIcon,
+  RepeatIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+} from '@chakra-ui/icons';
 import { hasBounty as checkHasBounty, getTokenByAddress } from '../../util/tokens';
 import EditTaskModal from './EditTaskModal';
 import TaskApplicationModal from './TaskApplicationModal';
@@ -102,12 +112,91 @@ const SectionHeader = ({ children }) => (
   </Text>
 );
 
+const URL_PATTERN = /(https?:\/\/[^\s]+)/g;
+
+const LinkedSubmissionText = ({ text }) => (
+  <>
+    {String(text).split(URL_PATTERN).map((part, index) => (
+      part.startsWith('http://') || part.startsWith('https://') ? (
+        <Link
+          key={`${part}-${index}`}
+          href={part}
+          isExternal
+          color="teal.200"
+          textDecoration="underline"
+          textUnderlineOffset="2px"
+          overflowWrap="anywhere"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {part}
+        </Link>
+      ) : (
+        <React.Fragment key={index}>{part}</React.Fragment>
+      )
+    ))}
+  </>
+);
+
+/** Keep long work visible enough to scan without letting it take over the modal. */
+const ExpandableSubmission = ({ text, color = 'gray.200', collapsedLines = 3 }) => {
+  const textRef = useRef(null);
+  const [expanded, setExpanded] = useState(false);
+  const [isClamped, setIsClamped] = useState(false);
+
+  useEffect(() => {
+    const element = textRef.current;
+    if (!element) return undefined;
+
+    const measure = () => {
+      if (!expanded) {
+        setIsClamped(element.scrollHeight > element.clientHeight + 1);
+      }
+    };
+
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [text, expanded]);
+
+  return (
+    <Box>
+      <Text
+        ref={textRef}
+        fontSize="sm"
+        lineHeight="6"
+        color={color}
+        whiteSpace="pre-wrap"
+        overflowWrap="anywhere"
+        noOfLines={expanded ? undefined : collapsedLines}
+      >
+        <LinkedSubmissionText text={text} />
+      </Text>
+      {(isClamped || expanded) && (
+        <Button
+          variant="link"
+          size="xs"
+          mt={1.5}
+          color="teal.200"
+          rightIcon={expanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+        >
+          {expanded ? 'Show less' : 'Show full submission'}
+        </Button>
+      )}
+    </Box>
+  );
+};
+
 const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const [submission, setSubmission] = useState('');
   const [selectedAssignee, setSelectedAssignee] = useState(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
-  const { moveTask, deleteTask, applyForTask, approveApplication, assignTask, takeOverTask, releaseTask, rejectTask } = useTaskBoard();
+  const { moveTask, deleteTask, applyForTask, approveApplication, assignTask, takeOverTask, releaseTask, rejectTask, getPreviousSubmission } = useTaskBoard();
   const { hasMemberRole, address: account, fetchUserDetails, userData } = useUserContext();
   const { projectsData, releasesSupported } = useProjectContext();
   const { getUsernameByAddress, setSelectedProject, projects } = useDataBaseContext();
@@ -134,6 +223,10 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const [submissionMetadata, setSubmissionMetadata] = useState(null);
   const [rejectionMetadata, setRejectionMetadata] = useState(null);
   const [metadataLoading, setMetadataLoading] = useState(false);
+  const [previousSubmission, setPreviousSubmission] = useState(null);
+  const [previousSubmissionLoading, setPreviousSubmissionLoading] = useState(false);
+  const [previousSubmissionUnavailable, setPreviousSubmissionUnavailable] = useState(false);
+  const displayedSubmission = task?.submission ?? submissionMetadata?.submission ?? null;
 
   // Application IPFS content state
   const [applicationContents, setApplicationContents] = useState({});
@@ -289,6 +382,44 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
     fetchIpfsMetadata();
     return () => { cancelled = true; };
   }, [isOpen, task, safeFetchFromIpfs, taskMetadata, submissionMetadata, rejectionMetadata]);
+
+  // A rejection moves the task back to In Progress and clears its mutable
+  // submissionHash. The subgraph retains an immutable TaskSubmission and links
+  // the latest TaskRejection to the exact version that was reviewed.
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isOpen || !task?.rejectionCount) {
+      setPreviousSubmission(null);
+      setPreviousSubmissionLoading(false);
+      setPreviousSubmissionUnavailable(false);
+      return undefined;
+    }
+
+    const loadPreviousSubmission = async () => {
+      setPreviousSubmissionLoading(true);
+      setPreviousSubmissionUnavailable(false);
+
+      try {
+        const value = await getPreviousSubmission(task);
+        if (!cancelled) {
+          setPreviousSubmission(value);
+          setPreviousSubmissionUnavailable(!value);
+        }
+      } catch (error) {
+        console.error('[TaskCardModal] Failed to load previous submission:', error);
+        if (!cancelled) {
+          setPreviousSubmission(null);
+          setPreviousSubmissionUnavailable(true);
+        }
+      } finally {
+        if (!cancelled) setPreviousSubmissionLoading(false);
+      }
+    };
+
+    loadPreviousSubmission();
+    return () => { cancelled = true; };
+  }, [isOpen, task, getPreviousSubmission]);
 
   // Fetch application content from IPFS — only for applicants without subgraph-indexed metadata
   useEffect(() => {
@@ -946,9 +1077,13 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                         border="1px solid"
                         borderColor="whiteAlpha.100"
                       >
-                        <Text fontSize="sm" color="gray.200" style={{ whiteSpace: 'pre-wrap' }}>
-                          {metadataLoading ? 'Loading submission...' : (task.submission ?? submissionMetadata?.submission ?? 'No submission available')}
-                        </Text>
+                        {displayedSubmission ? (
+                          <ExpandableSubmission text={displayedSubmission} />
+                        ) : (
+                          <Text fontSize="sm" color="gray.200">
+                            {metadataLoading ? 'Loading submission...' : 'No submission available'}
+                          </Text>
+                        )}
                       </Box>
                     </Box>
                   )}
@@ -984,6 +1119,36 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                             <> on {new Date(task.rejections[0].rejectedAt * 1000).toLocaleDateString()}</>
                           )}
                         </Text>
+                      )}
+                      {(previousSubmissionLoading || previousSubmission || previousSubmissionUnavailable) && (
+                        <Box
+                          mt={3}
+                          p={3}
+                          bg="blackAlpha.300"
+                          borderRadius="md"
+                          border="1px solid"
+                          borderColor="whiteAlpha.100"
+                        >
+                          <Text
+                            fontSize="xs"
+                            color="red.200"
+                            fontWeight="semibold"
+                            textTransform="uppercase"
+                            letterSpacing="wide"
+                            mb={1}
+                          >
+                            Previous submission
+                          </Text>
+                          {previousSubmissionLoading ? (
+                            <Text fontSize="sm" color="gray.400">Loading submitted work...</Text>
+                          ) : previousSubmission ? (
+                            <ExpandableSubmission text={previousSubmission} />
+                          ) : (
+                            <Text fontSize="sm" color="gray.400">
+                              Previous submitted work is unavailable.
+                            </Text>
+                          )}
+                        </Box>
                       )}
                     </Box>
                   )}

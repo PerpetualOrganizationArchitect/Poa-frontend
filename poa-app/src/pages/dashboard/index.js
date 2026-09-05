@@ -18,10 +18,6 @@ import {
   Flex,
   Wrap,
   WrapItem,
-  Stat,
-  StatLabel,
-  StatNumber,
-  SimpleGrid,
   Collapse,
   Tooltip,
 } from '@chakra-ui/react';
@@ -42,12 +38,13 @@ import { useOrgStructure, useOrgTheme } from '@/hooks';
 import { useAuthoritySubjects } from '@/hooks/accessV2';
 import { useOrgName } from '@/hooks/useOrgName';
 import { VouchingSection } from '@/components/orgStructure/VouchingSection';
+import UserIdentity from '@/components/common/UserIdentity';
 import { OrgStructureCard } from '@/components/dashboard/OrgStructureCard';
 import { glassLayerStyle } from '@/components/shared/glassStyles';
 import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 const PerpetualOrgDashboard = () => {
-  const { ongoingPolls } = useVotingContext();
+  const { ongoingPolls, votingClasses } = useVotingContext();
   const { poContextLoading, poDescription, poLinks, logoUrl, activeTaskAmount, completedTaskAmount, ptTokenBalance, poMembers, rules, educationModules, roleHatIds, educationHubEnabled, tokenLabel = 'Shares' } = usePOContext();
   const { pageBackground } = useOrgTheme();
   const { startTour, isActive: isTourActive } = useTour();
@@ -69,11 +66,11 @@ const PerpetualOrgDashboard = () => {
 
   // Responsive design breakpoints — single call to reduce matchMedia listeners
   const bp = useBreakpointValue({
-    base: { isMobile: true, logoWidth: "160px", headingSize: "2xl", sectionHeadingSize: "xl", textSize: "sm", statsTextSize: "md" },
-    sm: { isMobile: true, logoWidth: "180px", headingSize: "3xl", sectionHeadingSize: "xl", textSize: "sm", statsTextSize: "md" },
-    md: { isMobile: false, logoWidth: "220px", headingSize: "4xl", sectionHeadingSize: "2xl", textSize: "md", statsTextSize: "lg" },
+    base: { logoSize: "96px", headingSize: "2xl", sectionHeadingSize: "xl", textSize: "sm" },
+    sm: { logoSize: "104px", headingSize: "3xl", sectionHeadingSize: "xl", textSize: "sm" },
+    md: { logoSize: "132px", headingSize: "4xl", sectionHeadingSize: "2xl", textSize: "md" },
   }) || {};
-  const { isMobile, logoWidth, headingSize, sectionHeadingSize, textSize, statsTextSize } = bp;
+  const { logoSize, headingSize, sectionHeadingSize, textSize } = bp;
 
   useEffect(() => {
     const fetchImage = async () => {
@@ -96,7 +93,7 @@ const PerpetualOrgDashboard = () => {
   const v2 = useAuthoritySubjects();
   const cardRoles = useMemo(() => {
     if (!v2.enabled) return roles;
-    return (v2.roles || []).map((r) => ({ id: r.subjectId, hatId: r.hatId, name: r.name }));
+    return (v2.roles || []).map((r) => ({ id: r.subjectId, hatId: r.hatId, name: r.name, memberCount: r.memberCount }));
   }, [v2.enabled, v2.roles, roles]);
 
   // Vouching section logic - only show if user can vouch for any role
@@ -118,9 +115,11 @@ const PerpetualOrgDashboard = () => {
   const getMedalColor = (rank) => {
     switch (rank) {
       case 0:
-        return 'gold';
+        return '#FFD700';
+      // CSS 'silver' reads as plain white on the dark glass — use a cooler,
+      // clearly-metallic tone so the 1-2-3 medal set actually looks finished.
       case 1:
-        return 'silver';
+        return '#C7CCD6';
       case 2:
         return '#cd7f32';
       default:
@@ -134,6 +133,22 @@ const PerpetualOrgDashboard = () => {
     hard: 'orange',
     veryhard: 'red'
   };
+
+  // POContext substitutes placeholder sentences when org metadata has no
+  // description; without the old "Description:" field label those would read
+  // as the org's own prose, so they render muted instead.
+  const isPlaceholderDescription = /^(No description provided|Organization description loading)/.test(poDescription || '');
+
+  // "Total Participation" is really the participation token's total supply, so
+  // the label follows the org's token mode: the on-chain symbol (e.g. KUBIX)
+  // when `useTokenSymbol` is set, the "Shares" default otherwise.
+  const roleCount = cardRoles?.length || 0;
+  const orgStats = [
+    { icon: FiUsers, color: 'purple.300', value: poMembers, label: 'Members', caption: roleCount ? `across ${roleCount} role${roleCount === 1 ? '' : 's'}` : 'in the org' },
+    { icon: FiAward, color: 'yellow.300', value: ptTokenBalance, label: `Total ${tokenLabel}`, caption: 'earned by members' },
+    { icon: FiActivity, color: 'blue.300', value: activeTaskAmount, label: 'Active Tasks', caption: 'open or underway' },
+    { icon: FiCheckCircle, color: 'green.300', value: completedTaskAmount, label: 'Completed Tasks', caption: 'finished & paid out' },
+  ];
 
   // No org to render: a dead end, not a pending state. After every hook.
   if (orgGate) return orgGate;
@@ -181,8 +196,7 @@ const PerpetualOrgDashboard = () => {
                   'orgInfo orgStats'
                   'tasks polls'
                   'leaderboard orgStructure'
-                  'learnAndEarn learnAndEarn'
-                  ${showVouchingSection ? "'vouching .'" : ''}
+                  'learnAndEarn ${showVouchingSection ? 'vouching' : '.'}'
                 ` : `
                   'orgInfo orgStats'
                   'tasks polls'
@@ -197,6 +211,9 @@ const PerpetualOrgDashboard = () => {
               <Box
                 data-tour="org-info"
                 w={{ base: "100%", md: "125%" }}
+                h="100%"
+                display="flex"
+                flexDirection="column"
                 borderRadius="2xl"
                 bg="transparent"
                 boxShadow="lg"
@@ -208,33 +225,52 @@ const PerpetualOrgDashboard = () => {
                   <div style={glassLayerStyle} />
                   <HStack spacing={4}>
                     <Text pl={{ base: 3, md: 6 }} letterSpacing="-1%" fontSize={headingSize} fontWeight="bold">
-                      {userDAO}'s Dashboard
+                      {userDAO}
                     </Text>
                   </HStack>
                 </VStack>
-                <Flex 
-                  direction={{ base: "column", sm: "row" }} 
-                  spacing={4} 
-                  justify="space-between" 
-                  w="100%" 
-                  p={{ base: 3, md: 4 }}
+                {/* Identity row: logo, then description with the org links
+                    right beneath it — top-aligned so nothing floats. */}
+                <Flex
+                  direction={{ base: "column", sm: "row" }}
+                  align={{ base: "center", sm: "flex-start" }}
+                  gap={{ base: 3, sm: 6, md: 8 }}
+                  w="100%"
+                  px={{ base: 4, md: 6 }}
+                  pt={{ base: 4, md: 5 }}
+                  pb={{ base: 2, md: 3 }}
                 >
-                  <Box pl={{ base: "0", md: "12px" }} mb={{ base: 3, sm: 0 }} alignSelf={{ base: "center", sm: "flex-start" }}>
-                    {imageURL && (
-                      <Image mb="0" src={imageURL} alt="Organization Logo" width={logoWidth} />
-                    )}
-                  </Box>
-                  <VStack ml={{ base: 0, sm: 2 }} align="flex-start" pr={{ base: 2, md: "10px" }} spacing={2} w="100%">
-                    <Box>
-                      <Text fontWeight={"bold"} fontSize={{ base: "lg", md: "xl" }} mt={0}>
-                        Description:
-                      </Text>
-                      <Text mt={1} mb={1} fontSize={textSize} ml="2" lineHeight="tall">
+                  {imageURL && (
+                    <Flex
+                      boxSize={logoSize}
+                      flexShrink={0}
+                      align="center"
+                      justify="center"
+                      borderRadius="2xl"
+                      overflow="hidden"
+                      bg="whiteAlpha.100"
+                      border="1px solid"
+                      borderColor="whiteAlpha.200"
+                      boxShadow="0 8px 24px rgba(0, 0, 0, 0.35)"
+                    >
+                      <Image src={imageURL} alt={`${userDAO} logo`} w="100%" h="100%" objectFit="contain" />
+                    </Flex>
+                  )}
+                  <VStack align={{ base: "center", sm: "flex-start" }} spacing={3} flex="1" minW={0}>
+                    {poDescription && (
+                      <Text
+                        fontSize={{ base: "md", md: "lg" }}
+                        lineHeight="tall"
+                        maxW="70ch"
+                        color={isPlaceholderDescription ? "whiteAlpha.500" : "whiteAlpha.900"}
+                        fontStyle={isPlaceholderDescription ? "italic" : "normal"}
+                        textAlign={{ base: "center", sm: "left" }}
+                      >
                         {poDescription}
                       </Text>
-                    </Box>
+                    )}
                     {poLinks && poLinks.length > 0 && (
-                      <Wrap spacing={2} align="center">
+                      <Wrap spacing={2} align="center" justify={{ base: "center", sm: "flex-start" }}>
                         {poLinks.map((link, index) => (
                           <WrapItem key={index}>
                             <Link href={link.url} isExternal _hover={{ textDecoration: 'none' }}>
@@ -266,23 +302,33 @@ const PerpetualOrgDashboard = () => {
                     )}
                   </VStack>
                 </Flex>
-                <HStack display="flex" justifyContent="flex-end" px={{ base: 3, md: 4 }} pb={{ base: 3, md: 4 }} spacing={2}>
-                  {!isTourActive && (
-                    <Tooltip label="Take a guided tour of your organization" hasArrow>
-                      <Button
-                        onClick={() => startTour(userDAO)}
-                        size="sm"
-                        variant="outline"
-                        leftIcon={<Icon as={FiMap} />}
-                        borderColor="amethyst.400"
-                        color="amethyst.300"
-                        _hover={{ bg: 'purple.900' }}
-                        transition="all 0.2s"
-                      >
-                        Tour Org
-                      </Button>
-                    </Tooltip>
-                  )}
+                {/* Actions pinned to the card's bottom corners. */}
+                <Flex
+                  mt="auto"
+                  align="center"
+                  justify="space-between"
+                  gap={2}
+                  px={{ base: 4, md: 6 }}
+                  py={{ base: 3, md: 3.5 }}
+                >
+                  <Box>
+                    {!isTourActive && (
+                      <Tooltip label="Take a guided tour of your organization" hasArrow>
+                        <Button
+                          onClick={() => startTour(userDAO)}
+                          size="sm"
+                          variant="outline"
+                          leftIcon={<Icon as={FiMap} />}
+                          borderColor="amethyst.400"
+                          color="amethyst.300"
+                          _hover={{ bg: 'purple.900' }}
+                          transition="all 0.2s"
+                        >
+                          Tour Org
+                        </Button>
+                      </Tooltip>
+                    )}
+                  </Box>
                   <Tooltip label={hasCopied ? 'Copied!' : 'Copy invite link to clipboard'} closeOnClick={false} hasArrow>
                     <Button
                       onClick={onCopy}
@@ -298,76 +344,110 @@ const PerpetualOrgDashboard = () => {
                       {hasCopied ? 'Copied!' : 'Copy Invite Link'}
                     </Button>
                   </Tooltip>
-                </HStack>
+                </Flex>
               </Box>
             </GridItem>
 
             <GridItem area={'orgStats'}>
-              <Box
-                data-tour="org-stats"
-                h="100%"
-                ml={{ base: 0, md: "25%" }}
-                w={{ base: "100%", md: "75%" }}
-                borderRadius="2xl"
-                bg="transparent"
-                boxShadow="lg"
-                position="relative"
-                zIndex={2}
-              >
-                <div style={glassLayerStyle} />
-                <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
+              {/* The whole card is a link (arrow + hover lift signal it) so it
+                  can point at a dedicated org-stats page once one exists;
+                  /leaderboard is the interim destination. */}
+              <Link2 href={`/leaderboard?org=${encodeURIComponent(userDAO)}`}>
+                <Box
+                  data-tour="org-stats"
+                  h="100%"
+                  display="flex"
+                  flexDirection="column"
+                  ml={{ base: 0, md: "25%" }}
+                  w={{ base: "100%", md: "75%" }}
+                  borderRadius="2xl"
+                  bg="transparent"
+                  boxShadow="lg"
+                  position="relative"
+                  zIndex={2}
+                  cursor="pointer"
+                  sx={{
+                    '& .arrow-icon': {
+                      transition: 'transform 0.2s ease',
+                    },
+                  }}
+                  _hover={{
+                    transform: "translateY(-2px)",
+                    boxShadow: "0 8px 25px rgba(0,0,0,0.3)",
+                    '& .arrow-icon': {
+                      transform: 'translateX(4px)',
+                      color: 'purple.300',
+                    },
+                  }}
+                  transition="transform 0.2s, box-shadow 0.2s"
+                >
                   <div style={glassLayerStyle} />
-                  <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
-                    Organization Stats
-                  </Text>
-                </VStack>
-                <Box p={{ base: 2, md: 3 }}>
-                  <SimpleGrid columns={2} spacing={{ base: 2, md: 3 }}>
-                    <Box bg="whiteAlpha.50" p={{ base: 2, md: 3 }} borderRadius="lg">
-                      <Stat textAlign="center">
-                        <HStack justify="center" spacing={2}>
-                          <Icon as={FiUsers} color="purple.300" boxSize={{ base: 4, md: 5 }} />
-                          <StatNumber fontSize={{ base: "lg", md: "xl" }} color="purple.300">{poMembers}</StatNumber>
+                  <HStack pb={1} justify="space-between" align="center" position="relative" borderTopRadius="2xl" pr={{ base: 3, md: 6 }}>
+                    <div style={glassLayerStyle} />
+                    <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
+                      Stats
+                    </Text>
+                    <Icon as={FiArrowRight} className="arrow-icon" color="gray.500" boxSize={5} />
+                  </HStack>
+                  <Grid
+                    templateColumns="1fr 1fr"
+                    templateRows="1fr 1fr"
+                    gap={{ base: 2, md: 3 }}
+                    flexGrow={1}
+                    p={{ base: 2, md: 3 }}
+                  >
+                    {orgStats.map(({ icon, color, value, label, caption }) => (
+                      <Flex
+                        key={label}
+                        direction="column"
+                        align="center"
+                        justify="center"
+                        bg="whiteAlpha.50"
+                        border="1px solid"
+                        borderColor="whiteAlpha.100"
+                        px={{ base: 3, md: 4 }}
+                        py={{ base: 3, md: 4 }}
+                        borderRadius="xl"
+                      >
+                        <HStack spacing={2}>
+                          <Icon as={icon} color={color} boxSize={{ base: 4, md: 5 }} />
+                          <Text
+                            fontSize={{ base: "xl", md: "2xl" }}
+                            fontWeight="bold"
+                            lineHeight="1.1"
+                            letterSpacing="-0.02em"
+                            sx={{ fontVariantNumeric: 'tabular-nums' }}
+                            color={color}
+                          >
+                            {value}
+                          </Text>
                         </HStack>
-                        <StatLabel fontSize="xs" color="gray.400">Members</StatLabel>
-                      </Stat>
-                    </Box>
-                    <Box bg="whiteAlpha.50" p={{ base: 2, md: 3 }} borderRadius="lg">
-                      <Stat textAlign="center">
-                        <HStack justify="center" spacing={2}>
-                          <Icon as={FiAward} color="yellow.300" boxSize={{ base: 4, md: 5 }} />
-                          <StatNumber fontSize={{ base: "lg", md: "xl" }} color="yellow.300">{ptTokenBalance}</StatNumber>
-                        </HStack>
-                        <StatLabel fontSize="xs" color="gray.400">Total Participation</StatLabel>
-                      </Stat>
-                    </Box>
-                    <Box bg="whiteAlpha.50" p={{ base: 2, md: 3 }} borderRadius="lg">
-                      <Stat textAlign="center">
-                        <HStack justify="center" spacing={2}>
-                          <Icon as={FiActivity} color="blue.300" boxSize={{ base: 4, md: 5 }} />
-                          <StatNumber fontSize={{ base: "lg", md: "xl" }} color="blue.300">{activeTaskAmount}</StatNumber>
-                        </HStack>
-                        <StatLabel fontSize="xs" color="gray.400">Active Tasks</StatLabel>
-                      </Stat>
-                    </Box>
-                    <Box bg="whiteAlpha.50" p={{ base: 2, md: 3 }} borderRadius="lg">
-                      <Stat textAlign="center">
-                        <HStack justify="center" spacing={2}>
-                          <Icon as={FiCheckCircle} color="green.300" boxSize={{ base: 4, md: 5 }} />
-                          <StatNumber fontSize={{ base: "lg", md: "xl" }} color="green.300">{completedTaskAmount}</StatNumber>
-                        </HStack>
-                        <StatLabel fontSize="xs" color="gray.400">Completed Tasks</StatLabel>
-                      </Stat>
-                    </Box>
-                  </SimpleGrid>
+                        <Text
+                          mt={1.5}
+                          fontSize="0.68rem"
+                          fontWeight="semibold"
+                          letterSpacing="0.12em"
+                          textTransform="uppercase"
+                          color="whiteAlpha.600"
+                        >
+                          {label}
+                        </Text>
+                        <Text mt={0.5} fontSize="xs" color="whiteAlpha.400">
+                          {caption}
+                        </Text>
+                      </Flex>
+                    ))}
+                  </Grid>
                 </Box>
-              </Box>
+              </Link2>
             </GridItem>
 
             <GridItem area={'tasks'}>
               <Box
                 h="100%"
                 w="100%"
+                display="flex"
+                flexDirection="column"
                 borderRadius="2xl"
                 bg="transparent"
                 boxShadow="lg"
@@ -386,31 +466,73 @@ const PerpetualOrgDashboard = () => {
                     direction={{ base: "column", md: "row" }}
                     wrap={{ base: "nowrap", md: "wrap" }}
                     justify="space-between"
-                    gap={3}
-                    pb={2}
+                    align="stretch"
+                    flexGrow={1}
+                    gap={{ base: 3, md: 4 }}
+                    pb={{ base: 3, md: 4 }}
                     px={{ base: 3, md: 4 }}
-                    pt={2}
+                    pt={3}
                   >
                     {recommendedTasks.slice(0, 3).map((task) => (
                       <Box
                         key={task.id}
                         w={{ base: "100%", md: "31%" }}
-                        mb={{ base: 2, md: 0 }}
-                        _hover={{ transform: "translateY(-2px)", boxShadow: "0 8px 25px rgba(0,0,0,0.3)" }}
+                        minH={{ md: "150px" }}
+                        display="flex"
+                        flexDirection="column"
+                        sx={{
+                          '& .task-arrow': {
+                            transition: 'transform 0.2s ease',
+                          },
+                          // The next/link anchor must stretch so the payout
+                          // row can pin to the tile's bottom edge.
+                          '& > a': {
+                            display: 'flex',
+                            flexDirection: 'column',
+                            flexGrow: 1,
+                          },
+                        }}
+                        _hover={{
+                          transform: "translateY(-2px)",
+                          boxShadow: "0 8px 25px rgba(0,0,0,0.3)",
+                          '& .task-arrow': {
+                            transform: 'translateX(3px)',
+                          },
+                        }}
                         transition="transform 0.2s, box-shadow 0.2s, background 0.2s, border-color 0.2s"
-                        p={4}
-                        borderRadius="2xl"
+                        p={5}
+                        borderRadius="xl"
                         overflow="hidden"
                         bg="black"
+                        border="1px solid"
+                        borderColor="whiteAlpha.100"
                       >
                         <Link2 href={`/tasks/?task=${task.id}&projectId=${encodeURIComponent(decodeURIComponent(task.projectId))}&org=${encodeURIComponent(userDAO)}`}>
-                          <VStack textColor="white" align="stretch" spacing={3}>
-                            <Text mt="-2" fontSize={textSize} lineHeight="99%" fontWeight="extrabold">
-                              {task.isIndexing ? 'Indexing...' : task.title}
-                            </Text>
-                            <HStack justify="space-between">
-                              <Badge colorScheme="purple">{task.status}</Badge>
-                              <Text fontWeight="bold">{task.payout} {tokenLabel}</Text>
+                          <VStack textColor="white" align="stretch" spacing={4} flexGrow={1}>
+                            <Box>
+                              <Text fontSize={{ base: "md", md: "md" }} lineHeight="short" fontWeight="extrabold">
+                                {task.isIndexing ? 'Indexing...' : task.title}
+                              </Text>
+                              <HStack mt={2.5} spacing={2}>
+                                {task.difficulty && (
+                                  <Badge
+                                    colorScheme={difficultyColorScheme[String(task.difficulty).toLowerCase()] || 'gray'}
+                                    fontSize="xs"
+                                    textTransform="capitalize"
+                                  >
+                                    {String(task.difficulty).toLowerCase() === 'veryhard' ? 'Very Hard' : task.difficulty}
+                                  </Badge>
+                                )}
+                                {task.estHours != null && (
+                                  <Text fontSize="xs" color="whiteAlpha.500">
+                                    ~{task.estHours} hr{Number(task.estHours) !== 1 ? 's' : ''}
+                                  </Text>
+                                )}
+                              </HStack>
+                            </Box>
+                            <HStack justify="space-between" align="center" mt="auto">
+                              <Text fontWeight="bold" fontSize={{ base: "sm", md: "md" }}>{task.payout} {tokenLabel}</Text>
+                              <Icon as={FiArrowRight} className="task-arrow" color="whiteAlpha.300" boxSize={4} />
                             </HStack>
                           </VStack>
                         </Link2>
@@ -488,22 +610,58 @@ const PerpetualOrgDashboard = () => {
                     </Text>
                     <Icon as={FiArrowRight} className="arrow-icon" color="gray.500" boxSize={5} />
                   </HStack>
-                  <Box p={{ base: 2, md: 4 }}>
+                  <Box py={{ base: 2, md: 3 }}>
                     {Array.isArray(leaderboardDisplayData) && leaderboardDisplayData.length > 0 ? (
                       leaderboardDisplayData.slice(0, 5).map((entry, index) => {
                         const medalColor = getMedalColor(index);
                         return (
-                          <HStack 
-                            ml={{ base: 2, md: 6 }} 
-                            key={entry.id} 
-                            spacing={{ base: 2, md: 4 }} 
-                            alignItems="center"
+                          <HStack
+                            key={entry.id}
+                            align="center"
+                            spacing={{ base: 2, md: 3 }}
+                            px={{ base: 3, md: 6 }}
+                            py={2}
                           >
-                            <Text fontSize={{ base: "lg", md: "xl" }} fontWeight={medalColor ? 'extrabold' : null} color={medalColor}>
+                            <Text
+                              w="1.25rem"
+                              textAlign="center"
+                              fontSize={{ base: "md", md: "lg" }}
+                              fontWeight={medalColor ? 'extrabold' : 'medium'}
+                              color={medalColor || 'whiteAlpha.500'}
+                              sx={{ fontVariantNumeric: 'tabular-nums' }}
+                            >
                               {index + 1}
                             </Text>
-                            <Text fontWeight={medalColor ? 'extrabold' : null} fontSize={{ base: "lg", md: "2xl" }}>{entry.name}</Text>
-                            <Badge ml="2" fontSize={{ base: "sm", md: "md" }} colorScheme="blue">{entry.token} {tokenLabel}</Badge>
+                            <UserIdentity
+                              address={entry.address}
+                              usernameHint={entry.name}
+                              avatarCidHint={entry.avatarCid}
+                              showName={false}
+                              link={false}
+                              size="sm"
+                            />
+                            <Text
+                              fontWeight={medalColor ? 'bold' : 'medium'}
+                              fontSize={{ base: "md", md: "lg" }}
+                              isTruncated
+                            >
+                              {entry.name}
+                            </Text>
+                            <HStack
+                              spacing={1.5}
+                              flexShrink={0}
+                              px={2.5}
+                              py={0.5}
+                              borderRadius="md"
+                              bg="whiteAlpha.100"
+                            >
+                              <Text fontWeight="bold" fontSize={{ base: "sm", md: "md" }} sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                                {entry.token}
+                              </Text>
+                              <Text fontSize="xs" color="whiteAlpha.500" fontWeight="semibold">
+                                {tokenLabel}
+                              </Text>
+                            </HStack>
                           </HStack>
                         );
                       })
@@ -520,6 +678,7 @@ const PerpetualOrgDashboard = () => {
                 roles={cardRoles}
                 totalMembers={totalMembers}
                 governance={governance}
+                votingClasses={votingClasses}
                 userDAO={userDAO}
                 sectionHeadingSize={sectionHeadingSize}
               />
@@ -597,48 +756,54 @@ const PerpetualOrgDashboard = () => {
                   <div style={glassLayerStyle} />
                   <VStack pb={1} align="flex-start" position="relative" borderTopRadius="2xl">
                     <div style={glassLayerStyle} />
-                    <Text pl={{ base: 3, md: 6 }} fontWeight="bold" fontSize={sectionHeadingSize}>
-                      Learn and Earn
-                    </Text>
+                    <HStack pl={{ base: 3, md: 6 }} pr={{ base: 3, md: 6 }} spacing={3} align="baseline" flexWrap="wrap">
+                      <Text fontWeight="bold" fontSize={sectionHeadingSize}>
+                        Learn & Earn
+                      </Text>
+                      <Text fontSize="sm" color="whiteAlpha.500">
+                        Take a quiz, earn {tokenLabel}.
+                      </Text>
+                    </HStack>
                   </VStack>
-                  <Box p={{ base: 2, md: 4 }}>
+                  <Box px={{ base: 3, md: 4 }} pt={3} pb={{ base: 3, md: 4 }}>
                     {educationModules && educationModules.length > 0 ? (
-                      <Flex
-                        direction={{ base: "column", md: "row" }}
-                        spacing={4}
-                        gap={3}
-                        align="flex-start"
-                      >
+                      <Flex direction="column" gap={3}>
                         {educationModules.slice(0,3).map((module) => (
-                          <Box
+                          <Flex
                             key={module.id}
-                            w={{ base: "100%", md: "33%" }}
-                            h="auto"
+                            direction={{ base: "column", sm: "row" }}
+                            justify="space-between"
+                            align={{ base: "flex-start", sm: "center" }}
+                            gap={3}
                             p={4}
                             borderRadius="xl"
                             onClick={() => router.push(`/learn/?org=${encodeURIComponent(userDAO)}`)}
                             bg="black"
-                            _hover={{ transform: "translateY(-2px)", boxShadow: "0 8px 25px rgba(0,0,0,0.3)" }}
+                            border="1px solid"
+                            borderColor="whiteAlpha.100"
+                            _hover={{ transform: "translateY(-2px)", boxShadow: "0 8px 25px rgba(0,0,0,0.3)", borderColor: "whiteAlpha.200" }}
                             transition="transform 0.2s, box-shadow 0.2s, background 0.2s, border-color 0.2s"
                             cursor="pointer"
-                            mb={{ base: 2, md: 0 }}
                           >
-
-                              <Text fontSize={{ base: "lg", md: "xl" }} fontWeight="bold">
+                            <HStack spacing={3} minW={0}>
+                              <Center boxSize="36px" flexShrink={0} borderRadius="lg" bg="whiteAlpha.100">
+                                <Icon as={FiBookOpen} color="teal.200" boxSize={4} />
+                              </Center>
+                              <Text fontSize={{ base: "md", md: "md" }} fontWeight="bold">
                                 {module.isIndexing ? 'Indexing...' : module.name}
                               </Text>
-                              <HStack mt={6} justifyContent="space-between">
-                            {/* <Text mt={2}>{module.description}</Text> */}
-                            <Link2 href={`/learn/?org=${encodeURIComponent(userDAO)}`}>
-
-                              <Button colorScheme="teal" size={{ base: "xs", md: "sm" }}>
-                                {module.isIndexing ? 'Coming Soon' : 'Start Module'}
-                              </Button>
-
-                            </Link2>
-                            <Badge fontSize={{ base: "md", md: "lg" }} colorScheme="teal">{module.payout} {tokenLabel}</Badge>
                             </HStack>
-                          </Box>
+                            <HStack spacing={3} flexShrink={0}>
+                              <Text fontWeight="bold" fontSize={{ base: "sm", md: "md" }} color="teal.200">
+                                +{module.payout} {tokenLabel}
+                              </Text>
+                              <Link2 href={`/learn/?org=${encodeURIComponent(userDAO)}`}>
+                                <Button colorScheme="teal" size="sm">
+                                  {module.isIndexing ? 'Coming Soon' : 'Start'}
+                                </Button>
+                              </Link2>
+                            </HStack>
+                          </Flex>
                         ))}
                       </Flex>
                     ) : (

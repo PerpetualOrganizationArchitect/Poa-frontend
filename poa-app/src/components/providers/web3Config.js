@@ -13,7 +13,7 @@ import {
 import { createConfig, http } from 'wagmi';
 import { defineChain } from 'viem';
 import { base } from 'viem/chains';
-import { DEFAULT_NETWORK, NETWORKS } from '@/config/networks';
+import { NETWORKS } from '@/config/networks';
 import { burnerConnector } from '@/services/e2e/burnerConnector';
 import { E2E_ENABLED } from '@/services/e2e/e2eMode';
 
@@ -31,10 +31,6 @@ const chains = [
   })),
   base,
 ];
-
-export const defaultChain = chains.find(
-  (chain) => chain.id === NETWORKS[DEFAULT_NETWORK].chainId,
-);
 
 // Injected-first wallet list. EIP-6963 supplies installed wallets without a
 // WalletConnect dependency; explicit entries provide install CTAs/fallbacks.

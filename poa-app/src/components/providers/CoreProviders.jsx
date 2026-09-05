@@ -11,7 +11,6 @@ import { RefreshProvider } from '@/context/RefreshContext';
 import E2EAutoConnect from '@/services/e2e/E2EAutoConnect';
 import apolloClient from '@/util/apolloClient';
 import {
-  defaultChain,
   rainbowKitAppInfo,
   rainbowKitTheme,
   wagmiConfig,
@@ -30,8 +29,10 @@ export default function CoreProviders({ children }) {
       <AuthProvider>
         <ApolloProvider client={apolloClient}>
           <QueryClientProvider client={queryClient}>
+            {/* Do not force the Arbitrum home chain here. Org routes select
+                their own chain, and an initial chain would cause an extra
+                Arbitrum prompt before switching to Gnosis. */}
             <RainbowKitProvider
-              initialChain={defaultChain}
               theme={rainbowKitTheme}
               appInfo={rainbowKitAppInfo}
             >

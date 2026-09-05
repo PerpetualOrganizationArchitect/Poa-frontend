@@ -121,19 +121,43 @@ const REVERT_PATTERNS = {
  * @returns {string|null} Parsed reason or null
  */
 function extractRevertReason(error) {
+  if (!error) return null;
+
+  const clean = (s) => (typeof s === 'string' ? s.replace('execution reverted: ', '') : null);
+
   // Direct reason
   if (error.reason) {
-    return error.reason.replace('execution reverted: ', '');
+    return clean(error.reason);
   }
 
   // Nested error reason
   if (error.error?.reason) {
-    return error.error.reason.replace('execution reverted: ', '');
+    return clean(error.error.reason);
   }
 
-  // Error data message
-  if (error.error?.data?.message) {
-    return error.error.data.message.replace('execution reverted: ', '');
+  // Reason strings nested inside a JSON-RPC `-32603` internal-error wrapper.
+  // MetaMask/ethers stash the real revert message in a few inconsistent spots;
+  // probe the common ones so a generic "Error processing the transaction" outer
+  // message doesn't bury the actionable inner reason.
+  const nestedMessage =
+    error.error?.data?.message ??
+    error.data?.message ??
+    error.error?.data?.originalError?.message ??
+    error.data?.originalError?.message;
+  if (nestedMessage) {
+    return clean(nestedMessage);
+  }
+
+  // Some providers (ethers v5 SERVER_ERROR) put the raw JSON-RPC response under
+  // `error.body` as a JSON string — parse it out.
+  if (typeof error.body === 'string') {
+    try {
+      const parsed = JSON.parse(error.body);
+      const bodyMsg = parsed?.error?.message;
+      if (bodyMsg) return clean(bodyMsg);
+    } catch {
+      // not JSON — ignore
+    }
   }
 
   // Try to extract from message
@@ -175,6 +199,28 @@ function matchRevertPattern(reason) {
   }
 
   return null;
+}
+
+/**
+ * True when the error is (or wraps) a JSON-RPC `-32603` internal error — the
+ * generic "Error processing the transaction" envelope MetaMask/ethers may emit
+ * when a provider rejects a send. The reported wrong-chain incident had this
+ * shape, but `-32603` is not uniquely diagnostic of a wrong-chain transaction.
+ * Used to tightly scope the UNKNOWN-category revert-unwrapping heuristic so a
+ * non-revert error (rate limit, timeout) with coincidentally matching nested
+ * text is never surfaced as a contract revert.
+ *
+ * @param {Error} error
+ * @returns {boolean}
+ */
+function isRpcInternalError(error) {
+  return (
+    error?.code === -32603 ||
+    error?.error?.code === -32603 ||
+    error?.data?.code === -32603 ||
+    error?.data?.originalError?.code === -32603 ||
+    error?.error?.data?.originalError?.code === -32603
+  );
 }
 
 /**
@@ -335,6 +381,27 @@ export function parseError(error, abi = null, context = {}) {
       reason || 'Contract revert',
       error
     );
+  }
+
+  // Unknown category — but a JSON-RPC `-32603` "internal error" wrapper (MetaMask/
+  // ethers) frequently hides a real revert reason/selector in a nested field that
+  // detectCategory's shallow checks miss. Make one last decode attempt over the
+  // full envelope, but ONLY for -32603 envelopes: gating on the code keeps a
+  // rate-limit/timeout/other UNKNOWN error whose nested text happens to contain a
+  // REVERT_PATTERNS substring from being mislabelled a contract revert. If it
+  // yields a friendly message, surface that instead of the opaque generic. When
+  // nothing decodes (e.g. a bare wrong-chain "-32603 Error processing the
+  // transaction"), fall through unchanged.
+  if (isRpcInternalError(error)) {
+    const { userMessage, reason } = resolveRevert(error, abi);
+    if (userMessage) {
+      return new ParsedError(
+        Web3ErrorCategory.CONTRACT_REVERT,
+        userMessage,
+        reason || error.message || 'Contract revert',
+        error
+      );
+    }
   }
 
   // Unknown error

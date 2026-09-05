@@ -97,7 +97,7 @@ const PerpetualOrgDashboard = () => {
   }, [v2.enabled, v2.roles, roles]);
 
   // Vouching section logic - only show if user can vouch for any role
-  const userHatIds = userData?.hatIds || [];
+  const userHatIds = useMemo(() => userData?.hatIds || [], [userData?.hatIds]);
   const rolesWithVouching = useMemo(() => {
     return roles?.filter(role => role.vouchingEnabled) || [];
   }, [roles]);

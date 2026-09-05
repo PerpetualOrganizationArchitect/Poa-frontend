@@ -8,7 +8,7 @@ import { useQuery } from "@apollo/client";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useGlobalAccount } from "@/hooks/useGlobalAccount";
 import { useAuth } from "@/context/AuthContext";
-import { getDefaultOrgForHost } from "@/context/POContext";
+import { getDefaultOrgForHost } from "@/config/hostDefaultOrg";
 import { FETCH_SOLIDARITY_FUND_STATUS } from "@/util/passkeyQueries";
 import SEOHead from "@/components/common/SEOHead";
 

@@ -138,7 +138,7 @@ export default smithers((ctx) => {
   }
   const feedback = feedbackParts.length > 0 ? feedbackParts.join("\n\n") : null;
 
-  const implementPrompt = `You are implementing a focused frontend change in the poa-app/ Next.js app. This repo's CLAUDE.md is authoritative — follow it exactly (service layer for ALL contract calls via useWeb3Services, @/ imports never relative, Chakra theme + glassLayerStyle, no backdrop-filter, token amounts via formatTokenAmount, subgraph queries pass a per-endpoint client, parseTaskId/parseProjectId for composite ids).
+  const implementPrompt = `You are implementing a focused frontend change in the poa-app/ Next.js app. This repo's CLAUDE.md is authoritative — follow it exactly (service layer for ALL contract calls via useWeb3Services, @/ imports never relative, Chakra theme + glassLayerStyle, no backdrop-filter, token amounts via formatTokenAmount, subgraph queries use the endpoint-specific client from useSubgraphClient/getClient, parseTaskId/parseProjectId for composite ids).
 
 CHANGE REQUESTED:
 ${prompt}

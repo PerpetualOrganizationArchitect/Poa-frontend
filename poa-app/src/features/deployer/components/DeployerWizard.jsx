@@ -9,6 +9,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect, startTransition } from 'react';
+import { keyframes } from '@emotion/react';
 import {
   Box,
   Button,
@@ -22,7 +23,6 @@ import {
   useDisclosure,
   useToast,
   Flex,
-  keyframes,
 } from '@chakra-ui/react';
 import { PiCheck, PiWarningCircle, PiUserCircle } from 'react-icons/pi';
 import SignInModal from '../../../components/passkey/SignInModal';

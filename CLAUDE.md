@@ -1,4 +1,4 @@
-# POA Frontend (hamburg-v3)
+# POA Frontend
 
 ## Commands
 
@@ -9,7 +9,7 @@ cd poa-app && yarn dev              # dev server
 cd poa-app && yarn dev:e2e          # dev server in E2E mode (burner EOA auto-connects)
 cd poa-app && yarn dev:e2e-passkey  # dev server in E2E mode, passkey identity
 cd poa-app && yarn build            # production build (static export to IPFS)
-cd poa-app && yarn lint             # ESLint (Next.js built-in)
+cd poa-app && yarn lint             # ESLint + Next.js Core Web Vitals rules
 cd poa-app && yarn test             # vitest (unit tests for the pure `src/lib/**` layer)
 cd poa-app && yarn e2e:setup        # one-time machine setup (writes ~/.poa/e2e.env)
 cd poa-app && yarn e2e:check        # CI guard — fails if E2E code leaks into prod bundle
@@ -34,7 +34,7 @@ hand. Either way these repo facts hold:
   auto-connects). Use `yarn dev:e2e` (burner EOA) only to test as an unvouched /
   minimal-permission user or the direct-EOA tx path. Never plain `yarn dev` for agent
   work. `yarn e2e:setup` is one-time per laptop (writes `~/.poa/e2e.env`).
-- **Run ONE dev server, under node 20.10 (not bun).** Multiple `next dev` processes
+- **Run ONE dev server, under Node 22.23.2 (not bun).** Multiple `next dev` processes
   share `poa-app/.next/` and corrupt each other's webpack chunks → `Cannot find
   module ./chunks/vendor-chunks/react-icons.js` → pages 500 in the browser (this is
   what breaks Playwright/Chromium). If chunks break: `lsof -ti:<port> | xargs kill -9`,
@@ -71,8 +71,8 @@ hand these commands to the user.
 
 ## Stack
 
-Next.js 14, React 18, **JavaScript** (not TypeScript). Chakra UI 2. Wagmi 2 + ethers 5 + viem 2.
-Static export (`output: 'export'`). Yarn. Node 18.18.0 (Volta).
+Next.js 16, React 18, **JavaScript** (not TypeScript). Chakra UI 2. Wagmi 2 + ethers 5 + viem 2.
+Static export (`output: 'export'`). Yarn. Node 22.23.2 (Volta).
 
 ## Path Aliases
 
@@ -212,8 +212,11 @@ Custom variants: `glass`, `elevated`, `primary`. Theme is defined inline in `_ap
 
 ### Provider nesting order matters
 
-16 providers nested in `_app.js`. Inner contexts depend on outer ones — check `_app.js`
-before adding or reordering providers.
+The provider tree is dependency-sensitive: `CoreProviders.jsx` owns wallet/account
+services, `RegistryProvider.jsx` supplies live public organization data, and
+`OrganizationProviders.jsx` adds org-scoped data only on application routes. Fully
+static reading routes skip all three async bundles. Check these provider modules and
+`_app.js` before adding or reordering providers.
 
 ### Task permissions
 

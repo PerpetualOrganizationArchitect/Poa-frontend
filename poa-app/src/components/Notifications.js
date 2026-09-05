@@ -1,5 +1,6 @@
 import React from 'react';
-import { Box, Icon, Text, CloseButton, VStack, keyframes } from '@chakra-ui/react';
+import { Box, Icon, Text, CloseButton, VStack } from '@chakra-ui/react';
+import { keyframes } from '@emotion/react';
 import { useNotificationContext } from '@/context/NotificationContext';
 import { FiLoader, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 

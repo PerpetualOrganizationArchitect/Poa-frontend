@@ -8,7 +8,7 @@
  * - Handles DIRECT (role-based) and ERC20_BAL (token-based) strategies
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import {
   Box,
   VStack,
@@ -197,48 +197,37 @@ export function AdvancedVotingExample({ votingClasses = [], roles = [] }) {
   }
 
   // Generate voters that match the configuration
-  const voters = useMemo(
-    () => generateExampleVoters(votingClasses, roles),
-    [votingClasses, roles]
-  );
+  const voters = generateExampleVoters(votingClasses, roles);
 
   // Calculate per-class voting powers for each voter
-  const voterPowers = useMemo(() => {
-    return voters.map((voter) => {
-      const powers = votingClasses.map((vc) => calculateClassPower(voter, vc));
-      return { ...voter, powers };
-    });
-  }, [voters, votingClasses]);
+  const voterPowers = voters.map((voter) => {
+    const powers = votingClasses.map((vc) => calculateClassPower(voter, vc));
+    return { ...voter, powers };
+  });
 
   // Calculate class totals
-  const classTotals = useMemo(() => {
-    return votingClasses.map((_, classIdx) =>
-      voterPowers.reduce((sum, v) => sum + v.powers[classIdx], 0)
-    );
-  }, [voterPowers, votingClasses]);
+  const classTotals = votingClasses.map((_, classIdx) =>
+    voterPowers.reduce((sum, v) => sum + v.powers[classIdx], 0)
+  );
 
   // Calculate final weighted vote tallies
-  const { yesTotal, noTotal } = useMemo(() => {
-    let yes = 0;
-    let no = 0;
+  let yesTotal = 0;
+  let noTotal = 0;
 
-    voterPowers.forEach((voter) => {
-      votingClasses.forEach((vc, classIdx) => {
-        const classTotal = classTotals[classIdx];
-        if (classTotal === 0) return;
+  voterPowers.forEach((voter) => {
+    votingClasses.forEach((vc, classIdx) => {
+      const classTotal = classTotals[classIdx];
+      if (classTotal === 0) return;
 
-        const voterShare = (voter.powers[classIdx] / classTotal) * vc.slicePct;
+      const voterShare = (voter.powers[classIdx] / classTotal) * vc.slicePct;
 
-        if (voter.vote === 'yes') {
-          yes += voterShare;
-        } else {
-          no += voterShare;
-        }
-      });
+      if (voter.vote === 'yes') {
+        yesTotal += voterShare;
+      } else {
+        noTotal += voterShare;
+      }
     });
-
-    return { yesTotal: yes, noTotal: no };
-  }, [voterPowers, votingClasses, classTotals]);
+  });
 
   const passes = yesTotal > noTotal;
   const insight = generateInsight(votingClasses, yesTotal, noTotal, passes);

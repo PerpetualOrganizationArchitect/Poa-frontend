@@ -29,6 +29,7 @@
  */
 
 import React, { useMemo } from 'react';
+import { keyframes } from '@emotion/react';
 import {
   Box,
   Flex,
@@ -39,7 +40,6 @@ import {
   Badge,
   Icon,
   usePrefersReducedMotion,
-  keyframes,
 } from '@chakra-ui/react';
 import { WarningTwoIcon } from '@chakra-ui/icons';
 import {

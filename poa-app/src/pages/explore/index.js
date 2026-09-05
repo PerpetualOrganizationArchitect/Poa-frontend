@@ -3,8 +3,8 @@ import { FiMap } from "react-icons/fi";
 import { useTour } from "@/features/tour";
 import SEOHead from "@/components/common/SEOHead";
 import { useIPFScontext } from "@/context/ipfsContext";
-import { getVisitUrlForOrg } from "@/context/POContext";
-import { useprofileHubContext } from "@/context/profileHubContext";
+import { getVisitUrlForOrg } from "@/config/hostDefaultOrg";
+import { useProfileHubContext } from "@/context/profileHubContext";
 import { useAuth } from "@/context/AuthContext";
 import { useGlobalAccount } from "@/hooks/useGlobalAccount";
 import { useAccount } from "wagmi";
@@ -43,7 +43,7 @@ import Navbar from "@/components/landing/Navbar";
 import SignInModal from "@/components/passkey/SignInModal";
 import { isHiddenOrg } from "@/util/hiddenOrgs";
 
-const MotionBox = motion(Box);
+const MotionBox = motion.create(Box);
 
 // Generates a consistent, visually distinct gradient from an org name
 const getOrgGradient = (name) => {
@@ -168,7 +168,7 @@ const OrgBanner = ({ name, logoHash, logoCid }) => {
 
 const BrowserPage = () => {
   const router = useRouter();
-  const { perpetualOrganizations, isLoading: isOrgsLoading } = useprofileHubContext();
+  const { perpetualOrganizations, isLoading: isOrgsLoading } = useProfileHubContext();
   const { isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
   const { hasAccount, isLoading: isAccountLoading } = useGlobalAccount();

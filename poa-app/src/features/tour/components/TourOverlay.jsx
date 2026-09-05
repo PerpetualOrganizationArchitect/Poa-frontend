@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { keyframes } from '@emotion/react';
 import {
   Box,
   VStack,
@@ -13,12 +14,14 @@ import {
   Input,
   InputGroup,
   InputRightElement,
-  keyframes,
 } from '@chakra-ui/react';
 import { CloseIcon, CopyIcon, CheckIcon } from '@chakra-ui/icons';
 import { useTour } from '../TourContext';
 import useSpotlightTarget from '../hooks/useSpotlightTarget';
 import useTargetElevation from '../hooks/useTargetElevation';
+
+const useIsomorphicLayoutEffect =
+  typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(6px); }
@@ -209,14 +212,16 @@ export default function TourOverlay() {
   // positioning uses the real height rather than the 230px estimate.
   const tooltipRef = useRef(null);
   const [measuredHeight, setMeasuredHeight] = useState(null);
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     setMeasuredHeight(null); // reset for the new step
   }, [currentStep]);
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!tooltipRef.current) return;
     const h = tooltipRef.current.getBoundingClientRect().height;
-    if (h > 0 && h !== measuredHeight) setMeasuredHeight(h);
-  });
+    if (h > 0) {
+      setMeasuredHeight((previousHeight) => previousHeight === h ? previousHeight : h);
+    }
+  }, [currentStep, currentStepDef, isActive, isMobile, targetRect]);
 
   // Move focus to the tooltip when the step changes so screen readers
   // announce the new content and keyboard Enter (handled above) acts on

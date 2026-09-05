@@ -2,6 +2,9 @@
 POP/
 subgraph-pop/
 
+# Dependencies belong to the application workspace, not the repository root.
+/node_modules/
+
 # Playwright MCP artifacts (snapshots, console logs, recordings)
 .playwright-mcp/
 /*.gif

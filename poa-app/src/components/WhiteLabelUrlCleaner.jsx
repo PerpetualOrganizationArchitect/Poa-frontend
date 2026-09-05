@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { getDefaultOrgForHost, resolveOrgAlias } from '@/context/POContext';
+import { getDefaultOrgForHost, resolveOrgAlias } from '@/config/hostDefaultOrg';
 
 /**
  * On white-label hosts (poa.earth, dao.kublockchain.com) the hostname already

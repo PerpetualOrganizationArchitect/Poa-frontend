@@ -10,9 +10,12 @@ export const ENTRY_POINT_ADDRESS = '0x0000000071727De22E5E9d8BAf0edAc6f37da032';
 // Pimlico bundler endpoint — configured per chain via env var
 export const PIMLICO_API_KEY = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || '';
 
+let didWarnAboutMissingPimlicoKey = false;
+
 export function getBundlerUrl(chainId = DEFAULT_CHAIN_ID) {
-  if (!PIMLICO_API_KEY) {
+  if (!PIMLICO_API_KEY && typeof window !== 'undefined' && !didWarnAboutMissingPimlicoKey) {
     console.warn('NEXT_PUBLIC_PIMLICO_API_KEY not set — bundler calls will fail');
+    didWarnAboutMissingPimlicoKey = true;
   }
   return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${PIMLICO_API_KEY}`;
 }

@@ -86,7 +86,7 @@ the workspace root, and earlier states are recoverable from git history.
   DAO-flavored `knowsAbout`). Required by hard rule 4; accepted cost
   against SEO_ROADMAP.md's keyword strategy (see TODO).
 - **OG image regenerated in the new system** (paper, rules, serif, mark) at
-  `/images/poa-og-charter.png` (34KB), passed only by the landing page; the
+  `/images/poa-og-landing.png`, passed only by the landing page; the
   old default OG stays for every other route.
 - **Auth surfaces beyond the landing page were left alone.** The RainbowKit
   connect modal and sign-in/onboarding modals keep their own styling and

@@ -1661,7 +1661,7 @@ export function useProposalForm({ onSubmit }) {
       // using the wallet's provider — for cross-chain users (passkey, or an
       // EOA whose wallet is on a different chain) the wallet provider would
       // read the wrong chain's state. Mirrors the read pattern in
-      // pages/create/index.js:355.
+      // features/deployer/CreatePage.jsx.
       let freshHoldersOverride = null;
       // ACCESS V2: the same freshness rule, against the MembershipAuthority. The subgraph fold
       // mirror lags the chain, and on v2 the preconditions are harsher and all silent —

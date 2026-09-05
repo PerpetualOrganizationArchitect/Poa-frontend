@@ -3,7 +3,7 @@ import { Box, Container, Heading, Text, SimpleGrid, VStack, HStack, Link, useCli
 import { ExternalLinkIcon, CopyIcon, CheckIcon } from '@chakra-ui/icons';
 import { motion } from 'framer-motion';
 
-const MotionBox = motion(Box);
+const MotionBox = motion.create(Box);
 
 const AddressRow = ({ label, address, explorerUrl, version }) => {
   const { hasCopied, onCopy } = useClipboard(address || '');

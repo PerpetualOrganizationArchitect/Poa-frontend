@@ -58,7 +58,7 @@ export function TaskFilterProvider({ children }) {
   const { projectsData } = useProjectContext() || {};
 
   const address = accountAddress || ctxAddress || '';
-  const userHatIds = userData?.hatIds || [];
+  const userHatIds = useMemo(() => userData?.hatIds || [], [userData?.hatIds]);
 
   // --- Search text: local-immediate value, debounced URL write ---------------
   const urlQ = typeof router.query.q === 'string' ? router.query.q : '';

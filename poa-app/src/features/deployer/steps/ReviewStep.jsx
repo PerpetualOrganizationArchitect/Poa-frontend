@@ -9,6 +9,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { keyframes } from '@emotion/react';
 import {
   Box,
   VStack,
@@ -28,7 +29,6 @@ import {
   AccordionPanel,
   AccordionIcon,
   Tooltip,
-  keyframes,
   Flex,
   Image,
   Portal,

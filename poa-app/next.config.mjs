@@ -46,9 +46,19 @@ const e2eEnvInlines = {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Next 16 otherwise writes generated AGENTS.md/CLAUDE.md files into the app
+  // directory every time the dev server starts.
+  agentRules: false,
   reactStrictMode: true,
   trailingSlash: true,
   output: 'export',
+  compiler: {
+    // Keep verbose deployment/IPFS diagnostics available in development while
+    // preventing debug data and logging code from shipping to browsers.
+    removeConsole: process.env.NODE_ENV === 'production'
+      ? { exclude: ['error', 'warn'] }
+      : false,
+  },
   images: {
     unoptimized: true,
   },
@@ -104,23 +114,13 @@ const nextConfig = {
       readline: false,
       dns: false,
     };
+    // MetaMask SDK has an optional React Native storage import. It is never
+    // used by this browser-only app, so do not ask webpack to resolve it.
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@react-native-async-storage/async-storage': false,
+    };
     return config;
-  },
-  async redirects() {
-    return [
-      {
-        source: '/',
-        has: [{ type: 'host', value: 'poa.on-fleek.app' }],
-        destination: 'https://poa.box',
-        permanent: true,
-      },
-      {
-        source: '/:path*',
-        has: [{ type: 'host', value: 'poa.on-fleek.app' }],
-        destination: 'https://poa.box/:path*',
-        permanent: true,
-      },
-    ];
   },
 };
 

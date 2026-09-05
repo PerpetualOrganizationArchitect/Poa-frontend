@@ -16,7 +16,7 @@ This repo is one of four active repositories. They are designed to be worked on 
 | --- | --- |
 | [POP](https://github.com/poa-box/POP) | Solidity protocol contracts. Foundry, AGPL-3.0, upgradeable beacons. Defines orgs, voting, vouch-based roles, tasks, education, treasury, agent identity. |
 | [subgraph-pop](https://github.com/poa-box/subgraph-pop) | The Graph indexer over POP. Powers every list, dashboard, search, and agent query in the ecosystem. |
-| **Poa-frontend** *(this repo)* | Next.js 14 web app. Deploys orgs, proposes, votes, claims tasks, manages treasury, no code required. |
+| **Poa-frontend** *(this repo)* | Next.js 16 web app. Deploys orgs, proposes, votes, claims tasks, manages treasury, no code required. |
 | [poa-cli](https://github.com/poa-box/poa-cli) | Terminal-native interface to everything POP can do, plus an autonomous-agent framework (ERC-8004 identity, libp2p + Automerge CRDT brain files). |
 
 A frontend contributor will often touch all three repos in a single feature. The cross-repo flow is documented in [CONTRIBUTING.md](CONTRIBUTING.md#cross-repo-flow).
@@ -72,13 +72,14 @@ What subgraph-pop indexes:
 
 Apollo (`poa-app/src/util/apolloClient.js`) supports multi-chain in two modes:
 
-**Org-scoped queries.** Pass the org's subgraph URL on the operation context. `POContext` (`poa-app/src/context/POContext.js`) resolves the org from `?userDAO=` in the URL, looks up its chain, and exposes `subgraphUrl`. The default Apollo client picks it up automatically:
+**Org-scoped queries.** Use a client dedicated to the org's subgraph endpoint. `POContext` (`poa-app/src/context/POContext.js`) resolves the org from `?userDAO=` in the URL, looks up its chain, and exposes `subgraphUrl`:
 
 ```js
-useQuery(QUERY, { context: { subgraphUrl } });
+const client = useSubgraphClient(subgraphUrl);
+useQuery(QUERY, { client });
 ```
 
-**Cross-chain queries.** For browse pages and discovery flows that hit every supported chain, use `getClient(subgraphUrl)` to grab a per-endpoint Apollo client with its own cache. This is necessary because Apollo's `InMemoryCache` keys on query plus variables but not endpoint, so reusing one client across chains causes cache poisoning.
+**Cross-chain queries.** For browse pages and discovery flows that hit every supported chain, use `useSubgraphClient(subgraphUrl)` in React components or `getClient(subgraphUrl)` for imperative queries. Each endpoint gets a separate Apollo client and `InMemoryCache`, so data cannot leak between chains and no `fetchPolicy: 'no-cache'` workaround is needed.
 
 ```js
 const client = getClient(targetSubgraphUrl);
@@ -122,7 +123,7 @@ WebAuthn RP is `poa.box`. Related origins (white-label hosts) include `dao.kublo
 ## Quick start
 
 ```bash
-# Node 18.18.0 is pinned via Volta (poa-app/package.json).
+# Node 22.23.2 is pinned via Volta (poa-app/package.json).
 cd poa-app
 yarn install
 yarn dev          # http://localhost:3000

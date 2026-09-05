@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Container, Heading, Text, SimpleGrid, VStack, HStack, Badge, Divider } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
 
-const MotionBox = motion(Box);
+const MotionBox = motion.create(Box);
 
 const ConfigRow = ({ label, value, color = 'warmGray.700' }) => (
   <HStack justify="space-between" py={1}>

@@ -1,4 +1,5 @@
-import { Box, VisuallyHidden, keyframes } from "@chakra-ui/react";
+import { Box, VisuallyHidden } from "@chakra-ui/react";
+import { keyframes } from "@emotion/react";
 
 const breathe = keyframes`
   0%, 100% {

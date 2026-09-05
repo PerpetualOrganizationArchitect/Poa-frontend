@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Ensure EXACTLY ONE clean Next dev server (E2E passkey mode) on $1, under node
-# 20.10 (the repo's required runtime, NOT bun). Mirrors decideDevServer() in
+# Ensure EXACTLY ONE clean Next dev server (E2E passkey mode) on $1, under Node
+# 22.23.2 (the repo's required runtime, NOT bun). Mirrors decideDevServer() in
 # lib/test6.ts — keep the two in sync.
 #
 #   args: PORT [SNAPSHOT_FILE]
@@ -49,9 +49,9 @@ fingerprint_ok() { # 0 if no gate or current matches frozen snapshot
   bash "$FP_SCRIPT" check "$SNAPSHOT_FILE" >/dev/null 2>&1
 }
 
-resolve_node() { # echo an executable node (prefer repo's 20.10), or empty
+resolve_node() { # echo an executable node (prefer the repo's Node 22.23.2), or empty
   local c
-  for c in "$HOME/.nvm/versions/node/v20.10.0/bin/node" "$(command -v node 2>/dev/null || true)"; do
+  for c in "$HOME/.nvm/versions/node/v22.23.2/bin/node" "$(command -v node 2>/dev/null || true)"; do
     [ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return 0; }
   done
   return 1
@@ -81,7 +81,7 @@ start_clean() { # $1=validated pid to stop first (empty=nothing running); clear 
   rm -rf "$APP/.next"
   cd "$APP" || { echo "ensure-dev: ERROR missing $APP" >&2; exit 1; }
   PATH="$node_dir:$PATH" PORT="$PORT" NEXT_PUBLIC_E2E_MODE=true NEXT_PUBLIC_E2E_AS=passkey \
-    nohup "$node_bin" node_modules/.bin/next dev > "/tmp/poa-dev-$PORT.log" 2>&1 &
+    nohup "$node_bin" node_modules/.bin/next dev --webpack > "/tmp/poa-dev-$PORT.log" 2>&1 &
   disown
   local _
   for _ in $(seq 1 100); do

@@ -33,7 +33,8 @@ hold before a single v2 query goes on the wire:
 | `pending` | true      | false     | status banner + legacy hierarchy       |
 | `active`  | true      | true      | v2 roles/groups; legacy hierarchy hidden |
 
-`AccessV2TeamSection` owns that handoff and keeps the supplied legacy hierarchy through cutover.
+The team page owns that handoff: it keeps the legacy hierarchy through cutover while
+`AccessV2TeamSection` renders only the pending banner or active v2 panels.
 
 **A paused authority still renders.** Pause gates WRITES only — reads stay live, which is
 load-bearing for the cutover ordering. The panels show a warning and disable the buttons.
@@ -99,8 +100,8 @@ emits only a config event on chain — the mapping re-folds the accepted rows it
 `RolesGroupsPanel`; `RolesGroupsPanel` opens `CreateRoleWizard` and `SubjectDetailPanel`.
 `SubjectRestrictionPicker` is wired into `CreateVoteModal`'s existing restricted-poll block.
 
-Mounted once at `pages/team/index.js`; it swaps the legacy hierarchy for the v2 panels only when
-`enabled` is true.
+Mounted once at `pages/team/index.js`; the page swaps its legacy hierarchy for the v2 panels only
+when `enabled` is true.
 
 One v2 read lives OUTSIDE that tree: `PollDetail` mounts `useActivationGate`, because the ballot is
 the one legacy surface whose *existing* verdict a migrated org can contradict. It adds no query

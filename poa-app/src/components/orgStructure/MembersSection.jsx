@@ -42,9 +42,13 @@ function formatDate(timestamp) {
 }
 
 /**
- * Single member card
+ * Single member card — identity first, everything else quiet.
+ *
+ * `roleBadges` (access-v2 spotlight): the member's role names as a muted line UNDER the name —
+ * board titles run long ("Director of Research and Development"), so they must never share a
+ * row with the username. Without `roleBadges` (legacy orgs) a small status dot takes that slot.
  */
-function MemberCard({ member }) {
+export function MemberCard({ member, roleBadges }) {
   const { tokenLabel = 'Shares' } = usePOContext() || {};
   const {
     username,
@@ -57,71 +61,47 @@ function MemberCard({ member }) {
   } = member;
 
   const isActive = membershipStatus === 'Active';
+  const roles = (roleBadges || []).filter(Boolean);
+  const extraRoles = roles.length - 2;
 
   return (
     <Box
       bg="white"
       border="1px solid"
       borderColor="warmGray.100"
-      borderLeft="3px solid"
-      borderLeftColor="coral.400"
-      borderRadius="lg"
+      borderRadius="xl"
       p={4}
-      transition="transform 0.2s, box-shadow 0.2s"
-      _hover={{
-        transform: 'translateY(-2px)',
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
-        borderColor: 'coral.300',
-      }}
+      transition="border-color 0.15s, box-shadow 0.15s"
+      _hover={{ borderColor: 'coral.200', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)' }}
     >
-      <VStack align="stretch" spacing={3}>
-        {/* Identity and status */}
-        <HStack justify="space-between" minW={0}>
-          <UserIdentity
-            address={address}
-            usernameHint={username}
-            size="sm"
-            nameColor="warmGray.900"
-            nameFontWeight="medium"
-            isTruncated
-          />
-          <Badge
-            colorScheme={isActive ? 'green' : 'gray'}
-            size="sm"
-            borderRadius="full"
-            px={2}
-          >
-            {isActive ? 'Active' : 'Inactive'}
-          </Badge>
-        </HStack>
+      <VStack align="stretch" spacing={1.5}>
+        <UserIdentity
+          address={address}
+          usernameHint={username}
+          size="sm"
+          nameColor="warmGray.900"
+          nameFontWeight="semibold"
+          isTruncated
+        />
 
-        {/* Stats grid */}
-        <Grid templateColumns="repeat(2, 1fr)" gap={2}>
-          <GridItem>
-            <HStack spacing={1} color="warmGray.500" fontSize="xs">
-              <Icon as={FiActivity} />
-              <Text>{participationTokenBalance} {tokenLabel.toLowerCase()}</Text>
-            </HStack>
-          </GridItem>
-          <GridItem>
-            <HStack spacing={1} color="warmGray.500" fontSize="xs">
-              <Icon as={FiCheckSquare} />
-              <Text>{totalTasksCompleted} tasks</Text>
-            </HStack>
-          </GridItem>
-          <GridItem>
-            <HStack spacing={1} color="warmGray.500" fontSize="xs">
-              <Icon as={FiThumbsUp} />
-              <Text>{totalVotes} votes</Text>
-            </HStack>
-          </GridItem>
-          <GridItem>
-            <HStack spacing={1} color="warmGray.500" fontSize="xs">
-              <Icon as={FiCalendar} />
-              <Text>Joined {formatDate(firstSeenAt)}</Text>
-            </HStack>
-          </GridItem>
-        </Grid>
+        {roles.length > 0 ? (
+          <Text fontSize="xs" lineHeight="short">
+            <Text as="span" color="coral.600" fontWeight="medium">{roles[0]}</Text>
+            {roles[1] && <Text as="span" color="warmGray.500">{' · '}{roles[1]}</Text>}
+            {extraRoles > 0 && <Text as="span" color="warmGray.400">{' · +'}{extraRoles}</Text>}
+          </Text>
+        ) : (
+          <HStack spacing={1.5}>
+            <Box boxSize={1.5} borderRadius="full" bg={isActive ? 'green.400' : 'warmGray.300'} />
+            <Text fontSize="xs" color="warmGray.500">{isActive ? 'Active' : 'Inactive'}</Text>
+          </HStack>
+        )}
+
+        <Text fontSize="xs" color="warmGray.500" pt={1.5}>
+          {participationTokenBalance} {tokenLabel.toLowerCase()} · {totalTasksCompleted} task
+          {totalTasksCompleted === 1 ? '' : 's'} · {totalVotes} vote{totalVotes === 1 ? '' : 's'}
+          <Text as="span" color="warmGray.400"> · joined {formatDate(firstSeenAt)}</Text>
+        </Text>
       </VStack>
     </Box>
   );

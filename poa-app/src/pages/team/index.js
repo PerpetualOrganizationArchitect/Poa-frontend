@@ -38,9 +38,12 @@ import {
   RoleApplicationModal,
 } from '@/components/orgStructure';
 import { useOrgGate } from "@/components/shared/OrgDeadEnd";
-// Access v2 owns the role-surface gate: legacy/pending orgs get the Hats hierarchy supplied below;
-// a router-bound org gets the MembershipAuthority panels instead.
+// Access v2 renders only its status/v2 panels; this page retains legacy Hats surfaces until the
+// authority is router-bound, then swaps every retired role-derived section to authority data.
 import { AccessV2TeamSection } from '@/components/accessV2';
+import MembersSpotlight from '@/components/accessV2/MembersSpotlight';
+import { useAuthoritySubjects, useAuthorityMemberships } from '@/hooks/accessV2';
+import { buildV2LegacyRoles, buildV2MatrixView } from '@/lib/accessV2/legacyBridge';
 
 const OrgStructurePage = () => {
   const router = useRouter();
@@ -77,6 +80,53 @@ const OrgStructurePage = () => {
     loading,
     error,
   } = useOrgStructure();
+
+  // On a live-authority org the legacy sections below the v2 panel must read the fold mirror,
+  // not the retired hat entities — those stop updating at cutover and render raw subject ids,
+  // ghost roles, and an empty permissions matrix. `enabled` is router-bound, i.e. post-cutover.
+  const v2 = useAuthoritySubjects();
+  const { membersOf, groupMembers } = useAuthorityMemberships();
+  const v2Live = v2.enabled;
+
+  const v2Sections = useMemo(() => {
+    if (!v2Live) return null;
+    const subjects = [...(v2.roles || []), ...(v2.groups || [])];
+    const view = buildV2MatrixView(subjects);
+    return {
+      matrixRoles: buildV2LegacyRoles({
+        roles: view.rows.filter((s) => !s.isGroup),
+        groups: view.rows.filter((s) => s.isGroup),
+        membersOf,
+        groupMembers,
+      }),
+      permissionColumns: view.columns,
+      permissionsMatrix: view.matrix,
+      hidden: view.hidden,
+    };
+  }, [v2Live, v2.roles, v2.groups, membersOf, groupMembers]);
+
+  // The matrix only lists rows with DISTINCT permissions; everyone left out gets a sentence.
+  const matrixNotes = useMemo(() => {
+    if (!v2Sections) return [];
+    const notes = [];
+    const { inheritOnly, silent } = v2Sections.hidden;
+    if (inheritOnly.length) {
+      const groups = [...new Set(inheritOnly.flatMap((r) => r.groupNames))].join(', ');
+      notes.push(
+        inheritOnly.length === 1
+          ? `${inheritOnly[0].name} isn't listed — it holds exactly what ${groups || 'its group'} grants (see the group's row).`
+          : `${inheritOnly.length} roles aren't listed — they hold exactly what ${groups || 'their group'} grants (see the group's row).`
+      );
+    }
+    if (silent.length) {
+      const shownNames = silent.slice(0, 3).join(', ');
+      const rest = silent.length - 3;
+      notes.push(
+        `${shownNames}${rest > 0 ? ` and ${rest} more` : ''} ${silent.length === 1 ? 'has' : 'have'} no extra permissions yet — a role-edit vote can grant some.`
+      );
+    }
+    return notes;
+  }, [v2Sections]);
 
   // Role claiming and application functionality
   const {
@@ -238,70 +288,88 @@ const OrgStructurePage = () => {
             />
           </Box>
 
-          {/* One role surface: legacy Hats through the pre-cutover window, then Access v2. */}
-          <AccessV2TeamSection
-            activeProposals={ongoingPolls}
-            legacyRoleHierarchy={(
-              <Box as="section" data-tour="org-roles">
-                <Heading size="lg" color="warmGray.900" mb={4}>
-                  Roles
-                </Heading>
-                <Text color="warmGray.600" mb={4}>
-                  The organizational hierarchy defines who can do what within the organization
-                </Text>
-                <RoleHierarchyTree
-                  roles={roles}
-                  loading={loading}
-                  userHatIds={userHatIds}
-                  userAddress={userAddress}
-                  getVouchProgress={getVouchProgress}
-                  onClaimRole={claimRole}
-                  isClaimingHat={isClaimingHat}
-                  isConnected={isAuthenticated}
-                  showClaimButtons={Boolean(eligibilityModuleAddress)}
-                  hasApplied={hasApplied}
-                  isApplyingForHat={isApplyingForHat}
-                  isWithdrawingFromHat={isWithdrawingFromHat}
-                  onApplyForRole={handleOpenApplicationModal}
-                  onWithdrawApplication={handleWithdrawApplication}
-                />
-              </Box>
-            )}
-          />
+          {/* Access v2 — roles + groups, the claimable panel and the review window.
+              Self-gating: `null` for legacy, status-only while pending, panels once router-bound.
+              `activeProposals` feeds the create-role wizard's id-prediction race warning. */}
+          <AccessV2TeamSection activeProposals={ongoingPolls} />
 
-          {/* Permissions Matrix Section */}
+          {/* Role Hierarchy Section — legacy orgs only: on a live authority the v2 panel above
+              IS the roles surface, and this tree would re-render the retired hat entities
+              (raw bytes32 names, ghost roles) beside it. */}
+          {!v2Live && (
+            <Box as="section" data-tour="org-roles">
+              <Heading size="lg" color="warmGray.900" mb={4}>
+                Roles
+              </Heading>
+              <Text color="warmGray.600" mb={4}>
+                The organizational hierarchy defines who can do what within the organization
+              </Text>
+              <RoleHierarchyTree
+                roles={roles}
+                loading={loading}
+                userHatIds={userHatIds}
+                userAddress={userAddress}
+                getVouchProgress={getVouchProgress}
+                onClaimRole={claimRole}
+                isClaimingHat={isClaimingHat}
+                isConnected={isAuthenticated}
+                showClaimButtons={Boolean(eligibilityModuleAddress)}
+                hasApplied={hasApplied}
+                isApplyingForHat={isApplyingForHat}
+                isWithdrawingFromHat={isWithdrawingFromHat}
+                onApplyForRole={handleOpenApplicationModal}
+                onWithdrawApplication={handleWithdrawApplication}
+              />
+            </Box>
+          )}
+
+          {/* Permissions Matrix Section — v2 orgs read the fold mirror via the legacy bridge.
+              Only rows with DISTINCT permissions render; the notes explain everyone else. */}
           <Box as="section">
             <Heading size="lg" color="warmGray.900" mb={4}>
               Permissions
             </Heading>
             <Text color="warmGray.600" mb={4}>
-              What each role can do across the organization&apos;s systems
+              {v2Live
+                ? 'Who can do what — only roles and groups with permissions of their own are listed'
+                : "What each role can do across the organization's systems"}
             </Text>
             <PermissionsMatrix
-              roles={roles}
-              permissionsMatrix={permissionsMatrix}
-              permissionColumns={permissionColumns}
-              loading={loading}
+              roles={v2Sections ? v2Sections.matrixRoles : roles}
+              permissionsMatrix={v2Sections ? v2Sections.permissionsMatrix : permissionsMatrix}
+              permissionColumns={v2Sections ? v2Sections.permissionColumns : permissionColumns}
+              loading={v2Live ? v2.loading : loading}
             />
+            {matrixNotes.map((note) => (
+              <Text key={note} fontSize="sm" color="warmGray.500" mt={2}>
+                {note}
+              </Text>
+            ))}
           </Box>
 
-          {/* Members Section */}
+          {/* Members Section — v2 orgs get the people-first spotlight (roles are the badges);
+              legacy orgs keep the grouped-by-role accordions. */}
           <Box as="section">
             <Heading size="lg" color="warmGray.900" mb={4}>
               Members
             </Heading>
             <Text color="warmGray.600" mb={4}>
-              Members of the organization grouped by their roles
+              {v2Live ? 'The people behind the org — expand to meet everyone' : 'Members of the organization grouped by their roles'}
             </Text>
-            <MembersSection
-              roles={roles}
-              membersByRole={membersByRole}
-              loading={loading}
-            />
+            {v2Live ? (
+              <MembersSpotlight legacyMembersByRole={membersByRole} loading={loading} />
+            ) : (
+              <MembersSection
+                roles={roles}
+                membersByRole={membersByRole}
+                loading={loading}
+              />
+            )}
           </Box>
 
-          {/* Vouching Section - only shown if org has vouching enabled */}
-          {roles.some(role => role.vouchingEnabled) && (
+          {/* Vouching Section — legacy orgs only: v2 vouching lives in the role drawer and the
+              claimable panel, with per-subject quorums the legacy section cannot express. */}
+          {!v2Live && roles.some(role => role.vouchingEnabled) && (
             <Box as="section">
               <Heading size="lg" color="warmGray.900" mb={4}>
                 Member Vouching

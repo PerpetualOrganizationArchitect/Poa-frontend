@@ -24,7 +24,7 @@ import { useRouter } from 'next/router';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { SimpleGrid, Avatar } from '@chakra-ui/react';
-import { StarIcon, TimeIcon } from '@chakra-ui/icons';
+import { TimeIcon } from '@chakra-ui/icons';
 import { Modal, ModalOverlay, ModalContent, ModalCloseButton, ModalBody, ModalFooter, Spacer } from '@chakra-ui/react';
 import { useTour } from '@/features/tour';
 import { glassLayerStyle as boardGlassStyle } from './styles/taskBoardStyles';
@@ -107,7 +107,6 @@ function ExampleTaskCard({ title, desc, difficulty, payout, hours, assignee, tok
         <Flex justify="space-between" align="center">
           <HStack spacing={1}>
             <Box bg="purple.50" px={2} py={0.5} borderRadius="full" display="flex" alignItems="center" gap="4px">
-              <StarIcon boxSize={3} color="purple.500" />
               <Text fontWeight="bold" color="purple.700" fontSize="xs">{payout} {tokenLabel}</Text>
             </Box>
           </HStack>

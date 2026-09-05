@@ -1,8 +1,8 @@
 /**
  * Access v2 components.
  *
- * `AccessV2TeamSection` is the only role surface a page should mount — it owns the handoff from a
- * supplied legacy hierarchy to the v2 panels once the authority is router-bound.
+ * `AccessV2TeamSection` is the v2 role surface. It renders only after the authority is
+ * router-bound; the team page owns the transition from its legacy hierarchy.
  */
 
 export { default as AccessV2TeamSection } from './AccessV2TeamSection';

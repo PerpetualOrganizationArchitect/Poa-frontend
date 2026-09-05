@@ -8,7 +8,7 @@ import {
   Tooltip,
   VStack,
 } from '@chakra-ui/react';
-import { CalendarIcon, InfoIcon, StarIcon, TimeIcon, WarningIcon } from '@chakra-ui/icons';
+import { CalendarIcon, InfoIcon, TimeIcon, WarningIcon } from '@chakra-ui/icons';
 import { useRouter } from 'next/router';
 import {
   dueDateSec,
@@ -161,7 +161,6 @@ const TaskRow = ({ task, showProject = false }) => {
     <VStack align="start" spacing={0.5} minW={0}>
       {hasSharesReward && (
         <HStack spacing={1.5} minW={0}>
-          <StarIcon boxSize={3} color="purple.300" flexShrink={0} />
           <Text color="purple.100" fontSize="xs" fontWeight="700" whiteSpace="nowrap">
             {Payout} {tokenLabel}
           </Text>

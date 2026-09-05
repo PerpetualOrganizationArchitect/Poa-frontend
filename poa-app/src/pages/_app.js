@@ -34,7 +34,7 @@ import {
 import { WagmiProvider, createConfig, http } from 'wagmi';
 import { defineChain } from 'viem';
 import { base } from 'viem/chains';
-import { NETWORKS, DEFAULT_NETWORK } from '../config/networks';
+import { NETWORKS } from '../config/networks';
 import { E2E_ENABLED } from '@/services/e2e/e2eMode';
 import { burnerConnector } from '@/services/e2e/burnerConnector';
 import E2EAutoConnect from '@/services/e2e/E2EAutoConnect';
@@ -51,7 +51,6 @@ const allChains = [
   })),
   base,
 ];
-const defaultChain = allChains.find(c => c.id === NETWORKS[DEFAULT_NETWORK].chainId);
 import {
   QueryClientProvider,
   QueryClient,
@@ -254,7 +253,10 @@ const StableProviders = React.memo(function StableProviders({ children }) {
       <ApolloProvider client={client}>
         <QueryClientProvider client={queryClient}>
           <RainbowKitProvider
-            initialChain={defaultChain}
+            // No forced initialChain: it made connecting to a non-home-chain org
+            // double-prompt (switch to Arbitrum, then to the org chain). Chain
+            // selection is handled by useAutoChainSwitch + the per-tx switch in
+            // useWeb3Services.
             theme={darkTheme({
               accentColor: '#F06543',
               accentColorForeground: 'white',

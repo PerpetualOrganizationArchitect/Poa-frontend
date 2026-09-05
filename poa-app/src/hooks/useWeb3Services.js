@@ -8,8 +8,10 @@ import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useQuery } from '@apollo/client';
 import { getClient, useSubgraphClient } from '@/util/apolloClient';
 import { encodeFunctionData } from 'viem';
-import { useEthersSigner, useEthersProvider } from '@/components/ProviderConverter';
-import { useWalletClient } from 'wagmi';
+import { useEthersSigner, useEthersProvider, clientToSigner } from '@/components/ProviderConverter';
+import { useWalletClient, useSwitchChain, useConfig } from 'wagmi';
+import { getWalletClient, getAccount } from 'wagmi/actions';
+import { E2E_ENABLED } from '@/services/e2e/e2eMode';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import { useRefreshEmit } from '../context/RefreshContext';
@@ -28,6 +30,7 @@ import PasskeyAccountFactoryABI from '../../abi/PasskeyAccountFactory.json';
 // Core services
 import { ContractFactory, createContractFactory } from '../services/web3/core/ContractFactory';
 import { TransactionManager, createTransactionManager } from '../services/web3/core/TransactionManager';
+import { createEnsureOrgChain } from '../services/web3/core/ensureOrgChain';
 import { createSmartAccountTransactionManager } from '../services/web3/core/SmartAccountTransactionManager';
 import { createEOA7702TransactionManager } from '../services/web3/eip7702/EOA7702TransactionManager';
 import { checkWallet7702Support } from '../services/web3/eip7702/authorizationBuilder';
@@ -54,23 +57,31 @@ import { TreasuryService, createTreasuryService } from '../services/web3/domain/
  */
 export function useWeb3Services(options = {}) {
   const { ipfsService: providedIpfs = null, network = DEFAULT_NETWORK } = options;
-  const signer = useEthersSigner();
+
+  // Org context first — the EOA signer + tx path must target the org's chain.
+  // usePOContext returns undefined when outside POProvider (non-org routes).
+  const poContext = usePOContext();
+  const orgId = poContext?.orgId || null;
+  const subgraphUrl = poContext?.subgraphUrl || null;
+  const orgChainId = poContext?.orgChainId || null;
+
+  // EOA signer. In E2E the burner has no chain-switch UI, so bind it directly to
+  // the org chain's RPC (so it broadcasts to the right network). In production
+  // keep the wallet's current chain here and switch + rebind at tx time via
+  // `ensureOrgChain` below — binding to a chain the wallet isn't on yet would make
+  // useConnectorClient return undefined and stall readiness.
+  const signer = useEthersSigner(E2E_ENABLED && orgChainId ? { chainId: orgChainId } : undefined);
   // Pass DEFAULT_CHAIN_ID so wagmi returns a client even without a wallet connection.
   // Without this, passkey-only users get no provider (useClient() returns undefined
   // when no wallet is connected and no chainId is specified).
   const provider = useEthersProvider({ chainId: DEFAULT_CHAIN_ID });
   const { isPasskeyUser, isAuthenticated, passkeyConnecting, passkeyState, publicClient, bundlerClient } = useAuth();
+  const { switchChainAsync } = useSwitchChain();
+  const wagmiConfig = useConfig();
 
   // Get IPFS service from context if not provided
   const ipfsContext = useIPFScontext();
   const ipfsService = providedIpfs || ipfsContext;
-
-  // Get org ID, chain, and subgraph URL from POContext for paymaster data
-  // usePOContext returns undefined when outside POProvider (non-org routes)
-  const poContext = usePOContext();
-  const orgId = poContext?.orgId || null;
-  const subgraphUrl = poContext?.subgraphUrl || null;
-  const orgChainId = poContext?.orgChainId || null;
 
   // Create chain-specific clients when org is on a different chain than home chain
   const isCrossChain = orgChainId && orgChainId !== DEFAULT_CHAIN_ID;
@@ -224,6 +235,31 @@ export function useWeb3Services(options = {}) {
     checkWallet7702Support(walletClient).then(setEoa7702Capable).catch(() => setEoa7702Capable(false));
   }, [walletClient, isPasskeyUser]);
 
+  // Org-chain guard shared by BOTH EOA write paths — the direct TransactionManager
+  // AND the EIP-7702 EOA7702TransactionManager. Ensures the wallet is on the org
+  // chain and hands back a signer + walletClient freshly bound to it, so the direct
+  // tx broadcasts to the right network AND the 7702 authorization is signed with the
+  // org chain's id. Mirrors the switch-then-reacquire-client pattern already used
+  // by useProfileUpdate / CashOutModal, but extracted to a pure, dependency-injected
+  // factory (ensureOrgChain.js) so its fail-closed behavior is unit tested without
+  // React (ensureOrgChain.test.js). Returns null ONLY when there is nothing to
+  // enforce (E2E pre-pinned burner, passkey bundler path, non-org routes); otherwise
+  // it ALWAYS reacquires + validates the org-chain client and THROWS on failure —
+  // it never silently continues on a stale/ambient signer (the -32603 failure mode).
+  const ensureOrgChain = useMemo(
+    () => createEnsureOrgChain({
+      orgChainId,
+      isPasskeyUser,
+      e2eEnabled: E2E_ENABLED,
+      wagmiConfig,
+      getAccount,
+      switchChainAsync,
+      getWalletClient,
+      clientToSigner,
+    }),
+    [orgChainId, isPasskeyUser, switchChainAsync, wagmiConfig]
+  );
+
   const txManager = useMemo(() => {
     if (isPasskeyUser) {
       // Passkey: create SmartAccountTransactionManager
@@ -242,11 +278,19 @@ export function useWeb3Services(options = {}) {
       });
     }
 
-    // EOA: always create the direct tx manager (needed as fallback)
+    // EOA: always create the direct tx manager (needed as fallback).
+    // `ensureChain` makes both the plain-direct and the 7702-fallback path switch
+    // the wallet to the org chain and rebind the signer before sending. The guard
+    // returns { signer, walletClient }; the direct manager only needs the signer.
     if (!signer) return null;
-    const directTxManager = createTransactionManager(signer);
+    const directTxManager = createTransactionManager(signer, {
+      ensureChain: async () => (await ensureOrgChain())?.signer ?? null,
+    });
 
-    // EOA with EIP-7702: try gas-sponsored via PaymasterHub, fall back to direct tx
+    // EOA with EIP-7702: try gas-sponsored via PaymasterHub, fall back to direct tx.
+    // Same org-chain guard is injected here so the 7702 authorization + UserOp are
+    // signed against a walletClient freshly bound to the org chain — otherwise a
+    // wallet still on the home chain would sign an authorization with the wrong id.
     if (eoa7702Capable && walletClient && paymasterAddress && orgId && hatIds?.length > 0
         && effectivePublicClient && effectiveBundlerClient) {
       return createEOA7702TransactionManager({
@@ -259,6 +303,7 @@ export function useWeb3Services(options = {}) {
         hatIds,
         chainId: effectiveChainId,
         eoaDelegationAddress: EOA_DELEGATION_ADDRESS,
+        ensureChain: ensureOrgChain,
         fallbackTxManager: directTxManager,
         on7702Disabled: () => {
           // Disable 7702 for the rest of this session so subsequent calls go direct
@@ -269,7 +314,7 @@ export function useWeb3Services(options = {}) {
     }
 
     return directTxManager;
-  }, [signer, isPasskeyUser, passkeyState, effectivePublicClient, effectiveBundlerClient, paymasterAddress, orgId, hatIds, effectiveChainId, crossChainInitCode, eoa7702Capable, walletClient]);
+  }, [signer, isPasskeyUser, passkeyState, effectivePublicClient, effectiveBundlerClient, paymasterAddress, orgId, hatIds, effectiveChainId, crossChainInitCode, eoa7702Capable, walletClient, ensureOrgChain]);
 
   // Create domain services
   const services = useMemo(() => {

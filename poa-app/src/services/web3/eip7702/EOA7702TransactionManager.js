@@ -64,8 +64,14 @@ export class EOA7702TransactionManager {
   /**
    * @param {Object} params.fallbackTxManager - Standard TransactionManager for direct tx fallback
    * @param {Function} params.on7702Disabled - Called when 7702 fails permanently (wallet unsupported)
+   * @param {Function} [params.ensureChain] - Optional org-chain guard injected by useWeb3Services.
+   *   Called before we sign the 7702 authorization (whose chainId comes from the signing
+   *   client's chain) or the UserOp, so the wallet is guaranteed to be on the org chain and
+   *   a freshly-bound walletClient is used. Returns `{ walletClient, signer }` bound to the
+   *   org chain, or null for "nothing to enforce". Fails closed: a rejected/failed switch or a
+   *   chain-validation failure THROWS here rather than signing against the wrong chain.
    */
-  constructor({ accountAddress, walletClient, publicClient, bundlerClient, paymasterAddress, orgId, hatIds, chainId, eoaDelegationAddress, fallbackTxManager, on7702Disabled }) {
+  constructor({ accountAddress, walletClient, publicClient, bundlerClient, paymasterAddress, orgId, hatIds, chainId, eoaDelegationAddress, fallbackTxManager, on7702Disabled, ensureChain }) {
     this.accountAddress = accountAddress;
     this.walletClient = walletClient;
     this.publicClient = publicClient;
@@ -77,7 +83,30 @@ export class EOA7702TransactionManager {
     this.eoaDelegationAddress = eoaDelegationAddress;
     this.fallbackTxManager = fallbackTxManager;
     this.on7702Disabled = on7702Disabled;
+    this.ensureChain = ensureChain || null;
     this._paymasterFellBack = false;
+  }
+
+  /**
+   * Ensure the wallet is on the org chain and reacquire a walletClient freshly
+   * bound to it BEFORE we sign the 7702 authorization or the UserOp. Returns the
+   * active { walletClient, accountAddress } to use for this send. Fails closed:
+   * an ensureChain throw (rejected switch, chain mismatch) propagates to execute()'s
+   * catch and is surfaced — it is NOT treated as a 7702-unsupported fallback.
+   */
+  async _resolveActiveWallet() {
+    if (!this.ensureChain) {
+      return { walletClient: this.walletClient, accountAddress: this.accountAddress };
+    }
+    const bound = await this.ensureChain();
+    // null = nothing to enforce (E2E pre-pinned burner / non-org route) — keep ambient.
+    if (!bound?.walletClient) {
+      return { walletClient: this.walletClient, accountAddress: this.accountAddress };
+    }
+    return {
+      walletClient: bound.walletClient,
+      accountAddress: bound.walletClient.account?.address || this.accountAddress,
+    };
   }
 
   /**
@@ -96,6 +125,11 @@ export class EOA7702TransactionManager {
     try {
       this._notifyState(onStateChange, TransactionState.ESTIMATING);
 
+      // 0. Bind to the org chain and reacquire a fresh walletClient BEFORE signing.
+      // The 7702 authorization's chainId is derived from the signing client's chain,
+      // so a wallet still on the home chain would sign for the wrong network.
+      const { walletClient, accountAddress } = await this._resolveActiveWallet();
+
       // 1. ABI-encode the target call
       const targetAddress = contract.address;
       const targetCallData = contract.interface.encodeFunctionData(method, args);
@@ -108,18 +142,18 @@ export class EOA7702TransactionManager {
       });
 
       // 3. Build 7702 authorization (wallet signs delegation to EOADelegation)
-      const authorization = await buildEOAAuthorization(this.walletClient, this.eoaDelegationAddress);
+      const authorization = await buildEOAAuthorization(walletClient, this.eoaDelegationAddress);
 
       // 4. Build UserOp with paymaster fallback
       const userOp = await this._buildUserOpWithFallback(callData, authorization, overrideHatIds, paymasterClaimTarget, {
         callGasLimit,
         callGasLimitMultiplier,
-      });
+      }, accountAddress);
 
       // 5. Sign UserOp hash with wallet (ECDSA via personal_sign)
       this._notifyState(onStateChange, TransactionState.AWAITING_SIGNATURE);
       const userOpHash = getUserOpHash(userOp, ENTRY_POINT_ADDRESS, this.chainId);
-      const signature = await signUserOpWithWallet(userOpHash, this.walletClient);
+      const signature = await signUserOpWithWallet(userOpHash, walletClient);
       userOp.signature = signature;
 
       // 6. Submit to bundler (self-funded retry if the paymaster refuses at submission)
@@ -129,6 +163,8 @@ export class EOA7702TransactionManager {
         authorization,
         onStateChange,
         gasOverrides: { callGasLimit, callGasLimitMultiplier },
+        walletClient,
+        accountAddress,
       });
 
       console.log(`[7702] UserOp submitted: ${submittedHash}`);
@@ -156,15 +192,16 @@ export class EOA7702TransactionManager {
       return TransactionResult.success(txReceipt);
 
     } catch (error) {
-      console.error('[7702] Transaction error:', error.message);
-
-      // If wallet doesn't support 7702, fall back to direct tx transparently
+      // Unsupported 7702 is an expected capability fallback, not a failed user
+      // transaction. Keep it out of the error channel so the console reflects
+      // whether the direct fallback actually succeeds or fails.
       if (error.message === 'WALLET_7702_UNSUPPORTED' && this.fallbackTxManager) {
         console.warn('[7702] Wallet does not support EIP-7702, falling back to direct transaction');
         this.on7702Disabled?.();
         return this.fallbackTxManager.execute(contract, method, args, options);
       }
 
+      console.error('[7702] Transaction error:', error.message);
       const parsedError = this._parseAAError(error.message || 'Unknown error', error, contract?.interface);
       this._notifyState(onStateChange, TransactionState.ERROR, { error: parsedError });
       return TransactionResult.failure(parsedError);
@@ -179,6 +216,9 @@ export class EOA7702TransactionManager {
 
     try {
       this._notifyState(onStateChange, TransactionState.ESTIMATING);
+
+      // Bind to the org chain + reacquire a fresh walletClient before signing (see execute()).
+      const { walletClient, accountAddress } = await this._resolveActiveWallet();
 
       const targets = [];
       const values = [];
@@ -195,15 +235,15 @@ export class EOA7702TransactionManager {
         args: [targets, values, datas],
       });
 
-      const authorization = await buildEOAAuthorization(this.walletClient, this.eoaDelegationAddress);
+      const authorization = await buildEOAAuthorization(walletClient, this.eoaDelegationAddress);
       const userOp = await this._buildUserOpWithFallback(callData, authorization, null, null, {
         callGasLimit,
         callGasLimitMultiplier,
-      });
+      }, accountAddress);
 
       this._notifyState(onStateChange, TransactionState.AWAITING_SIGNATURE);
       const userOpHash = getUserOpHash(userOp, ENTRY_POINT_ADDRESS, this.chainId);
-      const signature = await signUserOpWithWallet(userOpHash, this.walletClient);
+      const signature = await signUserOpWithWallet(userOpHash, walletClient);
       userOp.signature = signature;
 
       this._notifyState(onStateChange, TransactionState.PENDING);
@@ -212,6 +252,8 @@ export class EOA7702TransactionManager {
         authorization,
         onStateChange,
         gasOverrides: { callGasLimit, callGasLimitMultiplier },
+        walletClient,
+        accountAddress,
       });
 
       this._notifyState(onStateChange, TransactionState.CONFIRMING);
@@ -250,7 +292,7 @@ export class EOA7702TransactionManager {
    * SmartAccountTransactionManager._sendWithSelfFundedRetry for why the paymaster can refuse an
    * op whose estimate passed. Wallet-signed here (ECDSA), so the retry costs one more signature.
    */
-  async _sendWithSelfFundedRetry(userOp, { callData, authorization, onStateChange, gasOverrides = {} }) {
+  async _sendWithSelfFundedRetry(userOp, { callData, authorization, onStateChange, gasOverrides = {}, walletClient = this.walletClient, accountAddress = this.accountAddress }) {
     try {
       const hash = await this.bundlerClient.sendUserOperation({ ...userOp, entryPointAddress: ENTRY_POINT_ADDRESS });
       this._paymasterFellBack = false;
@@ -265,7 +307,7 @@ export class EOA7702TransactionManager {
       let retry;
       try {
         retry = await buildUserOpWithFallback({
-          sender: this.accountAddress,
+          sender: accountAddress,
           callData,
           bundlerClient: this.bundlerClient,
           publicClient: this.publicClient,
@@ -282,7 +324,7 @@ export class EOA7702TransactionManager {
       Object.defineProperty(retry, 'paymasterRejection', { value: e, enumerable: false });
 
       this._notifyState(onStateChange, TransactionState.AWAITING_SIGNATURE);
-      retry.signature = await signUserOpWithWallet(getUserOpHash(retry, ENTRY_POINT_ADDRESS, this.chainId), this.walletClient);
+      retry.signature = await signUserOpWithWallet(getUserOpHash(retry, ENTRY_POINT_ADDRESS, this.chainId), walletClient);
       this._notifyState(onStateChange, TransactionState.PENDING);
       const hash = await this.bundlerClient.sendUserOperation({ ...retry, entryPointAddress: ENTRY_POINT_ADDRESS });
       this._paymasterFellBack = false;
@@ -291,7 +333,7 @@ export class EOA7702TransactionManager {
     }
   }
 
-  async _buildUserOpWithFallback(callData, authorization, overrideHatIds = null, claimTarget = null, gasOverrides = {}) {
+  async _buildUserOpWithFallback(callData, authorization, overrideHatIds = null, claimTarget = null, gasOverrides = {}, accountAddress = this.accountAddress) {
     // Reset per-transaction: the instance is reused, and a stale fell-back flag
     // would mislabel an unrelated later failure as a sponsorship problem.
     this._paymasterFellBack = false;
@@ -310,7 +352,7 @@ export class EOA7702TransactionManager {
       : [];
 
     const userOp = await buildUserOpWithFallback({
-      sender: this.accountAddress,
+      sender: accountAddress,
       callData,
       bundlerClient: this.bundlerClient,
       publicClient: this.publicClient,

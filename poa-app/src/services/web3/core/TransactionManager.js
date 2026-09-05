@@ -85,6 +85,10 @@ export class TransactionManager {
   constructor(signer, config = {}) {
     this.signer = signer;
     this._chainId = null; // resolved lazily in _getChainContext()
+    // Optional async guard injected by useWeb3Services. Called before every
+    // send to guarantee the wallet + signer are bound to the intended (org)
+    // chain. Returns a fresh signer bound to that chain, or null for "no change".
+    this.ensureChain = config.ensureChain || null;
   }
 
   /**
@@ -100,7 +104,27 @@ export class TransactionManager {
     const opts = { ...DEFAULT_OPTIONS, ...options };
     const abi = contract.interface?.fragments;
 
+    // Signer actually used for THIS send. Kept local (not written back onto
+    // `this.signer`) so a chain switch during one execute can't leave the shared
+    // manager instance in a half-mutated state for a concurrent/next call.
+    let activeSigner = this.signer;
+
     try {
+      // Bind to the intended chain BEFORE we estimate/sign/send. An EOA tx
+      // broadcasts through the wallet's *connected* chain — if that's the wrong
+      // network the contract address has no code there. Depending on the wallet,
+      // that can be rejected with a generic `-32603` (as in the reported incident)
+      // or accepted as a useless no-op. `ensureChain` switches the wallet to the
+      // org chain and returns a signer freshly bound to it; it is a no-op (null)
+      // for non-org routes, passkey users, or E2E where the signer is pre-bound.
+      if (this.ensureChain) {
+        const boundSigner = await this.ensureChain();
+        if (boundSigner) {
+          activeSigner = boundSigner;
+          contract = contract.connect(boundSigner);
+        }
+      }
+
       // State: Estimating gas
       this._notifyState(opts.onStateChange, TransactionState.ESTIMATING);
 
@@ -161,7 +185,7 @@ export class TransactionManager {
       console.error('Nested error message:', error.error?.message);
       console.error('=== END TRANSACTION ERROR DEBUG ===');
 
-      const parsedError = parseError(error, abi, await this._getChainContext());
+      const parsedError = parseError(error, abi, await this._getChainContext(activeSigner));
 
       // State: Error
       this._notifyState(opts.onStateChange, TransactionState.ERROR, {
@@ -236,19 +260,28 @@ export class TransactionManager {
    * Resolved on-demand from the signer's provider — this is only called in
    * the error path, so the (usually cached) RPC call cost never touches the
    * success path. Returns {} if chainId is unknown or unsupported.
+   *
+   * @param {ethers.Signer} [signer] - Signer actually used for the failed send.
+   *   Defaults to the manager's signer; execute() passes the (possibly chain-
+   *   switched) active signer so the error names the network the tx really hit.
+   *   The `this._chainId` cache is only used/updated for the manager's own signer.
    */
-  async _getChainContext() {
-    if (this._chainId == null) {
-      this._chainId = this.signer?.provider?.network?.chainId ?? null;
-    }
-    if (this._chainId == null && this.signer?.getChainId) {
-      try {
-        this._chainId = await this.signer.getChainId();
-      } catch {
-        // Provider not ready; fall through to generic message.
+  async _getChainContext(signer = this.signer) {
+    const usesManagerSigner = signer === this.signer;
+
+    let chainId = usesManagerSigner ? this._chainId : null;
+    if (chainId == null) {
+      chainId = signer?.provider?.network?.chainId ?? null;
+      if (chainId == null && signer?.getChainId) {
+        try {
+          chainId = await signer.getChainId();
+        } catch {
+          // Provider not ready; fall through to generic message.
+        }
       }
+      if (usesManagerSigner) this._chainId = chainId;
     }
-    const network = this._chainId != null ? getNetworkByChainId(this._chainId) : null;
+    const network = chainId != null ? getNetworkByChainId(chainId) : null;
     if (!network) return {};
     return {
       nativeSymbol: network.nativeCurrency?.symbol,

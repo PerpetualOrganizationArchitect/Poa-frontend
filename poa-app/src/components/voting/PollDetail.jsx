@@ -29,7 +29,7 @@
  *                      handler the modal is read-only, because a cast with
  *                      nowhere to go would celebrate a vote it never sent.
  *                      Only `success === true` confirms; see txOutcome.
- *   onFinalize         (contractAddress, proposalId, isHybrid) =>
+ *   onFinalize         (contractAddress, proposalId, isHybrid, poll) =>
  *                      Promise<{ success:boolean }> — same contract as onVote:
  *                      the confirm dialog only closes on success.
  *   contractAddress    string — voting contract for this poll's type
@@ -400,7 +400,7 @@ export function PollDetail({
       // revert (sub-quorum, a failed executor batch, gas budget) left the user
       // looking at the same "Count the votes" button with the outcome buried in
       // a corner toast — the finalize twin of the cast bug this modal had.
-      if (txConfirmed(await onFinalize(contractAddress, proposalId, isBinding))) {
+      if (txConfirmed(await onFinalize(contractAddress, proposalId, isBinding, poll))) {
         finalizeConfirm.onClose();
       }
     } finally {

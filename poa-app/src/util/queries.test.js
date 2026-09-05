@@ -80,6 +80,17 @@ describe('rescue query shape', () => {
     expect(print(FETCH_PROPOSAL_BY_ID)).not.toContain('proposerUsername');
     expect(print(FETCH_PROPOSAL_BY_ID_WITH_PROPOSER)).toContain('proposerUsername');
   });
+
+  it('loads action summaries in every proposal query so execution gas floors are portable', () => {
+    for (const [doc, field] of [
+      [FETCH_VOTING_DATA_NEW, 'proposals'],
+      [FETCH_VOTING_DATA_WITH_PROPOSER, 'proposals'],
+      [FETCH_PROPOSAL_BY_ID, 'proposal'],
+      [FETCH_PROPOSAL_BY_ID_WITH_PROPOSER, 'proposal'],
+    ]) {
+      expect(selectionOf(doc, field)).toContain('actionSummaries');
+    }
+  });
 });
 
 /**

@@ -23,6 +23,10 @@ import { getTemplateById, templateParamsReady } from '@/config/setterDefinitions
 import { templateUnavailableReason } from './setterAvailability';
 import { amountDecimalsError, amountToWei } from './treasuryBatches';
 import { resolveRoleForm, roleFormError } from '@/lib/accessV2/roleFormBatch';
+import {
+  ROLE_REMOVAL_UNAVAILABLE_MESSAGE,
+  roleRemovalConfigError,
+} from '@/lib/accessV2/roleRemoval';
 
 const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
 
@@ -126,6 +130,11 @@ export function configError(proposal, ctx = null) {
       return 'Max supply must be between 1 and 4,294,967,295.';
     }
     return null;
+  }
+
+  if (p.type === 'removeRoleMembers') {
+    if (ctx?.accessV2 && !ctx.accessV2.enabled) return ROLE_REMOVAL_UNAVAILABLE_MESSAGE;
+    return roleRemovalConfigError(p.roleRemovalConfig);
   }
 
   if (p.type === 'transferFunds') {

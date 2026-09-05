@@ -25,7 +25,13 @@ export const STEP_REVIEW = 'review';
  * every other non-`normal` type. `normal` is the only single-decision type; its
  * options live next to the title on the details screen.
  */
-export const CONFIG_TYPES = new Set(['setter', 'election', 'createRole', 'transferFunds']);
+export const CONFIG_TYPES = new Set([
+  'setter',
+  'election',
+  'createRole',
+  'removeRoleMembers',
+  'transferFunds',
+]);
 
 /**
  * Types whose passing option RUNS a batch on-chain, and therefore submit to the
@@ -40,10 +46,32 @@ export const CONFIG_TYPES = new Set(['setter', 'election', 'createRole', 'transf
  * the Executor accepts HybridVoting as its ONLY caller, so a batch-carrying
  * proposal can only ever execute from there.
  */
-export const BINDING_TYPES = new Set(['election', 'createRole', 'setter', 'transferFunds']);
+export const BINDING_TYPES = new Set([
+  'election',
+  'createRole',
+  'setter',
+  'transferFunds',
+  'removeRoleMembers',
+]);
 
 export function isBindingType(type) {
   return BINDING_TYPES.has(type);
+}
+
+/**
+ * Binding and voter restriction are separate decisions. Treasury payouts execute through
+ * HybridVoting but deliberately keep their role-restriction picker; governance/election actions
+ * (including role removal) are always decided by the full Blended-voting electorate.
+ */
+export const RESTRICTION_DISABLED_TYPES = new Set([
+  'election',
+  'createRole',
+  'setter',
+  'removeRoleMembers',
+]);
+
+export function supportsVotingRestrictions(type) {
+  return !RESTRICTION_DISABLED_TYPES.has(type);
 }
 
 /**
@@ -62,7 +90,7 @@ export function votingLaneForBatches(batches) {
 /**
  * The ordered step list for a proposal type.
  *   normal                                   → intent → details → review
- *   transferFunds/setter/election/createRole → intent → config → details → review
+ *   all binding/action types                → intent → config → details → review
  * An empty/unknown type has only the intent step — there is nothing to configure
  * or describe yet.
  */
@@ -85,6 +113,10 @@ export function stepsForType(type) {
  * @param {{ isComplete: (step: string, proposal: object) => boolean }} deps
  */
 export function resolveEntryStep(proposal, { isComplete }) {
+  // Role-removal rows are snapshots of a live roster. A restored draft or deep link must mount
+  // its configurator once so renamed roles, departed members, and newly-required bans are shown
+  // before the member reviews the ballot, even when every persisted field looked complete.
+  if (proposal?.type === 'removeRoleMembers') return STEP_CONFIG;
   const steps = stepsForType(proposal?.type);
   for (let i = 0; i < steps.length - 1; i++) {
     if (!isComplete(steps[i], proposal)) return steps[i];

@@ -62,6 +62,11 @@ describe('the Executor.CallFailed decode reaches both failure surfaces', () => {
     expect(voteActions).toContain('describeExecutionFailure(failure.reason)');
   });
 
+  it('reconstructs a role-removal gas floor from indexed metadata on another device', () => {
+    expect(voteActions).toContain('roleRemovalGasFloorFromProposal(proposal)');
+    expect(pollDetail).toContain('onFinalize(contractAddress, proposalId, isBinding, poll)');
+  });
+
   it('the completed-proposal chip decodes executionError instead of printing it', () => {
     expect(vocabulary).toContain('describeExecutionFailure(p.executionError)');
     // The regression this closes: raw Bytes interpolated straight into member-facing copy.

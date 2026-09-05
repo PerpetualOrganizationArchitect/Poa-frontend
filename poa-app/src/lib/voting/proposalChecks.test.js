@@ -35,6 +35,14 @@ const validConfig = {
     ],
   },
   createRole: { roleConfig: { parentHatId: '0x01', name: 'Treasurer', maxSupply: 100 } },
+  removeRoleMembers: {
+    roleRemovalConfig: {
+      subjectId: '1',
+      subjectName: 'Contributors',
+      members: [{ address: RECIPIENT, username: 'alice', ban: false }],
+      liveReconciled: true,
+    },
+  },
 };
 
 const withType = (type, overrides = {}) => ({ type, ...validConfig[type], ...overrides });
@@ -305,6 +313,56 @@ describe('configError — createRole on an access-v2 org', () => {
   });
 });
 
+describe('configError — removeRoleMembers', () => {
+  it('fails closed on a legacy or still-unresolved organization', () => {
+    expect(configError(withType('removeRoleMembers'), { accessV2: { enabled: false } }))
+      .toBe('Role-removal votes are available after this group moves to the new roles system.');
+    expect(configError(withType('removeRoleMembers'), { accessV2: { enabled: true } })).toBeNull();
+  });
+
+  it('requires a role and at least one current role holder', () => {
+    expect(configError(withType('removeRoleMembers', {
+      roleRemovalConfig: { subjectId: '', members: [] },
+    }))).toBe('Please select a role.');
+    expect(configError(withType('removeRoleMembers', {
+      roleRemovalConfig: { subjectId: '1', members: [], liveReconciled: true },
+    }))).toBe('Select at least one person to remove.');
+  });
+
+  it('rejects malformed and duplicate member addresses from restored drafts', () => {
+    expect(configError(withType('removeRoleMembers', {
+      roleRemovalConfig: {
+        subjectId: '1',
+        members: [{ address: 'not-an-address' }],
+        liveReconciled: true,
+      },
+    }))).toBe('One of the selected people has an invalid address.');
+    expect(configError(withType('removeRoleMembers', {
+      roleRemovalConfig: {
+        subjectId: '1',
+        members: [{ address: RECIPIENT }, { address: RECIPIENT.toLowerCase() }],
+        liveReconciled: true,
+      },
+    }))).toBe('The same person cannot be selected twice.');
+  });
+
+  it('requires explicit confirmation before a governance-block removal can advance', () => {
+    const roleRemovalConfig = {
+      subjectId: '1',
+      subjectName: 'Contributors',
+      members: [{ address: RECIPIENT, username: 'alice', ban: true }],
+      confirmBans: false,
+      liveReconciled: true,
+    };
+    expect(configError(withType('removeRoleMembers', { roleRemovalConfig }))).toBe(
+      'Confirm that the required blocks should prevent those people from reclaiming this role.',
+    );
+    expect(configError(withType('removeRoleMembers', {
+      roleRemovalConfig: { ...roleRemovalConfig, confirmBans: true },
+    }))).toBeNull();
+  });
+});
+
 describe('detailsError', () => {
   const poll = { type: 'normal', name: 'Lunch?', time: 72, options: ['Tacos', 'Ramen'] };
 
@@ -366,7 +424,7 @@ describe('hasChosenIntent', () => {
   });
 
   it('is true for any type the user had to pick a card for', () => {
-    for (const type of ['transferFunds', 'setter', 'election', 'createRole']) {
+    for (const type of ['transferFunds', 'setter', 'election', 'createRole', 'removeRoleMembers']) {
       expect(hasChosenIntent({ type }), type).toBe(true);
     }
   });

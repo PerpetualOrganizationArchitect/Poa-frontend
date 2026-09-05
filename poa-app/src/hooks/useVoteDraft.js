@@ -75,6 +75,8 @@ function isMeaningful(proposal) {
   // ACCESS V2 writes the create-role screen's answers to `roleFormV2` instead (and it may be a
   // GROUP). Same rule, same reason: a named thing is work worth keeping.
   if (proposal.roleFormV2?.name && proposal.roleFormV2.name.trim() !== '') return true;
+  if (proposal.roleRemovalConfig?.subjectId) return true;
+  if ((proposal.roleRemovalConfig?.members || []).length > 0) return true;
   // The stepped wizard makes "decision made, nothing typed yet" a normal place
   // to sit — a category picked, the role being elected chosen, a parent role
   // selected. That is real work, and it used to persist as nothing.

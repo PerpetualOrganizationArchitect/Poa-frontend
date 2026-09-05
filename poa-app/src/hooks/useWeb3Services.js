@@ -54,23 +54,23 @@ import { TreasuryService, createTreasuryService } from '../services/web3/domain/
  */
 export function useWeb3Services(options = {}) {
   const { ipfsService: providedIpfs = null, network = DEFAULT_NETWORK } = options;
+  // Org context is needed before provider selection: accounts live on the Arbitrum home chain,
+  // while MembershipAuthority reads must follow the org (Test6 is on Gnosis).
+  const poContext = usePOContext();
+  const orgId = poContext?.orgId || null;
+  const subgraphUrl = poContext?.subgraphUrl || null;
+  const orgChainId = poContext?.orgChainId || null;
   const signer = useEthersSigner();
   // Pass DEFAULT_CHAIN_ID so wagmi returns a client even without a wallet connection.
   // Without this, passkey-only users get no provider (useClient() returns undefined
   // when no wallet is connected and no chainId is specified).
   const provider = useEthersProvider({ chainId: DEFAULT_CHAIN_ID });
+  const orgReadProvider = useEthersProvider({ chainId: orgChainId || DEFAULT_CHAIN_ID });
   const { isPasskeyUser, isAuthenticated, passkeyConnecting, passkeyState, publicClient, bundlerClient } = useAuth();
 
   // Get IPFS service from context if not provided
   const ipfsContext = useIPFScontext();
   const ipfsService = providedIpfs || ipfsContext;
-
-  // Get org ID, chain, and subgraph URL from POContext for paymaster data
-  // usePOContext returns undefined when outside POProvider (non-org routes)
-  const poContext = usePOContext();
-  const orgId = poContext?.orgId || null;
-  const subgraphUrl = poContext?.subgraphUrl || null;
-  const orgChainId = poContext?.orgChainId || null;
 
   // Create chain-specific clients when org is on a different chain than home chain
   const isCrossChain = orgChainId && orgChainId !== DEFAULT_CHAIN_ID;
@@ -212,6 +212,14 @@ export function useWeb3Services(options = {}) {
     return createContractFactory(signer);
   }, [signer, provider, isPasskeyUser]);
 
+  // Keep writable contracts on the auth-aware factory above, but bind authority preflights to
+  // the org's provider. Without this split a Gnosis org queried through a passkey would run
+  // canRemove against Arbitrum, fail closed, and make every valid removal proposal impossible.
+  const authorityReadFactory = useMemo(
+    () => (orgReadProvider ? createContractFactory(null, orgReadProvider) : factory),
+    [orgReadProvider, factory]
+  );
+
   // EIP-7702 capability detection for EOA users
   const { data: walletClient } = useWalletClient();
   const [eoa7702Capable, setEoa7702Capable] = useState(false);
@@ -297,12 +305,12 @@ export function useWeb3Services(options = {}) {
       task: createTaskService(factory, txManager, ipfsService),
       education: createEducationService(factory, txManager, ipfsService),
       eligibility: createEligibilityService(factory, txManager),
-      membershipAuthority: createMembershipAuthorityService(factory, txManager),
+      membershipAuthority: createMembershipAuthorityService(factory, txManager, authorityReadFactory),
       zkEmailInvites: createZkEmailInvitesService(factory, txManager),
       tokenRequest: createTokenRequestService(factory, txManager, ipfsService),
       treasury: createTreasuryService(factory, txManager),
     };
-  }, [factory, txManager, ipfsService, registryAddress, effectiveChainId]);
+  }, [factory, authorityReadFactory, txManager, ipfsService, registryAddress, effectiveChainId]);
 
   // Contract addresses helper
   const getContractAddress = useCallback((contractName) => {

@@ -4,7 +4,7 @@ import UserIdentity from '@/components/common/UserIdentity';
 import { useDrag } from 'react-dnd';
 import TaskCardModal from './TaskCardModal';
 import { useRouter } from 'next/router';
-import { TimeIcon, StarIcon, CheckIcon, InfoIcon, WarningIcon, RepeatIcon } from '@chakra-ui/icons';
+import { TimeIcon, CheckIcon, InfoIcon, WarningIcon, RepeatIcon } from '@chakra-ui/icons';
 import { hasBounty as checkHasBounty, getTokenByAddress } from '../../util/tokens';
 import { usePOContext } from '../../context/POContext';
 import { useOrgName } from '../../hooks/useOrgName';
@@ -233,7 +233,6 @@ const TaskCard = ({ task, columnId, onEditTask, onEditTaskMetadata, isMobile, is
                   borderRadius="full"
                   border={isCardMobile ? "1px solid rgba(159, 122, 234, 0.35)" : undefined}
                 >
-                  <StarIcon boxSize={3} mr={1} color={isCardMobile ? "purple.300" : "purple.500"} />
                   <Text
                     fontWeight="bold"
                     color={isCardMobile ? "purple.200" : "purple.700"}

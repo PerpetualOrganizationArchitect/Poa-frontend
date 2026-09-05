@@ -477,4 +477,10 @@ describe('configError(transferFunds) when the balance read failed', () => {
     expect(configError(p, { transfer: { decimals: 18, symbol: 'BREAD', loading: false, readFailed: true, availableWei: '0' } }))
       .toBe("Couldn't read what the group holds — try again in a moment.");
   });
+
+  it('fails closed when the treasury has more payout rounds than were read', () => {
+    const p = withType('transferFunds', { transferAddress: '0x000000000000000000000000000000000000dEaD', transferAmount: '1' });
+    expect(configError(p, { transfer: { decimals: 18, symbol: 'BREAD', loading: false, readFailed: false, roundsUnread: true, availableWei: '5000000000000000000' } }))
+      .toMatch(/more payout rounds than can be checked/);
+  });
 });

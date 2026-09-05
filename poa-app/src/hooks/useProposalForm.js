@@ -1142,6 +1142,17 @@ export function useProposalForm({ onSubmit }) {
       // Hats.getNextId, and (unlike the legacy arm) the `addHatToClass` call that is the only
       // thing giving the new role a vote in binding votes.
       const v2 = extras.accessV2;
+      // `inOrgUsers` decides whether each starting holder is SEATED (`grant`) or merely INVITED
+      // (`offer`, needs a claim) — an on-chain difference. An empty roster while the memberships
+      // query is still loading or has errored would invite people who should be seated, while
+      // the toast says they were given the role. Same rule as the election arm.
+      const holdersWanted = (resolveRoleForm(proposal).holders || []).some((h) => h?.address);
+      if (holdersWanted && (!Array.isArray(v2.memberships) || v2.memberships.length === 0)) {
+        throw new Error(
+          'We’re still reading who is in this co-op — it decides whether each starting holder is '
+          + 'seated or invited. Give it a moment and try again.'
+        );
+      }
       const built = buildRoleFormBatch({
         authority: v2.authority || contractAddresses?.membershipAuthorityAddress,
         hybridVoting: contractAddresses?.votingContractAddress || '',

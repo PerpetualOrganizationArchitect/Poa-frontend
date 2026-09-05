@@ -192,7 +192,10 @@ export function foldCreateGate({
   const subjectList = subjects || [];
   // Subjects can only be in hand after a completed read; "no subjects" on an enabled authority is
   // the no-data case, not an org with no roles. See the fail-open note in the header.
-  const answered = !v2Loading && subjectList.length > 0;
+  // A read that ERRORED is not an answer either: the subjects query can succeed while the
+  // per-user memberships query is rate-limited, and judging a real creator by an empty `mine`
+  // would lock them out — the exact thing the fail-open hedge exists to prevent.
+  const answered = !v2Loading && !v2ReadFailed && subjectList.length > 0;
 
   const mine = new Set(
     (mySubjectIds || []).map(toSubjectId).filter((id) => id !== null)

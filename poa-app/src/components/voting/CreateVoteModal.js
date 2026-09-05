@@ -594,10 +594,13 @@ const CreateVoteModal = ({
       symbol: transferSymbol,
       loading: Boolean(pots.loading),
       readFailed: Boolean(pots.error),
+      // More payout rounds than the hook reads: an older unfinalized round still pins the
+      // PaymentManager's balance on chain, so `spendable` would be a guess — refuse, don't guess.
+      roundsUnread: Boolean(pots.distributionsTruncated ?? pots.data?.distributionsTruncated),
       availableWei: transferAvailableWei,
       overLimitMessage,
     },
-  } : null), [isTransfer, transferDecimals, transferSymbol, pots.loading, pots.error, transferAvailableWei, overLimitMessage]);
+  } : null), [isTransfer, transferDecimals, transferSymbol, pots.loading, pots.error, pots.distributionsTruncated, pots.data?.distributionsTruncated, transferAvailableWei, overLimitMessage]);
   // The whole live-facts context for the pure gates. The access-v2 flag drops the create-role
   // rules that describe a Hats tree this org no longer has (parent role, uint32 max supply) —
   // exactly the fields the configurator stops rendering below.

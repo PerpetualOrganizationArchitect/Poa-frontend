@@ -300,6 +300,14 @@ export function classVoterProblem(values) {
   const holds = classHolds(cls, roleId);
   if (add && holds) return `That role already votes in binding votes as ${label}.`;
   if (!add && !holds) return `That role doesn’t vote in binding votes as ${label}, so there is nothing to remove.`;
+  // HybridVoting treats a class with NO roles as open to every address (`if (n == 0) return
+  // true` in HybridVotingCore; the legacy arm has the same `hatIds.length == 0` rule). Removing
+  // the last role would hand that share of every binding vote to anyone on the internet, so it
+  // is refused here rather than described.
+  if (!add && holds && (cls.hatIds || []).length <= 1) {
+    return `Removing the last role from ${label} would open that part of every binding vote to anyone — `
+      + 'the contract counts an empty list as everyone. Add another role to it first.';
+  }
   return null;
 }
 
@@ -311,14 +319,22 @@ export function classVoterWarnings(values, roleName = 'this role') {
   const add = values?.action !== 'Remove';
   const out = [];
   const cls = classByIndex(classes, idx);
-  if (add || !cls) return out;
+  if (!cls) return out;
 
   const label = classLabel(cls, idx);
-  // Emptying a class does not disable it: its slice of every binding vote still exists, with
-  // nobody able to fill it.
-  if ((cls.hatIds || []).length <= 1) {
-    out.push(`No role would be left voting as ${label}, so that share of every binding vote would have no voters.`);
+  if (add) {
+    // An EMPTY class is open: the contract counts every address as a member of it. Adding the
+    // first role is therefore a restriction, and voters should know that is what they decide.
+    if ((cls.hatIds || []).length === 0) {
+      out.push(
+        `${label} is currently open to everyone (no role is listed), so adding “${roleName}” limits `
+        + 'that part of every binding vote to its members.'
+      );
+    }
+    return out;
   }
+  // Removing the LAST role is refused by classVoterProblem (it would open the class), so the
+  // only thing left to say is when the role itself ends up with no vote anywhere.
   if (classesHolding(classes, roleId).length <= 1) {
     out.push(`Members of “${roleName}” would have no vote in binding votes at all.`);
   }

@@ -168,7 +168,7 @@ const ParameterInput = ({
       const roleOptions = [...(allRoles || []), ...groupOptions];
       return (
         <Select
-          placeholder={param.includeGroups ? 'Select a role or group' : 'Select role'}
+          placeholder={groupOptions.length > 0 ? 'Select a role or group' : 'Select role'}
           value={value || ''}
           onChange={(e) => {
             // OPT-IN, and only for a template that asked: also record the role's NAME. The

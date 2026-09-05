@@ -43,6 +43,18 @@ const FORBIDDEN_ENVS = [
   'POA_E2E_PASSKEY_SEED',
   'NEXT_PUBLIC_E2E_BURNER_PK',
   'NEXT_PUBLIC_E2E_PASSKEY_SEED',
+  // The flag itself: DefinePlugin replaces the literal, so its NAME surviving means a runtime
+  // read (e.g. `process.env[key]` or a string) that will not fold.
+  'NEXT_PUBLIC_E2E_MODE',
+];
+
+// E2E-only COPY. Export names are renamed by terser, so a branch that survived behind an
+// imported flag (the `E2E_ENABLED` import that commit 08b0359b removed) is invisible to the
+// symbol scan above — but its strings are not. Anything here in the bundle means the branch
+// shipped, merely switched off.
+const FORBIDDEN_COPY = [
+  'Voting must run for at least 10 minutes',
+  '"10 min"',
 ];
 
 function walk(dir, files = []) {
@@ -59,7 +71,7 @@ if (!fs.existsSync(OUT_DIR)) {
   process.exit(1);
 }
 
-const FORBIDDEN = [...discoverE2EExports(), ...FORBIDDEN_ENVS];
+const FORBIDDEN = [...discoverE2EExports(), ...FORBIDDEN_ENVS, ...FORBIDDEN_COPY];
 const files = walk(OUT_DIR);
 const hits = [];
 

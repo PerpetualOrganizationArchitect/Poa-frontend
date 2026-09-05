@@ -142,6 +142,12 @@ export function configError(proposal, ctx = null) {
       // the pot that is empty on every org we have seen — and the vote would
       // pass and pay nothing.
       if (t.readFailed) return "Couldn't read what the group holds — try again in a moment.";
+      // The contract's `withdraw` guard counts EVERY unfinalized payout round; if the hook could
+      // only read the newest ones, `spendable` is a guess and the vote could pass and pay nothing.
+      if (t.roundsUnread) {
+        return 'This treasury has more payout rounds than can be checked right now, so a payout can’t be '
+          + 'sized safely. Ask an admin to close old rounds first.';
+      }
       // Only refuse on a SETTLED read. While balances load (or when the read
       // failed) the pots are unknown, not empty — blocking then would lock the
       // step behind an RPC hiccup.

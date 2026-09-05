@@ -345,6 +345,20 @@ describe('foldCreateGate — access v2 org (authorityEnabled: true)', () => {
     expect(g.creatorGateSettled).toBe(false);
   });
 
+  it('does not lock out a real creator when only the membership read failed', () => {
+    // Subjects answered, the per-user memberships query errored (429): `mine` is empty for a
+    // reason that has nothing to do with the member. Hedge open, and say the gate is unsettled.
+    const g = foldCreateGate(v2Input({
+      subjects: execsCanOpenBinding(),
+      mySubjectIds: [],
+      hasMemberRole: true,
+      v2ReadFailed: true,
+    }));
+    expect(g.canCreateProposal).toBe(true);
+    expect(g.creatorGateSettled).toBe(false);
+    expect(g.bindingReadFailed).toBe(true);
+  });
+
   it('treats an authority membership as membership, with no legacy hat', () => {
     const g = foldCreateGate(v2Input({
       subjects: execsCanOpenBinding(),

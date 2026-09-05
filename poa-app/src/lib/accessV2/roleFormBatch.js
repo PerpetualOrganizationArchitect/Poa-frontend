@@ -37,6 +37,7 @@ import { predictLints } from './vouch';
 import {
   buildClassVoterCall,
   classByIndex,
+  classLabel,
   classVoterSummary,
   contractClassIndex,
   directClassIndex,
@@ -410,6 +411,18 @@ function buildBindingVoteCall({ hybridVoting, votingClasses, form, subjectId, na
     return { batch, summaries, warnings };
   }
 
+  // A pick that outlived the org's classes (a draft from before a `setClasses` vote) would
+  // revert `InvalidClassCount` inside announceWinner and take the WHOLE batch down with it —
+  // role, permissions and holders — while the vote reads as passed. Drop the call instead.
+  const cls = classByIndex(votingClasses, classIdx);
+  if ((votingClasses || []).length > 0 && !cls) {
+    warnings.push(
+      'The group of voters this role was to join no longer exists, so it was not given a vote in '
+      + 'binding votes. Pick another one.'
+    );
+    return { batch, summaries, warnings };
+  }
+
   try {
     batch.push(buildClassVoterCall({ hybridVoting, classIdx, subjectId, add: true }));
   } catch (err) {
@@ -418,6 +431,14 @@ function buildBindingVoteCall({ hybridVoting, votingClasses, form, subjectId, na
   }
 
   summaries.push(classVoterSummary({ roleName: name, classIdx, votingClasses, add: true }));
+  // An EMPTY class is open to every address on chain (HybridVotingCore `if (n == 0) return
+  // true`); the first role added closes it. Voters should know that is what they decide.
+  if (cls && (cls.hatIds || []).length === 0) {
+    warnings.push(
+      `${classLabel(cls, classIdx, { withShare: false })} is currently open to everyone (no role is listed), `
+      + `so this limits that part of every binding vote to “${name}”.`
+    );
+  }
   return { batch, summaries, warnings };
 }
 
@@ -562,7 +583,20 @@ export function buildRoleFormBatch({
   // NOT folded into `warnings`: a batch over the on-chain ceiling is unsubmittable, and both
   // doors gate on `submittable.ok` — a sentence in the ballot metadata would be read by voters of
   // a proposal that could never have been created.
-  const submittable = checkBatchSubmittable(merged.batch);
+  //
+  // The same gate refuses a form whose answers the encoder had to DROP because a contract address
+  // had not loaded: proposing “a role that votes” without the addHatToClass call, or “creates
+  // tasks” without the TaskManager grants, is a different role from the one on screen.
+  const missingContext = [];
+  if (f.bindingVote && !hybridVoting) missingContext.push('binding-vote contract');
+  if ((f.canCreateTasks || f.canOrganizeFolders) && !taskManagerAddress) missingContext.push('task manager');
+  const submittable = missingContext.length
+    ? {
+      ok: false,
+      code: 'context-missing',
+      message: `This co-op’s ${missingContext.join(' and ')} hasn’t loaded, so this can’t be proposed yet — give it a moment.`,
+    }
+    : checkBatchSubmittable(merged.batch);
 
   return {
     batch: merged.batch,

@@ -12,6 +12,8 @@ import { encodeFunctionData } from 'viem';
 import { TransactionResult, TransactionState } from '../core/TransactionManager';
 import PasskeyAccountABI from '../../../../abi/PasskeyAccount.json';
 import { buildUserOpWithFallback, getUserOpHash } from '../passkey/userOpBuilder';
+import { isPaymasterRejection } from '../passkey/sponsorshipBudget';
+import { describeReceiptFailure } from '../passkey/receiptFailure';
 import { decodeContractRevert, decodeRevertData } from '../../../lib/errors/contractErrors';
 import { encodeHatPaymasterData, encodeClaimPaymasterData } from '../passkey/paymasterData';
 import { ENTRY_POINT_ADDRESS } from '../../../config/passkey';
@@ -120,11 +122,13 @@ export class EOA7702TransactionManager {
       const signature = await signUserOpWithWallet(userOpHash, this.walletClient);
       userOp.signature = signature;
 
-      // 6. Submit to bundler
+      // 6. Submit to bundler (self-funded retry if the paymaster refuses at submission)
       this._notifyState(onStateChange, TransactionState.PENDING);
-      const submittedHash = await this.bundlerClient.sendUserOperation({
-        ...userOp,
-        entryPointAddress: ENTRY_POINT_ADDRESS,
+      const submittedHash = await this._sendWithSelfFundedRetry(userOp, {
+        callData,
+        authorization,
+        onStateChange,
+        gasOverrides: { callGasLimit, callGasLimitMultiplier },
       });
 
       console.log(`[7702] UserOp submitted: ${submittedHash}`);
@@ -137,7 +141,7 @@ export class EOA7702TransactionManager {
       });
 
       if (!receipt.success) {
-        const error = this._parseAAError(receipt.reason || 'UserOp execution failed', null, contract?.interface);
+        const error = this._parseAAError(describeReceiptFailure(receipt.reason, 'UserOp execution failed'), null, contract?.interface);
         this._notifyState(onStateChange, TransactionState.ERROR, { error });
         return TransactionResult.failure(error);
       }
@@ -203,9 +207,11 @@ export class EOA7702TransactionManager {
       userOp.signature = signature;
 
       this._notifyState(onStateChange, TransactionState.PENDING);
-      const submittedHash = await this.bundlerClient.sendUserOperation({
-        ...userOp,
-        entryPointAddress: ENTRY_POINT_ADDRESS,
+      const submittedHash = await this._sendWithSelfFundedRetry(userOp, {
+        callData,
+        authorization,
+        onStateChange,
+        gasOverrides: { callGasLimit, callGasLimitMultiplier },
       });
 
       this._notifyState(onStateChange, TransactionState.CONFIRMING);
@@ -215,7 +221,7 @@ export class EOA7702TransactionManager {
       });
 
       if (!receipt.success) {
-        const error = this._parseAAError(receipt.reason || 'Batch execution failed');
+        const error = this._parseAAError(describeReceiptFailure(receipt.reason, 'Batch execution failed'));
         this._notifyState(onStateChange, TransactionState.ERROR, { error });
         return TransactionResult.failure(error);
       }
@@ -236,6 +242,52 @@ export class EOA7702TransactionManager {
       const parsedError = this._parseAAError(error.message || 'Unknown error', error);
       this._notifyState(onStateChange, TransactionState.ERROR, { error: parsedError });
       return TransactionResult.failure(parsedError);
+    }
+  }
+
+  /**
+   * Submission-time twin of the builder's estimation-time fallback — see
+   * SmartAccountTransactionManager._sendWithSelfFundedRetry for why the paymaster can refuse an
+   * op whose estimate passed. Wallet-signed here (ECDSA), so the retry costs one more signature.
+   */
+  async _sendWithSelfFundedRetry(userOp, { callData, authorization, onStateChange, gasOverrides = {} }) {
+    try {
+      const hash = await this.bundlerClient.sendUserOperation({ ...userOp, entryPointAddress: ENTRY_POINT_ADDRESS });
+      this._paymasterFellBack = false;
+      this._paymasterRejection = null;
+      return hash;
+    } catch (e) {
+      if (!userOp.paymaster || !isPaymasterRejection(e)) throw e;
+      console.warn('[7702] Paymaster refused at submission; retrying self-funded:', e.shortMessage || e.message);
+      this._paymasterFellBack = true;
+      this._paymasterRejection = e;
+
+      let retry;
+      try {
+        retry = await buildUserOpWithFallback({
+          sender: this.accountAddress,
+          callData,
+          bundlerClient: this.bundlerClient,
+          publicClient: this.publicClient,
+          authorization,
+          dummySignatureLength: 65,
+          gasOverrides,
+        });
+      } catch (buildErr) {
+        if (!buildErr.paymasterRejection) {
+          Object.defineProperty(buildErr, 'paymasterRejection', { value: e, enumerable: false });
+        }
+        throw buildErr;
+      }
+      Object.defineProperty(retry, 'paymasterRejection', { value: e, enumerable: false });
+
+      this._notifyState(onStateChange, TransactionState.AWAITING_SIGNATURE);
+      retry.signature = await signUserOpWithWallet(getUserOpHash(retry, ENTRY_POINT_ADDRESS, this.chainId), this.walletClient);
+      this._notifyState(onStateChange, TransactionState.PENDING);
+      const hash = await this.bundlerClient.sendUserOperation({ ...retry, entryPointAddress: ENTRY_POINT_ADDRESS });
+      this._paymasterFellBack = false;
+      this._paymasterRejection = null;
+      return hash;
     }
   }
 

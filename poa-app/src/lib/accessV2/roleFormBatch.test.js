@@ -344,6 +344,23 @@ describe('buildRoleFormBatch — binding-vote power', () => {
     const b = build(treasurerForm, { hybridVoting: '' });
     expect(b.batch.every((c) => c.target === A)).toBe(true);
     expect(b.warnings.join(' ')).toMatch(/binding-vote contract hasn’t loaded/);
+    // …and refuses to be PROPOSED like that: the role on screen votes, the batch would not.
+    expect(b.submittable.ok).toBe(false);
+    expect(b.submittable.code).toBe('context-missing');
+  });
+
+  it('drops a class pick the org no longer has instead of encoding a revert', () => {
+    const only0 = [{ classIndex: 0, strategy: 'DIRECT', slicePct: 100, hatIds: [] }];
+    const { batch, warnings, submittable } = build({ ...treasurerForm, bindingClassIdx: 3 }, { votingClasses: only0 });
+    expect(batch.some((c) => c.target === utils.getAddress(HYBRID))).toBe(false);
+    expect(warnings.join(' ')).toMatch(/no longer exists/);
+    expect(submittable.ok).toBe(true);
+  });
+
+  it('tells voters when the class being joined is open to everyone today', () => {
+    const open = [{ classIndex: 0, strategy: 'DIRECT', slicePct: 100, hatIds: [] }];
+    const { warnings } = build({ ...treasurerForm, bindingClassIdx: null }, { votingClasses: open });
+    expect(warnings.join(' ')).toMatch(/currently open to everyone/);
   });
 });
 

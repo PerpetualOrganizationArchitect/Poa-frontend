@@ -919,20 +919,37 @@ describe('change-class-voters', () => {
     expect(template.validate(values({ role: MEMBER, action: 'Remove' }))).toBeNull();
   });
 
-  it('warns when a removal empties a class or silences a role entirely', () => {
+  it('stays quiet when a removal leaves the class with voters and the role with a vote', () => {
     // Executive votes in both classes and is one of two roles in each: no warning worth the noise.
     expect(template.buildBatch(values({ role: EXECUTIVE, action: 'Remove' }), ctx).warnings)
       .toEqual([]);
+  });
 
+  it('refuses to remove the last role from a class — an empty class is open to EVERYONE on chain', () => {
+    // HybridVotingCore: `if (n == 0) return true; // open class`. The old copy said the opposite
+    // (“would have no voters”); this is the one ballot sentence that could hand an org to sybils.
     const soleClasses = [{ classIndex: 0, strategy: 'DIRECT', slicePct: 100, hatIds: [MEMBER] }];
+    const bad = values({ role: MEMBER, action: 'Remove', votingClasses: soleClasses });
+    expect(template.validate(bad)).toMatch(/open that part of every binding vote to anyone/);
+    expect(() => template.buildBatch(bad, ctx)).toThrow(/open that part of every binding vote/);
+  });
+
+  it('warns when a removal leaves the role with no vote anywhere', () => {
+    const twoRoles = [{ classIndex: 0, strategy: 'DIRECT', slicePct: 100, hatIds: [MEMBER, EXECUTIVE] }];
     const built = template.buildBatch(
-      values({ role: MEMBER, action: 'Remove', votingClasses: soleClasses }),
+      values({ role: MEMBER, action: 'Remove', votingClasses: twoRoles }),
       ctx,
     );
-    expect(built.warnings).toEqual([
-      'No role would be left voting as Members (one vote each) · 100%, so that share of every binding vote would have no voters.',
-      'Members of “Member” would have no vote in binding votes at all.',
-    ]);
+    expect(built.warnings).toEqual(['Members of “Member” would have no vote in binding votes at all.']);
+  });
+
+  it('says so when adding the first role closes a class that was open to everyone', () => {
+    const openClass = [{ classIndex: 0, strategy: 'DIRECT', slicePct: 100, hatIds: [] }];
+    const built = template.buildBatch(
+      values({ role: MEMBER, action: 'Add', votingClasses: openClass }),
+      ctx,
+    );
+    expect(built.warnings.join(' ')).toMatch(/currently open to everyone/);
   });
 
   it('will not encode against an org whose voting contract is missing', () => {

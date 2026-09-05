@@ -47,8 +47,8 @@ import RoleForm from './RoleForm';
 
 export default function CreateRoleWizard({ isOpen, onClose, activeProposals = [] }) {
   const { indexedSubjects, roles, groups, authority } = useAuthoritySubjects();
-  const { inOrgUsers } = useAuthorityMemberships();
-  const { submit, submitting } = useAccessV2Proposal();
+  const { inOrgUsers, loading: membershipsLoading, error: membershipsError } = useAuthorityMemberships();
+  const { submit, submitting, enabled: proposalsEnabled } = useAccessV2Proposal();
   const { addToIpfs } = useIPFScontext();
   const toast = useToast();
   const { projectsData } = useProjectContext() || {};
@@ -56,6 +56,9 @@ export default function CreateRoleWizard({ isOpen, onClose, activeProposals = []
   const { votingContractAddress, hybridVotingContractAddress, taskManagerContractAddress } = usePOContext();
 
   const [form, setForm] = useState(defaultRoleForm);
+  // Where the member is in the form: submit is only live on its Review step (the same rule the
+  // vote wizard enforces), and `blocked` carries the over-the-ceiling reason.
+  const [formStatus, setFormStatus] = useState({ atReview: false, blocked: null });
 
   const isGroup = form.kind === ROLE_FORM_KIND.GROUP;
 
@@ -94,6 +97,7 @@ export default function CreateRoleWizard({ isOpen, onClose, activeProposals = []
 
   const close = () => {
     setForm(defaultRoleForm());
+    setFormStatus({ atReview: false, blocked: null });
     onClose?.();
   };
 
@@ -129,12 +133,36 @@ export default function CreateRoleWizard({ isOpen, onClose, activeProposals = []
       // The same sentence the vote wizard writes; the enactment lines travel as actionSummaries.
       description: copy.description || finalBuilt.summaries.join('\n'),
     });
-    if (res?.success) close();
+    if (res?.success) {
+      close();
+      return;
+    }
+    // `submit` answers `{ success: false, error }` for its own pre-checks (authority not ready,
+    // the call ceiling) WITHOUT a notification — only the on-chain path toasts. Say it here, or
+    // the button just stops loading and nothing explains why.
+    if (res?.error) {
+      toast({
+        title: 'Could not open the vote',
+        description: res.error.message || String(res.error),
+        status: 'error',
+        duration: 6000,
+        isClosable: true,
+      });
+    }
   };
 
+  const holdersWanted = (form.holders || []).some((h) => h?.address);
   const blockedReason = formError
-    || (!ctx.authority ? 'Still loading this group’s roles — give it a moment.' : null)
-    || (built && !built.submittable.ok ? built.submittable.message : null);
+    || (!ctx.authority ? 'Still loading this co-op’s roles — give it a moment.' : null)
+    || (!proposalsEnabled ? 'Still loading this co-op’s voting contract — give it a moment.' : null)
+    // `inOrgUsers` decides seated vs invited for each starting holder (an on-chain difference);
+    // an unread roster would invite people who should be seated.
+    || (holdersWanted && (membershipsLoading || membershipsError)
+      ? 'Still reading who is in this co-op — it decides whether each starting holder is seated or invited. Give it a moment.'
+      : null)
+    || (built && !built.submittable.ok ? built.submittable.message : null)
+    || formStatus.blocked
+    || (!formStatus.atReview ? 'Finish the steps — the vote opens from the Review step.' : null);
 
   return (
     <Modal isOpen={isOpen} onClose={close} size="2xl" scrollBehavior="inside">
@@ -149,7 +177,7 @@ export default function CreateRoleWizard({ isOpen, onClose, activeProposals = []
         <ModalCloseButton />
 
         <ModalBody pb={2}>
-          <RoleForm value={form} onChange={setForm} ctx={ctx} variant="light" />
+          <RoleForm value={form} onChange={setForm} ctx={ctx} variant="light" onStatus={setFormStatus} />
         </ModalBody>
 
         <ModalFooter>

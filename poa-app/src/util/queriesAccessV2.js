@@ -147,8 +147,9 @@ export const FETCH_AUTHORITY_MEMBERSHIPS = gql`
       }
       first: $first
       skip: $skip
-      orderBy: acceptedAt
-      orderDirection: desc
+      # Offset pagination needs a unique, stable order or equal acceptedAt values can skip rows.
+      orderBy: id
+      orderDirection: asc
     ) {
       id
       user

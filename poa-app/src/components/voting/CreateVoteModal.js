@@ -29,6 +29,7 @@ import {
   IconButton,
   Tag,
   TagLabel,
+  Badge,
   Link,
   RadioGroup,
   Radio,
@@ -60,6 +61,7 @@ import ElectionConfigurator from "./ElectionConfigurator";
 import RoleConfigurator, { parseAutoTitle as parseRoleAutoTitle } from "./RoleConfigurator";
 import RoleForm from "@/components/accessV2/RoleForm";
 import { ROLE_FORM_KIND, resolveRoleForm, roleConfigToRoleForm, roleFormCopy } from "@/lib/accessV2/roleFormBatch";
+import RoleRemovalConfigurator from "./RoleRemovalConfigurator";
 import { inputStyles } from '@/components/shared/glassStyles';
 import IntentGallery, { INTENT_OPTIONS } from "./create/IntentGallery";
 import DurationField from "./create/DurationField";
@@ -72,6 +74,7 @@ import {
   STEP_REVIEW,
   CONFIG_TYPES,
   BINDING_TYPES,
+  supportsVotingRestrictions,
   stepsForType,
   resolveEntryStep,
   STEP_ERROR_KEYS,
@@ -79,6 +82,10 @@ import {
 import { configError as computeConfigError, isComplete } from "@/lib/voting/proposalChecks";
 import { isDurationAllowed, durationTooShortMessage } from "@/lib/voting/durationLimits";
 import { applyAutoCopy, backfillProvenance } from "./create/autoCopy";
+import {
+  defaultRoleRemovalConfig,
+  removalMemberLabel,
+} from '@/lib/accessV2/roleRemoval';
 
 const glassLayerStyle = {
   position: "absolute",
@@ -107,6 +114,7 @@ const CONFIG_STEP_TITLES = {
   setter: "Choose the rule change",
   election: "Set up the election",
   createRole: "Configure the role",
+  removeRoleMembers: "Choose role members",
   transferFunds: "Choose the payment",
 };
 
@@ -364,8 +372,8 @@ const CreateVoteModal = ({
 
   // ---- transferFunds prefill ----
   // The payout IS the decision, so once recipient + amount are valid the title
-  // and description write themselves. The other four types are prefilled by
-  // their own configurators; this one has no configurator to own it.
+  // and description write themselves. The other configured types are prefilled
+  // by their own configurators; this one has no configurator to own it.
   // applyAutoCopy returns {} once the copy matches what we last wrote (or the
   // member has edited it), so this settles after one pass instead of looping.
   useEffect(() => {
@@ -413,6 +421,7 @@ const CreateVoteModal = ({
         ? ['Create group', 'Reject']
         : ['Create role', 'Reject'];
     }
+    if (proposal.type === 'removeRoleMembers') return ['Remove from role', 'Keep current members'];
     if (proposal.type === 'election') {
       const names = (proposal.electionCandidates || []).map(c => c.name).filter(Boolean);
       return proposal.electionIncludeNoOneOption ? [...names, 'No One'] : names;
@@ -426,6 +435,59 @@ const CreateVoteModal = ({
     proposal.roleFormV2?.kind,
     accessV2Enabled,
   ]);
+  const roleRemovalOutcome = useMemo(() => {
+    if (proposal.type !== 'removeRoleMembers') return null;
+    const config = proposal.roleRemovalConfig || defaultRoleRemovalConfig;
+    const members = config.members || [];
+    if (members.length === 0) return null;
+    const roleName = config.subjectName || 'the selected role';
+
+    return (
+      <Box>
+        <Text
+          fontSize="xs"
+          color="gray.400"
+          textTransform="uppercase"
+          letterSpacing="wide"
+          mb={2}
+        >
+          If removal wins
+        </Text>
+        <VStack align="stretch" spacing={2}>
+          {members.map((member, index) => (
+            <Box
+              key={`${String(member.address || '').toLowerCase()}:${index}`}
+              px={3}
+              py={2}
+              borderRadius="md"
+              border="1px solid"
+              borderColor={member.ban ? 'orange.400' : 'whiteAlpha.200'}
+              bg={member.ban ? 'rgba(221, 107, 32, 0.12)' : 'whiteAlpha.50'}
+            >
+              <HStack justify="space-between" align="center" spacing={3}>
+                <Box minW={0}>
+                  <Text fontSize="sm" color="white" fontWeight="600" noOfLines={1}>
+                    {removalMemberLabel(member)}
+                  </Text>
+                  {member.username && (
+                    <Text fontSize="2xs" color="gray.500" fontFamily="mono">
+                      {shortAddress(member.address)}
+                    </Text>
+                  )}
+                  <Text fontSize="xs" color="gray.300">
+                    Remove from {roleName}
+                  </Text>
+                </Box>
+                {member.ban && (
+                  <Badge colorScheme="orange" flexShrink={0}>Governance block</Badge>
+                )}
+              </HStack>
+            </Box>
+          ))}
+        </VStack>
+      </Box>
+    );
+  }, [proposal.type, proposal.roleRemovalConfig]);
   const selectedIntent = useMemo(
     () => INTENT_OPTIONS.find(o => o.type === proposal.type),
     [proposal.type],
@@ -697,6 +759,14 @@ const CreateVoteModal = ({
     ) {
       restored.roleFormV2 = roleConfigToRoleForm(restored.roleConfig);
     }
+    if (restored.type === 'removeRoleMembers') {
+      restored.roleRemovalConfig = {
+        ...(restored.roleRemovalConfig || defaultRoleRemovalConfig),
+        // Persisted rows are only a snapshot. The configurator turns this back on after both live
+        // queries settle and it has reconciled role name, membership, and ban requirements.
+        liveReconciled: false,
+      };
+    }
     draft.markRestored();
     handleSetterChange({ ...restored });
     setStep(resolveEntryStep(restored, { isComplete }));
@@ -713,6 +783,7 @@ const CreateVoteModal = ({
       // the previous rule change armed behind a blank-looking form.
       setterMode: 'template', setterTemplate: '', setterCategory: '',
       setterContract: '', setterFunction: '', setterValues: {}, setterParams: [],
+      roleRemovalConfig: { ...defaultRoleRemovalConfig, members: [] },
     });
     setStep(STEP_INTENT);
   }, [draft, handleProposalTypeChange, handleSetterChange]);
@@ -856,6 +927,7 @@ const CreateVoteModal = ({
                     symbol={transferSymbol}
                     {...(isBinding ? { badge: BINDING_REVIEW_BADGE } : {})}
                     {...(reviewOptions ? { options: reviewOptions } : {})}
+                    {...(roleRemovalOutcome ? { outcome: roleRemovalOutcome } : {})}
                   />
                 )}
 
@@ -1005,6 +1077,13 @@ const CreateVoteModal = ({
                         subjectRaceWarning={v2SubjectRaceWarning}
                       />
                     ))}
+
+                    {proposal.type === "removeRoleMembers" && (
+                      <RoleRemovalConfigurator
+                        proposal={proposal}
+                        onChange={handleSetterChange}
+                      />
+                    )}
 
                     {proposal.type === "transferFunds" && (
                       <>
@@ -1220,7 +1299,7 @@ const CreateVoteModal = ({
                 )}
 
                 {/* Voting Restrictions — only for direct-democracy types */}
-                {step === STEP_DETAILS && proposal.type !== "election" && proposal.type !== "setter" && proposal.type !== "createRole" && (
+                {step === STEP_DETAILS && supportsVotingRestrictions(proposal.type) && (
                   <Box>
                     <Text
                       fontSize="xs"

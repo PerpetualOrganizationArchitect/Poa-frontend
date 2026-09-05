@@ -10,5 +10,13 @@ subgraph-pop/
 /*.gif
 /poa-app/*.gif
 
+# Verification artifacts (screenshots, gifs, logs, ids, fingerprints)
+.context/
+
+# Smithers CLI can drop a SQLite db at the repo root — never commit it
+/smithers.db
+/smithers.db-shm
+/smithers.db-wal
+
 # Claude Code session state (per-workspace, not for source control)
 .claude/

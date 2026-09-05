@@ -10,7 +10,7 @@
  * Both transforms are pure and unit-tested — see `lib/accessV2/normalize`.
  */
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@apollo/client';
 import { usePOContext } from '@/context/POContext';
 import { useAuth } from '@/context/AuthContext';
@@ -20,6 +20,10 @@ import { normalizeAuthorityMemberships, normalizeMyMemberships } from '@/lib/acc
 import { RefreshEvent, useRefreshSubscription } from '@/context/RefreshContext';
 import { useOrgAuthority } from './useOrgAuthority';
 import { useAuthoritySubjects } from './useAuthoritySubjects';
+import {
+  AUTHORITY_MEMBERSHIP_PAGE_SIZE,
+  fetchAllAuthorityMembershipRows,
+} from '@/lib/accessV2/membershipPagination';
 
 const MEMBERSHIP_REFRESH_EVENTS = [
   RefreshEvent.PROPOSAL_COMPLETED,
@@ -37,12 +41,127 @@ export function useAuthorityMemberships() {
   const authority = useOrgAuthority();
   const { compositions, groups } = useAuthoritySubjects();
 
-  const { data, loading, error, refetch } = useQuery(FETCH_AUTHORITY_MEMBERSHIPS, {
-    variables: { authority: authority.address },
+  const {
+    data,
+    loading: firstPageLoading,
+    error: firstPageError,
+    refetch: refetchFirstPage,
+  } = useQuery(FETCH_AUTHORITY_MEMBERSHIPS, {
+    variables: {
+      authority: authority.address,
+      first: AUTHORITY_MEMBERSHIP_PAGE_SIZE,
+      skip: 0,
+    },
     skip: !authority.enabled || !authority.address,
     fetchPolicy: 'cache-and-network',
+    notifyOnNetworkStatusChange: true,
     client,
   });
+
+  const authorityKey = authority.enabled && authority.address
+    ? String(authority.address).toLowerCase()
+    : '';
+  const [pagination, setPagination] = useState({
+    authority: '',
+    rows: [],
+    loading: false,
+    complete: false,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (!authorityKey) {
+      setPagination({
+        authority: '',
+        rows: [],
+        loading: false,
+        complete: false,
+        error: null,
+      });
+      return undefined;
+    }
+    if (firstPageLoading || firstPageError) return undefined;
+
+    let cancelled = false;
+    setPagination((previous) => ({
+      authority: authorityKey,
+      rows: previous.authority === authorityKey ? previous.rows : [],
+      loading: true,
+      complete: false,
+      error: null,
+    }));
+
+    const load = async () => {
+      try {
+        const rows = await fetchAllAuthorityMembershipRows({
+          firstPage: data?.subjectMemberships,
+          fetchPage: async ({ first, skip }) => {
+            const result = await client.query({
+              query: FETCH_AUTHORITY_MEMBERSHIPS,
+              variables: { authority: authority.address, first, skip },
+              // Additional pages are assembled locally. Keeping them out of Apollo's normalized
+              // cache prevents their shared Subject objects from restarting this pagination run.
+              fetchPolicy: 'no-cache',
+            });
+            return result?.data?.subjectMemberships;
+          },
+        });
+        if (cancelled) return;
+        setPagination({
+          authority: authorityKey,
+          rows,
+          loading: false,
+          complete: true,
+          error: null,
+        });
+      } catch (paginationError) {
+        if (cancelled) return;
+        setPagination((previous) => ({
+          authority: authorityKey,
+          rows: previous.authority === authorityKey ? previous.rows : [],
+          loading: false,
+          complete: false,
+          error: paginationError,
+        }));
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authority.address,
+    authorityKey,
+    client,
+    data,
+    firstPageError,
+    firstPageLoading,
+  ]);
+
+  const refetch = useCallback(async () => {
+    if (!authorityKey) return undefined;
+    setPagination((previous) => ({
+      authority: authorityKey,
+      rows: previous.authority === authorityKey ? previous.rows : [],
+      loading: true,
+      complete: false,
+      error: null,
+    }));
+    try {
+      const result = await refetchFirstPage();
+      return result;
+    } catch (refetchError) {
+      setPagination((previous) => ({
+        authority: authorityKey,
+        rows: previous.authority === authorityKey ? previous.rows : [],
+        loading: false,
+        complete: false,
+        error: refetchError,
+      }));
+      throw refetchError;
+    }
+  }, [authorityKey, refetchFirstPage]);
 
   useRefreshSubscription(
     MEMBERSHIP_REFRESH_EVENTS,
@@ -52,15 +171,31 @@ export function useAuthorityMemberships() {
     [authority.enabled, authority.address, refetch]
   );
 
+  const paginationMatches = pagination.authority === authorityKey;
+  const rows = paginationMatches ? pagination.rows : [];
+  const error = firstPageError || (paginationMatches ? pagination.error : null);
+  const complete = Boolean(
+    authorityKey
+    && paginationMatches
+    && pagination.complete
+    && !firstPageLoading
+    && !firstPageError
+  );
+  const loading = Boolean(
+    authorityKey
+    && (firstPageLoading || (paginationMatches && pagination.loading) || (!error && !complete))
+  );
+
   const value = useMemo(
-    () => normalizeAuthorityMemberships(data?.subjectMemberships || [], compositions, groups),
-    [data, compositions, groups]
+    () => normalizeAuthorityMemberships(rows, compositions, groups),
+    [rows, compositions, groups]
   );
 
   return {
     ...value,
     loading: authority.enabled ? loading : false,
     error: authority.enabled ? error : null,
+    complete: authority.enabled ? complete : false,
     enabled: authority.enabled,
     refetch,
   };

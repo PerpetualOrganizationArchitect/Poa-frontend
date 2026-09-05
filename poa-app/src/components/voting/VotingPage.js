@@ -38,6 +38,7 @@ import { useAuthorityMemberships } from "@/hooks/accessV2/useAuthorityMembership
 import { parseCreatedProposalId } from "@/lib/voting/proposalReceipt";
 import { recordGasFloor } from "@/lib/accessV2/gasFloors";
 import { estimateBatchGas } from "@/lib/accessV2/proposalBuilders";
+import { preflightRoleRemovals } from "@/lib/accessV2/roleRemoval";
 import { votingLaneForBatches, isBindingType } from "./create/wizardSteps";
 import { TRANSFER_DESTINATION, FUND_BOUNTIES_DEEP_LINK } from "@/lib/voting/treasuryBatches";
 import { resolveSetterTemplate } from "@/lib/voting/setterAvailability";
@@ -158,7 +159,13 @@ const VotingPage = () => {
   // `voting`/`executeWithNotification` come from here too — proposal creation
   // below needs them, and a second useWeb3Services() would give this page two
   // independent txManagers (see the hook for why that bites on EIP-7702).
-  const { handleVote, handleFinalize, voting, executeWithNotification } = useVoteActions(votingTypeSelected);
+  const {
+    handleVote,
+    handleFinalize,
+    voting,
+    membershipAuthority,
+    executeWithNotification,
+  } = useVoteActions(votingTypeSelected);
 
   // PollDetail must render LIVE data — selectedPoll is a click-time snapshot,
   // so optimistic votes and 30s polling refreshes would never reach an open
@@ -179,6 +186,31 @@ const VotingPage = () => {
   // when it did not — useProposalForm keeps the member's draft on `false`.
   const handleProposalSubmit = useCallback(async (proposalData) => {
     if (!voting) return false;
+
+    // Every authority removal is one call in a single atomic Executor batch. A stale member or a
+    // newly-acquired eligibility source would make the ENTIRE winning batch revert later, while
+    // HybridVoting still settles successfully. Narrow that window with live on-chain canRemove
+    // checks immediately before creating the proposal. The state can still change while voting is
+    // open; finalization surfaces ProposalExecutionFailed and never claims that action succeeded.
+    if (proposalData.type === 'removeRoleMembers') {
+      if (!authority.enabled || !authority.address) {
+        throw new Error('This group is not using the new roles system yet.');
+      }
+      const selectedRole = (authoritySubjects.roles || []).find(
+        (role) => String(role.subjectId) === String(proposalData.roleRemovalConfig?.subjectId),
+      );
+      if (!selectedRole) {
+        throw new Error('The selected role is no longer available. Go back and refresh the selection.');
+      }
+      if ((selectedRole.name || '') !== (proposalData.roleRemovalConfig?.subjectName || '')) {
+        throw new Error('The selected role was renamed. Go back to review the updated vote wording.');
+      }
+      await preflightRoleRemovals({
+        membershipAuthority,
+        authority: authority.address,
+        config: proposalData.roleRemovalConfig,
+      });
+    }
 
     const proposalParams = {
       name: proposalData.name,
@@ -241,7 +273,16 @@ const VotingPage = () => {
 
     setShowCreatePoll(false);
     return true;
-  }, [voting, executeWithNotification, directDemocracyVotingContractAddress, votingContractAddress]);
+  }, [
+    voting,
+    membershipAuthority,
+    authoritySubjects.roles,
+    authority.enabled,
+    authority.address,
+    executeWithNotification,
+    directDemocracyVotingContractAddress,
+    votingContractAddress,
+  ]);
 
   const {
     proposal,

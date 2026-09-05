@@ -37,6 +37,7 @@ const defaultProposal = {
   setterValues: {},
   setterParams: [],
   roleConfig: { parentHatId: '', name: '', maxSupply: 100 },
+  roleRemovalConfig: { subjectId: '', subjectName: '', members: [] },
   autoTitle: '',
   autoDescription: '',
   id: 0,
@@ -50,8 +51,8 @@ describe('stepsForType', () => {
     expect(stepsForType('normal')).toEqual([STEP_INTENT, STEP_DETAILS, STEP_REVIEW]);
   });
 
-  it('gives every other type a config step of its own', () => {
-    for (const type of ['transferFunds', 'setter', 'election', 'createRole']) {
+  it('gives every supported action type a config step of its own', () => {
+    for (const type of ['transferFunds', 'setter', 'election', 'createRole', 'removeRoleMembers']) {
       expect(stepsForType(type)).toEqual([STEP_INTENT, STEP_CONFIG, STEP_DETAILS, STEP_REVIEW]);
     }
   });
@@ -64,7 +65,7 @@ describe('stepsForType', () => {
 
   it('agrees with CONFIG_TYPES', () => {
     expect([...CONFIG_TYPES].sort()).toEqual(
-      ['createRole', 'election', 'setter', 'transferFunds'],
+      ['createRole', 'election', 'removeRoleMembers', 'setter', 'transferFunds'],
     );
     for (const type of CONFIG_TYPES) {
       expect(stepsForType(type)).toContain(STEP_CONFIG);
@@ -148,6 +149,24 @@ describe('resolveEntryStep', () => {
     expect(entry(draft)).toBe(STEP_DETAILS);
   });
 
+  it('always revisits a restored role-removal config so its live roster can reconcile', () => {
+    const incomplete = proposal({
+      type: 'removeRoleMembers',
+      roleRemovalConfig: { subjectId: '1', subjectName: 'Contributors', members: [] },
+    });
+    expect(entry(incomplete)).toBe(STEP_CONFIG);
+
+    const configured = proposal({
+      ...incomplete,
+      roleRemovalConfig: {
+        ...incomplete.roleRemovalConfig,
+        members: [{ address: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F' }],
+        liveReconciled: true,
+      },
+    });
+    expect(entry(configured)).toBe(STEP_CONFIG);
+  });
+
   it('clamps a fully-complete proposal to the review step', () => {
     const done = proposal({ name: 'Pick a lunch spot', options: ['Tacos', 'Ramen'] });
     expect(entry(done)).toBe(STEP_REVIEW);
@@ -210,12 +229,24 @@ describe('STEP_ERROR_KEYS', () => {
 // Routing: the batch decides the contract, and the intent gallery's badge must
 // agree with it.
 // ---------------------------------------------------------------------------
-import { BINDING_TYPES, isBindingType, votingLaneForBatches } from './wizardSteps';
+import {
+  BINDING_TYPES,
+  isBindingType,
+  supportsVotingRestrictions,
+  votingLaneForBatches,
+} from './wizardSteps';
 
 describe('BINDING_TYPES', () => {
-  it('includes every type whose passing option runs a batch — transferFunds too', () => {
-    expect([...BINDING_TYPES].sort()).toEqual(['createRole', 'election', 'setter', 'transferFunds']);
+  it('includes every type whose passing option runs a batch — transfers and removals too', () => {
+    expect([...BINDING_TYPES].sort()).toEqual([
+      'createRole',
+      'election',
+      'removeRoleMembers',
+      'setter',
+      'transferFunds',
+    ]);
     expect(isBindingType('transferFunds')).toBe(true);
+    expect(isBindingType('removeRoleMembers')).toBe(true);
     expect(isBindingType('normal')).toBe(false);
   });
 
@@ -233,5 +264,19 @@ describe('votingLaneForBatches', () => {
     expect(votingLaneForBatches([])).toBe('dd');
     expect(votingLaneForBatches([[], []])).toBe('dd');
     expect(votingLaneForBatches(undefined)).toBe('dd');
+  });
+});
+
+describe('supportsVotingRestrictions', () => {
+  it('keeps treasury payouts restrictable even though they are binding', () => {
+    expect(isBindingType('transferFunds')).toBe(true);
+    expect(supportsVotingRestrictions('transferFunds')).toBe(true);
+  });
+
+  it('keeps role removal and the existing governance actions full-electorate only', () => {
+    for (const type of ['election', 'createRole', 'setter', 'removeRoleMembers']) {
+      expect(supportsVotingRestrictions(type)).toBe(false);
+    }
+    expect(supportsVotingRestrictions('normal')).toBe(true);
   });
 });

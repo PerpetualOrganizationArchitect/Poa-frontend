@@ -9,6 +9,7 @@ export const ORGANIZATION_DIRECTORY_QUERY = `
       metadata { description logo }
       participationToken { id totalSupply }
       quickJoin { id }
+      taskManager { id }
       users(first: 1000) { id }
     }
   }

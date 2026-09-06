@@ -1,226 +1,233 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Box,
-  VStack,
-  HStack,
-  Text,
-  Button,
-  Badge,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-  useToast,
-  Alert,
-  AlertIcon,
-  Tooltip,
-} from '@chakra-ui/react';
-import PulseLoader from "@/components/shared/PulseLoader";
+import React, { useRef, useState } from 'react';
+import { Box, VStack, HStack, Text, Button, Badge } from '@chakra-ui/react';
 import { useQuery } from '@apollo/client';
-import { useAccount } from 'wagmi';
+import PulseLoader from '@/components/shared/PulseLoader';
 import { FETCH_USER_TOKEN_REQUESTS } from '@/util/queries';
 import { useSubgraphClient } from '@/util/apolloClient';
 import { useWeb3 } from '@/hooks/useWeb3Services';
+import { useAuth } from '@/context/AuthContext';
 import { usePOContext } from '@/context/POContext';
 import { useRefreshSubscription, RefreshEvent } from '@/context/RefreshContext';
 import { formatTokenAmount } from '@/util/formatToken';
 
-const StatusBadge = ({ status }) => {
-  const colorScheme = {
-    Pending: 'yellow',
-    Approved: 'green',
-    Cancelled: 'red',
-  }[status] || 'gray';
+const dateFormat = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});
+
+function formatDate(timestamp) {
+  if (!timestamp) return null;
+  const date = new Date(Number(timestamp) * 1000);
+  return Number.isFinite(date.getTime()) ? dateFormat.format(date) : null;
+}
+
+function LoadingHistory() {
+  return (
+    <HStack py={3} spacing={3} role="status">
+      <PulseLoader size="sm" />
+      <Text color="gray.400" fontSize="sm">Loading your requests…</Text>
+    </HStack>
+  );
+}
+
+function StatusBadge({ status }) {
+  const color = {
+    Pending: 'yellow.200',
+    Approved: 'green.200',
+    Cancelled: 'gray.400',
+  }[status] || 'gray.300';
 
   return (
-    <Badge colorScheme={colorScheme} variant="subtle">
-      {status}
+    <Badge
+      color={color}
+      bg="whiteAlpha.100"
+      fontSize="xs"
+      fontWeight="normal"
+      textTransform="none"
+      borderRadius="full"
+      px={2}
+      py={0.5}
+      flexShrink={0}
+    >
+      {status === 'Pending' ? 'In review' : status}
     </Badge>
   );
-};
+}
 
-const UserRequestHistory = () => {
-  const toast = useToast();
-  const { address } = useAccount();
-  const { tokenRequest, executeWithNotification } = useWeb3();
-  const { participationTokenAddress, subgraphUrl } = usePOContext();
-
+function ScopedRequestHistory({ address, participationTokenAddress, subgraphUrl, tokenLabel }) {
+  const { tokenRequest, executeWithNotification, isReady } = useWeb3();
   const [cancellingId, setCancellingId] = useState(null);
-
+  const [cancelledRequestIds, setCancelledRequestIds] = useState(() => new Set());
+  const cancellationInFlight = useRef(false);
   const client = useSubgraphClient(subgraphUrl);
 
-  // Query user's requests
+  // This component only mounts once the account and organization are resolved.
+  // The query returns only requests owned by this account on this endpoint.
   const { data, loading, error, refetch } = useQuery(FETCH_USER_TOKEN_REQUESTS, {
     variables: {
       tokenAddress: participationTokenAddress,
-      userAddress: address?.toLowerCase(),
+      userAddress: address,
     },
-    skip: !participationTokenAddress || !address,
     fetchPolicy: 'cache-first',
     client,
   });
 
-  // Refetch immediately — executeWithNotification already waited for the
-  // subgraph to index the transaction block before emitting these events.
+  // The notification flow waits for indexing before emitting. Each mounted
+  // history refetches its own account/token query; failures render below.
   useRefreshSubscription(
     [
       RefreshEvent.TOKEN_REQUEST_CREATED,
       RefreshEvent.TOKEN_REQUEST_APPROVED,
       RefreshEvent.TOKEN_REQUEST_CANCELLED,
     ],
-    () => refetch(),
+    () => { refetch().catch(() => {}); },
     [refetch]
   );
 
   const userRequests = data?.tokenRequests || [];
 
-  const handleCancel = async (requestId) => {
-    if (!participationTokenAddress) return;
+  const handleCancel = async (request) => {
+    if (!isReady || !tokenRequest || cancellationInFlight.current || request.status !== 'Pending'
+      || cancelledRequestIds.has(request.requestId)) return;
 
-    setCancellingId(requestId);
+    cancellationInFlight.current = true;
+    setCancellingId(request.requestId);
     try {
       const result = await executeWithNotification(
-        () => tokenRequest.cancelRequest(participationTokenAddress, requestId),
+        () => tokenRequest.cancelRequest(participationTokenAddress, request.requestId),
         {
-          pendingMessage: 'Cancelling share request...',
-          successMessage: 'Share request cancelled',
-          errorMessage: 'Failed to cancel request',
+          pendingMessage: 'Cancelling contribution request…',
+          successMessage: 'Contribution request cancelled',
+          errorMessage: 'Couldn’t cancel your request',
           refreshEvent: RefreshEvent.TOKEN_REQUEST_CANCELLED,
-          refreshData: { requestId },
+          refreshData: { requestId: request.requestId },
         }
       );
-
-      if (!result.success) {
-        throw new Error(result.error?.userMessage || 'Failed to cancel request');
+      // Confirmation precedes the indexing refresh. Keep the confirmed result
+      // visible so stale pending data cannot offer a second cancellation.
+      if (result.success) {
+        setCancelledRequestIds((current) => new Set([...current, request.requestId]));
       }
-    } catch (error) {
-      console.error('Error cancelling request:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to cancel request',
-        status: 'error',
-        duration: 5000,
-      });
     } finally {
+      cancellationInFlight.current = false;
       setCancellingId(null);
     }
   };
 
-  const formatDate = (timestamp) => {
-    if (!timestamp) return '-';
-    return new Date(parseInt(timestamp) * 1000).toLocaleDateString();
-  };
-
-  const formatAddress = (addr) => {
-    if (!addr) return '-';
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-  };
-
-  if (loading && !data) {
-    return (
-      <Box p={4} textAlign="center">
-        <PulseLoader size="md" />
-        <Text mt={2} color="gray.500">Loading your requests...</Text>
-      </Box>
-    );
-  }
+  if (loading && !data) return <LoadingHistory />;
 
   if (error) {
     return (
-      <Alert status="error">
-        <AlertIcon />
-        Failed to load your requests
-      </Alert>
+      <VStack align="start" spacing={2} py={2}>
+        <Text role="alert" color="gray.300" fontSize="sm">We couldn’t load your requests.</Text>
+        <Button
+          size="sm"
+          variant="link"
+          color="purple.200"
+          onClick={() => { refetch().catch(() => {}); }}
+        >
+          Try again
+        </Button>
+      </VStack>
     );
   }
 
   if (userRequests.length === 0) {
     return (
-      <Box p={4} textAlign="center" color="gray.500">
-        <Text>You haven&apos;t made any share requests yet</Text>
-      </Box>
+      <Text color="gray.400" fontSize="sm" lineHeight="tall" py={2}>
+        You haven’t made a contribution request yet.
+      </Text>
     );
   }
 
   return (
-    <Box>
-      <Text fontWeight="semibold" mb={3}>
-        Your Request History ({userRequests.length})
-      </Text>
+    <VStack
+      as="ul"
+      listStyleType="none"
+      m={0}
+      p={0}
+      spacing={0}
+      align="stretch"
+      aria-label="Your contribution requests"
+      sx={{ '& > * + *': { borderTop: '1px solid', borderColor: 'whiteAlpha.100' } }}
+    >
+      {userRequests.map((request) => {
+        const status = cancelledRequestIds.has(request.requestId) ? 'Cancelled' : request.status;
+        const createdDate = formatDate(request.createdAt);
+        const resolvedDate = formatDate(request.approvedAt || request.cancelledAt);
+        const reason = request.metadata?.reason;
 
-      <Box overflowX="auto">
-        <Table size="sm" variant="simple">
-          <Thead>
-            <Tr>
-              <Th>Amount</Th>
-              <Th>Status</Th>
-              <Th>Submitted</Th>
-              <Th>Resolved</Th>
-              <Th>Actions</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {userRequests.map((request) => {
-              const isPending = request.status === 'Pending';
-              const resolvedDate = request.approvedAt || request.cancelledAt;
-
-              return (
-                <Tr key={request.id}>
-                  <Td>
-                    <Text fontWeight="medium">
-                      {formatTokenAmount(request.amount)}
-                    </Text>
-                  </Td>
-                  <Td>
-                    <StatusBadge status={request.status} />
-                  </Td>
-                  <Td>
-                    <Text fontSize="sm" color="gray.600">
-                      {formatDate(request.createdAt)}
-                    </Text>
-                  </Td>
-                  <Td>
-                    {resolvedDate ? (
-                      <VStack align="start" spacing={0}>
-                        <Text fontSize="sm" color="gray.600">
-                          {formatDate(resolvedDate)}
-                        </Text>
-                        {request.approver && (
-                          <Tooltip label={request.approver}>
-                            <Text fontSize="xs" color="gray.400">
-                              by {formatAddress(request.approver)}
-                            </Text>
-                          </Tooltip>
-                        )}
-                      </VStack>
-                    ) : (
-                      <Text fontSize="sm" color="gray.400">-</Text>
-                    )}
-                  </Td>
-                  <Td>
-                    {isPending && (
-                      <Button
-                        size="xs"
-                        colorScheme="red"
-                        variant="ghost"
-                        onClick={() => handleCancel(request.requestId)}
-                        isLoading={cancellingId === request.requestId}
-                        isDisabled={cancellingId !== null}
-                      >
-                        Cancel
-                      </Button>
-                    )}
-                  </Td>
-                </Tr>
-              );
-            })}
-          </Tbody>
-        </Table>
-      </Box>
-    </Box>
+        return (
+          <Box as="li" key={request.id} py={3}>
+            <HStack justify="space-between" align="start" spacing={3}>
+              <Text color="white" fontWeight="medium" fontSize="sm" minW={0} overflowWrap="anywhere">
+                {formatTokenAmount(request.amount)} {tokenLabel}
+              </Text>
+              <StatusBadge status={status} />
+            </HStack>
+            {reason && (
+              <Text color="gray.300" fontSize="sm" lineHeight="tall" mt={2} noOfLines={2} overflowWrap="anywhere">
+                {reason}
+              </Text>
+            )}
+            <HStack justify="space-between" align="center" spacing={3} mt={2}>
+              <VStack align="start" spacing={0.5} minW={0}>
+                <Text fontSize="xs" color="gray.400">
+                  {createdDate ? `Requested ${createdDate}` : 'Request date unavailable'}
+                </Text>
+                {resolvedDate && (
+                  <Text fontSize="xs" color="gray.400">
+                    {status === 'Cancelled' ? 'Cancelled' : 'Reviewed'} {resolvedDate}
+                  </Text>
+                )}
+              </VStack>
+              {status === 'Pending' && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  color="gray.300"
+                  fontWeight="normal"
+                  flexShrink={0}
+                  _hover={{ bg: 'whiteAlpha.100', color: 'white' }}
+                  onClick={() => handleCancel(request)}
+                  isLoading={cancellingId === request.requestId}
+                  isDisabled={cancellingId !== null || !isReady}
+                  aria-label={`Cancel request for ${formatTokenAmount(request.amount)} ${tokenLabel}`}
+                >
+                  Cancel
+                </Button>
+              )}
+            </HStack>
+          </Box>
+        );
+      })}
+    </VStack>
   );
-};
+}
 
-export default UserRequestHistory;
+export default function UserRequestHistory() {
+  const { accountAddress, isAuthenticated, isAuthHydrated } = useAuth();
+  const { participationTokenAddress, subgraphUrl, tokenLabel = 'Shares' } = usePOContext();
+  const address = accountAddress?.toLowerCase();
+
+  if (!isAuthHydrated) return <LoadingHistory />;
+  if (!isAuthenticated || !address) {
+    return <Text color="gray.400" fontSize="sm" py={2}>Sign in to view your requests.</Text>;
+  }
+  if (!participationTokenAddress || !subgraphUrl) {
+    return <Text color="gray.400" fontSize="sm" py={2}>Request history is unavailable.</Text>;
+  }
+
+  // Remount when the identity or organization changes so Apollo's previous
+  // results and pending cancellation state cannot appear under another account.
+  return (
+    <ScopedRequestHistory
+      key={`${subgraphUrl}:${participationTokenAddress.toLowerCase()}:${address}`}
+      address={address}
+      participationTokenAddress={participationTokenAddress}
+      subgraphUrl={subgraphUrl}
+      tokenLabel={tokenLabel}
+    />
+  );
+}

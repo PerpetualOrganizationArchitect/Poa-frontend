@@ -21,7 +21,7 @@ import {
 } from '@chakra-ui/react';
 import { ChevronDownIcon } from '@chakra-ui/icons';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { FaSignOutAlt, FaWallet } from 'react-icons/fa';
+import { FaSignOutAlt, FaWallet, FaUserCircle } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
 import useUnifiedDisconnect from '@/hooks/useUnifiedDisconnect';
 import PasskeyAccountInfo from '@/components/passkey/PasskeyAccountInfo';
@@ -57,7 +57,7 @@ function AccountMenuList({ children }) {
   );
 }
 
-function WalletAccountControl({ size, compact }) {
+function WalletAccountControl({ size, compact, label }) {
   const handleDisconnect = useUnifiedDisconnect();
 
   return (
@@ -75,7 +75,7 @@ function WalletAccountControl({ size, compact }) {
           return (
             <Button
               size={size}
-              leftIcon={<Icon as={FaWallet} />}
+              leftIcon={<Icon as={label ? FaUserCircle : FaWallet} />}
               onClick={openConnectModal}
               bg="whiteAlpha.200"
               color="white"
@@ -124,7 +124,7 @@ function WalletAccountControl({ size, compact }) {
               <MenuButton
                 as={IconButton}
                 size={size}
-                icon={<Icon as={FaWallet} />}
+                icon={<Icon as={label ? FaUserCircle : FaWallet} />}
                 bg="whiteAlpha.200"
                 color="white"
                 _hover={{ bg: 'whiteAlpha.300' }}
@@ -136,7 +136,7 @@ function WalletAccountControl({ size, compact }) {
                 as={Button}
                 size={size}
                 rightIcon={<ChevronDownIcon />}
-                leftIcon={<Icon as={FaWallet} />}
+                leftIcon={<Icon as={label ? FaUserCircle : FaWallet} />}
                 bg="whiteAlpha.200"
                 color="white"
                 _hover={{ bg: 'whiteAlpha.300' }}
@@ -145,7 +145,7 @@ function WalletAccountControl({ size, compact }) {
                 maxW="200px"
               >
                 <Text as="span" display="block" isTruncated>
-                  {account.displayName}
+                  {label || account.displayName}
                 </Text>
               </MenuButton>
             )}
@@ -173,11 +173,12 @@ function WalletAccountControl({ size, compact }) {
  * @param {object}  props
  * @param {string}  [props.size='sm']     Chakra size token for the wallet control.
  * @param {boolean} [props.compact=false] EOA-only. Renders the wallet control as an
- *   icon-only button instead of a labelled one. Passkey users always render the
- *   inherently icon-only <PasskeyAccountInfo />, which has no wide variant to
- *   collapse, so `compact` has no effect for them and is intentionally not forwarded.
+ *   icon-only button instead of a labelled one. PasskeyAccountInfo manages its
+ *   own presentation, so `compact` is intentionally not forwarded to it.
+ * @param {string} [props.label] Neutral account label for surfaces that keep
+ *   authentication details inside the menu. Applies to both account types.
  */
-export default function AccountControl({ size = 'sm', compact = false }) {
+export default function AccountControl({ size = 'sm', compact = false, label }) {
   const { isPasskeyUser, isAuthHydrated } = useAuth();
 
   // Passkey restoration happens after the first client render. Rendering the
@@ -185,6 +186,6 @@ export default function AccountControl({ size = 'sm', compact = false }) {
   // button for one frame and lets a fast click open the wrong auth flow.
   if (!isAuthHydrated) return null;
 
-  if (isPasskeyUser) return <PasskeyAccountInfo />;
-  return <WalletAccountControl size={size} compact={compact} />;
+  if (isPasskeyUser) return <PasskeyAccountInfo label={label} />;
+  return <WalletAccountControl size={size} compact={compact} label={label} />;
 }

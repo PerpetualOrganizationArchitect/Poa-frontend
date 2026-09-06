@@ -23,7 +23,7 @@ export function useAuthorityActions() {
 
   const run = useCallback(
     async (key, fn, messages) => {
-      if (!membershipAuthority || !authority.address) {
+      if (!membershipAuthority || !authority.enabled || !authority.address) {
         return { success: false, error: new Error('We’re still getting things ready — please try again in a moment.') };
       }
       if (authority.paused) {
@@ -37,7 +37,7 @@ export function useAuthorityActions() {
         setBusyKey(null);
       }
     },
-    [membershipAuthority, authority.address, authority.paused, executeWithNotification]
+    [membershipAuthority, authority.enabled, authority.address, authority.paused, executeWithNotification]
   );
 
   const claim = useCallback(

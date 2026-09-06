@@ -10,8 +10,8 @@ const sources = [
   { chainId: 42161, name: 'Arbitrum', url: 'https://arbitrum.test/subgraph' },
   { chainId: 100, name: 'Gnosis', url: 'https://gnosis.test/subgraph' },
 ];
-const park = { id: 'park-id', name: 'Decentral Park' };
-const duplicate = { id: 'other-park-id', name: park.name };
+const park = { id: 'park-id', name: 'Decentral Park', membershipAuthority: { id: '0x' + '1'.repeat(40), isRouterBound: true, cutoverAt: '1750000000' } };
+const duplicate = { ...park, id: 'other-park-id' };
 const deferred = () => {
   let resolve;
   let reject;
@@ -242,5 +242,21 @@ describe('org lookup HTTP responses', () => {
   ])('treats an invalid endpoint response as a failure, never a clean not-found', async (response) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
     await expect(fetchOrgByName(sources[0], park.name)).rejects.toBeInstanceOf(Error);
+  });
+});
+
+describe('Wave G direct links and cached hints', () => {
+  it('evicts a previously supported cached org after rollback without restoring legacy access', async () => {
+    const cache = createOrgLookupHintCache();
+    await warmHint(cache);
+    const result = await lookup({ cache, fetchSource: async source => source.chainId === 100 ? { ...park, membershipAuthority: { ...park.membershipAuthority, isRouterBound: false } } : null });
+    expect(result.org).toBeNull();
+    expect(cache.get(park.name, sources)).toBeNull();
+  });
+  it('refuses a stale legacy hint even when the org still has the same id and name', async () => {
+    const cache = createOrgLookupHintCache();
+    cache.set(park.name, sources, 1, park.id);
+    const result = await lookup({ cache, fetchSource: async () => ({ id: park.id, name: park.name }) });
+    expect(result.org).toBeNull();
   });
 });

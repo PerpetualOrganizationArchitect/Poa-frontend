@@ -3,20 +3,13 @@ import { ethers } from 'ethers';
 import OrgDeployerAccessV2ABI from '../../../../abi/OrgDeployerNew.json';
 import OrgDeployerLegacyABI from '../../../../abi/OrgDeployerLegacy.json';
 
-/**
- * OrgDeployer's public VERSION major is the explicit ABI routing boundary.
- * Major 1 selects the bundled current-v1 Hats adapter; historic 1.x releases did
- * not consistently bump VERSION for tuple changes, so the mandatory deployment
- * simulation remains the final compatibility check. Major 2 is Kyoto's exact
- * authority-native schema and follows breaking-major versioning.
- */
+/** New deployments accept VERSION major 2 only. Legacy ABI is retained for historical receipts. */
 export const ORG_DEPLOYER_SCHEMA = Object.freeze({
   LEGACY: 'legacy-hats-v17',
   ACCESS_V2: 'access-v2-kyoto',
 });
 
 export const ORG_DEPLOYER_SCHEMA_BY_MAJOR = Object.freeze({
-  1: ORG_DEPLOYER_SCHEMA.LEGACY,
   2: ORG_DEPLOYER_SCHEMA.ACCESS_V2,
 });
 
@@ -71,6 +64,7 @@ export function getOrgDeployFunctionName(zkEmailEnabled) {
  */
 export function assertDeploymentParamsSchema(schema, params) {
   requireKnownSchema(schema);
+  if (schema !== ORG_DEPLOYER_SCHEMA.ACCESS_V2) throw new OrgDeployerBoundaryError('Legacy organization deployment is retired. Use an authority-native deployer.');
   if (!params || !Array.isArray(params.roles)) {
     throw new OrgDeployerBoundaryError('OrgDeployer params must include a roles array.');
   }
@@ -164,6 +158,7 @@ function getOrgDeploymentFragment(schema, calldata) {
 
 /** Fail closed if pre-built bytes do not belong to the selected deployment ABI. */
 export function assertOrgDeploymentCalldataSchema({ schema, calldata }) {
+  if (schema !== ORG_DEPLOYER_SCHEMA.ACCESS_V2) throw new OrgDeployerBoundaryError('Legacy organization deployment is retired.');
   return getOrgDeploymentFragment(schema, calldata).name;
 }
 
@@ -259,8 +254,7 @@ async function callForData(provider, tx) {
 /**
  * Route to the deployed tuple schema without sending a transaction. VERSION is
  * the explicit major boundary: unsupported or malformed values are rejected
- * before calldata is constructed. Current-v1 calls are still simulated because
- * historical v1 contracts reused VERSION across tuple changes.
+ * before calldata is constructed. V1 deployments are retired.
  */
 export async function detectOrgDeployerSchema({ provider, address }) {
   if (!provider?.call) {

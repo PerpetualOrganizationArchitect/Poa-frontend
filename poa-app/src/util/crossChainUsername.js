@@ -12,6 +12,7 @@
  */
 
 import { gql } from '@apollo/client';
+import { supportedMemberships, ORGANIZATION_SUPPORT_FIELDS } from '@/lib/supportedOrganizations';
 import { getAllSubgraphUrls, DEFAULT_CHAIN_ID } from '@/config/networks';
 import { getClient } from '@/util/apolloClient';
 import { GET_ACCOUNTS_BY_USERNAMES } from '@/util/queries';
@@ -119,6 +120,7 @@ const FETCH_USER_ORGS = gql`
       totalVotes
       firstSeenAt
       organization {
+        ${ORGANIZATION_SUPPORT_FIELDS}
         id
         name
         metadataHash
@@ -519,7 +521,7 @@ export async function findUserOrgsAcrossChains(address) {
   for (const result of results) {
     if (result.status !== 'fulfilled') continue;
     const users = result.value.data?.users || [];
-    orgs.push(...users);
+    orgs.push(...supportedMemberships(users));
   }
   return orgs;
 }

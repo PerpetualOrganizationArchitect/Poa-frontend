@@ -1,19 +1,5 @@
-/**
- * accessV2/authority — FEATURE DETECTION (pure).
- *
- * Access v2 rolls out ORG BY ORG. An org is on the v2 path only when BOTH hold:
- *
- *   1. the serving subgraph knows the v2 schema at all (see `CAPABILITY.ACCESS_V2` in
- *      `util/subgraphCapabilities`) — the app reads the DECENTRALISED GATEWAY endpoints, which lag
- *      Studio by a manual publish, so "the schema file has it" is never evidence, and one unknown
- *      field fails the WHOLE document; and
- *   2. the org itself has a `MembershipAuthorityContract` that is ROUTER-BOUND (the cutover
- *      moment). Before the bind the authority exists but the modules still read legacy Hats, and a
- *      module whose `membershipAuthority()` is 0 is, by definition, legacy.
- *
- * Anything short of that is the LEGACY path, unchanged. Every v2 surface in this codebase must be
- * behind `useOrgAuthority().enabled`, and every v2 query must be `skip`ped when it is false.
- */
+/** Authority readiness. Missing schema or an incomplete cutover disables org interaction. */
+import { isSupportedOrganization } from '@/lib/supportedOrganizations';
 
 /** The three states an org can be in. `pending` = migrated but not yet cut over. */
 export const AUTHORITY_STATE = {
@@ -54,7 +40,7 @@ export function classifyAuthority(authorityNode, { capable = true } = {}) {
   if (!capable) return { ...base, reason: 'subgraph-not-published' };
   if (!authorityNode || !authorityNode.id) return { ...base, reason: 'no-authority' };
 
-  const bound = Boolean(authorityNode.isRouterBound);
+  const bound = isSupportedOrganization({ membershipAuthority: authorityNode });
   return {
     state: bound ? AUTHORITY_STATE.ACTIVE : AUTHORITY_STATE.PENDING,
     enabled: bound,

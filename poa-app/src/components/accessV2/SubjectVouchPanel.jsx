@@ -54,6 +54,14 @@ export default function SubjectVouchPanel({ subjectId, user }) {
           {progress.met && <Badge colorScheme="green">Qualified</Badge>}
         </HStack>
 
+        <VStack align="stretch" spacing={1}>
+          <Text fontSize="xs" color="warmGray.500">Vouching for</Text>
+          <UserIdentity address={user} size="sm" nameColor="warmGray.900" />
+          <Text fontSize="xs" fontFamily="mono" color="warmGray.600" overflowWrap="anywhere">
+            {user}
+          </Text>
+        </VStack>
+
         <Box>
           <Progress
             value={progress.quorum ? (progress.count / progress.quorum) * 100 : 0}

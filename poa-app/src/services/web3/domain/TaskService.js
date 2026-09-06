@@ -95,6 +95,9 @@ export class TaskService {
       bountyCaps = [],
     } = projectData;
 
+    if ([createHats, claimHats, reviewHats, assignHats].some(ids => ids.length > 0)) {
+      throw new Error('Project role permissions must be configured through the membership authority.');
+    }
     const contract = this.factory.createWritable(contractAddress, TaskManagerABI);
 
     const titleBytes = stringToBytes(name);

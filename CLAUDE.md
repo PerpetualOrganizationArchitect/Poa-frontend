@@ -17,8 +17,11 @@ cd poa-app && yarn e2e:test-passkey # virtual-passkey crypto self-test
 ```
 
 Automated coverage is vitest over the pure layer (colocated `*.test.js`, mostly
-`src/lib/**` + `src/util/**`) plus the E2E harness. React-coupled code has no unit
-tests — drive it through Test6 instead. No Prettier. No formatting commands.
+`src/lib/**` + `src/util/**`), React integration tests, and the E2E harness. The normal
+`yarn test` command includes server-rendered tests of MainLayout's actual project
+callback through TaskService and JoinPage's recipient display and vouch callbacks.
+These mock data hooks and transaction transport; browser layout and live flows still
+need Test6 verification. No Prettier. No formatting commands.
 
 ## Frontend changes: verify on Test6
 
@@ -144,15 +147,25 @@ balance. `lib/voting/treasuryBatches.js` encodes a payout from either source (Pa
 funds committed to an unfinalized distribution are NOT spendable — fully-claimed rounds get
 closed in-batch first) and `hooks/useOrgPotBalances.js` reads all three.
 
-### Access v2 orgs (MembershipAuthority) — gate on `useOrgAuthority().enabled`
+### Wave G: authority-only organizations
 
-On a cut-over org (Test6 since 2026-08-27) creator/voter/task permissions are read from the
-authority, not the legacy hat tables: `setCreatorHatAllowed`, DD `HAT_ALLOWED` and
-`setProjectRolePerm` still succeed on chain but change nothing (flagged `legacyOnly` in
-`setterDefinitions.js`, filtered by `lib/voting/setterAvailability.js`), the vote-creator gate
-folds authority perms (`lib/voting/createGate.js`), and role pickers list authority subjects
-(`lib/voting/roleOptions.js`). When `enabled` is false every one of these must render exactly
-the legacy UI.
+An organization is supported only when its indexed `membershipAuthority` has a valid nonzero
+address, `isRouterBound === true`, and a positive `cutoverAt`. Use
+`lib/supportedOrganizations.js` for discovery, name lookup and cross-chain memberships.
+Never substitute a name allowlist, filter historical activity by version/date, or retry an old
+GraphQL schema to restore an organization. Kansas Blockchain (formerly KUBI), Decentral Park,
+Poa and migrated Test6 retain all their pre-migration activity. Unmigrated orgs, including Argus,
+are hidden. Native V2 orgs satisfy the same predicate without a legacy router-binding entity.
+
+`AuthorityBoundary` withholds org pages until `useOrgAuthority().enabled` is verified; an
+unavailable endpoint does not restore Hats controls. New org deployments require VERSION major 2.
+Joining, vouching and membership management use MembershipAuthority. Retired EligibilityModule
+applications and QuickJoin explicit hat-claim methods are removed.
+
+Task masks come from authority permission rows, including groups and project context. A present
+zero project row overrides global permission unless `inheritGlobal` is true. Project creation
+passes empty retired role arrays; role-specific project permissions are changed through governance.
+Education and token approval use `EDU_CREATE` / `PT_APPROVE`, never creator/approver hat tables.
 
 ### Optimistic updates have grace period locks
 
@@ -220,28 +233,11 @@ static reading routes skip all three async bundles. Check these provider modules
 
 ### Task permissions
 
-Hat-based permission system matching `TaskPerm.sol`. Resolve a whole project at once with
-`projectTaskPermissions(project, userHatIds, address)` from `src/util/permissions.js`, and
-use `taskEditRights(perms, columnId)` for the edit/delete affordances. It mirrors
-TaskManager's `_checkPerm` exactly:
-
-```
-_checkPerm(pid, FLAG) = TaskPerm.has(_permMask(sender, pid), FLAG) || _isPM(pid, sender)
-```
-
-Three rules people keep getting wrong:
-
-- **The global fallback is per-hat.** A hat's *non-zero* per-project mask REPLACES its
-  global mask (it does not OR); a zero/absent project mask falls back to global.
-- **`_isPM` is the only human bypass** — being a manager of *that* project
-  (`Project.managers`, fetched by `FETCH_PROJECT_MANAGERS`, deliberately its own document
-  so an endpoint without the field can't blank the board). `BUDGET` is the one permission
-  with **no** manager bypass (`_requireBudgetEditor`).
-- **There is no "executive" hat.** Role order in `roleHatIds` carries zero authority —
-  Argus deployed its senior role first, so `roleHatIds[1]` is its *junior* role. Never gate
-  on a role index; gate on the contract that enforces the action (`projectTaskPermissions`,
-  `useVoteCreateGate`, `useEducationCreateGate`, `creatorHatIds` for projects,
-  `hasApproverRole` for token approvals).
+`projectTaskPermissions(project, userHatIds, address)` consumes ProjectContext's current authority
+projection. It resolves each role and its groups at the project context before adapting the mask
+for board components. Project managers bypass task permission checks; `BUDGET` has no manager
+bypass. Subject ids keep adopted hat ids verbatim, so a legacy-looking id is not legacy permission.
+Do not source current grants from the graph's historical ProjectRolePermission/global tables.
 
 ### Glass morphism styling
 

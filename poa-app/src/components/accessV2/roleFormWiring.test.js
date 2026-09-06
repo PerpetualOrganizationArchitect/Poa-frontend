@@ -97,8 +97,8 @@ describe('one encoder', () => {
   it('the v2 create-role arm is still behind the accessV2 gate', () => {
     expect(proposalForm).toMatch(/proposal\.type === "createRole" && extras\?\.accessV2\?\.enabled/);
     // …and the legacy arm still encodes the Hats-era calls for an org that has not cut over.
-    expect(proposalForm).toContain('createHatWithEligibility');
-    expect(proposalForm).toContain('setProjectRolePerm');
+    expect(proposalForm).not.toContain('createHatWithEligibility');
+    expect(proposalForm).not.toContain('setProjectRolePerm');
   });
 });
 

@@ -1,15 +1,8 @@
 /**
  * setterAvailability — which rule-change actions this org can actually propose.
  *
- * A setter template is a promise: "hold a vote, pass it, and this changes". At the access-v2
- * cutover three of them stopped being able to keep that promise WITHOUT FAILING. `setCreatorHatAllowed`,
- * DirectDemocracyVoting's HAT_ALLOWED key and `setProjectRolePerm` all still succeed on a migrated
- * org, still emit the event the subgraph indexes — so the UI still reports the new state — while
- * the contract that used to read those tables now asks the MembershipAuthority instead. A group
- * would vote, pass, see "done", and have changed nothing.
- *
- * That is the failure this module exists to prevent, and it is why availability is a FILTER rather
- * than a warning: an action nobody should propose is not offered.
+ * Current grants are written to MembershipAuthority. Retired module setters are unavailable
+ * throughout the app, including deep links, raw configuration and previously saved drafts.
  *
  * PURE, and the only reader of the access-system flags declared in `@/config/setterDefinitions`
  * (`legacyOnly`, `v2Only`, `idsAreSubjects`, `v2Description`, `v2HelpText`, `v2Note`). Nothing else
@@ -34,10 +27,10 @@ import {
 
 /** Why an action is not on offer. Member-facing — these strings are rendered as-is. */
 export const UNAVAILABLE_REASON = {
-  /** Superseded by the authority: it would pass and change nothing. */
+  /** Superseded by the authority and removed from current module implementations. */
   LEGACY_ONLY: (name) => (
     `“${name}” is no longer how this group works. Roles and permissions are all managed in one `
-    + 'place now, so this action would pass and change nothing — use “Change what a role can do” '
+    + 'place now, so this action is unavailable — use “Change what a role can do” '
     + 'instead.'
   ),
   /** The org has not been moved onto the authority yet. */
@@ -53,8 +46,8 @@ export const UNAVAILABLE_REASON = {
 /**
  * The availability context.
  * @typedef {object} AvailabilityCtx
- * @property {boolean} authorityEnabled - `useOrgAuthority().enabled`. FALSE must reproduce today's
- *   behaviour exactly: no flag filtering beyond hiding v2-only actions, and no copy swapping.
+ * @property {boolean} authorityEnabled - `useOrgAuthority().enabled`. Retired setters remain
+ *   unavailable while readiness is unresolved; authority actions require verified readiness.
  * @property {object|null} contractAddresses - keyed by `CONTRACT_MAP[].contextKey`. `null` skips
  *   the deployed-contract check entirely, which is what callers without addresses (and tests)
  *   already relied on.
@@ -71,7 +64,7 @@ export function templateUnavailableReason(template, ctx = {}) {
   const { authorityEnabled = false, contractAddresses = null } = ctx;
   const name = template.name || template.id;
 
-  if (template.legacyOnly && authorityEnabled) return UNAVAILABLE_REASON.LEGACY_ONLY(name);
+  if (template.legacyOnly) return UNAVAILABLE_REASON.LEGACY_ONLY(name);
   if (template.v2Only && !authorityEnabled) return UNAVAILABLE_REASON.V2_ONLY(name);
   if (contractAddresses && !isContractAvailable(template.contract, contractAddresses)) {
     const displayName = CONTRACT_MAP[template.contract]?.displayName || template.contract;
@@ -142,7 +135,7 @@ export function availableRawFunctions({
   const out = {};
   for (const [contractKey, fns] of Object.entries(rawFunctions || {})) {
     out[contractKey] = (fns || [])
-      .filter((fn) => !(fn.legacyOnly && authorityEnabled) && !(fn.v2Only && !authorityEnabled))
+      .filter((fn) => !fn.legacyOnly && !(fn.v2Only && !authorityEnabled))
       .map((fn) => (
         authorityEnabled && fn.v2Note
           ? { ...fn, description: `${fn.description} — ${fn.v2Note}` }
@@ -184,3 +177,16 @@ export function getAvailableTemplateById(id, ctx = {}) {
 }
 
 export default availableTemplates;
+
+/** Reject retired setters in restored/raw drafts as well as the displayed menu. */
+export function rawSetterUnavailableReason(proposal = {}) {
+  const fn = RAW_FUNCTIONS[proposal.setterContract]?.find(entry => entry.name === proposal.setterFunction);
+  if (fn?.legacyOnly) return 'This setting is retired. Change the role’s permissions instead.';
+  if (proposal.setterFunction !== 'setConfig') return null;
+  const key = Number(proposal.setterParams?.[0]);
+  if ((proposal.setterContract === 'directDemocracyVoting' && key === 3)
+      || (proposal.setterContract === 'taskManager' && key === 2)) {
+    return 'This setting is retired. Change the role’s permissions instead.';
+  }
+  return null;
+}

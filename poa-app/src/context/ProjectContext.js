@@ -1,3 +1,5 @@
+import { useAuthoritySubjects } from '@/hooks/accessV2/useAuthoritySubjects';
+import { authorityTaskPermissionRows } from '@/lib/accessV2/taskPermissions';
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery } from '@apollo/client';
 import { FETCH_PROJECTS_DATA_NEW, FETCH_PROJECTS_DATA_WITH_RELEASES, FETCH_PROJECT_MANAGERS } from '../util/queries';
@@ -30,6 +32,8 @@ export const ProjectProvider = ({ children }) => {
     const [globalRolePermissions, setGlobalRolePermissions] = useState([]);
     const { orgId, subgraphUrl } = usePOContext();
 
+    const authoritySubjects = useAuthoritySubjects();
+    const currentSubjects = useMemo(() => authoritySubjects.enabled && !authoritySubjects.error ? authoritySubjects.subjects : [], [authoritySubjects.enabled, authoritySubjects.error, authoritySubjects.subjects]);
     const client = useSubgraphClient(subgraphUrl);
     const isActive = useUserActive();
 
@@ -190,7 +194,7 @@ export const ProjectProvider = ({ children }) => {
             // _permMask fallback: project mask wins if non-zero, else fall back to global.
             // Also surfaced at the context level (below) for consumers that need the org-wide
             // grants without a project — e.g. the Create Project modal's baseline display.
-            const globalPerms = data.organization.taskManager.globalRolePermissions || [];
+            const globalPerms = authorityTaskPermissionRows(currentSubjects);
             setGlobalRolePermissions(globalPerms);
 
             // Transform projects for kanban board
@@ -209,8 +213,9 @@ export const ProjectProvider = ({ children }) => {
                     cap: project.cap,
                     spent: project.spent || '0',
                     bountyCaps: project.bountyCaps || [],
-                    rolePermissions: project.rolePermissions || [],
-                    globalRolePermissions: globalPerms,
+                    rolePermissions: authorityTaskPermissionRows(currentSubjects, project.id),
+                    // Context values are already folded; never fall back to the retired global table.
+                    globalRolePermissions: [],
                     // Active project managers (lowercased). The contract's `_isPM` bypass —
                     // arrives from its own document, so it may be [] for a beat on first paint.
                     managers: managersByProjectId.get(project.id) || [],
@@ -321,7 +326,7 @@ export const ProjectProvider = ({ children }) => {
         }
         // managersByProjectId is a dep so the board re-transforms when the (separate,
         // usually slower) managers document lands and PM affordances appear without a reload.
-    }, [data, managersByProjectId]);
+    }, [data, managersByProjectId, currentSubjects]);
 
     // Derive taskCount from projectsData (correctly excludes cancelled tasks)
     const taskCount = useMemo(() => {

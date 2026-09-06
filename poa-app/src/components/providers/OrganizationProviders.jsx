@@ -1,3 +1,4 @@
+import AuthorityBoundary from '@/components/providers/AuthorityBoundary';
 import NetworkModalControl from '@/components/NetworkModalControl';
 import { DataBaseProvider } from '@/context/dataBaseContext';
 import { IdentityProvider } from '@/context/IdentityContext';
@@ -26,7 +27,7 @@ export default function OrganizationProviders({ children }) {
                       <NetworkModalControl />
                       <TourOverlay />
                       <TourPrompt />
-                      {children}
+                      <AuthorityBoundary>{children}</AuthorityBoundary>
                     </TourProvider>
                   </DataBaseProvider>
                 </Web3Provider>

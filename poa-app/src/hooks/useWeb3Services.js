@@ -42,7 +42,6 @@ import { OrganizationService, createOrganizationService } from '../services/web3
 import { VotingService, VotingType, createVotingService } from '../services/web3/domain/VotingService';
 import { TaskService, createTaskService } from '../services/web3/domain/TaskService';
 import { EducationService, createEducationService } from '../services/web3/domain/EducationService';
-import { EligibilityService, createEligibilityService } from '../services/web3/domain/EligibilityService';
 import { createMembershipAuthorityService } from '../services/web3/domain/MembershipAuthorityService';
 import { ZkEmailInvitesService, createZkEmailInvitesService } from '../services/web3/domain/ZkEmailInvitesService';
 import { TokenRequestService, createTokenRequestService } from '../services/web3/domain/TokenRequestService';
@@ -351,7 +350,7 @@ export function useWeb3Services(options = {}) {
       voting: createVotingService(factory, txManager, ipfsService),
       task: createTaskService(factory, txManager, ipfsService),
       education: createEducationService(factory, txManager, ipfsService),
-      eligibility: createEligibilityService(factory, txManager),
+      eligibility: null,
       membershipAuthority: createMembershipAuthorityService(factory, txManager, authorityReadFactory),
       roleCreation: new RoleCreationService(authorityReadFactory),
       zkEmailInvites: createZkEmailInvitesService(factory, txManager, authorityReadFactory),

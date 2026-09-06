@@ -25,8 +25,6 @@ export { useVoteLanes } from './useVoteLanes';
 
 // Organization Structure
 export { useOrgStructure } from './useOrgStructure';
-export { useClaimRole } from './useClaimRole';
-export { useVouches } from './useVouches';
 export { useUserSearch } from './useUserSearch';
 export { useIsOrgAdmin } from './useIsOrgAdmin';
 
@@ -37,7 +35,6 @@ export { useTreasuryShare } from './useTreasuryShare';
 export { useVotingIntro } from './useVotingIntro';
 
 // Passkey Vouch-First Onboarding
-export { useVouchFirstOnboarding } from './useVouchFirstOnboarding';
 
 // Global Account
 export { useGlobalAccount } from './useGlobalAccount';

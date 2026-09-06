@@ -1,7 +1,9 @@
+import { useAuthorityPermission } from '@/hooks/useAuthorityPermission';
+import { PERM_KEYS } from '@/lib/accessV2/permKeys';
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery } from '@apollo/client';
 import { useAuth } from './AuthContext';
-import { FETCH_USER_DATA_NEW, FETCH_TOKEN_APPROVER_HATS } from '../util/queries';
+import { FETCH_USER_DATA_NEW } from '../util/queries';
 import { useOrgName } from '../hooks/useOrgName';
 import { usePOContext } from './POContext';
 import { formatTokenAmount } from '../util/formatToken';
@@ -107,14 +109,6 @@ export const UserProvider = ({ children }) => {
         wasActiveRef.current = isActive;
     }, [isActive, orgUserID, account]);
 
-    // Query approver hats for the participation token
-    const { data: approverHatsData } = useQuery(FETCH_TOKEN_APPROVER_HATS, {
-        variables: { tokenAddress: participationTokenAddress },
-        skip: !participationTokenAddress,
-        fetchPolicy: 'cache-first',
-        client,
-    });
-
     // Apollo can retain the last result after `skip` flips true. Never expose
     // that result to a disconnected or newly-switched account.
     const isCurrentUserData = useMemo(
@@ -140,12 +134,11 @@ export const UserProvider = ({ children }) => {
     // for TaskManager surfaces, `useVoteCreateGate` for proposals, `useEducationCreateGate`
     // for learning modules, `creatorHatIds` for projects, and `hasApproverRole` below for
     // participation-token approvals. Do not reintroduce a positional role index.
+    const { allowed: authorityApprover } = useAuthorityPermission(PERM_KEYS.PT_APPROVE);
     const hasApproverRole = useMemo(() => {
-        if (!account || !isCurrentUserData) return false;
-        const userHatIds = data?.user?.currentHatIds || [];
-        const approverHatIds = (approverHatsData?.hatPermissions || []).map(p => p.hatId);
-        return approverHatIds.some(hatId => userHatIds.includes(hatId));
-    }, [account, data, approverHatsData, isCurrentUserData]);
+        if (!account) return false;
+        return authorityApprover;
+    }, [account, authorityApprover]);
 
     const refetchUserData = useCallback(() => {
         if (orgUserID && account) {

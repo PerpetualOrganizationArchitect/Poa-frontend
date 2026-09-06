@@ -5,7 +5,7 @@
  * "absent" branch first (that would put a second full query on the wire on every load, and the
  * access-v2 subject document is not small), then resolved asynchronously for unknown endpoints.
  *
- * Returns `false` until proven otherwise — the safe default is always the LEGACY path.
+ * Returns `false` until proven otherwise; authority controls remain unavailable until verified.
  */
 
 import { useEffect, useState } from 'react';

@@ -137,8 +137,15 @@ const LinkedSubmissionText = ({ text }) => (
   </>
 );
 
-/** Keep long work visible enough to scan without letting it take over the modal. */
-const ExpandableSubmission = ({ text, color = 'gray.200', collapsedLines = 3 }) => {
+/** Keep long text visible enough to scan without letting it take over the modal. */
+const ExpandableText = ({
+  text,
+  color = 'gray.200',
+  collapsedLines = 3,
+  expandLabel = 'Show more',
+  collapseLabel = 'Show less',
+  linkify = false,
+}) => {
   const textRef = useRef(null);
   const [expanded, setExpanded] = useState(false);
   const [isClamped, setIsClamped] = useState(false);
@@ -172,7 +179,7 @@ const ExpandableSubmission = ({ text, color = 'gray.200', collapsedLines = 3 }) 
         overflowWrap="anywhere"
         noOfLines={expanded ? undefined : collapsedLines}
       >
-        <LinkedSubmissionText text={text} />
+        {linkify ? <LinkedSubmissionText text={text} /> : text}
       </Text>
       {(isClamped || expanded) && (
         <Button
@@ -184,7 +191,7 @@ const ExpandableSubmission = ({ text, color = 'gray.200', collapsedLines = 3 }) 
           onClick={() => setExpanded((value) => !value)}
           aria-expanded={expanded}
         >
-          {expanded ? 'Show less' : 'Show full submission'}
+          {expanded ? collapseLabel : expandLabel}
         </Button>
       )}
     </Box>
@@ -968,9 +975,17 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                       border="1px solid"
                       borderColor="whiteAlpha.100"
                     >
-                      <Text fontSize="sm" lineHeight="6" color="gray.200" style={{ whiteSpace: 'pre-wrap' }}>
-                        {metadataLoading ? 'Loading task details...' : (task.description ?? taskMetadata?.description ?? 'No description available')}
-                      </Text>
+                      {metadataLoading ? (
+                        <Text fontSize="sm" lineHeight="6" color="gray.200">
+                          Loading task details...
+                        </Text>
+                      ) : (
+                        <ExpandableText
+                          text={task.description ?? taskMetadata?.description ?? 'No description available'}
+                          collapsedLines={{ base: 4, md: 5 }}
+                          expandLabel="Show full description"
+                        />
+                      )}
                     </Box>
                     <HStack mt={3} spacing={3}>
                       <Badge colorScheme={difficultyColorScheme[(task.difficulty || taskMetadata?.difficulty)?.toLowerCase()?.replace(" ", "") || 'easy']}>
@@ -1078,7 +1093,11 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                         borderColor="whiteAlpha.100"
                       >
                         {displayedSubmission ? (
-                          <ExpandableSubmission text={displayedSubmission} />
+                          <ExpandableText
+                            text={displayedSubmission}
+                            expandLabel="Show full submission"
+                            linkify
+                          />
                         ) : (
                           <Text fontSize="sm" color="gray.200">
                             {metadataLoading ? 'Loading submission...' : 'No submission available'}
@@ -1142,7 +1161,11 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                           {previousSubmissionLoading ? (
                             <Text fontSize="sm" color="gray.400">Loading submitted work...</Text>
                           ) : previousSubmission ? (
-                            <ExpandableSubmission text={previousSubmission} />
+                            <ExpandableText
+                              text={previousSubmission}
+                              expandLabel="Show full submission"
+                              linkify
+                            />
                           ) : (
                             <Text fontSize="sm" color="gray.400">
                               Previous submitted work is unavailable.

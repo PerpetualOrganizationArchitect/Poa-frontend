@@ -193,6 +193,58 @@ export default function MarketingRoot({ children, className = '', ...rest }) {
           margin-left: 8px;
         }
 
+        /* The landing keeps the editorial foundation with a quieter frame.
+           Scope these refinements so docs and about retain their own layouts. */
+        .pa-root.pa-landing {
+          --bone: #f8f7f3;
+          --bone-deep: #f0eee7;
+          --paper: #fdfcf9;
+          --ink: #1b211f;
+          --steel: #58605b;
+          --civic-deep: #142a2b;
+          --hair: #dedfd7;
+          --hair-strong: #d2d5cb;
+          --rail: 0px;
+        }
+        .pa-root.pa-landing :global(.pa-brand-reg),
+        .pa-root.pa-landing :global(.pa-rail),
+        .pa-root.pa-landing :global(.pa-kicker-no),
+        .pa-root.pa-landing :global(.pa-rulepair),
+        .pa-root.pa-landing :global(.pa-tick),
+        .pa-root.pa-landing :global(.pa-anno),
+        .pa-root.pa-landing :global(.pa-figbar-id) { display: none; }
+        .pa-root.pa-landing :global(.pa-nav) { background: var(--bone); }
+        .pa-root.pa-landing :global(.pa-section) { padding-top: 104px; padding-bottom: 104px; }
+        .pa-root.pa-landing :global(.pa-hero) { padding-top: 100px; padding-bottom: 80px; }
+        .pa-root.pa-landing :global(#problem) { padding-top: 80px; }
+        .pa-root.pa-landing :global(.pa-h2) { font-weight: 570; font-variation-settings: 'wght' 570; letter-spacing: -0.04em; line-height: 1.08; }
+        .pa-root.pa-landing :global(.pa-kicker) { font-size: 11px; letter-spacing: 0.12em; margin-bottom: 24px; }
+        .pa-root.pa-landing :global(.pa-plate) { border: 1px solid var(--hair); padding: 12px; background: var(--bone-deep); border-radius: 8px; }
+        .pa-root.pa-landing :global(.pa-plate-mat) { padding: 0; border: 0; box-shadow: none; background: transparent; }
+        .pa-root.pa-landing :global(.pa-plate-frame) { border: 0; border-radius: 3px; }
+        .pa-root.pa-landing :global(.pa-plate-onnavy) { background: rgba(255,255,255,0.05); border-color: var(--hair-inv); }
+        .pa-root.pa-landing :global(.pa-figbar) { border: 0; margin-top: 10px; padding-top: 0; font-family: var(--sans); font-size: 12px; }
+        .pa-root.pa-landing :global(.pa-hero-plate .pa-plate) { padding: 16px; box-shadow: 0 16px 40px -28px rgba(20,42,43,0.35); }
+        .pa-root.pa-landing :global(.pa-cta-solid) { border-radius: 4px; }
+        .pa-root.pa-landing :global(.pa-cta-ghost:hover) { color: var(--ink); border-bottom-color: var(--ink); }
+        .pa-root.pa-landing :global(a:focus-visible),
+        .pa-root.pa-landing :global(button:focus-visible) { outline: 2px solid var(--signal); outline-offset: 5px; }
+        .pa-root.pa-landing :global(section[id]) { scroll-margin-top: 88px; }
+        .pa-root.pa-landing :global(.pa-kicker-inv),
+        .pa-root.pa-landing :global(.pa-stat-k),
+        .pa-root.pa-landing :global(.pa-ethos-link),
+        .pa-root.pa-landing :global(.pa-footer-col-head) { color: #e7b186; }
+        .pa-root.pa-landing :global(.pa-ethos),
+        .pa-root.pa-landing :global(.pa-band) { border-top-width: 0; }
+        .pa-root.pa-landing :global(.pa-footer-fine-id),
+        .pa-root.pa-landing :global(.pa-footer-rule-mid),
+        .pa-root.pa-landing :global(.pa-footer-rule-sig) { display: none; }
+        @media (max-width: 720px) {
+          .pa-root.pa-landing :global(.pa-section) { padding-top: 64px; padding-bottom: 64px; }
+          .pa-root.pa-landing :global(.pa-hero) { padding-top: 52px; padding-bottom: 64px; }
+          .pa-root.pa-landing :global(.pa-hero-plate .pa-plate) { padding: 10px; }
+        }
+
         /* -------------------- responsive rail collapse -------------------- */
         @media (max-width: 720px) {
           .pa-root {

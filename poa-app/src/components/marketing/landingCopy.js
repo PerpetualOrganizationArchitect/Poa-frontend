@@ -1,42 +1,18 @@
-// Production landing copy (P2). Direction A · "public works".
-//
-// Two provenances live in this module, kept explicit on purpose:
-//
-//   1. VERBATIM from PROTO_COPY - the strings the client already approved in the
-//      bake-off + warm-up round (hero, the upside/"pain", product-proof captions,
-//      footer). These are imported and re-exported unchanged. Do NOT wordsmith
-//      them here; Gate 2 (the copy panel) revisits wording. The client removed
-//      the hero quiet line, so it is dropped from the shipped hero.
-//
-//   2. DRAFT ship-grade copy for the full 9-section arc (BRIEF §5), written from
-//      the §2 keep-verbatim lines and the §4 cleared claims. Every claim traces
-//      to the §4 ledger; N1 revenue-share is CLEARED (P0 verified real
-//      distributions), so the strong form is used everywhere, always phrased
-//      "when the organization distributes revenue" (§4 phrasing rule).
-//
-// House style (BRIEF §3): sentence case, no em-dashes (" · " in mono microcopy),
-// no exclamations, no superlatives, brand always "Poa" (never all-caps), banned vocab absent.
-// Verified clean by scripts/marketing/check-vocab.mjs --src.
-
+// Shared production landing copy. Revenue claims remain conditional on distribution.
 import { PROTO_COPY } from '@/components/marketing/protoCopy';
 
-// ── 1. Verbatim, client-approved (re-exported from the bake-off control copy) ──
 
 export const HERO = {
-  eyebrow: PROTO_COPY.hero.eyebrow, // "Organizations owned by the people in them"
-  headline: PROTO_COPY.hero.headline, // "Do the work. Own what you build."
-  subline: PROTO_COPY.hero.subline,
-  ctaPrimary: PROTO_COPY.hero.ctaPrimary, // "Start an organization"
-  ctaSecondary: PROTO_COPY.hero.ctaSecondary, // "See how it works"
-  // No quiet line: the client removed it in the warm-up round.
+  eyebrow: 'Built together. Owned together.',
+  headline: 'Do the work. Own what you build.',
+  headlineLines: ['Do the work.', 'Own what', 'you build.'],
+  subline: 'Bring your people together. Turn the work you do into a stake in what you build, a voice in its direction, and a share when revenue is distributed.',
+  ctaPrimary: 'Start an organization',
+  ctaSecondary: 'See how it works',
 };
 
-// The upside band ("pain" in the proto) - carried verbatim. Used by the
-// hero-adjacent ledger framing / read as the promise restated.
 export const UPSIDE = PROTO_COPY.pain;
 
-// Product-proof captions - verbatim. Section components pick the caption they
-// need by shot key.
 export const PROOF_COPY = PROTO_COPY.proof;
 
 export const FOOTER = {
@@ -44,9 +20,7 @@ export const FOOTER = {
   selfHost: PROTO_COPY.footer.selfHost, // "Poa itself runs as an organization on Poa..."
 };
 
-// ── 2. Draft ship-grade arc copy (BRIEF §5), Gate-2 revisable ──
 
-// Nav + footer chrome. Anchors match the section ids in the landing components.
 export const NAV = {
   links: [
     { label: 'How it works', href: '/#how-it-works', anchor: true },
@@ -58,13 +32,9 @@ export const NAV = {
   cta: 'Start an organization',
 };
 
-// Full footer for the production strip (colophon + nav columns + self-host line
-// + closing grace note in the colophon, not as a headline).
 export const FOOTER_FULL = {
   tagline: FOOTER.tagline,
   selfHost: FOOTER.selfHost,
-  // "Start something that lasts." demoted from headline to a closing colophon
-  // grace note (BRIEF §2 cut-demote).
   graceNote: 'Start something that lasts.',
   columns: [
     {
@@ -86,79 +56,51 @@ export const FOOTER_FULL = {
       ],
     },
   ],
-  colophon: 'Poa graphics standard · public works edition',
+  colophon: 'Open source. Common ground.',
   std: 'std. 001',
 };
 
-// The civic-navy ledger stat band at the fold. Real capture numbers only
-// (Argus, three profit shares, 100% claimed, nothing held by Poa).
 export const LEDGER = {
-  title: 'the record, in the open',
-  ref: 'std. 001 / ledger',
-  cells: [
-    { num: '3', label: 'profit shares distributed' },
-    { num: '100%', label: 'claimed by the members who earned it' },
-    { num: '$0', label: 'held by Poa', signal: true, nocaps: true },
-  ],
+  title: 'Already taking shape.',
+  description: 'Real people. Shared work. Organizations of their own.',
 };
 
-// Section 2 · the problem. "From group chat to organization" - stuck-group
-// vignettes, no villains, closing on the ownership line. (BRIEF §5, §2 cut of
-// the mortality framing; the group is alive and stuck.)
 export const PROBLEM = {
-  rail: 'sec 02 / the problem',
-  kicker: 'The problem',
-  heading: 'From a group chat to an organization',
-  lead:
-    'The group is real. The tools were never built for it. The work starts, trust and good will carry it, and then the group gets big enough that trust alone stops holding it together.',
+  rail: 'sec 02 / together',
+  kicker: 'A shared beginning',
+  heading: 'An idea brings you together. Build from there.',
+  lead: 'A project. A place. Something your community needs. Give the people who show up a way to carry it forward, together.',
   items: [
-    {
-      title: 'The work goes untracked',
-      body:
-        'Effort lives in threads and someone’s memory. No one can point to who did what, so the record is whatever people remember.',
-    },
-    {
-      title: 'The splits stay unspoken',
-      body:
-        'Money comes in and goes out through a personal account. Who is owed what is a conversation everyone keeps putting off.',
-    },
-    {
-      title: 'The loudest voice decides',
-      body:
-        'Choices get made by whoever is most insistent in the moment, not by the people who carry the work.',
-    },
+    { title: 'Make every contribution count', body: 'Give the work a home, from the first task to the finished project. Everyone can see what has been done and who made it happen.' },
+    { title: 'Put the money in the open', body: 'A shared treasury and clear rules for how it moves. Your group knows what it has, and how to share it.' },
+    { title: 'Find your direction together', body: 'Bring decisions to the people doing the work. Agree on the rules, then shape what comes next.' },
   ],
-  // The close (BRIEF §5: "the people doing the most owned nothing").
-  close: 'The group held together, and the people doing the most owned nothing.',
+  close: 'More than a group. Something you own together.',
 };
 
-// Section 3 · the work. Task management pain -> ownership engine. Uses the
-// tasks-board shot; leans the task-detail card. (BRIEF §4 reframed protocol
-// claims: earned, cannot be bought/sold/given away.)
 export const THE_WORK = {
   rail: 'sec 03 / the work',
   kicker: 'The work',
-  heading: 'The work you do earns you a share',
+  heading: 'Your work becomes your stake.',
   lead:
-    'Post the work, claim it, review it, pay it. When your work is approved you earn ownership in the organization, recorded in the open on a board the whole group can see.',
+    'Every completed task can become a piece of something bigger. When your work is approved, you earn ownership in the organization you are helping build.',
   points: [
     {
-      title: 'Ownership is earned, not bought',
+      title: 'A stake you earn',
       body:
         'Ownership is earned when your work is approved. It cannot be bought, sold, or given away.',
     },
     {
-      title: 'Tasks pay in dollars and build your ownership',
+      title: 'Paid work. Lasting ownership.',
       body:
         'A task can carry a payout in dollars and a share of ownership. The group decides what each piece of work is worth.',
     },
     {
-      title: 'The right people take the right work',
+      title: 'A clear path from idea to done',
       body:
-        'Roles can gate who claims and approves a task, so the work goes to the members set up to do it.',
+        'Post a task, find the right person, and review the result. Your group decides who can do and approve the work.',
     },
   ],
-  // Figure microcopy for the spec plate (direction-specific, vocab-clean).
   fig: {
     id: 'fig 03',
     txt: 'shared task board · payouts of 5 to 50 shares, posted in the open',
@@ -166,15 +108,12 @@ export const THE_WORK = {
   },
 };
 
-// Section 4 · the say. Governance pain -> votes that count. Uses the vote-tally
-// shot. Keep-verbatim: "Voting power is earned by participating, not bought."
 export const THE_SAY = {
   rail: 'sec 04 / the say',
   kicker: 'The say',
-  heading: 'A real say in the decisions',
+  heading: 'A voice in what comes next.',
   lead:
-    'Your group sets how it decides: one person one vote, votes weighted by contribution, or a blend of the two. You pick the rules, and you can change them by vote.',
-  // Keep-verbatim, BRIEF §2 "best line on the page".
+    'The people building the organization help shape its direction. Choose how your group votes, make decisions in the open, and put them into motion.',
   earnedLine: 'Voting power is earned by participating, not bought.',
   points: [
     {
@@ -200,16 +139,12 @@ export const THE_SAY = {
   },
 };
 
-// Section 5 · the money (PEAK). Splitting-money pain -> revenue share. Uses the
-// treasury + treasury-stats shots. N1 cleared: strong revenue-share form,
-// always "when the organization distributes revenue". Money-candor Q&A carries
-// (BRIEF §2), reframed as plain answers, not "the fine print".
 export const THE_MONEY = {
   rail: 'sec 05 / the money',
   kicker: 'The money',
-  heading: 'When the money is shared, your share matches your work',
+  heading: 'Build something. Share in its success.',
   lead:
-    'The treasury is in the open and can be spent only by the rules the group set. When the organization distributes revenue, your share matches the ownership you earned.',
+    'When the organization distributes revenue, your share follows the ownership you earned. The work you put in has a place in what comes back.',
   points: [
     {
       title: 'A treasury spent only by the rules',
@@ -227,10 +162,8 @@ export const THE_MONEY = {
         'You can check your share yourself, without trusting anyone’s spreadsheet, and cash out to Cash App, Venmo, Revolut, or your bank.',
     },
   ],
-  // Money-candor line: who holds the money. Kept plain and affirming.
   candor:
     'The money is held by the organization itself, not by Poa. Poa never holds it, and never takes a cut.',
-  // Stat readout for the navy plate (real Argus numbers).
   stats: [
     { k: 'distributed', v: '3 profit shares' },
     { k: 'claimed', v: '100%' },
@@ -247,15 +180,12 @@ export const THE_MONEY = {
   },
 };
 
-// Section 6 · the people. Who-does-what pain: roles with exact written powers,
-// join by vouch in seconds, audiences. Uses team-matrix + team-members shots.
-// Template names are the real deployment templates.
 export const THE_PEOPLE = {
   rail: 'sec 06 / the people',
   kicker: 'The people',
-  heading: 'Roles with their powers written down',
+  heading: 'People make it possible.',
   lead:
-    'Every role has its powers written down: who can approve work, set budgets, or run a vote. Nothing is left to whoever happens to have the keys.',
+    'Make room for the people who move your idea forward. Give each role clear responsibilities, and let new members find their place.',
   points: [
     {
       title: 'Powers are written, not assumed',
@@ -268,12 +198,19 @@ export const THE_PEOPLE = {
         'A member vouches for you, or you take an open role, and you are in. An account is a username and a passkey.',
     },
   ],
+  audienceIntro: {
+    kicker: 'Built for',
+    heading: 'Find your starting point.',
+    body: 'Templates give your group a starting set of roles, joining rules, and voting. Choose one, then make it your own.',
+    cta: 'Choose a template',
+    href: '/create/',
+  },
   audiences: [
-    { line: 'Student organizations', template: 'student organization' },
-    { line: 'Community spaces', template: 'community organization' },
-    { line: 'Creative collectives', template: 'creative collective' },
-    { line: 'Open-source projects', template: 'open-source project' },
-    { line: 'Worker owned businesses', template: 'worker cooperative' },
+    { line: 'Student organizations', description: 'Plan events, share responsibilities, and give the next class a strong start.' },
+    { line: 'Community spaces', description: 'Care for a shared place, fund improvements, and recognize the people who keep it going.' },
+    { line: 'Creative collectives', description: 'Bring a project to life, make decisions together, and share what it earns.' },
+    { line: 'Open-source projects', description: 'Recognize contributions, coordinate maintainers, and put funding behind the work.' },
+    { line: 'Worker owned businesses', description: 'Share the work, the decisions, and the revenue with the people building the business.' },
   ],
   fig: {
     id: 'fig 06',
@@ -285,45 +222,31 @@ export const THE_PEOPLE = {
   },
 };
 
-// Section 7 · proof band. Keep-verbatim trust line + LIVE registry counts +
-// explore link. Live numbers are the proof (exploreStats capture is optional
-// support). The count sentence is assembled in the component from live data.
 export const PROOF = {
   rail: 'sec 07 / the record',
   kicker: 'The record',
-  // Keep-verbatim (BRIEF §2), the trust engine.
   line: 'Every organization on Poa is public: its rules, its decisions, its books.',
-  // Built from live counts: `{n} organizations and {m} members keep their books here.`
   countSuffix: 'keep their books here.',
   cta: 'Read the books for yourself',
   ctaHref: '/explore',
 };
 
-// Section 8 · ethos plate. The mission moment on the civic-deep plate.
-// "The people who do the work own the most" promoted to centerpiece
-// (BRIEF §2). One rented-software sentence allowed. Affirmation of property,
-// no villains. "Poa runs on Poa, books public" carries verbatim.
 export const ETHOS = {
   rail: 'sec 08 / the reason',
   kicker: 'The reason',
-  // Promoted centerpiece, the nine-word promise.
-  centerpiece: 'The people who do the work own the most',
+  centerpiece: 'What you build together belongs to you.',
   body:
-    'There are no outside shares. Ownership belongs to the people in the organization, and it is earned, not bought. What you earn stays yours, and no one can take it from you, including us.',
-  // The single permitted rented-software sentence.
+    'The people who do the work earn the ownership. A simple idea, with room for a different kind of organization. One where your effort builds something that stays yours.',
   rented:
-    'Most software is rented. Poa is owned: your group holds the rules, the money, and the record, and can take them anywhere.',
-  // Keep-verbatim, with the live-linked variant handled in the component.
+    'Your group holds the rules, the money, and the record. Poa is open source, so what you build can keep going on your own terms.',
   selfHost: 'Poa itself runs as an organization on Poa.',
   selfHostLink: 'Our books are public too',
 };
 
-// Section 9 · start + close. Three steps + CTA pair. The closing grace note
-// lives in the colophon (FOOTER_FULL.graceNote), not as a headline.
 export const START_CLOSE = {
   rail: 'sec 09 / start',
-  kicker: 'Start',
-  heading: 'Start in three steps',
+  kicker: 'Your next chapter',
+  heading: 'Start with your people.',
   steps: [
     {
       no: '01',
@@ -339,12 +262,11 @@ export const START_CLOSE = {
     },
     {
       no: '03',
-      title: 'Run it in the open',
+      title: 'Build your first thing',
       body:
-        'Post work, run votes, share the money. Everything is on the record, and the books are open to every member.',
+        'Post the first task. Make a decision together. Turn a shared idea into something real, one contribution at a time.',
     },
   ],
-  // Always-safe charges-nothing line (BRIEF §4 default).
   quiet: 'An account is a username and a passkey. Poa charges nothing.',
   ctaPrimary: 'Start an organization',
   ctaSecondary: 'Browse organizations',

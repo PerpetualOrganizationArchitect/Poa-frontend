@@ -2,22 +2,9 @@ import React from 'react';
 import NextLink from 'next/link';
 import { HERO } from '@/components/marketing/landingCopy';
 import { PRODUCT_SHOTS } from '@/components/marketing/productShots';
-import { SpecPlate, DataChipList } from '@/components/marketing/primitives';
-
-// Section 1 · Hero. The core promise in five seconds: category eyebrow, the
-// winning headline, the work → ownership → money + vote subline, a CTA pair, and
-// the annotated task-payout spec plate with ledger chips. No quiet line (client
-// removed it). Hero text uses .poa-fade (transform-free, visible without JS);
-// the plate uses .poa-rise. The hero image is eager (above the fold).
+import { SpecPlate } from '@/components/marketing/primitives';
 
 const S = PRODUCT_SHOTS;
-
-const HERO_CHIPS = [
-  { label: 'reward', value: '50 shares', solid: true },
-  { label: 'status', value: 'approved · ownership issued' },
-  { label: 'claimed by', value: 'emmaphilosopher' },
-  { label: 'difficulty', value: 'easy · 1h' },
-];
 
 export default function Hero() {
   return (
@@ -29,10 +16,9 @@ export default function Hero() {
 
         <div className="pa-hero-text poa-fade">
           <p className="pa-eyebrow">
-            <span className="pa-eyebrow-tick">§</span>
             {HERO.eyebrow}
           </p>
-          <h1 className="pa-h1">{HERO.headline}</h1>
+          <h1 className="pa-h1" aria-label={HERO.headline}>{HERO.headlineLines.map((line) => <span key={line}>{line}</span>)}</h1>
           <p className="pa-subline">{HERO.subline}</p>
           <div className="pa-cta-row">
             <NextLink href="/create" className="pa-cta-solid pa-cta-lg">
@@ -49,29 +35,22 @@ export default function Hero() {
           <SpecPlate
             shot={S.taskDetail}
             eager
-            anno="work approved · ownership issued"
-            annoPos="hero"
-            fig={{
-              id: 'fig 01',
-              txt: 'one completed task · reward 50 shares, claimed by a member',
-            }}
           />
-          <DataChipList chips={HERO_CHIPS} />
-          <p className="pa-plate-note">
-            <span className="pa-plate-note-tick" aria-hidden="true" />
-            Ownership cannot be bought, sold, or given away. It is issued only when the work is
-            approved.
-          </p>
+          <div className="pa-hero-receipt">
+            <div><span className="pa-receipt-dot" aria-hidden="true" />A contribution. A stake.</div>
+            <span className="pa-receipt-value">50 shares earned</span>
+          </div>
+          <p className="pa-plate-note">A real task, completed by a member of Decentral Park.</p>
         </div>
       </div>
 
       <style jsx>{`
         .pa-hero {
-          padding: 60px 0 56px;
+          padding: 100px 0 112px;
         }
         .pa-hero-text {
           grid-column: 2 / 8;
-          padding-top: 8px;
+          padding-top: 0;
         }
         .pa-eyebrow {
           font-family: var(--mono);
@@ -84,27 +63,24 @@ export default function Hero() {
           align-items: center;
           gap: 10px;
         }
-        .pa-eyebrow-tick {
-          color: var(--signal);
-          font-size: 14px;
-        }
         .pa-h1 {
           font-family: var(--archivo);
-          font-variation-settings: 'wght' 640;
-          font-weight: 640;
-          font-size: clamp(2.9rem, 7vw, 5.5rem);
-          line-height: 0.98;
-          letter-spacing: -0.025em;
-          margin: 0 0 26px;
+          font-variation-settings: 'wght' 580;
+          font-weight: 580;
+          font-size: clamp(3.5rem, 6.5vw, 5.6rem);
+          line-height: 1.015;
+          letter-spacing: -0.055em;
+          margin: 0 0 28px;
           color: var(--ink);
           max-width: 12ch;
         }
+        .pa-h1 > span { display: block; }
         .pa-subline {
           font-size: 19px;
           line-height: 1.55;
           color: var(--steel);
           margin: 0 0 34px;
-          max-width: 46ch;
+          max-width: 40ch;
         }
         .pa-cta-row {
           display: flex;
@@ -114,26 +90,14 @@ export default function Hero() {
         }
         .pa-hero-plate {
           grid-column: 8 / 14;
-          align-self: start;
+          align-self: center;
           margin-top: 4px;
         }
-        .pa-plate-note {
-          margin: 18px 0 0;
-          padding-left: 18px;
-          position: relative;
-          font-size: 14.5px;
-          line-height: 1.5;
-          color: var(--steel);
-          max-width: 44ch;
-        }
-        .pa-plate-note-tick {
-          position: absolute;
-          left: 0;
-          top: 8px;
-          width: 8px;
-          height: 8px;
-          background: var(--signal);
-        }
+        .pa-hero-receipt { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 24px 0 0; font-size: 14px; color: var(--steel); }
+        .pa-hero-receipt > div { display: flex; align-items: center; gap: 9px; }
+        .pa-receipt-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); flex: none; }
+        .pa-receipt-value { color: var(--signal-deep); font-weight: 600; white-space: nowrap; }
+        .pa-plate-note { margin: 12px 0 0; font-size: 12px; line-height: 1.5; color: var(--steel); }
 
         @media (max-width: 1080px) {
           .pa-hero-text,
@@ -147,16 +111,17 @@ export default function Hero() {
         }
         @media (max-width: 720px) {
           .pa-hero {
-            padding: 40px 0 52px;
+            padding: 56px 0 64px;
           }
           .pa-hero-text,
           .pa-hero-plate {
             grid-column: 1 / 2;
           }
           .pa-h1 {
-            font-size: clamp(2.6rem, 12vw, 3.6rem);
+            font-size: clamp(2.8rem, 12.5vw, 4.5rem);
             max-width: 100%;
           }
+          .pa-hero-receipt { font-size: 12px; gap: 10px; padding-top: 20px; }
           .pa-subline {
             font-size: 17px;
             max-width: 100%;

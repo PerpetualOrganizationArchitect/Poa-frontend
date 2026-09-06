@@ -1,93 +1,84 @@
-/**
- * TokenRequestCard - Dedicated card for token request functionality
- * Contains Request Tokens button and collapsible request history
- */
+/** Contribution requests, with history available when it is needed. */
 
-import React, { useState } from 'react';
-import {
-  Box,
-  VStack,
-  HStack,
-  Text,
-  Button,
-  Collapse,
-  useDisclosure,
-} from '@chakra-ui/react';
+import React, { useId, useState } from 'react';
+import { Box, VStack, Text, Button, Collapse, useDisclosure } from '@chakra-ui/react';
 import { AddIcon, ChevronDownIcon, ChevronUpIcon } from '@chakra-ui/icons';
 import { glassLayerStyle } from '@/components/shared/glassStyles';
 import { TokenRequestModal, UserRequestHistory } from '@/components/tokenRequest';
 import { usePOContext } from '@/context/POContext';
 
-/**
- * TokenRequestCard component
- * @param {Object} props
- * @param {boolean} props.hasMemberRole - Whether user can request tokens
- */
-export function TokenRequestCard({ hasMemberRole }) {
+export function TokenRequestCard({ hasMemberRole, embedded = false }) {
   const [showHistory, setShowHistory] = useState(false);
+  const historyId = useId();
   const { isOpen: isModalOpen, onOpen: openModal, onClose: closeModal } = useDisclosure();
   const { tokenLabel = 'Shares' } = usePOContext() || {};
 
-  // Don't render if user doesn't have member role
-  if (!hasMemberRole) {
-    return null;
-  }
+  if (!hasMemberRole) return null;
 
   return (
     <>
       <Box
+        as={embedded ? 'div' : 'section'}
+        aria-label="Contribution requests"
         w="100%"
-        h="100%"
-        borderRadius="2xl"
-        bg="transparent"
-        boxShadow="lg"
+        borderRadius={embedded ? undefined : '2xl'}
+        border={embedded ? undefined : '1px solid'}
+        borderColor="whiteAlpha.100"
         position="relative"
-        zIndex={2}
+        zIndex={embedded ? undefined : 2}
       >
-        <div style={glassLayerStyle} />
+        {!embedded && <div style={glassLayerStyle} />}
+        <VStack spacing={embedded ? 3 : 5} align="stretch" p={embedded ? 0 : { base: 5, md: 6 }}>
+          {!embedded && <Box>
+            <Text as="h2" fontWeight="semibold" fontSize="lg" color="white" letterSpacing="-0.02em">
+              Get recognized
+            </Text>
+            <Text mt={2} color="gray.400" fontSize="sm" lineHeight="tall">
+              Request {tokenLabel} for a contribution you’ve made.
+            </Text>
+          </Box>}
 
-        {/* Darker header section */}
-        <VStack pb={2} align="flex-start" position="relative" borderTopRadius="2xl">
-          <div style={glassLayerStyle} />
-          <Text pl={6} pt={2} fontWeight="bold" fontSize={{ base: 'xl', md: '2xl' }} color="white">
-            {tokenLabel} Requests
-          </Text>
-        </VStack>
-
-        {/* Content */}
-        <VStack spacing={4} align="stretch" p={4} pt={2}>
-          {/* Request Tokens Button */}
           <Button
-            leftIcon={<AddIcon />}
+            leftIcon={<AddIcon boxSize={3} />}
             colorScheme="purple"
+            variant="outline"
+            borderColor="purple.400"
+            color="purple.100"
+            _hover={{ bg: 'whiteAlpha.100', borderColor: 'purple.300' }}
             size="md"
             onClick={openModal}
             w="100%"
+            fontSize="sm"
+            whiteSpace="normal"
+            height="auto"
+            minH={11}
+            py={3}
           >
             Request {tokenLabel}
           </Button>
 
-          {/* Collapsible History Section */}
-          <Box>
-            <HStack
-              cursor="pointer"
-              onClick={() => setShowHistory(!showHistory)}
-              justify="space-between"
-              py={2}
-              _hover={{ color: 'purple.300' }}
-              transition="color 0.2s"
+          <Box w="100%" borderTop="1px solid" borderColor="whiteAlpha.100" pt={embedded ? 1 : 3}>
+            <Button
+              variant="unstyled"
+              display="flex"
+              alignItems="center"
+              justifyContent="space-between"
+              w="100%"
+              h="auto"
+              minH={10}
+              fontSize="sm"
+              fontWeight="normal"
+              color="gray.300"
+              onClick={() => setShowHistory((current) => !current)}
+              aria-expanded={showHistory}
+              aria-controls={historyId}
+              rightIcon={showHistory ? <ChevronUpIcon boxSize={5} /> : <ChevronDownIcon boxSize={5} />}
+              _hover={{ color: 'white' }}
             >
-              <Text fontSize="sm" fontWeight="medium" color="gray.300">
-                My Request History
-              </Text>
-              {showHistory ? (
-                <ChevronUpIcon boxSize={5} color="gray.400" />
-              ) : (
-                <ChevronDownIcon boxSize={5} color="gray.400" />
-              )}
-            </HStack>
-            <Collapse in={showHistory}>
-              <Box pt={2}>
+              Request history
+            </Button>
+            <Collapse in={showHistory} id={historyId}>
+              <Box pt={3}>
                 <UserRequestHistory />
               </Box>
             </Collapse>
@@ -95,7 +86,6 @@ export function TokenRequestCard({ hasMemberRole }) {
         </VStack>
       </Box>
 
-      {/* Modal */}
       <TokenRequestModal isOpen={isModalOpen} onClose={closeModal} />
     </>
   );

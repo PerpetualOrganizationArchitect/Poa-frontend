@@ -6,23 +6,39 @@
 
 import {
   IconButton,
+  Button,
   Menu,
   MenuButton,
   MenuList,
   MenuItem,
   Icon,
 } from '@chakra-ui/react';
-import { FaFingerprint, FaSignOutAlt } from 'react-icons/fa';
+import { FaFingerprint, FaSignOutAlt, FaUserCircle } from 'react-icons/fa';
+import { ChevronDownIcon } from '@chakra-ui/icons';
 import { useAuth } from '@/context/AuthContext';
 
-export default function PasskeyAccountInfo() {
+export default function PasskeyAccountInfo({ label }) {
   const { accountAddress, forgetPasskey, isPasskeyUser } = useAuth();
 
   if (!isPasskeyUser || !accountAddress) return null;
 
   return (
     <Menu placement="bottom-end">
-      <MenuButton
+      {label ? (
+        <MenuButton
+          as={Button}
+          size="sm"
+          leftIcon={<Icon as={FaUserCircle} />}
+          rightIcon={<ChevronDownIcon />}
+          bg="whiteAlpha.100"
+          color="white"
+          _hover={{ bg: 'whiteAlpha.200' }}
+          _active={{ bg: 'whiteAlpha.200' }}
+          aria-label="Account menu"
+        >
+          {label}
+        </MenuButton>
+      ) : <MenuButton
         as={IconButton}
         icon={<Icon as={FaFingerprint} color="amethyst.500" boxSize={5} />}
         size="sm"
@@ -33,7 +49,7 @@ export default function PasskeyAccountInfo() {
         _hover={{ bg: 'rgba(255, 255, 255, 0.95)', borderColor: 'amethyst.400' }}
         _active={{ bg: 'white' }}
         aria-label="Passkey account menu"
-      />
+      />}
       <MenuList
         borderRadius="xl"
         boxShadow="xl"
@@ -52,7 +68,7 @@ export default function PasskeyAccountInfo() {
           fontWeight="500"
           color="red.200"
         >
-          Disconnect Passkey
+          {label ? 'Disconnect' : 'Disconnect Passkey'}
         </MenuItem>
       </MenuList>
     </Menu>

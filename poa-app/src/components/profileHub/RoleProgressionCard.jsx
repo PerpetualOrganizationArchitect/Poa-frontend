@@ -11,9 +11,8 @@ import {
   Text,
   Button,
   Icon,
-  Badge,
 } from '@chakra-ui/react';
-import { FiArrowRight, FiStar, FiUsers } from 'react-icons/fi';
+import { FiArrowRight, FiCheck } from 'react-icons/fi';
 import Link from 'next/link';
 import { VouchProgressBar } from '@/components/orgStructure/VouchProgressBar';
 import { glassLayerStyle } from '@/components/shared/glassStyles';
@@ -60,31 +59,22 @@ export function hasRoleProgressionContent(userAddress, userHatIds = [], roles = 
  */
 function ProgressionItem({ roleName, current, quorum, isComplete }) {
   return (
-    <Box
-      w="100%"
-      bg="whiteAlpha.50"
-      p={3}
-      borderRadius="lg"
-      _hover={{ bg: 'whiteAlpha.100' }}
-      transition="background 0.2s"
-    >
-      <HStack justify="space-between" mb={2}>
-        <HStack spacing={2}>
-          <Icon as={FiStar} color="yellow.400" boxSize={4} />
-          <Text fontWeight="medium" color="white" fontSize="sm">
-            {roleName}
-          </Text>
-        </HStack>
+    <Box w="100%" py={3}>
+      <VStack align="stretch" spacing={1} mb={3}>
+        <Text fontWeight="medium" color="white" fontSize="sm" overflowWrap="anywhere">
+          {roleName}
+        </Text>
         {isComplete ? (
-          <Badge colorScheme="green" fontSize="xs">
-            Ready to Claim!
-          </Badge>
+          <HStack spacing={1} color="green.300">
+            <Icon as={FiCheck} boxSize={3} />
+            <Text fontSize="xs">Ready to join</Text>
+          </HStack>
         ) : (
           <Text fontSize="xs" color="gray.400">
-            {current}/{quorum} vouches
+            {current} of {quorum} endorsements
           </Text>
         )}
-      </HStack>
+      </VStack>
       <VouchProgressBar current={current} quorum={quorum} size="sm" showLabel={false} />
     </Box>
   );
@@ -95,28 +85,27 @@ function ProgressionItem({ roleName, current, quorum, isComplete }) {
  */
 function ClaimableRoleItem({ role, userDAO }) {
   return (
-    <HStack
-      bg="whiteAlpha.50"
-      p={3}
-      borderRadius="lg"
-      spacing={3}
-      _hover={{ bg: 'whiteAlpha.100' }}
-      transition="background 0.2s"
-    >
-      <Icon as={FiStar} color="purple.300" boxSize={4} />
-      <VStack align="start" spacing={0} flex={1}>
-        <Text fontWeight="medium" color="white" fontSize="sm">
+    <HStack py={3} spacing={3}>
+      <VStack align="start" spacing={1} flex={1} minW={0}>
+        <Text fontWeight="medium" color="white" fontSize="sm" overflowWrap="anywhere">
           {role.name}
         </Text>
         <Text fontSize="xs" color="gray.400">
-          {role.claimLabel || 'Self-claimable'}
+          {role.claimLabel || 'Available to join'}
         </Text>
       </VStack>
-      <Link href={`/team?org=${encodeURIComponent(userDAO)}`} passHref>
-        <Button size="xs" colorScheme="purple" variant="outline">
-          Claim
-        </Button>
-      </Link>
+      <Button
+        as={Link}
+        href={`/team?org=${encodeURIComponent(userDAO)}`}
+        size="sm"
+        color="purple.200"
+        variant="ghost"
+        fontWeight="medium"
+        flexShrink={0}
+        aria-label={`View ${role.name || 'role'}`}
+      >
+        View
+      </Button>
     </HStack>
   );
 }
@@ -130,7 +119,6 @@ function ClaimableRoleItem({ role, userDAO }) {
  * @param {Function} props.getVouchProgress - Function to get vouch progress
  * @param {Object[]} [props.progressionItems] - Explicit v2 fold-mirror progression rows
  * @param {Object[]} [props.claimableRoleItems] - Explicit v2 claimable role rows
- * @param {Object[]} props.pendingVouchRequests - Pending vouch requests
  * @param {string} props.userDAO - DAO identifier for links
  */
 export function RoleProgressionCard({
@@ -140,7 +128,6 @@ export function RoleProgressionCard({
   getVouchProgress,
   progressionItems,
   claimableRoleItems,
-  pendingVouchRequests = [],
   userDAO,
 }) {
   // Find roles user is progressing toward (has vouches but not claimed)
@@ -195,51 +182,52 @@ export function RoleProgressionCard({
 
   return (
     <Box
+      as="section"
+      aria-label="Role opportunities"
       w="100%"
       borderRadius="2xl"
-      bg="transparent"
-      boxShadow="lg"
+      border="1px solid"
+      borderColor="whiteAlpha.100"
       position="relative"
       zIndex={2}
     >
       <div style={glassLayerStyle} />
 
-      {/* Darker header section */}
-      <VStack pb={2} align="flex-start" position="relative" borderTopRadius="2xl">
-        <div style={glassLayerStyle} />
-        <Text pl={6} pt={2} fontWeight="bold" fontSize={{ base: 'xl', md: '2xl' }} color="white">
-          Role Progression
+      <VStack spacing={4} align="stretch" p={{ base: 5, md: 6 }}>
+        <Text as="h2" fontWeight="semibold" fontSize="lg" color="white" letterSpacing="-0.02em">
+          Role opportunities
         </Text>
-      </VStack>
-
-      {/* Content */}
-      <VStack spacing={4} align="stretch" p={4} pt={2}>
         {showEmptyState ? (
-          <VStack py={4} spacing={3}>
-            <Icon as={FiUsers} color="gray.500" boxSize={8} />
-            <Text color="gray.400" textAlign="center" fontSize="sm">
-              No roles in progress
+          <VStack align="stretch" spacing={4}>
+            <Text color="gray.400" fontSize="sm" lineHeight="tall">
+              Discover more ways to contribute to your team.
             </Text>
-            <Link href={`/team?org=${encodeURIComponent(userDAO)}`} passHref>
-              <Button
-                size="sm"
-                variant="outline"
-                colorScheme="purple"
-                rightIcon={<FiArrowRight />}
-              >
-                Explore Roles
-              </Button>
-            </Link>
+            <Button
+              as={Link}
+              href={`/team?org=${encodeURIComponent(userDAO)}`}
+              size="sm"
+              variant="link"
+              color="purple.200"
+              alignSelf="flex-start"
+              fontWeight="medium"
+              rightIcon={<FiArrowRight />}
+            >
+              Explore roles
+            </Button>
           </VStack>
         ) : (
           <>
             {/* Vouch Progress Section */}
             {vouchProgressData.length > 0 && (
-              <VStack spacing={2} align="stretch">
+              <VStack
+                spacing={0}
+                align="stretch"
+                sx={{ '& > * + *': { borderTop: '1px solid', borderColor: 'whiteAlpha.100' } }}
+              >
                 {vouchProgressData.slice(0, 3).map((item) => (
                   <ProgressionItem
                     key={item.role.hatId}
-                    roleName={item.role.name || 'Unknown Role'}
+                    roleName={item.role.name || 'Unnamed role'}
                     current={item.current}
                     quorum={item.quorum}
                     isComplete={item.isComplete}
@@ -252,11 +240,15 @@ export function RoleProgressionCard({
             {claimableRoles.length > 0 && (
               <>
                 {vouchProgressData.length > 0 && (
-                  <Text fontSize="sm" color="gray.400" mt={2}>
-                    Available to claim:
+                  <Text fontSize="xs" color="gray.400" pt={3} borderTop="1px solid" borderColor="whiteAlpha.100">
+                    Available to join
                   </Text>
                 )}
-                <VStack spacing={2} align="stretch">
+                <VStack
+                  spacing={0}
+                  align="stretch"
+                  sx={{ '& > * + *': { borderTop: '1px solid', borderColor: 'whiteAlpha.100' } }}
+                >
                   {claimableRoles.map((role) => (
                     <ClaimableRoleItem key={role.hatId} role={role} userDAO={userDAO} />
                   ))}
@@ -264,17 +256,18 @@ export function RoleProgressionCard({
               </>
             )}
 
-            <Link href={`/team?org=${encodeURIComponent(userDAO)}`} passHref>
-              <Button
-                size="sm"
-                variant="ghost"
-                colorScheme="purple"
-                rightIcon={<FiArrowRight />}
-                alignSelf="flex-start"
-              >
-                View All Roles
-              </Button>
-            </Link>
+            <Button
+              as={Link}
+              href={`/team?org=${encodeURIComponent(userDAO)}`}
+              size="sm"
+              variant="link"
+              color="purple.200"
+              rightIcon={<FiArrowRight />}
+              alignSelf="flex-start"
+              fontWeight="medium"
+            >
+              Explore roles
+            </Button>
           </>
         )}
       </VStack>

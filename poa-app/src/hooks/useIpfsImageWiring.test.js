@@ -23,7 +23,7 @@ const read = (...parts) => {
 };
 
 const profileHeader = read('components', 'profileHub', 'ProfileHeader.jsx');
-const profilePage = read('pages', 'profile', 'index.js');
+const profilePage = read('components', 'profileHub', 'ProfileHub.jsx');
 const poContext = read('context', 'POContext.js');
 
 describe('Profile Hub avatars use the resilient IPFS image boundary', () => {

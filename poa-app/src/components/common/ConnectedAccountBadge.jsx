@@ -8,16 +8,21 @@ import {
   useColorModeValue,
 } from '@chakra-ui/react';
 import { FaFingerprint, FaCheck, FaSignOutAlt } from 'react-icons/fa';
-import { useAccount, useDisconnect } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { useAuth } from '@/context/AuthContext';
+import useUnifiedDisconnect from '@/hooks/useUnifiedDisconnect';
 
 const formatShortAddress = (address) =>
   `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
 
 export default function ConnectedAccountBadge() {
-  const { accountAddress, isPasskeyUser, isEOAUser, isAuthenticated, signOut } = useAuth();
+  const { accountAddress, isPasskeyUser, isAuthenticated } = useAuth();
   const { address: eoaAddress } = useAccount();
-  const { disconnect } = useDisconnect();
+  // Was `signOut(); if (isEOAUser) disconnect();` — right order, but a bare
+  // disconnect() drops only the current connector, so a second live connection
+  // was promoted and this badge kept showing an address. Same rules as the
+  // account menu now.
+  const handleDisconnect = useUnifiedDisconnect();
 
   const successBg = useColorModeValue('green.50', 'green.900');
   const successBorderColor = useColorModeValue('green.200', 'green.700');
@@ -31,11 +36,6 @@ export default function ConnectedAccountBadge() {
   const label = isPasskeyUser
     ? `Passkey Account: ${formatShortAddress(displayAddress)}`
     : `Wallet Connected: ${formatShortAddress(displayAddress)}`;
-
-  const handleDisconnect = () => {
-    signOut();
-    if (isEOAUser) disconnect();
-  };
 
   return (
     <Box

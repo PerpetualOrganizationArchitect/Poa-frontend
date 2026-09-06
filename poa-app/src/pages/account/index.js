@@ -30,8 +30,6 @@ import {
 } from '@chakra-ui/react';
 import { SettingsIcon, CopyIcon, CheckIcon, ExternalLinkIcon } from '@chakra-ui/icons';
 import { useRouter } from 'next/router';
-import { useAccount } from 'wagmi';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAuth } from '@/context/AuthContext';
 import { useGlobalAccount } from '@/hooks/useGlobalAccount';
 import { findUserOrgsAcrossChains } from '@/util/crossChainUsername';
@@ -44,14 +42,13 @@ import TransferModal from '@/components/account/TransferModal';
 import CashOutModal from '@/components/account/CashOutModal';
 import PendingCashouts from '@/components/account/PendingCashouts';
 import { useTokenBalances } from '@/hooks/useTokenBalances';
-import PasskeyAccountInfo from '@/components/passkey/PasskeyAccountInfo';
 import SignInModal from '@/components/passkey/SignInModal';
+import AccountControl from '@/components/common/AccountControl';
 import Link from 'next/link';
 
 const AccountPage = () => {
   const router = useRouter();
   const toast = useToast();
-  const { isConnected } = useAccount();
   const { isAuthenticated, isPasskeyUser, accountAddress } = useAuth();
   const { globalUsername, hasAccount, isLoading: isAccountLoading, profileMetadata, refetchAccount } = useGlobalAccount();
   const { isOpen: isSignInOpen, onOpen: onSignInOpen, onClose: onSignInClose } = useDisclosure();
@@ -235,11 +232,7 @@ const AccountPage = () => {
           >
             Back to Home
           </Button>
-          {isPasskeyUser ? (
-            <PasskeyAccountInfo />
-          ) : (
-            <ConnectButton showBalance={false} chainStatus="icon" />
-          )}
+          <AccountControl />
         </HStack>
 
         <VStack spacing={6} align="stretch">

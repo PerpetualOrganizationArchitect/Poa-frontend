@@ -11,8 +11,9 @@ import {
   Center,
   Skeleton,
   Icon,
+  Button,
 } from '@chakra-ui/react';
-import { FiClock, FiInbox, FiBarChart2 } from 'react-icons/fi';
+import { FiClock, FiInbox, FiBarChart2, FiLock } from 'react-icons/fi';
 import AccountSettingsModal from '@/components/userPage/AccountSettingsModal';
 import { useVotingContext } from '@/context/VotingContext';
 import { useUserContext } from '@/context/UserContext';
@@ -33,6 +34,7 @@ import { buildV2ProfileView } from '@/lib/accessV2/profileBridge';
 
 // Profile hub components
 import ProfileHeader from '@/components/profileHub/ProfileHeader';
+import AccountControl from '@/components/common/AccountControl';
 import EditProfileModal from '@/components/profile/EditProfileModal';
 import { useGlobalAccount } from '@/hooks/useGlobalAccount';
 import UserRolesCard from '@/components/profileHub/UserRolesCard';
@@ -203,7 +205,7 @@ const UserprofileHub = () => {
   const router = useRouter();
   const userDAO = useOrgName();
   const orgGate = useOrgGate();
-  const { accountAddress: userAddress } = useAuth();
+  const { accountAddress: userAddress, isAuthenticated, isAuthHydrated } = useAuth();
   const { pageBackground, onBackground } = useOrgTheme();
 
   const { ongoingPolls } = useVotingContext();
@@ -219,7 +221,7 @@ const UserprofileHub = () => {
   }, [flatTasks]);
   const { claimedTasks, userProposals, graphUsername, userDataLoading, error, userData, hasMemberRole, hasApproverRole } = useUserContext();
   const poContext = usePOContext();
-  const avatarMap = poContext?.avatarMap || {};
+  const avatarCidMap = poContext?.avatarCidMap || {};
   const tokenLabel = poContext?.tokenLabel || 'Shares';
 
   // Fetch org structure for roles and claim page
@@ -338,6 +340,55 @@ const UserprofileHub = () => {
 
   // No org to render: a dead end, not a pending state. After every hook.
   if (orgGate) return orgGate;
+  // Only trust `!isAuthenticated` once both auth backends have finished
+  // restoring a prior session; before that every reload would flash this
+  // screen at a user who is in fact signed in.
+  if (isAuthHydrated && !isAuthenticated) {
+    return (
+      <>
+        {seoHead}
+        <Navbar />
+        <Center height="100vh" background={pageBackground()} px={4}>
+          <Box
+            position="relative"
+            zIndex={1}
+            overflow="hidden"
+            w="full"
+            maxW="md"
+            borderRadius="2xl"
+            boxShadow="xl"
+            px={{ base: 6, md: 10 }}
+            py={{ base: 8, md: 10 }}
+          >
+            <div style={glassLayerStyle} />
+            <VStack spacing={4} textAlign="center" position="relative">
+              <Center
+                w={12}
+                h={12}
+                borderRadius="full"
+                bg="whiteAlpha.200"
+                color="amethyst.200"
+              >
+                <Icon as={FiLock} boxSize={5} aria-hidden />
+              </Center>
+              <Text color="white" fontSize="xl" fontWeight="bold">
+                You’re disconnected
+              </Text>
+              <Text color="gray.300">
+                Sign in again to view your Profile Hub.
+              </Text>
+              <HStack spacing={3} justify="center" flexWrap="wrap">
+                <Button colorScheme="purple" onClick={() => router.push('/')}>
+                  Sign in options
+                </Button>
+                <AccountControl />
+              </HStack>
+            </VStack>
+          </Box>
+        </Center>
+      </>
+    );
+  }
   if (v2Error || orgError) {
     return (
       <>
@@ -418,10 +469,7 @@ const UserprofileHub = () => {
             <ProfileHeader
               username={userInfo.username}
               address={userInfo.accountAddress}
-              avatarUrl={
-                avatarMap[userInfo.username] ||
-                (profileMetadata?.avatar ? `https://ipfs.io/ipfs/${profileMetadata.avatar}` : undefined)
-              }
+              avatarCid={avatarCidMap[userInfo.username] || profileMetadata?.avatar}
               userRoles={userRoles}
               canApproveRequests={canApproveRequests}
               profileMetadata={profileMetadata}

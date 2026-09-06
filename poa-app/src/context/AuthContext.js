@@ -36,6 +36,27 @@ import {
 } from '../services/e2e/seedVirtualPasskey';
 
 const AuthContext = createContext();
+const EXPLICIT_SIGN_OUT_KEY = 'poa:explicit-sign-out';
+
+function readExplicitSignOut() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.sessionStorage.getItem(EXPLICIT_SIGN_OUT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeExplicitSignOut(signedOut) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (signedOut) window.sessionStorage.setItem(EXPLICIT_SIGN_OUT_KEY, '1');
+    else window.sessionStorage.removeItem(EXPLICIT_SIGN_OUT_KEY);
+  } catch {
+    // Some privacy modes disable storage. The in-memory ref still protects the
+    // current app session in that case.
+  }
+}
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
@@ -60,16 +81,26 @@ const defaultChain = defineChain({
 });
 
 export const AuthProvider = ({ children }) => {
-  const { address: eoaAddress, isConnected: eoaConnected } = useAccount();
+  const { address: eoaAddress, isConnected: eoaConnected, status: eoaStatus } = useAccount();
 
   // Passkey state
   const [passkeyState, setPasskeyState] = useState(null);
   const [passkeyConnecting, setPasskeyConnecting] = useState(false);
+  // False until the mount-time restore below has finished. Consumers must not
+  // read `isAuthenticated: false` as "signed out" before this flips, or a
+  // reload of an authenticated page flashes a disconnected screen.
+  const [passkeyRestoreSettled, setPasskeyRestoreSettled] = useState(false);
 
   // Suppresses passkey auto-restore for the rest of the tab session after an
   // explicit signOut(). Without this, disconnecting an EOA wallet while a
   // passkey credential is stored would silently flip the user back to passkey.
-  const explicitSignOutRef = useRef(false);
+  // Seeded from sessionStorage so the suppression survives a reload in the same
+  // tab; seeded lazily because a `useRef(read())` argument is evaluated on every
+  // render of this top-level provider, not just the first.
+  const explicitSignOutRef = useRef(null);
+  if (explicitSignOutRef.current === null) {
+    explicitSignOutRef.current = readExplicitSignOut();
+  }
 
   // Derived auth type
   const authType = useMemo(() => {
@@ -86,6 +117,12 @@ export const AuthProvider = ({ children }) => {
   }, [authType, passkeyState, eoaAddress]);
 
   const isAuthenticated = authType !== null;
+
+  // True once both auth backends have finished restoring a previous session:
+  // wagmi's auto-reconnect and the stored-passkey lookup. `isAuthenticated`
+  // is only meaningful as "signed out" after this is true.
+  const isAuthHydrated =
+    passkeyRestoreSettled && eoaStatus !== 'reconnecting' && eoaStatus !== 'connecting';
 
   // Create viem public client (shared, stateless)
   // Uses a standard RPC endpoint for eth_call, eth_getCode, etc.
@@ -113,17 +150,40 @@ export const AuthProvider = ({ children }) => {
   // /join page enters the same vouch-first onboarding flow real users hit.
   useEffect(() => {
     if (typeof window === 'undefined') return; // SSR guard
-    if (explicitSignOutRef.current) return;
-    if (eoaConnected) return;
+
+    // Every path out of this effect must settle hydration exactly once.
+    // Consumers gate their "you are signed out" UI on it, so a path that leaves
+    // it false is an infinite loading state. The `settled` latch lets any path
+    // call settle() without a fragile "I am the only async path" assumption:
+    // an async restore settles in its own .finally, the synchronous fall-through
+    // settles at the bottom, and a double-call is a harmless no-op.
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      setPasskeyRestoreSettled(true);
+    };
+
+    if (explicitSignOutRef.current || eoaConnected) {
+      settle();
+      return;
+    }
+
+    // When an async restore owns the settle(), the synchronous fall-through
+    // below must NOT settle first — hydration would flip before the restore
+    // resolves. A new async branch only needs to set this and add .finally(settle).
+    let asyncSettlePending = false;
 
     if (E2E_ENABLED) {
       // In passkey mode, restore the deployed virtual passkey before falling
       // back to the pending/onboarding flow — otherwise a fresh tab can't act
       // as the already-deployed E2E identity.
       if (E2E_AS === 'passkey') {
+        asyncSettlePending = true;
         ensureVirtualPasskeyActivated().then((cred) => {
           if (cred && !explicitSignOutRef.current) setPasskeyState(cred);
-        }).catch(() => { /* logged inside activator */ });
+        }).catch(() => { /* logged inside activator */ })
+          .finally(settle);
       }
       ensureVirtualPasskeyPendingSeeded().catch(() => { /* logged inside seeder */ });
     }
@@ -132,6 +192,9 @@ export const AuthProvider = ({ children }) => {
       const lastCred = getLastUsedCredential();
       if (lastCred) setPasskeyState(lastCred);
     }
+
+    // Synchronous paths settle here; async restores settle in their .finally.
+    if (!asyncSettlePending) settle();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If EOA connects, passkey deactivates (EOA takes priority).
@@ -139,6 +202,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     if (eoaConnected) {
       explicitSignOutRef.current = false;
+      writeExplicitSignOut(false);
       if (passkeyState) setPasskeyState(null);
     }
   }, [eoaConnected]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -160,12 +224,13 @@ export const AuthProvider = ({ children }) => {
    * 2. If none stored, trigger WebAuthn discoverable auth and look up account from subgraph.
    */
   const connectPasskey = useCallback(async (credential = null) => {
-    explicitSignOutRef.current = false;
     setPasskeyConnecting(true);
     try {
       // Fast path: use provided credential or localStorage
       const storedCred = credential || getLastUsedCredential();
       if (storedCred) {
+        explicitSignOutRef.current = false;
+        writeExplicitSignOut(false);
         setPasskeyState(storedCred);
         return storedCred;
       }
@@ -175,6 +240,8 @@ export const AuthProvider = ({ children }) => {
 
       // Save to localStorage for future fast reconnects
       savePasskeyCredential(discovered);
+      explicitSignOutRef.current = false;
+      writeExplicitSignOut(false);
       setPasskeyState(discovered);
       return discovered;
     } finally {
@@ -187,6 +254,7 @@ export const AuthProvider = ({ children }) => {
    */
   const activatePasskey = useCallback((credentialData) => {
     explicitSignOutRef.current = false;
+    writeExplicitSignOut(false);
     savePasskeyCredential(credentialData);
     setPasskeyState(credentialData);
   }, []);
@@ -207,6 +275,7 @@ export const AuthProvider = ({ children }) => {
    */
   const signOut = useCallback(() => {
     explicitSignOutRef.current = true;
+    writeExplicitSignOut(true);
     setPasskeyState(null);
   }, []);
 
@@ -219,6 +288,7 @@ export const AuthProvider = ({ children }) => {
    */
   const forgetPasskey = useCallback(() => {
     explicitSignOutRef.current = true;
+    writeExplicitSignOut(true);
     clearAllCredentials();
     setPasskeyState(null);
   }, []);
@@ -230,6 +300,7 @@ export const AuthProvider = ({ children }) => {
     authType,
     accountAddress,
     isAuthenticated,
+    isAuthHydrated,
     isPasskeyUser: authType === 'passkey',
     isEOAUser: authType === 'eoa',
 
@@ -246,7 +317,7 @@ export const AuthProvider = ({ children }) => {
     // Shared infrastructure
     publicClient,
     bundlerClient,
-  }), [authType, accountAddress, isAuthenticated, passkeyState, passkeyConnecting, connectPasskey, activatePasskey, disconnectPasskey, signOut, forgetPasskey, hasStoredPasskey, publicClient, bundlerClient]);
+  }), [authType, accountAddress, isAuthenticated, isAuthHydrated, passkeyState, passkeyConnecting, connectPasskey, activatePasskey, disconnectPasskey, signOut, forgetPasskey, hasStoredPasskey, publicClient, bundlerClient]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

@@ -199,13 +199,13 @@ export const POProvider = ({ children }) => {
         return state.leaderboardData.filter(user => user.hasUsername);
     }, [state.leaderboardData]);
 
-    // Username → avatar IPFS URL map for components to look up profile pictures.
-    // Backwards-compat view; new code should resolve via IdentityContext / <UserIdentity>.
-    const avatarMap = useMemo(() => {
+    // Username → avatar CID map. Keep transport concerns out of org data:
+    // consumers route CIDs through the shared resilient IPFS image loader.
+    const avatarCidMap = useMemo(() => {
         const map = {};
         for (const user of state.leaderboardData) {
             if (user.name && user.avatarCid) {
-                map[user.name] = `https://ipfs.io/ipfs/${user.avatarCid}`;
+                map[user.name] = user.avatarCid;
             }
         }
         return map;
@@ -739,7 +739,7 @@ export const POProvider = ({ children }) => {
         error: errorMessage ? { message: errorMessage } : null,
         leaderboardData: state.leaderboardData,
         leaderboardDisplayData,
-        avatarMap,
+        avatarCidMap,
         poContextLoading: state.poContextLoading,
         rules: state.rules,
         educationModules: state.educationModules,
@@ -767,7 +767,7 @@ export const POProvider = ({ children }) => {
         tokenLabel: state.tokenLabel,
         roleNames: state.roleNames,
         roleCanVoteMap: state.roleCanVoteMap,
-    }), [state, loading, errorMessage, leaderboardDisplayData, avatarMap, subgraphUrl, poName, orgStatus]);
+    }), [state, loading, errorMessage, leaderboardDisplayData, avatarCidMap, subgraphUrl, poName, orgStatus]);
 
     return (
         <POContext.Provider value={contextValue}>

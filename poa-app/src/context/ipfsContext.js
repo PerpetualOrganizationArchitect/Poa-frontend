@@ -1,6 +1,12 @@
-import { createContext, useContext, useMemo, useCallback, useRef } from 'react';
+import { createContext, useContext, useMemo, useCallback, useRef, useEffect } from 'react';
 import { IPFSError, IPFSErrorCode, IPFSOperation } from '@/lib/errors';
 import { hybridFetchBytes } from '@/lib/ipfs/hybridFetch';
+import {
+    MAX_AVATAR_IMAGE_BYTES,
+    createObjectUrlRegistry,
+    detectImageMimeType,
+    isResolvableCid,
+} from '@/lib/ipfs/imageBytes';
 import { bytes32ToIpfsCid, ipfsCidToBytes32 } from '@/services/web3/utils/encoding';
 
 const IPFScontext = createContext();
@@ -18,8 +24,11 @@ function isValidIpfsCid(hash) {
     if (!hash || typeof hash !== 'string') return false;
     // Skip if it's a hex bytes value from POP subgraph (starts with 0x)
     if (hash.startsWith('0x')) return false;
-    // Valid CIDs start with Qm (v0) or ba (v1)
-    return hash.startsWith('Qm') || hash.startsWith('ba');
+    // Validate the whole CID, not just its "Qm"/"ba" prefix — an arbitrary
+    // string starting with those two characters would otherwise be issued as a
+    // real gateway request. A CID may address a file inside a directory, so
+    // only the first path segment is the CID.
+    return isResolvableCid(hash.split('/')[0]);
 }
 
 /**
@@ -167,6 +176,35 @@ export const IPFSprovider = ({ children }) => {
     // in-flight fetch instead of racing to the network N times.
     const jsonPromiseCache = useRef(new Map());
     const imagePromiseCache = useRef(new Map());
+
+    // Object URLs pin their Blob for the lifetime of the document, so the image
+    // cache above must not grow without bound. The registry evicts (and revokes)
+    // the oldest entry past its cap and revokes everything on unmount.
+    //
+    // `onEvict` is what keeps the two caches honest: `imagePromiseCache` memoizes
+    // the resolved object URL per CID forever, so an eviction that only revoked
+    // the URL would leave that promise handing out a dead `blob:` — the avatar
+    // would break permanently for the rest of the tab session. Dropping the
+    // promise makes the next request re-fetch and mint a fresh URL instead.
+    const objectUrlsRef = useRef(null);
+    if (objectUrlsRef.current === null) {
+        objectUrlsRef.current = createObjectUrlRegistry({
+            createObjectUrl: (blob) => URL.createObjectURL(blob),
+            revokeObjectUrl: (url) => URL.revokeObjectURL(url),
+            onEvict: (cid) => { imagePromiseCache.current.delete(cid); },
+        });
+    }
+    useEffect(() => {
+        const registry = objectUrlsRef.current;
+        const promises = imagePromiseCache.current;
+        return () => {
+            // clear() fires onEvict for every entry, which empties the promise
+            // cache as a side effect; the explicit clear below covers any entry
+            // whose fetch never produced a URL.
+            registry.clear();
+            promises.clear();
+        };
+    }, []);
 
     /**
      * Add content to IPFS
@@ -316,9 +354,21 @@ export const IPFSprovider = ({ children }) => {
 
         const promise = (async () => {
             try {
-                const bytes = await hybridFetchBytes(validHash);
-                const blob = new Blob([bytes], { type: 'image/png' });
-                return URL.createObjectURL(blob);
+                // Avatar CIDs come from on-chain metadata any address can write,
+                // so cap the download before buffering and only render bytes that
+                // really are one of the formats the upload path accepts. The old
+                // code labelled every payload image/png regardless of content.
+                const bytes = await hybridFetchBytes(validHash, {
+                    maxBytes: MAX_AVATAR_IMAGE_BYTES,
+                });
+                const mimeType = detectImageMimeType(bytes);
+                if (!mimeType) {
+                    throw new Error(
+                        `IPFS content ${validHash} is not a PNG/JPEG/GIF/WebP image`
+                    );
+                }
+                const blob = new Blob([bytes], { type: mimeType });
+                return objectUrlsRef.current.create(validHash, blob);
             } catch (error) {
                 console.error("Error fetching image from IPFS:", error);
                 if (error instanceof IPFSError) throw error;
@@ -332,7 +382,10 @@ export const IPFSprovider = ({ children }) => {
         })();
 
         imagePromiseCache.current.set(validHash, promise);
-        promise.catch(() => imagePromiseCache.current.delete(validHash));
+        promise.catch(() => {
+            imagePromiseCache.current.delete(validHash);
+            objectUrlsRef.current.release(validHash);
+        });
 
         return promise;
     }, []);

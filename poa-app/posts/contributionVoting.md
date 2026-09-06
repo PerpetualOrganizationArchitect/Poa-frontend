@@ -1,49 +1,46 @@
+---
+title: "Contribution-based voting"
+description: "Give contributors a say in what they build. Learn how Poa uses participation balances in voting, and how to make contribution rules clear and fair."
+date: '2026-09-06'
+updated: '2026-09-06'
+category: "Make decisions"
+order: 70
+---
+
 # Contribution-based voting
 
-Contribution-based voting gives voting power to the people doing the work. Members earn the right to vote by completing tasks the organization recognizes as work. The more you contribute, the more your vote counts. The less you contribute, the less.
+To understand a contribution-weighted vote, check three settings: which roles are eligible, which participation balance supplies weight, and whether square-root weighting is enabled. These determine how your recorded contribution counts.
 
-It is one of three voting models a community-owned organization on Poa can choose. The other two are [direct democracy](/docs/directDemocracy) and [hybrid voting](/docs/hybridVoting). Each one has a clear use case. This one is for organizations that want governance to belong to the people building the organization.
+## What gives a vote weight
 
-## How participation tokens are earned
+Poa organizations can award participation units for approved [tasks](/docs/task-manager) and completed [learning modules](/docs/learn-and-earn). These units may be called participation tokens or shares in the interface.
 
-Every Poa organization has a task manager built into it. When a member finishes a task the organization has approved, **participation tokens** land in that member's account. They cannot be bought, sold, or given away. They are a record of what you have done for the community. Nothing more, nothing less.
+In a contribution-weighted voting class, the configured participation balance supplies voting weight. The class also defines which roles are eligible. A balance alone does not guarantee a vote in every decision.
 
-Tasks can be anything the community decides to recognize as work. Running events. Writing code. Reviewing pull requests. Moderating. Treasury management. Documentation. Onboarding new members. Serving in a role. The organization decides which tasks award how many tokens through the same governance process that decides everything else.
+A straightforward balance-based class gives a member with 100 units twice the weight of a member with 50. If square-root weighting is enabled, the difference is reduced: 100 units give twice the weight of 25 units, rather than four times the weight.
 
-## A worked example
+Contribution weighting is available within the [binding voting system](/docs/hybridVoting). An organization can give it all of the result or combine it with equal member voting.
 
-Consider a worker cooperative with twenty members. The cooperative has approved a list of recognized tasks. Writing a blog post earns 10 PT. Completing a customer order earns 5 PT. Serving a one-month rotation as on-call earns 50 PT.
+## See how a contribution balance counts
 
-- Alice writes four blog posts and serves one on-call rotation. She earns 90 PT.
-- Bob completes thirty customer orders. He earns 150 PT.
-- Carla joined last week and has completed one order. She earns 5 PT.
+An open-source collective recognizes documentation, code review, and release work through tasks. Three eligible contributors hold 60, 30, and 10 participation units.
 
-When the cooperative votes on a proposal, say whether to allocate 10% of next quarter's revenue to a community grant fund, the votes weigh by participation token balance. Bob's vote counts for more than Alice's. Alice's counts for more than Carla's. The mechanic is simple: who is putting in the work.
+In a simple contribution class without square-root weighting, their relative voting weights are 60%, 30%, and 10% of those three contributors' combined balance. That describes their weight within the class; the full result also depends on the proposal's other eligible voters, any other classes, and its passing requirements.
 
-## Why it works
+The contributors might use this vote to choose between improving the current release and starting a new feature. The same balances can support [revenue distributions](/docs/treasury-management), through a separate approved proposal.
 
-Contribution-based voting solves a problem that traditional one-token-one-vote DAOs run into. Governance gets captured by whoever has the most capital, not whoever is most invested in the project's actual success. Contribution-based voting is particularly well-suited to:
+## Make the contribution agreement worth trusting
 
-- **Worker cooperatives** that want operational decisions made by active workers, not silent partners.
-- **Open-source projects** where maintainers and core contributors should weigh in on roadmap more heavily than someone with one drive-by pull request.
-- **Volunteer-run organizations** where skin in the game is measured in time, not in money.
+Before assigning rewards, discuss what counts and who reviews it. Include work that is easy to overlook: maintenance, translation, documentation, coordination, and care for shared spaces.
 
-This is what economic democracy looks like when it is built on something other than headcount or capital. The people doing the work are the people deciding what gets done.
+Publish enough detail that a new member can understand how to contribute and what to expect. Include a way for someone to suggest useful work the group has not already listed. If similar work receives very different rewards, explain the reason or revisit the amounts.
 
-## When it doesn't fit
+Review authority matters as much as the reward scale. Members should know who can approve a task and how to raise a concern about that decision.
 
-There are tradeoffs. Honest ones.
+## Keep a path open for newcomers
 
-- **New members have less power until they contribute.** A first-week voice is quieter than a third-year voice. In tight-knit communities this can feel exclusionary.
-- **Token allocation is itself a governance question.** Deciding what work counts, and how much, has to be agreed up front, and continually maintained.
-- **Free-rider resistance is not the same as capture resistance.** If a small group dominates contributions, they accumulate disproportionate power over time. Some organizations counter this with token decay or per-vote caps. The community is sovereign over its own anti-capture rules.
+An established contributor may hold much more weight than someone who just arrived. Make early tasks available, recognize onboarding work, and revisit whether the rules reflect the contribution your organization needs today.
 
-If your community values strict one-person-one-vote equality, [direct democracy](/docs/directDemocracy) is a better fit. If you want a blend (base equality plus a contribution multiplier), see [hybrid voting](/docs/hybridVoting).
+A [hybrid model](/docs/hybridVoting) can preserve an equal member voice alongside contribution weight. [Equal-vote polls](/docs/directDemocracy) can also help a group hear preferences before preparing a binding decision.
 
-## How Poa implements it
-
-Under the hood, each organization has its own participation tokens. They cannot be sold or transferred between members. They can only be earned by completing approved work or finishing a learning module.
-
-When a proposal opens, the system takes a snapshot of every member's balance at that moment. The snapshot is what counts toward the vote, not balances at the time votes are cast. That detail matters: it is what makes contribution-weighted voting resistant to last-minute token grabs. Nobody can rush around accumulating tokens after a proposal is already on the table.
-
-All of this is open and verifiable. The code lives at [poa-box/POP](https://github.com/poa-box/POP) under AGPL-3.0. You set up contribution-based voting when you create your organization, no code required, just choices in the [create flow](/docs/create).
+[Contribution and ownership](/docs/contribution-and-ownership) explains the other rights those units can carry.

@@ -1,294 +1,192 @@
 import fs from 'fs';
+import { DOCS_MEDIA } from '@/components/marketing/docsMedia';
 import path from 'path';
 import matter from 'gray-matter';
 import { remark } from 'remark';
 import remarkMath from 'remark-math';
+import remarkGfm from 'remark-gfm';
 import remarkRehype from 'remark-rehype';
 import rehypeKatex from 'rehype-katex';
 import rehypeStringify from 'rehype-stringify';
-import 'katex/dist/katex.min.css'; // Make sure to import this in your component or global CSS
-import remarkGfm from 'remark-gfm';
+import { DOCS_REDIRECTS, getDocsEntries, getDocMetadata } from '@/lib/docs.mjs';
 
 const postsDirectory = path.join(process.cwd(), 'posts');
 
-const processMarkdown = async (markdown) => {
-  const result = await remark()
-    .use(remarkGfm)
-    .use(remarkRehype)
-    .use(rehypeKatex)
-    .use(rehypeStringify)
-    .process(markdown);
-  return result.toString();
-};
-
-// Create a function to clean heading text for slug creation
-const cleanHeadingText = (text) => {
-  return text
-    .replace(/\*\*/g, '') // Bold
-    .replace(/\*/g, '')   // Italic
-    .replace(/`/g, '')    // Code
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Links
-    .trim();
-};
-
-// Create slug from text
-const createSlug = (text) => {
-  return text.toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-');
-};
-
-export function getAllPostIds() {
-    const fileNames = fs.readdirSync(postsDirectory);
-    return fileNames.map(fileName => ({
-        params: {
-            id: fileName.replace(/\.md$/, '')
-        }
-    }));
+function readPost(id) {
+  return matter(fs.readFileSync(path.join(postsDirectory, `${id}.md`), 'utf8'));
 }
 
+// The published reading order is also the index, search, and navigation order.
+// An unlisted file cannot accidentally become a public documentation page.
 export function getSortedPostsData() {
-    // Get file names under /posts
-    const fileNames = fs.readdirSync(postsDirectory);
-    const allPostsData = fileNames.map(fileName => {
-        // Remove ".md" from file name to get id
-        const id = fileName.replace(/\.md$/, '');
-
-        // Read markdown file as string
-        const fullPath = path.join(postsDirectory, fileName);
-        const fileContents = fs.readFileSync(fullPath, 'utf8');
-
-        // Use gray-matter to parse the post metadata section
-        const matterResult = matter(fileContents);
-
-        // Extract the first paragraph as description if no description in frontmatter
-        let description = matterResult.data.description;
-        if (!description) {
-            const contentLines = matterResult.content.split('\n');
-            // Find the first non-empty paragraph that's not a heading
-            const firstParagraph = contentLines.find(line =>
-                line.trim().length > 0 && !line.startsWith('#')
-            );
-
-            if (firstParagraph) {
-                // Limit to a reasonable length for a description
-                description = firstParagraph.length > 160
-                    ? `${firstParagraph.substring(0, 160)}...`
-                    : firstParagraph;
-            } else {
-                // Default description if nothing suitable was found
-                description = `Documentation for ${formatIdToTitle(id)}`;
-            }
-        }
-
-        // Ensure date is properly formatted or use file creation time as fallback
-        let date = matterResult.data.date;
-        if (!date) {
-            const stats = fs.statSync(fullPath);
-            date = stats.mtime.toISOString();
-        }
-
-        // Title precedence: frontmatter → first H1 in markdown → formatted filename.
-        const firstH1Match = matterResult.content.match(/^#\s+(.+)$/m);
-        const title =
-            matterResult.data.title ||
-            (firstH1Match ? cleanHeadingText(firstH1Match[1].trim()) : formatIdToTitle(id));
-
-        // Add category if present or determine from filename
-        const category = matterResult.data.category || determineCategory(id);
-
-        return {
-            id,
-            date,
-            title,
-            description,
-            category,
-            ...matterResult.data,
-        };
-    });
-
-    // Sort posts by date
-    return allPostsData.sort(({ date: a }, { date: b }) => {
-        if (a < b) {
-            return 1;
-        } else if (a > b) {
-            return -1;
-        } else {
-            return 0;
-        }
-    });
+  return getDocsEntries().flatMap(({ id }) => {
+    if (!fs.existsSync(path.join(postsDirectory, `${id}.md`))) return [];
+    const post = readPost(id);
+    if (!post.content.trim() || post.data.draft === true) return [];
+    return [getDocMetadata(id, post)];
+  });
 }
 
-// Helper to format ID into a readable title
-function formatIdToTitle(id) {
-    return id
-        .replace(/([A-Z])/g, ' $1') // Add space before capital letters
-        .replace(/^./, str => str.toUpperCase()) // Capitalize first letter
-        .replace(/([A-Z])([A-Z])([a-z])/g, '$1 $2$3'); // Handle consecutive capitals
+export function getAllPostIds({ includeRedirects = false } = {}) {
+  const ids = getSortedPostsData().map(post => post.id);
+  if (includeRedirects) ids.push(...Object.keys(DOCS_REDIRECTS));
+  return [...new Set(ids)].map(id => ({ params: { id } }));
 }
 
-// Helper to determine category based on file name.
-// New docs use kebab-case (May 2026+); legacy docs keep their camelCase slugs.
-function determineCategory(id) {
-    const categories = {
-        // Get Started
-        'create': 'Get Started',
-        'join': 'Get Started',
-        'perpetualOrganization': 'Get Started',
-        'passkey-onboarding': 'Get Started',
-        'deployment-wizard': 'Get Started',
-        // Voting
-        'hybridVoting': 'Voting',
-        'contributionVoting': 'Voting',
-        'directDemocracy': 'Voting',
-        // Roles & Organization
-        'roles-and-permissions': 'Roles & Organization',
-        'hats-and-roles': 'Roles & Organization',
-        'vouching-and-trust': 'Roles & Organization',
-        // Features
-        'AlphaV1': 'Features',
-        'TheGraph': 'Features',
-        'task-manager': 'Features',
-        'treasury-management': 'Features',
-        'learn-and-earn': 'Features',
-        'cashout': 'Features',
-        // Protocol & Infrastructure
-        'protocol': 'Protocol',
-        'gas-sponsor': 'Protocol',
-        'account-abstraction': 'Protocol',
-        'cross-chain-architecture': 'Protocol',
-        'white-label-hosting': 'Protocol',
+function nodeText(node) {
+  return node.value || node.alt || (node.children || []).map(nodeText).join('');
+}
+
+// Work on the Markdown tree so formatted headings and repeated titles receive
+// correct, unique anchors. Code fences never become table-of-contents entries.
+function prepareArticle({ headings }) {
+  return tree => {
+    const titleIndex = tree.children.findIndex(node => node.type === 'heading' && node.depth === 1);
+    if (titleIndex !== -1) tree.children.splice(titleIndex, 1);
+    const used = new Set();
+    const visit = node => {
+      if (node.type === 'heading') {
+        node.depth = Math.max(2, node.depth);
+        const text = nodeText(node);
+        const base = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/^-|-$/g, '') || 'section';
+        let slug = base;
+        let suffix = 1;
+        while (used.has(slug)) slug = `${base}-${suffix++}`;
+        used.add(slug);
+        node.data = { ...node.data, hProperties: { ...node.data?.hProperties, id: slug } };
+        headings.push({ level: node.depth, text, plainText: text, slug });
+      }
+      node.children?.forEach(visit);
     };
+    visit(tree);
+  };
+}
 
-    return categories[id] || 'Other';
+// Promote only standalone, catalogued local images. HAST text nodes keep
+// authored captions escaped by the normal serializer, without raw HTML.
+function articleFigures() {
+  return tree => {
+    const visit = node => {
+      if (!node.children) return;
+      node.children = node.children.map(child => {
+        const image = child.tagName === 'p' && child.children?.length === 1
+          ? child.children[0] : null;
+        const src = image?.properties?.src;
+        const media = image?.tagName === 'img' && typeof src === 'string' && src.startsWith('/images/')
+          && Object.hasOwn(DOCS_MEDIA, src) ? DOCS_MEDIA[src] : null;
+        if (!media) {
+          visit(child);
+          return child;
+        }
+
+        const { title, ...properties } = image.properties;
+        const picture = {
+          ...image,
+          properties: { ...properties, width: media.width, height: media.height, loading: 'lazy', decoding: 'async' },
+        };
+        const children = [media.kind === 'screenshot' ? {
+          type: 'element', tagName: 'a',
+          properties: {
+            href: src, target: '_blank', rel: ['noopener', 'noreferrer'],
+            className: ['pa-figure-link'],
+            ariaLabel: `View full size: ${properties.alt || 'screenshot'} (opens in a new tab)`,
+          },
+          children: [picture, {
+            type: 'element', tagName: 'span',
+            properties: { className: ['pa-figure-hint'], ariaHidden: 'true' },
+            children: [{ type: 'text', value: 'View full size ↗' }],
+          }],
+        } : picture];
+        if (title) children.push({
+          type: 'element', tagName: 'figcaption', properties: {},
+          children: [{ type: 'text', value: title }],
+        });
+        return {
+          type: 'element', tagName: 'figure',
+          properties: { className: ['pa-figure', `pa-figure-${media.kind}`] }, children,
+        };
+      });
+    };
+    visit(tree);
+  };
+}
+
+// Keep wide reference tables readable on small screens without scrolling the
+// entire article. Native table headers remain available to assistive technology.
+function articleTables() {
+  return tree => {
+    const visit = node => {
+      if (!node.children) return;
+      node.children = node.children.map(child => {
+        if (child.tagName !== 'table') {
+          visit(child);
+          return child;
+        }
+        const head = child.children.find(row => row.tagName === 'thead');
+        const headers = head?.children.find(row => row.tagName === 'tr')?.children.filter(cell => cell.tagName === 'th') || [];
+        headers.forEach(cell => { cell.properties = { ...cell.properties, scope: 'col' }; });
+        const region = {
+          type: 'element', tagName: 'div',
+          properties: {
+            className: ['pa-table-scroll', ...(headers.length > 2 ? ['pa-table-wide'] : [])],
+            tabIndex: 0, role: 'region',
+            ariaLabel: `Table: ${headers.map(nodeText).join(', ')}. Scroll horizontally if needed.`,
+          },
+          children: [child],
+        };
+        if (headers.length <= 2) return region;
+        return {
+          type: 'element', tagName: 'div', properties: { className: ['pa-table-wrap'] },
+          children: [{
+            type: 'element', tagName: 'p', properties: { className: ['pa-table-hint'], ariaHidden: 'true' },
+            children: [{ type: 'text', value: 'Scroll for all columns →' }],
+          }, region],
+        };
+      });
+    };
+    visit(tree);
+  };
 }
 
 export async function getPostData(id) {
-    const fullPath = path.join(postsDirectory, `${id}.md`);
-    const fileContents = fs.readFileSync(fullPath, 'utf8');
+  if (!getSortedPostsData().some(post => post.id === id)) {
+    throw new Error(`Unpublished documentation page: ${id}`);
+  }
+  const post = readPost(id);
+  const headings = [];
+  const result = await remark()
+    .use(remarkGfm)
+    .use(remarkMath)
+    .use(prepareArticle, { headings })
+    .use(remarkRehype)
+    .use(articleFigures)
+    .use(articleTables)
+    .use(rehypeKatex)
+    .use(rehypeStringify)
+    .process(post.content);
 
-    // Use gray-matter to parse the post metadata section
-    const matterResult = matter(fileContents);
-
-    // Extract headings for table of contents
-    const headings = [];
-    const headingRegex = /^(#{1,6})\s+(.+)$/gm;
-    let match;
-    while ((match = headingRegex.exec(matterResult.content)) !== null) {
-        const level = match[1].length;
-        const text = match[2].trim();
-        
-        // Create clean version of the heading text
-        const plainText = cleanHeadingText(text);
-        const slug = createSlug(plainText);
-            
-        headings.push({ level, text, plainText, slug });
-    }
-
-    // Process markdown content to HTML
-    const processedContent = await processMarkdown(matterResult.content);
-
-    // We'll add IDs to headings using a safer approach
-    // Create a simple HTML parser
-    // Strip the first <h1>...</h1> — the page wrapper renders the title separately,
-    // so leaving it in produces a duplicate H1 (bad for SEO and accessibility).
-    let contentHtml = processedContent.replace(/<h1[^>]*>[\s\S]*?<\/h1>/, '');
-    
-    // Add IDs to each heading using a safer string manipulation
-    for (const heading of headings) {
-        // Find each heading tag in the HTML
-        const headingRegexPattern = new RegExp(`<h${heading.level}[^>]*>(.*?)</h${heading.level}>`, 'g');
-        
-        // Use a replacer function to add the ID attribute while preserving content
-        contentHtml = contentHtml.replace(headingRegexPattern, (match, content) => {
-            // Only replace if this heading contains our target content
-            if (content.includes(heading.plainText)) {
-                return `<h${heading.level} id="${heading.slug}">${content}</h${heading.level}>`;
-            }
-            // Otherwise return the original match
-            return match;
-        });
-    }
-    
-    // Ensure date is properly formatted or use file creation time as fallback
-    let date = matterResult.data.date;
-    if (!date) {
-        const stats = fs.statSync(fullPath);
-        date = stats.mtime.toISOString();
-    }
-
-    // Title precedence: frontmatter → first H1 in markdown → formatted filename.
-    // Pulling from the first H1 lets posts without frontmatter still get a
-    // human-authored title (e.g. "Contribution-based Voting" instead of
-    // "Contribution Voting" from the camelCase filename).
-    const firstH1 = headings.find((h) => h.level === 1);
-    const title =
-        matterResult.data.title ||
-        (firstH1 ? cleanHeadingText(firstH1.text) : formatIdToTitle(id));
-
-    // Add category if present or determine from filename
-    const category = matterResult.data.category || determineCategory(id);
-
-    // Extract the first paragraph as description if no description in frontmatter
-    let description = matterResult.data.description;
-    if (!description) {
-        const contentLines = matterResult.content.split('\n');
-        // Find the first non-empty paragraph that's not a heading
-        const firstParagraph = contentLines.find(line =>
-            line.trim().length > 0 && !line.startsWith('#')
-        );
-
-        if (firstParagraph) {
-            // Limit to a reasonable length for a description
-            description = firstParagraph.length > 160
-                ? `${firstParagraph.substring(0, 160)}...`
-                : firstParagraph;
-        } else {
-            // Default description if nothing suitable was found
-            description = `Documentation for ${formatIdToTitle(id)}`;
-        }
-    }
-
-    // Combine the data with the id and contentHtml
-    return {
-        id,
-        contentHtml,
-        headings,
-        date,
-        title,
-        description,
-        category,
-        ...matterResult.data,
-    };
+  return { ...getDocMetadata(id, post), contentHtml: result.toString(), headings };
 }
 
-// Get posts by category
+export function getPostNavigation(id) {
+  const posts = getSortedPostsData();
+  const index = posts.findIndex(post => post.id === id);
+  const link = post => post ? { id: post.id, title: post.title } : null;
+  if (index === -1) return { prev: null, next: null };
+  return { prev: link(posts[index - 1]), next: link(posts[index + 1]) };
+}
+
 export function getPostsByCategory(category) {
-    const allPosts = getSortedPostsData();
-    return allPosts.filter(post => post.category === category);
+  return getSortedPostsData().filter(post => post.category === category);
 }
 
-// Get related posts
 export function getRelatedPosts(currentPostId, maxCount = 3) {
-    const allPosts = getSortedPostsData();
-    const currentPost = allPosts.find(post => post.id === currentPostId);
-    
-    if (!currentPost) return [];
-    
-    // First get posts in the same category
-    const sameCategoryPosts = allPosts.filter(post => 
-        post.id !== currentPostId && post.category === currentPost.category
-    );
-    
-    // If we have enough, return those
-    if (sameCategoryPosts.length >= maxCount) {
-        return sameCategoryPosts.slice(0, maxCount);
-    }
-    
-    // Otherwise, add posts from other categories to reach the max count
-    const otherPosts = allPosts.filter(post => 
-        post.id !== currentPostId && post.category !== currentPost.category
-    );
-    
-    return [...sameCategoryPosts, ...otherPosts].slice(0, maxCount);
+  const posts = getSortedPostsData();
+  const current = posts.find(post => post.id === currentPostId);
+  if (!current) return [];
+  const others = posts.filter(post => post.id !== currentPostId);
+  return [
+    ...others.filter(post => post.category === current.category),
+    ...others.filter(post => post.category !== current.category),
+  ].slice(0, maxCount);
 }

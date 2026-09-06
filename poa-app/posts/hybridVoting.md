@@ -1,48 +1,54 @@
-# Hybrid voting
+---
+title: "Hybrid voting: make decisions and act"
+description: "Balance equal member voice with contribution on Poa. Understand voting classes, eligibility, and the binding proposals that change rules or spend shared funds."
+date: '2026-09-06'
+updated: '2026-09-06'
+category: "Make decisions"
+order: 80
+---
 
-Hybrid voting combines two ways of weighting a community's vote into one tally. Part of the result comes from one-member-one-vote democracy. The other part comes from voting power earned by contribution. The community picks the ratio. Eighty-twenty. Fifty-fifty. Anything in between, or anything at the edges.
+# Hybrid voting: make decisions and act
 
-It is one of three voting models a community-owned organization on Poa can choose. The other two are pure [direct democracy](/docs/directDemocracy) and pure [contribution-based voting](/docs/contributionVoting). Hybrid is for organizations that want both legitimacy and meritocracy in the same tally.
+To approve spending, change permissions, or update a rule, prepare a binding proposal. These proposals use Poa's hybrid voting system, called **Blended voting** in parts of the interface. It supports equal member weight, contribution weight, or a blend.
 
-## What gets blended
+## How voting classes work
 
-Two classes of votes are cast at the same time on the same proposal:
+A voting class defines three things:
 
-- **The direct-democracy class**, where every member's vote weighs the same.
-- **The contribution-weighted class**, where each member's vote weighs in proportion to their participation tokens.
+- **Who counts:** the roles whose members can participate in that class.
+- **How their vote is weighted:** equally or through the configured participation balance.
+- **How much the class contributes:** its percentage of the combined result.
 
-The two tallies are combined according to the weights your community chose at setup. The combined score is then compared to a configurable threshold.
+A familiar setup has one equal-member class and one contribution class, each worth 50% of the result. Advanced configurations can use other splits and classes. Contribution classes can optionally apply square-root weighting to narrow differences between larger and smaller balances.
 
-## A worked example
+Check the organization's actual classes before voting. Holding a role with task permissions does not automatically make someone eligible in a voting class.
 
-A worker cooperative uses an 80/20 hybrid: 80 percent of the final score comes from contribution-weighted voting, 20 percent from direct democracy. The cooperative is choosing whether to take on a new client project.
+## Balance the workshop's next purchase
 
-The contribution-weighted side answers the question that matters most: are the people who will actually do the work willing to do it? The direct-democracy side answers the second question: does the broader community endorse pursuing this kind of work in the first place?
+A shared workshop gives equal member voting 50% of its result and contribution voting the other 50%. Members are considering buying a new cutting machine.
 
-When the two halves agree, the proposal passes cleanly. When they disagree, the cooperative learns something important. The blend forces the community to think about both questions at once.
+Suppose all four eligible members vote: two for the purchase and two against. The two in favor hold 60% of the participation balance used in the vote. With ordinary balance weighting, their equal-member votes contribute 25 points and their contribution weight adds 30: **55 out of 100 for the purchase**, with 45 against.
 
-## Why use it
+The result combines an equal member voice with recognition of work. It must also meet the proposal's passing and minimum-voter requirements; square-root weighting would produce a different calculation.
 
-Hybrid voting picks up the strengths of both pure models while papering over the weaknesses of each.
+## Binding decisions
 
-- **From direct democracy**: legitimacy. Every member is heard, every vote counts, no one is locked out for not contributing yet.
-- **From contribution-based voting**: meritocracy. The people building the organization have proportionate say in where it goes.
-- **From the combination**: an honest signal when the two views diverge. The community can see that and respond.
+The app routes every proposal containing executable actions through this system, including when equal member voting has 100% of the weight. The separate [direct-democracy system](/docs/directDemocracy) is used for polls, which cannot execute actions.
 
-The ratio is itself a governance question. A new cooperative might lean heavier on direct democracy to build trust. A long-running open-source project might lean heavier on contribution-weighting to keep its roadmap accountable to the people shipping the work. The right answer is whatever the community votes for.
+## From proposal to outcome
 
-## When it doesn't fit
+1. An eligible proposer describes the decision and any action it will carry out.
+2. Members review the options, voting classes, time available, and requirements for a valid result.
+3. Eligible voters cast their votes.
+4. After the voting period, the available finalization action records the result and attempts any winning action.
+5. Members check the receipt and resulting state, especially for payments or permission changes.
 
-Hybrid is overkill if your community is small enough and uniform enough that pure direct democracy already works. It can also be the wrong choice if your contribution-tracking is sloppy. A blended vote that depends on participation tokens needs a clear, agreed list of what work counts and what it earns. If that list isn't trusted, neither will be the vote.
+Read the action preview as well as the proposal's title. The action is what the organization authorizes the system to do. A successful vote does not guarantee that an action with insufficient funding or unmet conditions will execute successfully.
 
-## How Poa implements it
+## Choose a balance you can explain
 
-When a proposal opens, the system takes two snapshots: the current member roster and every member's participation-token balance at that exact moment. Each member's contribution to the final tally is split into two halves: their one-member-one-vote share plus their contribution-weighted share, in whatever ratio your community chose. The combined result is then checked against the agreed minimum participation and approval threshold.
+Before settling on a split, try a few hypothetical decisions with your actual membership and contribution balances. Look at whose views would carry weight and whether that matches the responsibilities your group wants to share.
 
-All of this is open and verifiable. The code is at [poa-box/POP](https://github.com/poa-box/POP) under AGPL-3.0. You set up hybrid voting when you create your organization through the [create flow](/docs/create). The ratio between the two halves can be changed later by a community vote.
+Agree on the contribution rules before relying on their balances. Set minimum voter counts your active membership can meet, and allow enough time for members to understand a decision.
 
-## Related reading
-
-- [Direct democracy voting](/docs/directDemocracy). The equal-vote half on its own
-- [Contribution-based voting](/docs/contributionVoting). The merit-weighted half on its own
-- [Roles and permissions](/docs/roles-and-permissions). Voting can also be weighted per role on top of either model
+For your first proposal, choose one decision and describe its consequence plainly. A [spending proposal](/docs/treasury-management), for example, should let members see exactly what will be paid, to whom, and why.

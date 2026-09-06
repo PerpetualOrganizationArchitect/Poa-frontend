@@ -44,8 +44,8 @@ const HeroSection = ({ aggregated, isLoading }) => (
         </Text>
         <Text fontSize={{ base: 'sm', md: 'md' }} color="whiteAlpha.600" maxW="640px" mx="auto" mb={10} lineHeight="1.7">
           New here? See the{' '}
-          <Link href="/docs/AlphaV1" style={{ color: '#C4B5FD', textDecoration: 'underline' }}>
-            AlphaV1 release notes
+          <Link href="/docs/what-is-poa" style={{ color: '#C4B5FD', textDecoration: 'underline' }}>
+            introduction to Poa
           </Link>{' '}
           for what the protocol can do, or the{' '}
           <Link href="/docs/TheGraph" style={{ color: '#C4B5FD', textDecoration: 'underline' }}>

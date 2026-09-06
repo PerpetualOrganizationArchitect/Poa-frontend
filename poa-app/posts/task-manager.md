@@ -1,60 +1,55 @@
-# Task manager
+---
+title: "Projects, tasks, and rewards"
+description: "Find a useful task or organize your next project on Poa. Set clear outcomes, review finished work, and understand contribution rewards and funded bounties."
+date: '2026-09-06'
+updated: '2026-09-06'
+category: "Work together"
+order: 50
+---
 
-Every Poa organization has a shared task board built into it. It doubles as a contribution log. Members create tasks. Members claim work. Members submit results for review. Members earn participation tokens when their work is approved. The same task board is the source of truth for who is actually contributing, which is what governance is built on for organizations using contribution-weighted voting.
+# Projects, tasks, and rewards
 
-You can use it like a lightweight Kanban for a worker cooperative's day-to-day. Like an officer-managed task list for a student org. Like a bounty board for an open-source project. The mechanics are the same. How strict you are about review and assignment is up to your community.
+Open a project's task board to find available work or add a task. Each task describes an outcome and its reward. Depending on the project's rules, you can claim it, apply for it, or receive an assignment.
 
-## What a task is
+## Turn a project into work people can take
 
-A task has:
+For a weekend software build, create a project with tasks such as “Build the search page,” “Test on a phone,” and “Write the setup guide.” Someone who has an afternoon can find a useful place to start.
 
-- A title and a description
-- An estimated reward in participation tokens (configurable when the task is created)
-- A project it belongs to (projects are how related work is grouped)
-- A status: open, claimed, submitted, approved (or rejected)
-- A reviewer (anyone with the Review permission on this project's role)
+Each task should say what a finished result looks like. Add the context, reward, and any deadline. “Test on a phone” might ask for a list of problems with screenshots and steps to reproduce them.
 
-When a task is approved, the reward is minted as participation tokens to the contributor's account. The tokens are non-transferable. They represent contribution history, not capital. They flow into governance via [contribution-based voting](/docs/contributionVoting).
+Specify the outcome and constraints; include a required tool or method only when it matters to the result.
 
-## The lifecycle, step by step
+Task descriptions and submissions are public, including the text and links you enter. Keep confidential material in your usual private tools. For a client bug fix, post a summary with private details removed and share the logs separately with the reviewer.
 
-1. **Create.** A member with the Create permission opens a new task. Title, description, project, reward. The task goes into the project's "Open" column.
-2. **Claim.** A member with the Claim permission takes the task. It moves to "Claimed" and is associated with their account. Most orgs let any Member claim freely. Some require an Officer to assign instead.
-3. **Do the work.** Offline. Write the code. Design the flyer. Run the event. Whatever the task says.
-4. **Submit.** When the work is ready, the claimer marks the task submitted (optionally with a link to the deliverable). It moves to "Submitted" and queues for review.
-5. **Review.** A member with the Review permission inspects the work and approves or rejects. Approval lands the reward in your account. Rejection sends the task back to "Open" or "Claimed" with feedback.
+## From open to completed
 
-For the permissions side, who can do which step, see [roles and permissions](/docs/roles-and-permissions).
+1. **Create:** a member with permission adds the task and its reward to the project.
+2. **Claim or apply:** take an available task directly, or submit an application for an authorized assigner to accept. Tasks can also be assigned.
+3. **Do the work:** complete the outcome described on the task.
+4. **Submit:** add the result or a link to it. The task moves into review.
+5. **Review:** an authorized reviewer approves completion or requests changes. A rejected submission returns to work in progress for revision and resubmission.
 
-## A worked example
+When a reviewer approves completion, the task awards its configured rewards. Reviewing your own work requires self-review authority; ordinary review permission alone may not allow it.
 
-Bread & Roses Co-op runs a delivery service with twelve worker-owners. They have defined three task types:
+![Decentral Park project board showing tasks at four stages of work](/images/product/tasks-board.webp "Decentral Park: tasks move through Open, In Progress, In Review, and Completed on the project board.")
 
-- **Delivery run.** 5 PT base, plus 1 PT per delivery completed. Anyone can claim.
-- **Customer support shift.** 20 PT for a four-hour shift. Anyone can claim. One open shift per member at a time.
-- **Bookkeeping for the month.** 100 PT. Assigned (not claimable) to whoever is serving as Treasurer.
+## See what the task earns
 
-In one month: Alice does four delivery runs (5 + 4×1 = 9 PT each, 36 PT total). Bob does two customer-support shifts (40 PT). Carla, the Treasurer, completes the monthly bookkeeping (100 PT). When the co-op votes on whether to expand to a second city, those participation token totals weight their votes if the co-op is using contribution-based voting.
+A task can offer:
 
-This is the entire compensation system. There is no separate "salary" mechanism. Members get paid from the [treasury](/docs/treasury-management) on a schedule the community votes on, and the task ledger shows exactly who contributed what to justify those payments.
+| Reward | What it gives you |
+|---|---|
+| Contribution reward | A stake in what you help build, recorded as participation units. These can count toward voting weight and proportional distributions under the group's rules. |
+| Funded bounty | An additional payment in the asset and amount shown on the task. |
 
-## A few configurable bits
+For example, “Write the setup guide” might award 20 participation units when a reviewer confirms that the guide works and approves completion.
 
-- **Reward formula.** Defaults to a flat amount. You can also use a base plus multiplier (base + difficulty × hours, or whatever formula your community defines). Set at org-creation time, changed by community vote later.
-- **Auto-approval.** For low-stakes tasks (meeting attendance, for instance), you can set a project to auto-approve on submission. Most orgs leave review on for anything that pays meaningful tokens.
-- **Multiple reviewers.** You can require N approvals before a task is paid out. Useful when reviewers are accountable to the broader community.
+A bounty needs available task funding and room within the project's limits. Participation units themselves are not a cash balance; [revenue distributions](/docs/treasury-management) are a separate decision. Read [contribution and ownership](/docs/contribution-and-ownership) for the rights this stake can carry and how they differ from legal shares.
 
-## How it works under the hood
+## Check timing and budgets
 
-Mechanics:
+Read any due date, deadline, or claim window before starting. An expired claim can make work available to someone else.
 
-- **The task board is recorded on the blockchain.** Every create, claim, submit, approval, and rejection is logged. The page you see is reading the live record, not a separate database. Source for the underlying contract at [poa-box/POP](https://github.com/poa-box/POP), AGPL-3.0.
-- **Participation tokens are non-transferable.** They are not currency. You cannot sell them or give them to another member. They can only be minted when work is approved (or a [learning module](/docs/learn-and-earn) is completed). When you cast a contribution-weighted vote, the system reads your balance at the moment the proposal opened, not your current balance. That is why a last-minute token grab cannot change the outcome of a vote already in progress.
-- **Permission checks** look at your current roles to decide whether you can create, claim, review, or assign on this project. If a permission is missing, the action is refused with a clear message.
-- **Terminal access.** If you would rather work from a command line (running scripts, building bots, wiring tasks into other tools), the [`pop`](https://github.com/poa-box/poa-cli) CLI exposes every task action with JSON output and dry-run simulation.
+Projects can limit participation rewards and bounty amounts. Changing those limits needs budget authority, even when someone already manages the project. [Roles and permissions](/docs/roles-and-permissions) explains the controls.
 
-## Related reading
-
-- [Contribution-based voting](/docs/contributionVoting). How participation tokens flow into governance
-- [Roles and permissions](/docs/roles-and-permissions). Controlling who can create, claim, review, assign
-- [Treasury management](/docs/treasury-management). The funding source for member payouts
+For a new project, include a few small tasks alongside the major pieces: test an installation, edit a page, or check the equipment. They give newcomers a manageable place to begin.

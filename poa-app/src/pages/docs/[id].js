@@ -1,42 +1,16 @@
 import Head from 'next/head';
-import { getPostData, getAllPostIds, getRelatedPosts } from '../../util/posts';
+import { getPostData, getAllPostIds, getRelatedPosts, getPostNavigation } from '@/util/posts';
+import { getDocsArticleSchema, getDocsRedirect, getDocsEntries } from '@/lib/docs.mjs';
+import DocsRedirect from '@/components/marketing/docs/DocsRedirect';
 import SEOHead from '@/components/common/SEOHead';
 
-// Marketing /docs/[id] article template, direction A ("public works"), rebuilt
-// on the same marketing chrome + primitives as the landing (P2) and /about (P3).
-// A typographic pass only: the content is sourced and rendered EXACTLY as before
-// (same getStaticProps/getStaticPaths, same markdown pipeline, same
-// dangerouslySetInnerHTML), so the article BODY is byte-identical and every
-// in-article anchor/id the pipeline produced still resolves. DocsArticle only
-// re-dresses the shell around it. No motion library; entrances are pure CSS.
-//
-// The article BODY is EXEMPT vocabulary (BRIEF §7): posts/*.md are untouched.
-// Thin page per repo convention: chrome + the reader shell, no logic here.
 import { MarketingRoot } from '@/components/marketing/primitives';
 import MarketingNav from '@/components/marketing/chrome/MarketingNav';
 import MarketingFooter from '@/components/marketing/chrome/MarketingFooter';
 import { DocsArticle } from '@/components/marketing/docs';
 
-export default function DocsPost({ postData, navigationData, relatedPosts }) {
-  // TechArticle JSON-LD for /docs/* pages. Unchanged from the old template: the
-  // fields derive from the post's own front-matter title/description, which the
-  // vocab gate treats as article-body-derived content under the §7 exemption.
-  const techArticleLD = {
-    "@context": "https://schema.org",
-    "@type": "TechArticle",
-    "headline": postData.title || postData.id,
-    "description": postData.description,
-    "datePublished": postData.date,
-    "dateModified": postData.date,
-    "author": { "@type": "Organization", "name": "Poa Team", "url": "https://poa.box" },
-    "publisher": {
-      "@type": "Organization",
-      "name": "Poa",
-      "url": "https://poa.box",
-      "logo": { "@type": "ImageObject", "url": "https://poa.box/images/poa_og.webp" },
-    },
-    "mainEntityOfPage": { "@type": "WebPage", "@id": `https://poa.box/docs/${postData.id}/` },
-  };
+export default function DocsPost({ postData, navigationData, relatedPosts, redirect }) {
+  if (redirect) return <DocsRedirect {...redirect} />;
 
   return (
     <>
@@ -45,7 +19,7 @@ export default function DocsPost({ postData, navigationData, relatedPosts }) {
         description={postData.description}
         path={`/docs/${postData.id}`}
         ogType="article"
-        jsonLd={techArticleLD}
+        jsonLd={getDocsArticleSchema(postData)}
       />
 
       {/* Preload the two marketing display/body faces the first paint needs; the
@@ -100,7 +74,7 @@ export default function DocsPost({ postData, navigationData, relatedPosts }) {
 }
 
 export async function getStaticPaths() {
-  const paths = getAllPostIds();
+  const paths = getAllPostIds({ includeRedirects: true });
   return {
     paths,
     fallback: false,
@@ -108,16 +82,13 @@ export async function getStaticPaths() {
 }
 
 export async function getStaticProps({ params }) {
+  const target = getDocsRedirect(`/docs/${params.id}/`);
+  if (target) {
+    const entry = getDocsEntries().find(item => target === `/docs/${item.id}/`);
+    return { props: { redirect: { target, title: entry?.title || 'Poa docs' } } };
+  }
   const postData = await getPostData(params.id);
-
-  // Get navigation data
-  const allPostIds = getAllPostIds().map(path => path.params.id);
-  const currentIndex = allPostIds.indexOf(params.id);
-
-  const navigationData = {
-    prev: currentIndex > 0 ? { id: allPostIds[currentIndex - 1] } : null,
-    next: currentIndex < allPostIds.length - 1 ? { id: allPostIds[currentIndex + 1] } : null,
-  };
+  const navigationData = getPostNavigation(params.id);
 
   // Related posts, same category first, then fall back to others. Strips
   // any fields Next.js can't serialize and excludes the current post.

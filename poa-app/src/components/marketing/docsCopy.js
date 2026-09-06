@@ -1,125 +1,113 @@
-// Docs copy (P4). Direction A · "public works".
-//
-// A MANUAL, NOT MARKETING (BRIEF §7). The docs HUB obeys the banned-vocab list
-// AND the manual register: task-first titles, sentence case, zero adjectives,
-// zero pain-point copy. Nothing here sells; it indexes.
-//
-// House style (BRIEF §3): sentence case, no em-dashes, no exclamations, no
-// superlatives, brand always "Poa" (never all-caps), banned vocab absent.
-//
-// KNOWN COLLISION (flag to Hudson / P7): one existing article route is
-// `/docs/gas-sponsor`. The vocab gate word-matches "gas" (a banned term) inside
-// that slug, both in the `--src` scan (the slug string below) and in the
-// HTML-mode scan of the hub's <a href="/docs/gas-sponsor"> once the hub renders
-// links server-side (the old hub rendered links client-only, so its static HTML
-// carried no hrefs and never tripped this). The slug is an EXISTING route and
-// the brief mandates keeping every article link working with slugs unchanged, so
-// it is preserved here as-is. Resolving the gate collision is a Hudson decision:
-// either rename the article slug (a redirect + link sweep) or add a route
-// allowlist to check-vocab.mjs. Out of P4 scope; documented so P7's HTML gate
-// run is not a surprise. The slug appears in exactly ONE place below (the
-// section `ids`) to keep the footprint minimal.
-//
-// IMPORTANT: article BODIES (posts/*.md) are EXEMPT vocabulary and are NOT
-// touched. The per-entry `title`/`blurb` below are the HUB's own display text,
-// authored in the manual register; they override the article's front-matter only
-// on the hub index. The article page still renders the post's own title + body.
-
-// The masthead for the hub: a manual's cover line, not a marketing hero.
+// The public reading order, shared by the hub and article navigation.
+// Explain the benefits, help readers choose a setup, then explore features and uses.
 export const DOCS_HERO = {
-  rail: 'ref / manual',
-  kicker: 'Reference manual',
-  no: '00',
-  heading: 'Poa docs',
-  lead:
-    'How to start an organization, run votes, pay for work, and share revenue. Each entry is a short reference, grouped by task.',
+  rail: 'ref / field guide', kicker: 'Poa docs', no: '00',
+  heading: 'Build together.', headingSecond: 'Own together.',
+  lead: 'An organization built on Poa can reward your work with a lasting stake: a say in its direction and a share when revenue is distributed. The people making it valuable help shape what it becomes.',
+  communityLabel: 'Clubs and communities', communityHref: '/docs/community-groups',
+  communityText: 'can start with shared decisions, even when there is no revenue to distribute.',
+  startLabel: 'Understand how it works', startHref: '/docs/what-is-poa',
+  createLabel: 'Create an organization', createHref: '/docs/create',
+  benefitsHeading: 'What changes for your group',
 };
 
-// The manual's chapters: task-first sections, in reading order. Each entry is
-// the single source of truth for an article's HUB display text: its slug id, the
-// hub title (manual register: task-first, sentence case, zero adjectives), and a
-// one-line hub blurb. Ids absent from the current post set are skipped silently;
-// any post not listed here lands in the "Everything else" catch-all so nothing
-// goes missing when new docs are added.
+export const DOCS_BENEFITS = [
+  {
+    id: 'contribution-and-ownership', title: 'Ownership earned through work',
+    detail: 'Award a stake for approved contributions. The effort someone puts in today can keep counting in future decisions and distributions.',
+    label: 'How contribution becomes a stake',
+  },
+  {
+    id: 'treasury-management', title: 'Revenue shared by contribution',
+    detail: 'Choose funds to distribute and let contributors claim a share based on their recorded stake. People can share in the value they help create.',
+    label: 'How revenue sharing works',
+  },
+  {
+    id: 'hybridVoting', title: 'Votes that carry out decisions',
+    detail: 'Use proposals to authorize spending or change the rules. Give eligible members equal votes, weight them by contribution, or combine both.',
+    label: 'How shared decisions work',
+  },
+  {
+    id: 'why-decentralization', title: 'Independence from one platform',
+    detail: 'Your organization has a public record that a compatible interface can use. Open code and shared records give the group more ways to keep going.',
+    label: 'Why decentralization matters',
+  },
+];
+
 export const DOCS_SECTIONS = [
   {
-    no: '01',
-    heading: 'Start an organization',
-    rail: 'sec 01 / start',
+    no: '01', heading: 'Why organize this way?', rail: 'sec 01 / foundations',
+    description: 'Connect useful work with a stake, shared decisions, and more control over your future.',
     entries: [
-      { id: 'perpetualOrganization', title: 'What a Poa organization is', blurb: 'What an organization on Poa is and how it holds together.' },
-      { id: 'passkey-onboarding', title: 'Sign in with a passkey', blurb: 'Create or sign in to an account with a username and a passkey.' },
-      { id: 'create', title: 'Start an organization', blurb: 'Set your rules, name the roles, and open your organization.' },
-      { id: 'join', title: 'Join an organization', blurb: 'Accept a vouch or take an open role and get added.' },
-      { id: 'deployment-wizard', title: 'Set up with the deployment wizard', blurb: 'Every field in the setup wizard, step by step.' },
+      { id: 'what-is-poa', title: 'What makes a Poa organization different?', blurb: 'How contribution, ownership, shared funds, and decisions work together.' },
+      { id: 'contribution-and-ownership', title: 'Earn a stake by contributing', blurb: 'What ownership means in Poa, how you earn it, and what it can give you.' },
+      { id: 'why-decentralization', title: 'Why decentralization matters', blurb: 'Public records, open tools, and less dependence on any single website.' },
     ],
   },
   {
-    no: '02',
-    heading: 'Run votes',
-    rail: 'sec 02 / votes',
+    no: '02', heading: 'Create your organization', rail: 'sec 02 / get started',
+    description: 'Choose how people join, share responsibility, and make decisions. Build the structure around your group.',
     entries: [
-      { id: 'directDemocracy', title: 'Run one person, one vote', blurb: 'Give every member one equal vote.' },
-      { id: 'contributionVoting', title: 'Weight votes by contribution', blurb: 'Give members voting weight for the work they do.' },
-      { id: 'hybridVoting', title: 'Blend the two voting modes', blurb: 'Combine equal votes with contribution weight.' },
+      { id: 'create', title: 'Choose how your organization works', blurb: 'When Poa fits, which choices matter, and how to get started.' },
+      { id: 'deployment-wizard', title: 'Create an organization, step by step', blurb: 'Choose a template, set up your team and voting, then review and launch.' },
+      { id: 'first-week', title: 'Your first week', blurb: 'Welcome members, complete a first contribution, and make a decision together.' },
+      { id: 'join', title: 'Join an existing organization', blurb: 'Understand its entry rules, find your role, and start contributing.' },
     ],
   },
   {
-    no: '03',
-    heading: 'Roles and membership',
-    rail: 'sec 03 / roles',
+    no: '03', heading: 'Work, rewards, and revenue', rail: 'sec 03 / contribution',
+    description: 'Make the terms of a contribution clear, recognize the result, and share funds under agreed rules.',
     entries: [
-      { id: 'roles-and-permissions', title: 'Set roles and permissions', blurb: 'Define roles and the exact powers each one holds.' },
-      { id: 'vouching-and-trust', title: 'Vouch in new members', blurb: 'Add members by vouch and set how trust progresses.' },
-      { id: 'hats-and-roles', title: 'Where roles live, under the hood', blurb: 'How roles are stored and enforced.' },
+      { id: 'task-manager', title: 'Tasks and contribution rewards', blurb: 'Offer work with clear outcomes, review submissions, and award a stake or funded payment.' },
+      { id: 'treasury-management', title: 'Shared funds and revenue distributions', blurb: 'Fund work, approve spending, and distribute available funds to contributors.' },
+      { id: 'learn-and-earn', title: 'Learning and onboarding rewards', blurb: 'Give newcomers a way to learn how your group works and earn a first reward.' },
+      { id: 'cashout', title: 'Cash out USDC', blurb: 'Exchange a supported personal balance for money in a payment app.' },
     ],
   },
   {
-    no: '04',
-    heading: 'Pay for work and share revenue',
-    rail: 'sec 04 / money',
+    no: '04', heading: 'Decisions and responsibility', rail: 'sec 04 / governance',
+    description: 'Choose whose votes count and how. Give members the authority to carry work forward.',
     entries: [
-      { id: 'task-manager', title: 'Post and pay for work', blurb: 'Post work, review it, and pay in dollars and ownership.' },
-      { id: 'treasury-management', title: 'Manage the treasury', blurb: 'Hold funds, set spending rules, and distribute revenue.' },
-      { id: 'learn-and-earn', title: 'Set up learn and earn', blurb: 'Reward members for completing lessons.' },
-      { id: 'cashout', title: 'Cash out earnings', blurb: 'Move earnings to Cash App, Venmo, Revolut, or a bank.' },
-      { id: 'AlphaV1', title: 'Read the Alpha V1 notes', blurb: 'Release notes for the first version.' },
-      { id: 'TheGraph', title: 'Query the subgraph', blurb: 'The data layer that reads your organization back.' },
+      { id: 'directDemocracy', title: 'Equal member polls', blurb: 'Gather preferences with one equal vote per eligible member.' },
+      { id: 'contributionVoting', title: 'Contribution-weighted voting', blurb: 'Let an earned stake count toward influence on the next decision.' },
+      { id: 'hybridVoting', title: 'Binding proposals and blended voting', blurb: 'Combine voting approaches and carry out approved payments or rule changes.' },
+      { id: 'roles-and-permissions', title: 'Roles and permissions', blurb: 'Share the power to welcome people, review work, and manage projects.' },
+      { id: 'vouching-and-trust', title: 'Membership through vouching', blurb: 'Let trusted members help others join under the entry rules your group sets.' },
     ],
   },
   {
-    no: '05',
-    heading: 'Under the hood',
-    rail: 'sec 05 / build',
+    no: '05', heading: 'Run it on your terms', rail: 'sec 05 / independence',
+    description: 'Give the organization its own home, cover network fees, and work directly with its public record.',
     entries: [
-      { id: 'protocol', title: 'Read the protocol dashboard', blurb: 'The dashboard for the shared infrastructure.' },
-      // Known slug collision with the vocab gate; see the header note above.
-      { id: 'gas-sponsor', title: 'Cover fees with the shared fund', blurb: 'How the shared fund covers fees for new organizations.' },
-      { id: 'account-abstraction', title: 'Understand account abstraction', blurb: 'The account model behind passkey sign-in.' },
-      { id: 'cross-chain-architecture', title: 'Understand the cross-chain setup', blurb: 'How accounts and organizations span networks.' },
-      { id: 'white-label-hosting', title: 'Host under your own name', blurb: 'Run the whole thing on your own domain.' },
+      { id: 'white-label-hosting', title: 'Your own domain and interface', blurb: 'Use a custom domain or maintain an independent frontend for the same organization.' },
+      { id: 'gas-sponsor', title: 'Network fee sponsorship', blurb: 'Help members participate through eligible, funded sponsorship routes.' },
+      { id: 'protocol', title: 'The protocol dashboard', blurb: 'Inspect shared infrastructure, funding, and recorded activity.' },
+      { id: 'TheGraph', title: 'Public organization data', blurb: 'Build independent views of proposals, tasks, and contribution.' },
+      { id: 'cross-chain-architecture', title: 'The network setup', blurb: 'Know where your organization lives and how its data and funds are scoped.' },
+      { id: 'hats-and-roles', title: 'The systems behind roles', blurb: 'Understand how the underlying permission systems enforce authority.' },
+    ],
+  },
+  {
+    no: '06', heading: 'See it in practice', rail: 'sec 06 / examples', layout: 'examples',
+    description: 'Illustrative setups for groups with different purposes. See what each gains and which choices make it work.',
+    entries: [
+      { id: 'what-can-you-build', title: 'Find a use that matters to you', blurb: 'Explore ways to organize around shared work, local needs, and ideas worth pursuing.' },
+      { id: 'community-groups', title: 'A community its members shape', blurb: 'A campus club can share its budget decisions and hand responsibility to the next cohort.' },
+      { id: 'worker-cooperatives', title: 'A studio with a stake for the people doing the work', blurb: 'Connect client work with earned ownership, a say in the business, and funded revenue sharing.' },
+      { id: 'open-source-collectives', title: 'Open source with a path into stewardship', blurb: 'Give useful contributions weight in the roadmap and a share when project funds are distributed.' },
+    ],
+  },
+  {
+    no: '07', heading: 'Agents as shared stakeholders', rail: 'sec 07 / new possibilities',
+    description: 'Use the same foundations for agents choosing their own projects and organizing together.',
+    entries: [
+      { id: 'ai-agent-coordination', title: 'AI agents: build an organization of your own', blurb: 'Choose what to build, coordinate with other agents, and earn a stake in your shared work.' },
     ],
   },
 ];
 
-// Fallback bucket for any post not placed in a section above (keeps the test
-// posts and any newly added doc reachable rather than dropped).
-export const DOCS_CATCHALL = {
-  no: '06',
-  heading: 'Everything else',
-  rail: 'sec 06 / other',
-};
-
-// Article-page chrome (the reader shell around a rendered post).
 export const DOCS_ARTICLE = {
-  backLabel: 'Docs',
-  backHref: '/docs',
-  home: 'Home',
-  homeHref: '/',
-  updatedPrefix: 'Updated',
-  author: 'Poa team',
-  prevLabel: 'Previous',
-  nextLabel: 'Next',
-  allLabel: 'All docs',
-  relatedHeading: 'Related entries',
+  backLabel: 'Docs', backHref: '/docs', home: 'Home', homeHref: '/',
+  updatedPrefix: 'Updated', author: 'Poa team', prevLabel: 'Previous',
+  nextLabel: 'Next', allLabel: 'All docs', relatedHeading: 'Keep exploring',
 };

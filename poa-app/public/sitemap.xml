@@ -1,465 +1,129 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset
-      xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-      xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
-            http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
-
-<!-- Static pages -->
-<url>
-  <loc>https://poa.box/</loc>
-  <changefreq>weekly</changefreq>
-  <priority>1.00</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/about/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.80</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/</loc>
-  <changefreq>weekly</changefreq>
-  <priority>0.90</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/explore/</loc>
-  <changefreq>weekly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/protocol/</loc>
-  <changefreq>weekly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/create/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.80</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-
-<!-- Documentation pages -->
-<url>
-  <loc>https://poa.box/docs/AlphaV1/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/TheGraph/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/account-abstraction/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/cashout/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/contributionVoting/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/create/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/cross-chain-architecture/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/deployment-wizard/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/directDemocracy/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/gas-sponsor/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/hats-and-roles/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/hybridVoting/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/join/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/learn-and-earn/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/passkey-onboarding/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/perpetualOrganization/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/protocol/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/roles-and-permissions/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/task-manager/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/treasury-management/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/vouching-and-trust/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/docs/white-label-hosting/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.70</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-
-<!-- Blog pages -->
-<url>
-  <loc>https://poa.box/blog/AlphaV1/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/TheGraph/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/account-abstraction/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/cashout/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/contributionVoting/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/create/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/cross-chain-architecture/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/deployment-wizard/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/directDemocracy/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/gas-sponsor/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/hats-and-roles/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/hybridVoting/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/join/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/learn-and-earn/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/passkey-onboarding/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/perpetualOrganization/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/protocol/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/roles-and-permissions/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/task-manager/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/treasury-management/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/vouching-and-trust/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-<url>
-  <loc>https://poa.box/blog/white-label-hosting/</loc>
-  <changefreq>monthly</changefreq>
-  <priority>0.60</priority>
-  <image:image>
-    <image:loc>https://poa.box/images/poa_og.webp</image:loc>
-    <image:title>Poa — Community-Owned Organization Builder</image:title>
-  </image:image>
-</url>
-
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://poa.box/</loc>
+  </url>
+  <url>
+    <loc>https://poa.box/about/</loc>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/</loc>
+  </url>
+  <url>
+    <loc>https://poa.box/explore/</loc>
+  </url>
+  <url>
+    <loc>https://poa.box/protocol/</loc>
+  </url>
+  <url>
+    <loc>https://poa.box/create/</loc>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/what-is-poa/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/contribution-and-ownership/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/why-decentralization/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/create/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/deployment-wizard/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/first-week/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/join/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/task-manager/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/treasury-management/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/learn-and-earn/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/cashout/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/directDemocracy/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/contributionVoting/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/hybridVoting/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/roles-and-permissions/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/vouching-and-trust/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/white-label-hosting/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/gas-sponsor/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/protocol/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/TheGraph/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/cross-chain-architecture/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/hats-and-roles/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/what-can-you-build/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/community-groups/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/worker-cooperatives/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/open-source-collectives/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
+  <url>
+    <loc>https://poa.box/docs/ai-agent-coordination/</loc>
+    <lastmod>2026-09-06</lastmod>
+  </url>
 </urlset>

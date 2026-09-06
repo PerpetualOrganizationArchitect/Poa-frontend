@@ -1,23 +1,8 @@
 import Head from 'next/head';
-import { getSortedPostsData } from '../../util/posts';
+import { getSortedPostsData } from '@/util/posts';
+import { getDocsCollectionSchema } from '@/lib/docs.mjs';
 import SEOHead from '@/components/common/SEOHead';
 
-// Marketing /docs hub, direction A ("public works"), rebuilt on the same
-// marketing chrome + primitives as the landing (P2) and /about (P3). A MANUAL,
-// NOT MARKETING (BRIEF §7): the reader shell renders a task-first table of
-// contents in the manual register (sentence case, zero adjectives, zero
-// pain-point copy). Thin page per repo convention: chrome + section components,
-// no logic here. The article links keep their existing slugs, so nothing breaks.
-//
-// This page's meta/keywords/JSON-LD ARE in scope for P4 (unlike landing/about
-// meta, which P5 owns): the old keyword/description strings carried banned
-// substrate terms and were the only standing error in the vocab gate. They are
-// rewritten here into the safe register while staying SEO-sensible.
-//
-// Reduced-mode nav: MarketingNav degrades gracefully when the auth props are
-// omitted (showSignIn/showAccount both resolve false, authControl renders null),
-// exactly as on /about. That is the correct wiring for a docs surface with no
-// auth trigger.
 import { MarketingRoot } from '@/components/marketing/primitives';
 import MarketingNav from '@/components/marketing/chrome/MarketingNav';
 import MarketingFooter from '@/components/marketing/chrome/MarketingFooter';
@@ -27,29 +12,10 @@ export default function DocsHub({ allPostsData }) {
   return (
     <>
       <SEOHead
-        title="Poa docs"
-        description="How to start a worker owned or community owned organization on Poa: set your rules, run votes, manage tasks, share revenue, and cash out. Reference guides, grouped by task."
+        title="Poa docs | Shared ownership, voting, and revenue"
+        description="Learn how Poa connects contribution with ownership, voting, and revenue sharing. Create your organization, choose its rules, and explore features and examples."
         path="/docs"
-        keywords={[
-          "worker owned organization",
-          "community ownership",
-          "cooperative software",
-          "group governance",
-          "task management for communities",
-          "start a cooperative",
-          "revenue sharing",
-          "poa.box",
-        ]}
-        jsonLd={{
-          "@context": "https://schema.org",
-          "@type": "CollectionPage",
-          "name": "Poa docs",
-          "description":
-            "Reference guides for starting and running a worker owned or community owned organization on Poa: rules, voting, membership, tasks, treasury, and revenue sharing.",
-          "url": "https://poa.box/docs/",
-          "inLanguage": "en",
-          "isPartOf": { "@type": "WebSite", "name": "Poa", "url": "https://poa.box" },
-        }}
+        jsonLd={getDocsCollectionSchema(allPostsData)}
       />
 
       {/* Preload the two marketing display/body faces the first paint needs; the

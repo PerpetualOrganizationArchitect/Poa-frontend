@@ -1,35 +1,26 @@
 import React from 'react';
 import NextLink from 'next/link';
+import 'katex/dist/katex.min.css';
 import { DOCS_ARTICLE } from '@/components/marketing/docsCopy';
 
-// DocsArticle - the direction-A reader shell around a rendered docs post. A
-// typographic pass only: it does NOT change how content is sourced or rendered.
-// The page still passes postData.contentHtml (the exact same markdown pipeline
-// output) and it is dropped in via dangerouslySetInnerHTML unchanged, so the
-// article BODY is byte-identical and every in-article anchor/id the pipeline
-// produced (heading ids, in-page links) is preserved.
-//
-// The reskin is purely the frame + the Direction-A treatment of the rendered
-// markup: a readable ~680px measure, Archivo headings, Public Sans body, Plex
-// Mono for code, hairline rules, signal-orange links/marks. All body element
-// styling is scoped under .pa-article via :global() (the markup is injected, so
-// styled-jsx cannot scope-class it directly).
-//
-// No motion library. Motion is a single .poa-fade on the header - a manual, not
-// a show.
+// A quiet reader shell: authored dates, working section anchors, and a
+// reading path shared with the docs index.
 
 const C = DOCS_ARTICLE;
 
 export default function DocsArticle({ postData, navigationData, relatedPosts }) {
   const { prev, next } = navigationData || { prev: null, next: null };
-  const isoDate = postData.date ? new Date(postData.date).toISOString() : null;
-  const humanDate = postData.date
-    ? new Date(postData.date).toLocaleDateString('en-US', {
+  const updated = postData.updated || postData.date;
+  const isoDate = updated || null;
+  const humanDate = updated
+    ? new Date(updated).toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
+        timeZone: 'UTC',
       })
     : null;
+  const sections = (postData.headings || []).filter(heading => heading.level === 2);
   const title = postData.title || postData.id;
 
   return (
@@ -49,7 +40,7 @@ export default function DocsArticle({ postData, navigationData, relatedPosts }) 
           <span className="pa-crumb-sep" aria-hidden="true">
             /
           </span>
-          <span className="pa-crumb-current">{title}</span>
+          <span className="pa-crumb-current" aria-current="page">{title}</span>
         </nav>
 
         <header className="pa-article-head poa-fade">
@@ -77,10 +68,19 @@ export default function DocsArticle({ postData, navigationData, relatedPosts }) 
           <h1 className="pa-article-title">{title}</h1>
         </header>
 
-        {/* Rendered markdown - sourced + rendered exactly as before. The
-            .markdown-content / article-content classes are kept so the global
-            stylesheet's base rules still apply; .pa-article layers the
-            Direction-A treatment on top, scoped to this shell only. */}
+        {sections.length > 2 && (
+          <nav className="pa-article-toc" aria-label="On this page">
+            <p>On this page</p>
+            <ul>
+              {sections.map(section => (
+                <li key={section.slug}>
+                  <a href={`#${section.slug}`}>{section.plainText}</a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
+
         <div
           className="pa-article markdown-content article-content"
           dangerouslySetInnerHTML={{ __html: postData.contentHtml }}
@@ -95,10 +95,8 @@ export default function DocsArticle({ postData, navigationData, relatedPosts }) 
               {relatedPosts.map((rp) => (
                 <li key={rp.id} className="pa-related-item">
                   <NextLink href={`/docs/${rp.id}`} className="pa-related-link">
-                    <span className="pa-related-slug" aria-hidden="true">
-                      /{rp.id}
-                    </span>
                     <span className="pa-related-title">{rp.title}</span>
+                    <span className="pa-related-arrow" aria-hidden="true">↗</span>
                   </NextLink>
                 </li>
               ))}
@@ -109,7 +107,7 @@ export default function DocsArticle({ postData, navigationData, relatedPosts }) 
         <nav className="pa-article-nav" aria-label="Previous and next">
           <div className="pa-article-nav-cell">
             {prev ? (
-              <NextLink href={`/docs/${prev.id}`} className="pa-article-nav-link pa-prev">
+              <NextLink href={`/docs/${prev.id}`} rel="prev" className="pa-article-nav-link pa-prev">
                 <span className="pa-article-nav-dir">← {C.prevLabel}</span>
                 <span className="pa-article-nav-name">{prev.title || prev.id}</span>
               </NextLink>
@@ -122,7 +120,7 @@ export default function DocsArticle({ postData, navigationData, relatedPosts }) 
 
           <div className="pa-article-nav-cell pa-article-nav-cell-end">
             {next ? (
-              <NextLink href={`/docs/${next.id}`} className="pa-article-nav-link pa-next">
+              <NextLink href={`/docs/${next.id}`} rel="next" className="pa-article-nav-link pa-next">
                 <span className="pa-article-nav-dir">{C.nextLabel} →</span>
                 <span className="pa-article-nav-name">{next.title || next.id}</span>
               </NextLink>
@@ -136,7 +134,7 @@ export default function DocsArticle({ postData, navigationData, relatedPosts }) 
           padding: 40px 0 88px;
         }
         /* Narrow the container to a readable measure for the article route. */
-        .pa-article-wrap :global(.pa-container) {
+        .pa-article-wrap > .pa-container {
           max-width: 780px;
         }
 
@@ -221,6 +219,36 @@ export default function DocsArticle({ postData, navigationData, relatedPosts }) 
           margin: 0;
         }
 
+        .pa-article-toc {
+          border-top: 1px solid var(--hair);
+          border-bottom: 1px solid var(--hair);
+          padding: 20px 0;
+          margin-bottom: 36px;
+        }
+        .pa-article-toc p {
+          font-family: var(--mono);
+          font-size: 12px;
+          color: var(--steel);
+          margin: 0 0 12px;
+        }
+        .pa-article-toc ul {
+          display: grid;
+          gap: 8px;
+          list-style: none;
+          padding: 0;
+          margin: 0;
+        }
+        .pa-article-toc a {
+          font-family: var(--sans);
+          font-size: 15px;
+          color: var(--signal-deep);
+          text-decoration: none;
+        }
+        .pa-article-toc a:hover {
+          text-decoration: underline;
+          text-underline-offset: 3px;
+        }
+
         /* -------------------- related entries -------------------- */
         .pa-article-related {
           margin-top: 64px;
@@ -260,15 +288,9 @@ export default function DocsArticle({ postData, navigationData, relatedPosts }) 
           padding-left: 10px;
           padding-right: 10px;
         }
-        .pa-related-slug {
-          font-family: var(--mono);
-          font-size: 12px;
+        .pa-related-arrow {
           color: var(--signal-deep);
-          flex: none;
-          min-width: 130px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
+          margin-left: auto;
         }
         .pa-related-title {
           font-family: var(--archivo);
@@ -349,9 +371,6 @@ export default function DocsArticle({ postData, navigationData, relatedPosts }) 
           }
           .pa-article-nav :global(.pa-article-nav-all) {
             order: 3;
-          }
-          .pa-related-slug {
-            min-width: 0;
           }
         }
       `}</style>
@@ -512,9 +531,87 @@ export default function DocsArticle({ postData, navigationData, relatedPosts }) 
           box-shadow: none;
         }
 
+        .pa-root .pa-article .pa-figure {
+          width: 100%;
+          min-width: 0;
+          margin: 2.6rem 0;
+        }
+        .pa-root .pa-article .pa-figure img {
+          display: block;
+          box-sizing: border-box;
+          width: 100%;
+          max-width: 100%;
+          height: auto;
+          margin: 0;
+          border: 0;
+          border-radius: 0;
+        }
+        .pa-root .pa-article .pa-figure-editorial {
+          max-width: 560px;
+          margin: 2.8rem auto;
+        }
+        .pa-root .pa-article .pa-figure-screenshot img {
+          border: 1px solid var(--hair);
+          border-radius: 2px;
+        }
+        .pa-root .pa-article .pa-figure-link {
+          display: block;
+          text-decoration: none;
+        }
+        .pa-root .pa-article .pa-figure-link:focus-visible {
+          outline: 2px solid var(--signal-deep);
+          outline-offset: 5px;
+        }
+        .pa-root .pa-article .pa-figure-hint {
+          display: block;
+          margin-top: 8px;
+          text-align: right;
+          font-size: 12px;
+          line-height: 1.5;
+          color: var(--steel);
+        }
+        .pa-root .pa-article .pa-figure-link:hover .pa-figure-hint {
+          color: var(--signal-deep);
+          text-decoration: underline;
+          text-underline-offset: 3px;
+        }
+        .pa-root .pa-article .pa-figure figcaption {
+          margin-top: 12px;
+          font-size: 14px;
+          line-height: 1.6;
+          color: var(--steel);
+          overflow-wrap: anywhere;
+        }
+        @media (max-width: 640px) {
+          .pa-root .pa-article .pa-figure {
+            margin: 2rem auto;
+          }
+        }
+
+        .pa-root .pa-article .pa-table-scroll {
+          max-width: 100%;
+          margin: 1.8rem 0;
+          overflow-x: auto;
+        }
+        .pa-root .pa-article .pa-table-scroll:focus-visible {
+          outline: 2px solid var(--signal-deep);
+          outline-offset: 4px;
+        }
+        .pa-root .pa-article .pa-table-wide table { min-width: 600px; }
+        .pa-root .pa-article .pa-table-wrap { margin: 1.8rem 0; }
+        .pa-root .pa-article .pa-table-wrap .pa-table-scroll { margin: 0; }
+        .pa-root .pa-article .pa-table-hint {
+          display: none;
+          margin: 0 0 10px;
+          font-size: 12px;
+          color: var(--steel);
+        }
+        @media (max-width: 640px) {
+          .pa-root .pa-article .pa-table-hint { display: block; }
+        }
         .pa-root .pa-article table {
           width: 100%;
-          margin: 1.8rem 0;
+          margin: 0;
           border-collapse: collapse;
           border: 1px solid var(--hair);
           border-radius: 0;
@@ -525,6 +622,9 @@ export default function DocsArticle({ postData, navigationData, relatedPosts }) 
           padding: 0.6rem 0.9rem;
           border: 1px solid var(--hair);
           text-align: left;
+          vertical-align: top;
+          overflow-wrap: normal;
+          word-break: normal;
         }
         .pa-root .pa-article th {
           background: var(--bone-deep);

@@ -1,47 +1,16 @@
 import React from 'react';
 import NextLink from 'next/link';
-import { DOCS_SECTIONS, DOCS_CATCHALL } from '@/components/marketing/docsCopy';
+import Image from 'next/image';
+import { DOCS_SECTIONS } from '@/components/marketing/docsCopy';
+import { DOCS_MEDIA, DOCS_EXAMPLE_IMAGES } from '@/components/marketing/docsMedia';
 
-// DocsIndex - the manual's table of contents. Groups every post into task-first
-// chapters (DOCS_SECTIONS), in reading order, and renders each chapter as a
-// numbered section whose entries are a plain hairline-ruled list: the slug as a
-// mono reference, a hub display title (manual register), and a one-line blurb.
-// Every article link keeps its existing slug (/docs/<id>), so nothing breaks.
-// Anything not placed in a section falls into an "Everything else" catch-all so
-// no post ever goes missing.
-//
-// Section entries carry the hub's OWN title/blurb (curated in docsCopy, in the
-// clean manual register), never the article front-matter, so the index obeys the
-// banned-vocab gate. Catch-all entries (e.g. the three test posts, or any newly
-// added doc) fall back to the post's own title and show no blurb. The article
-// page itself still renders the post's own title + body verbatim.
-
+// Only curated, published guides appear in the public reading path.
 function buildGroups(allPostsData) {
-  const present = new Set(allPostsData.map((p) => p.id));
-  const placed = new Set();
-  const groups = [];
-
-  for (const section of DOCS_SECTIONS) {
-    // Keep only entries whose article actually exists in the post set.
-    const entries = section.entries
-      .filter((e) => present.has(e.id))
-      .map((e) => {
-        placed.add(e.id);
-        return e;
-      });
-    if (entries.length) groups.push({ ...section, entries });
-  }
-
-  // Catch-all: any post not explicitly placed (e.g. newly added docs or the
-  // three test posts). Normalized to the same {id,title,blurb} shape; the title
-  // falls back to the post's own, blurb is omitted. Alphabetical id order.
-  const leftover = allPostsData
-    .filter((p) => !placed.has(p.id))
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .map((p) => ({ id: p.id, title: p.title || p.id, blurb: '' }));
-  if (leftover.length) groups.push({ ...DOCS_CATCHALL, entries: leftover });
-
-  return groups;
+  const present = new Set(allPostsData.map((post) => post.id));
+  return DOCS_SECTIONS.map((section) => ({
+    ...section,
+    entries: section.entries.filter((entry) => present.has(entry.id)),
+  })).filter((section) => section.entries.length);
 }
 
 export default function DocsIndex({ allPostsData }) {
@@ -52,7 +21,7 @@ export default function DocsIndex({ allPostsData }) {
       {groups.map((group) => (
         <section
           key={group.heading}
-          className="pa-di-section"
+          className={`pa-di-section${group.layout === 'examples' ? ' pa-di-examples' : ''}`}
           aria-labelledby={`docs-sec-${group.no}`}
         >
           <div className="pa-hairline" />
@@ -69,19 +38,28 @@ export default function DocsIndex({ allPostsData }) {
               <h2 className="pa-di-title" id={`docs-sec-${group.no}`}>
                 {group.heading}
               </h2>
+              <p className="pa-di-description">{group.description}</p>
             </div>
 
             <ol className="pa-di-list">
               {group.entries.map((entry, entryIdx) => (
                 <li key={entry.id} className="pa-di-item">
                   <NextLink href={`/docs/${entry.id}`} className="pa-di-link">
-                    {/* mono index, not the raw slug: hub visible text obeys the
-                        banned-vocab list, and some article slugs carry exempt
-                        substrate vocabulary (e.g. gas-sponsor). */}
                     <span className="pa-di-slug" aria-hidden="true">
                       {String(entryIdx + 1).padStart(2, '0')}
                     </span>
                     <span className="pa-di-body">
+                      {group.layout === 'examples' && DOCS_EXAMPLE_IMAGES[entry.id] ? (
+                        <Image
+                          className="pa-di-example-image"
+                          src={DOCS_EXAMPLE_IMAGES[entry.id]}
+                          width={DOCS_MEDIA[DOCS_EXAMPLE_IMAGES[entry.id]].width}
+                          height={DOCS_MEDIA[DOCS_EXAMPLE_IMAGES[entry.id]].height}
+                          alt=""
+                          loading="lazy"
+                          sizes="(max-width: 720px) 100vw, 33vw"
+                        />
+                      ) : null}
                       <span className="pa-di-entry-title">{entry.title}</span>
                       {entry.blurb ? (
                         <span className="pa-di-blurb">{entry.blurb}</span>
@@ -122,6 +100,14 @@ export default function DocsIndex({ allPostsData }) {
           color: var(--ink);
           margin: 0;
           max-width: 14ch;
+          scroll-margin-top: 96px;
+        }
+        .pa-di-description {
+          font-size: 15px;
+          line-height: 1.6;
+          color: var(--steel);
+          max-width: 28ch;
+          margin: 18px 22px 0 0;
         }
         .pa-di-list {
           grid-column: 6 / 14;
@@ -139,7 +125,7 @@ export default function DocsIndex({ allPostsData }) {
            the rendered <a>; target it via the list parent + :global(). */
         .pa-di-list :global(.pa-di-link) {
           display: grid;
-          grid-template-columns: 130px 1fr auto;
+          grid-template-columns: 36px 1fr auto;
           align-items: baseline;
           gap: 22px;
           padding: 20px 6px 20px 0;
@@ -194,6 +180,49 @@ export default function DocsIndex({ allPostsData }) {
           color: var(--signal);
           transform: translateX(3px);
         }
+        .pa-di-list :global(.pa-di-link:focus-visible) {
+          outline: 2px solid var(--signal-deep);
+          outline-offset: 5px;
+        }
+
+        .pa-di-examples .pa-di-head {
+          grid-column: 2 / 14;
+          position: static;
+          margin-bottom: 28px;
+        }
+        .pa-di-examples .pa-di-title { max-width: 100%; }
+        .pa-di-examples .pa-di-description { max-width: 64ch; }
+        .pa-di-examples .pa-di-list {
+          grid-column: 2 / 14;
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 28px 32px;
+        }
+        .pa-di-examples .pa-di-item { border-top: 0; min-width: 0; }
+        .pa-di-examples .pa-di-item:first-child { grid-column: 1 / -1; }
+        .pa-di-examples .pa-di-slug { display: none; }
+        .pa-di-examples :global(.pa-di-link) {
+          grid-template-columns: 1fr auto;
+          gap: 12px;
+          padding: 0;
+        }
+        .pa-di-examples :global(.pa-di-link):hover {
+          padding: 0;
+          background: transparent;
+        }
+        .pa-di-examples :global(.pa-di-link):hover .pa-di-entry-title {
+          text-decoration: underline;
+          text-underline-offset: 4px;
+        }
+        .pa-di-examples .pa-di-item:not(:first-child) .pa-di-body { grid-column: 1 / -1; }
+        .pa-di-examples .pa-di-item:not(:first-child) .pa-di-arrow { display: none; }
+        .pa-di-examples :global(.pa-di-example-image) {
+          display: block;
+          width: 100%;
+          height: auto;
+          margin-bottom: 20px;
+          background: var(--bone-deep);
+        }
 
         @media (max-width: 1080px) {
           .pa-di-head {
@@ -238,6 +267,9 @@ export default function DocsIndex({ allPostsData }) {
           .pa-di-blurb {
             max-width: 100%;
           }
+          .pa-di-examples .pa-di-head,
+          .pa-di-examples .pa-di-list { grid-column: 1 / 2; }
+          .pa-di-examples .pa-di-list { grid-template-columns: 1fr; gap: 32px; }
         }
       `}</style>
     </div>

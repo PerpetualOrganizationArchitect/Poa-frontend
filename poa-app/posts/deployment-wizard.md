@@ -1,108 +1,86 @@
-# Deployment wizard
+---
+title: "Create an organization: setup guide"
+description: "A practical guide to creating an organization on Poa: choose a template, define roles and voting, review settings, and prepare to welcome your members."
+date: '2026-09-06'
+updated: '2026-09-06'
+category: "Get started"
+order: 25
+---
 
-The `/create` flow is how a new organization comes into being on Poa. It walks you through six short steps. It takes a few minutes end-to-end. It finishes with your organization live and ready for members to join. Everything you set up in the wizard can be changed later through a community vote. Nothing here is permanent except your org's name.
+# Create an organization: setup guide
 
-This page is the field reference. Every step. Every option. What each one does. What is reversible after launch. If you are new to the concept of community-owned organizations entirely, start with [what is a community-owned organization?](/docs/perpetualOrganization) first.
+Open the [create flow](/create) to set up your organization in six steps: Template, Identity, Team, Governance, Settings, and Launch.
 
-## Step 1. Template
+Before you begin, have a short description of your group, your initial team, and one project you want to start. Use that project to make the setup choices concrete: who will add the work, who will review it, and what decisions will the team need to make? If you are still choosing a structure, start with [create an organization](/docs/create).
 
-Pick the starting point that matches what you are building:
+## 1. Template
 
-- **Simple.** Sensible defaults for a small group that wants to get going fast. One member tier. Direct democracy voting. Default treasury settings. You can layer complexity in later if you need it.
-- **Advanced.** Full control from the start. You define your own role tiers, governance models, and treasury configuration. Choose this if you already know how you want your organization structured.
+Choose the template closest to how the group will work. The templates start with these roles:
 
-Templates are starting points, not constraints. You can move from Simple to Advanced complexity at any time through governance.
+| Template | Initial roles | A useful starting point for |
+|---|---|---|
+| Student Organization | Member, Executive | Clubs that need member participation and leadership handovers |
+| Worker Cooperative | Worker, Steward | Teams sharing work and workplace decisions |
+| Open Source Project | Contributor, Maintainer | Projects with a contribution and review process |
+| Creative Collective | Artist, Curator | Creative peers with responsibilities for selecting or organizing work |
+| Community Organization | Neighbor, Delegate | Local groups with members and people coordinating projects |
+| Custom | Member, Admin | A group that wants to define its own arrangement |
 
-## Step 2. Identity
+Role names are editable starting points, not legal statuses. Review the permissions behind them. The template's discovery questions can recommend variations, so check the resulting Team, Governance, and Settings screens rather than assuming the gallery describes your final setup.
 
-- **Name.** What the world calls your organization. Must be unique across Poa. **This is permanent.** It is used in your on-chain identifiers and can not be changed.
-- **Description.** Short explanation of who you are and what you do. Members see this on the org home page and the explore directory.
-- **Logo.** Uploaded to IPFS and rendered everywhere your org appears.
-- **Links.** Discord, Twitter, GitHub, website, anywhere else members might want to find you.
+Simple mode exposes the main choices. Use Advanced mode when you need detailed role permissions or voting classes.
 
-Everything except the name is editable later through a metadata-update vote.
+![The setup wizard template gallery with student, worker cooperative, open-source, creative, community, and custom choices](/images/docs/template-gallery.webp "The setup wizard starts with a template. Each model is a starting point you can customize.")
 
-## Step 3. Team (roles and permissions)
+## 2. Identity
 
-Define the role tiers your organization needs. For each role you set:
+Add a name, description, logo, and useful links. Describe what members will actually do together. “A neighborhood group sharing tools and organizing repair days” is more helpful than a broad promise about changing the world.
 
-- **Name.** Member, Officer, Treasurer, whatever.
-- **Description.** What this role is for, what is expected of someone wearing it.
-- **Admin.** Which role administers this one. The root role (usually "All Members") is administered by community vote. Lower roles are administered by higher ones.
-- **Permissions.** The granular task permissions (create, claim, review, assign) per project, plus access to executive functions if applicable.
-- **Eligibility.** Choose how members earn into this role. Five paths, used independently or in combination: open / automatic (anyone on join, used for the base Member role), vouched (set a count, pick one voucher role, optionally also let parent-role admins vouch), admin-granted (a role admin grants the role directly to a specific person), application-based (candidates register their candidacy in advance), and mixed (allow direct claim plus vouching at the same time). See [vouching and trust](/docs/vouching-and-trust) for the full configuration reference.
+You can also name the participation units your organization awards. Choose a name members will recognize on tasks and balances, and explain what it means in your [contribution policy](/docs/contribution-and-ownership). Naming the units does not fund rewards or create legal shares.
 
-The wizard renders this as a hierarchy tree, so you can see the admin relationships visually. For the full mechanics of how roles work, see [roles and permissions](/docs/roles-and-permissions).
+## 3. Team
 
-## Step 4. Governance (voting model)
+For each role, review three things:
 
-Choose how your organization makes decisions:
+1. **Entry:** who can join, whether they need vouches or an invitation, and any membership limits. Use open entry for roles you want newcomers to take easily; require an introduction or invitation where someone needs to judge readiness.
+2. **Powers:** which actions role holders can take. Give a reviewer approval authority and a coordinator the ability to organize work; neither role needs every available permission. Advanced controls expose additional task rights, including assignment and budget editing.
+3. **Management and initial members:** who can manage the role and who will hold it at launch. Confirm the initial team can welcome someone, create work, and review a finished task.
 
-- **Direct democracy.** One member, one vote. Configure quorum (minimum participation) and threshold (simple majority, supermajority, etc.). Best for tight-knit groups with high engagement. Full details in [direct democracy](/docs/directDemocracy).
-- **Contribution-based.** Voting power proportional to participation tokens earned. Best when active workers should have proportionate say. Full details in [contribution-based voting](/docs/contributionVoting).
-- **Hybrid.** Both, blended at a ratio you pick (e.g. 50 percent direct democracy, 50 percent contribution-weighted). Best when you want a base of equality plus weight for active contributors. Full details in [hybrid voting](/docs/hybridVoting).
+Membership, task powers, and voting eligibility are separate settings. Check the Governance step as well; a role name alone does not grant a vote. [Roles and permissions](/docs/roles-and-permissions) explains how these checks fit together.
 
-Plus configurable extras:
+## 4. Governance
 
-- **Quadratic voting toggle.** Votes are weighted by the square root of voting power, which reduces the influence of large holders. Optional, off by default.
-- **Per-role weights.** Some orgs want Officers' votes to count more than Members' on specific proposal types. Configurable here.
-- **Quorum and threshold.** Set independently for each voting class.
+In Simple mode, adjust the voting balance between equal member weight and contribution weight. Use the actual percentages to assess the result: a blend still includes contribution weight even when the equal-member share is large. The [creation guide](/docs/create) explains when each approach fits.
 
-## Step 5. Settings
+In Advanced mode, review each voting class:
 
-The optional features:
+- **Eligible roles:** whose votes count in this class.
+- **Weighting method:** equal member weight or the configured participation balance.
+- **Share of the result:** how much this class contributes to the combined outcome.
+- **Square-root weighting:** an option for contribution classes that reduces differences between larger and smaller balances. For example, balances of 100 and 25 have a 2:1 weight ratio with square-root weighting, instead of 4:1.
 
-- **Gas sponsorship.** Turn on if you want the protocol's solidarity fund to cover members' transaction costs. Most orgs want this on. See [gas sponsor](/docs/gas-sponsor) for how it works.
-- **Education hub.** Turn on if you want a [learn-and-earn](/docs/learn-and-earn) module system inside your org.
-- **Treasury config.** Set the initial token whitelist for the treasury (usually just USDC to start).
-- **Custom domain.** If you are hosting a white-label deployment, link your domain to your org here. See [white-label hosting](/docs/white-label-hosting).
+Then review proposal thresholds and optional minimum voter counts. Higher requirements ask for broader support but can leave decisions unresolved when too few members participate. Check them against the people who will actually be active at launch, including whether a contribution class has balances to use.
 
-## Step 6. Launch and review
+The binding proposal system supports these different weightings. The separate [direct-democracy poll](/docs/directDemocracy) system records preferences. A poll does not move funds or change permissions. See [hybrid voting](/docs/hybridVoting) for how binding decisions work.
 
-The final screen shows you everything you configured. You can go back to edit any step. When you launch, you click once. That single click sets up your whole organization at the same time:
+## 5. Settings
 
-- Deploys your org's contracts on the chain you chose
-- Grants you the founder role
-- Sets up the initial governance contract
-- Registers your username on the chain's account registry, if you do not already have one
-- Funds the org's paymaster from the solidarity fund if you opted into sponsorship
+Review the options shown for your organization, including:
 
-After confirmation, you are redirected to your org's dashboard. Members can join via the link in your nav.
+- **Education Hub:** enable it when newcomers need guides or training material. [Learning modules](/docs/learn-and-earn) pair material with a question and a configured participation reward; completion does not automatically grant a role.
+- **Election Hub:** enable it when your group intends to elect people to leadership roles.
+- **Email Invites:** where enabled, configure and activate the invitation rules after launch before inviting people through that path.
+- **Hide Treasury:** remove the treasury page from navigation if it is unnecessary for your group. This does not make public financial records private.
+- **Metadata Admin:** select a role if routine name, logo, and description updates should happen directly. Choose Governance Only if each profile change should require a passed proposal.
+- **Initial projects and tasks:** prepare useful first work when the setup offers it. Check the outcome and configured contribution reward. An optional task bounty needs its own funding; participation units are not a cash balance.
+- **Network and sponsorship settings:** review the selected network and any available support for transaction fees. Sponsorship depends on eligibility and funding.
 
-## Common configurations by use case
+Available configuration can vary with the deployment version. Use the review screen as the record of what you are creating.
 
-A few starting points based on the three landing-page personas:
+## 6. Launch
 
-**Student organization (campus club, 20–100 members).**
-- Simple template
-- Three roles: Member, Officer, Treasurer (Treasurer administered by Member vote, Officer administered by Officer vote)
-- Direct democracy voting, 50 percent quorum, simple majority
-- Education hub on for onboarding modules
-- Gas sponsorship on
+Review the complete setup, sign in if needed, and follow the launch prompts. Wait for confirmation before sharing the organization as ready.
 
-**Worker cooperative (10–30 worker-owners).**
-- Advanced template
-- Three to five roles aligned with operational functions (Worker, Coordinator, Treasurer, etc.)
-- Hybrid voting (50/50) so day-to-day operational calls weight active workers and structural decisions are equal
-- Quadratic voting often on for treasury distribution
-- Gas sponsorship on
+Many rules can be changed later through the organization's authorized actions or governance. Check who can make those changes so your first team understands how to adapt the setup as the group grows.
 
-**Open-source project (contributors of varying engagement).**
-- Advanced template
-- Member tiers based on contribution thresholds (Contributor at 100 PT, Maintainer at 1000 PT, Steward by vote)
-- Contribution-based voting for technical roadmap, direct democracy for community / code-of-conduct issues
-- Education hub on for new-contributor onboarding
-- Gas sponsorship on
-
-## How it works under the hood
-
-- **One click and the whole thing is running.** You sign once. Voting, treasury, task manager, roles, the participation token, the learning hub if you turned it on. Everything comes alive at the same time. There is no multi-step setup, no "now configure this part separately."
-- **You can opt into new versions later.** When Poa ships an update to a feature your org uses, your org can take the new version or stay on the current one. That choice is yours, made by community vote. Updates are not pushed to you.
-- **Your org appears in the public directory** as soon as the launch is confirmed. Anyone can find you at `/explore`, and any tool built on Poa (including the [`pop`](https://github.com/poa-box/poa-cli) command line) can see you too.
-- **All of the above is open source** under AGPL-3.0 at [poa-box/POP](https://github.com/poa-box/POP) for anyone who wants to read or audit the code.
-
-## Related reading
-
-- [Passkey onboarding](/docs/passkey-onboarding). The sign-in flow for you and your members
-- [Roles and permissions](/docs/roles-and-permissions). What is behind Step 3
-- [Gas sponsor](/docs/gas-sponsor). What Step 5's sponsorship toggle controls
+Once live, open the organization as a newcomer would: is its purpose clear, can someone join, and is there something useful to do? Use [your first week on Poa](/docs/first-week) to prepare that welcome.

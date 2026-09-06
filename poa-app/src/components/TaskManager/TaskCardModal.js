@@ -987,7 +987,7 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                         />
                       )}
                     </Box>
-                    <HStack mt={3} spacing={3}>
+                    <HStack mt={3} spacing={3} flexWrap="wrap" rowGap={2}>
                       <Badge colorScheme={difficultyColorScheme[(task.difficulty || taskMetadata?.difficulty)?.toLowerCase()?.replace(" ", "") || 'easy']}>
                         {task.difficulty || taskMetadata?.difficulty || 'Unknown'}
                       </Badge>
@@ -1020,16 +1020,22 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                       )}
                       <Spacer />
                       {task.claimedBy && (
-                        <Text fontSize="sm" color="gray.400">
-                          Claimed by{' '}
-                          <UsernameLink
-                            username={task.claimerUsername}
-                            hasUsername={!!task.claimerUsername}
-                            color="white"
-                            fontWeight="medium"
-                            fontSize="sm"
+                        <HStack spacing={1} minW={0}>
+                          <Tooltip label={task.claimedBy} hasArrow>
+                            <Text as="span" fontSize="sm" color="gray.400" whiteSpace="nowrap" title={task.claimedBy}>
+                              Claimed by
+                            </Text>
+                          </Tooltip>
+                          <UserIdentity
+                            address={task.claimedBy}
+                            usernameHint={task.claimerUsername}
+                            showAvatar={false}
+                            nameColor="white"
+                            nameFontSize="sm"
+                            isTruncated
+                            maxNameW={{ base: '120px', md: '220px' }}
                           />
-                        </Text>
+                        </HStack>
                       )}
                     </HStack>
                   </Box>

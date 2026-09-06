@@ -56,6 +56,7 @@ const TaskBoardDesktop = forwardRef(({
     <Box
       width="100%"
       height="100%"
+      minH={0}
       pt={3}
       pb={0}
       mt={0}
@@ -64,6 +65,7 @@ const TaskBoardDesktop = forwardRef(({
       <SimpleGrid
         data-tour="task-board"
         columns={{ base: 1, md: 2, lg: 4 }}
+        autoRows="minmax(0, 1fr)"
         spacing={2}
         width="100%"
         height="100%"
@@ -73,8 +75,9 @@ const TaskBoardDesktop = forwardRef(({
           taskColumns.map((column, index) => (
             <Box
               key={column.id}
-              height={{ base: "auto", md: "78vh" }}
-              minH="400px"
+              height="100%"
+              minH={0}
+              minW={0}
               borderRadius="xl"
               position="relative"
               sx={glassLayerStyle}

@@ -18,3 +18,36 @@ export const getProjectNavigationQuery = (query = {}) => {
   if (isCrossProjectTaskView(query.projectId)) delete nextQuery.view;
   return nextQuery;
 };
+
+// Resolve a task-only deep link before choosing a default surface. Projects
+// belong to the active org; searching their columns cannot select another org.
+export const getInitialTaskSelection = ({ query = {}, projects = [], isMobile = false }) => {
+  if (query.projectId !== undefined) {
+    if (typeof query.projectId !== 'string') return null;
+    try {
+      return { projectId: decodeURIComponent(query.projectId) };
+    } catch {
+      return null;
+    }
+  }
+
+  if (!Array.isArray(projects) || projects.length === 0) return null;
+
+  if (query.task !== undefined) {
+    if (typeof query.task !== 'string' || !query.task) return null;
+    const project = projects.find((candidate) => candidate?.columns?.some((column) =>
+      column?.tasks?.some((task) => task?.id === query.task && task.projectId === candidate.id),
+    ));
+    // Keep an unresolved task URL intact while the indexer catches up.
+    if (!project) return null;
+    return { projectId: project.id, query: { ...query, projectId: project.id } };
+  }
+
+  if (isMobile) {
+    return {
+      projectId: ALL_TASKS_ID,
+      query: { ...query, projectId: ALL_TASKS_ID, view: 'list' },
+    };
+  }
+  return { projectId: projects[0].id };
+};

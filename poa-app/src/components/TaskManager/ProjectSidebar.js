@@ -216,6 +216,7 @@ const ProjectSidebar = ({
           width="95%" 
           align="center" 
           justify="space-between"
+          gap={2}
           mb={2}
         >
           <Heading
@@ -226,12 +227,14 @@ const ProjectSidebar = ({
             fontWeight="bold"
             textTransform="uppercase"
             textShadow="0 0 10px rgba(100, 149, 237, 0.5)"
-            ml="10"
+            flex="1"
+            minW={0}
+            noOfLines={1}
           >
             Projects
           </Heading>
 
-          <Flex align="center" gap={1}>
+          <Flex align="center" gap={1} flexShrink={0}>
             {userIsOrganizer && onEditFolders && (
               <Tooltip
                 label={folders.length > 0 ? 'Edit folders' : 'Create folders to organize projects'}

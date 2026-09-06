@@ -12,6 +12,12 @@ import { useRefreshSubscription, useRefreshEmit, RefreshEvent } from './RefreshC
 import { useSubgraphClient } from '../util/apolloClient';
 import { useUserActive } from '../hooks/useUserActive';
 import { useAuth } from './AuthContext';
+import {
+    createVotingStateReducer,
+    selectVotingState,
+    votingDataForOrg,
+    isCurrentVotingRequest,
+} from '@/lib/voting/votingScope';
 
 const VotingContext = createContext();
 
@@ -285,6 +291,7 @@ function transformProposal(proposal, votingTypeId, type, thresholdPct = 0, quoru
 }
 
 const initialVotingState = {
+    scope: null,
     hybridVotingOngoing: [],
     hybridVotingCompleted: [],
     democracyVotingOngoing: [],
@@ -302,17 +309,13 @@ const initialVotingState = {
     ddQuorum: 0,
 };
 
-function votingReducer(state, action) {
-    switch (action.type) {
-        case 'SET_VOTING_DATA':
-            return { ...state, ...action.payload };
-        default:
-            return state;
-    }
-}
+const votingReducer = createVotingStateReducer(initialVotingState);
+const EMPTY_PROPOSAL_ENTRIES = Object.freeze({});
+const EMPTY_PAGE_COUNTS = Object.freeze({ hybrid: 0, dd: 0 });
+const EMPTY_PAGE_DONE = Object.freeze({ hybrid: false, dd: false });
 
 export const VotingProvider = ({ children }) => {
-    const [state, dispatch] = useReducer(votingReducer, initialVotingState);
+    const [storedState, dispatch] = useReducer(votingReducer, initialVotingState);
 
     const {
         orgId,
@@ -322,6 +325,14 @@ export const VotingProvider = ({ children }) => {
         poContextLoading,
         error: orgError,
     } = usePOContext();
+    const scope = useMemo(() => ({ orgId, subgraphUrl }), [orgId, subgraphUrl]);
+    const scopeRef = useRef(scope);
+    scopeRef.current = scope;
+    const scopeMatches = storedState.scope === scope;
+    // Hide old proposals/rules during the org-switch render itself. A new org
+    // may finish its metadata query before its voting query (or that query may
+    // fail), so POContext's loading flag cannot protect this derived state.
+    const state = selectVotingState(storedState, scope, initialVotingState);
     const client = useSubgraphClient(subgraphUrl);
     const isActive = useUserActive();
     const { accountAddress } = useAuth();
@@ -332,7 +343,7 @@ export const VotingProvider = ({ children }) => {
     const { emit } = useRefreshEmit();
     const emitRef = useRef(emit);
     emitRef.current = emit;
-    const prevOngoingRef = useRef({ orgId: null, ongoing: new Set() });
+    const prevOngoingRef = useRef({ scope: null, ongoing: new Set() });
 
     // Contract-level DirectDemocracy voting hats — who may VOTE on polls.
     //
@@ -381,7 +392,7 @@ export const VotingProvider = ({ children }) => {
     // Polling pauses when the tab is hidden or the user is idle (useUserActive).
     const votingQuery = proposerSupported ? FETCH_VOTING_DATA_WITH_PROPOSER : FETCH_VOTING_DATA_NEW;
 
-    const { data, loading, error, refetch } = useQuery(
+    const { data: queryData, loading: queryLoading, error: queryError, refetch } = useQuery(
         votingQuery,
         {
         // The polled query's window NEVER widens. VotingProvider is app-global,
@@ -401,6 +412,9 @@ export const VotingProvider = ({ children }) => {
         client,
         }
     );
+    const data = votingDataForOrg(queryData, orgId);
+    const loading = !!orgId && queryLoading;
+    const error = orgId ? queryError : null;
 
     // ── Proposals outside the polled window ─────────────────────────────
     // The polled query only ever carries the newest PROPOSAL_PAGE_SIZE
@@ -420,31 +434,20 @@ export const VotingProvider = ({ children }) => {
     const [moreDone, setMoreDone] = useState({ hybrid: false, dd: false });
     const [loadingMore, setLoadingMore] = useState(false);
 
-    // A different org (or endpoint) has a different proposal universe.
-    useEffect(() => {
-        setExtraProposals({});
-        rescueAttemptedRef.current = new Set();
-        setMorePages({ hybrid: 0, dd: 0 });
-        setMoreDone({ hybrid: false, dd: false });
-        setLoadingMore(false);
-    }, [orgId, subgraphUrl]);
-
     const rescuedRef = useRef(extraProposals);
-    rescuedRef.current = extraProposals;
+    rescuedRef.current = scopeMatches ? extraProposals : EMPTY_PROPOSAL_ENTRIES;
 
     // Read inside loadMoreProposals without making it a new function on every
     // page load (it is handed to /votes and used in a click handler).
     const morePagesRef = useRef(morePages);
-    morePagesRef.current = morePages;
+    morePagesRef.current = scopeMatches ? morePages : EMPTY_PAGE_COUNTS;
     const moreDoneRef = useRef(moreDone);
-    moreDoneRef.current = moreDone;
+    moreDoneRef.current = scopeMatches ? moreDone : EMPTY_PAGE_DONE;
     const loadingMoreRef = useRef(false);
     const votingQueryRef = useRef(votingQuery);
     votingQueryRef.current = votingQuery;
     const dataRef = useRef(data);
     dataRef.current = data;
-    const orgIdRef = useRef(orgId);
-    orgIdRef.current = orgId;
 
     // The org's voting contract addresses, which are also the prefix of every
     // proposal id they own. Kept in a ref so the resolver below stays stable
@@ -475,6 +478,8 @@ export const VotingProvider = ({ children }) => {
      * search will pick it up on the next render.
      */
     const resolveMissingPoll = useCallback(async (pollId) => {
+        const requestScope = scope;
+        if (!isCurrentVotingRequest(requestScope, scopeRef.current)) return 'pending';
         if (!pollId || !client) return 'error';
         if (rescueAttemptedRef.current.has(pollId)) return 'pending';
 
@@ -498,21 +503,23 @@ export const VotingProvider = ({ children }) => {
                 variables: { proposalId: pollId },
                 fetchPolicy: 'network-only',
             });
+            if (!isCurrentVotingRequest(requestScope, scopeRef.current)) return 'pending';
             const raw = byId?.proposal || byId?.ddvProposal;
             if (!raw) return 'notFound';
-            setExtraProposals((prev) => ({
+            setExtraProposals((prev) => !isCurrentVotingRequest(requestScope, scopeRef.current) ? prev : ({
                 ...prev,
                 [pollId]: { type: byId.proposal ? 'Hybrid' : 'Direct Democracy', raw },
             }));
             return 'found';
         } catch (e) {
+            if (!isCurrentVotingRequest(requestScope, scopeRef.current)) return 'pending';
             // Transient (gateway hiccup): allow a later attempt rather than
             // telling the user their link is dead.
             rescueAttemptedRef.current.delete(pollId);
             console.warn('[VotingContext] proposal rescue failed:', e?.message);
             return 'error';
         }
-    }, [client, proposerSupported]);
+    }, [client, proposerSupported, scope]);
 
     /** Oldest proposalId we currently hold for a kind — the next page's cursor. */
     const oldestHeldId = useCallback((kind) => {
@@ -541,13 +548,14 @@ export const VotingProvider = ({ children }) => {
      * are finished votes (the only ones the archive renders).
      */
     const loadMoreProposals = useCallback(async () => {
+        const requestScope = scope;
+        if (!isCurrentVotingRequest(requestScope, scopeRef.current)) return { added: 0, addedCompleted: 0 };
         // Same guard as the rescue: before the org query answers, `client` may
         // still be the home-chain default and would return an empty page.
         if (!client || !orgId || !votingIdsRef.current.bulkLoaded) return { added: 0, addedCompleted: 0 };
         if (loadingMoreRef.current) return { added: 0, addedCompleted: 0 };
         loadingMoreRef.current = true;
         setLoadingMore(true);
-        const requestedOrg = orgId;
         const done = moreDoneRef.current;
         try {
             const { data: page } = await client.query({
@@ -564,12 +572,12 @@ export const VotingProvider = ({ children }) => {
 
             // The org switched under us — merging these rows would mix two orgs'
             // proposals into one pool (they are keyed by id, not by org).
-            if (requestedOrg !== orgIdRef.current) return { added: 0, addedCompleted: 0 };
+            if (!isCurrentVotingRequest(requestScope, scopeRef.current)) return { added: 0, addedCompleted: 0 };
 
             // A response with no organization is a fault (wrong endpoint, gateway
             // 200-with-null), NOT proof that there is nothing older. Latching
             // `done` on it would delete the affordance for good.
-            if (!page?.organization) {
+            if (!votingDataForOrg(page, orgId)) {
                 console.warn('[VotingContext] older-proposal page came back without an organization');
                 return { added: 0, addedCompleted: 0, error: true };
             }
@@ -584,6 +592,7 @@ export const VotingProvider = ({ children }) => {
             let added = 0;
             let addedCompleted = 0;
             setExtraProposals((prev) => {
+                if (!isCurrentVotingRequest(requestScope, scopeRef.current)) return prev;
                 const next = { ...prev };
                 for (const [id, v] of Object.entries(additions)) {
                     if (next[id]) continue;
@@ -608,13 +617,16 @@ export const VotingProvider = ({ children }) => {
             });
             return { added, addedCompleted };
         } catch (e) {
+            if (!isCurrentVotingRequest(requestScope, scopeRef.current)) return { added: 0, addedCompleted: 0 };
             console.warn('[VotingContext] loading older proposals failed:', e?.message);
             return { added: 0, addedCompleted: 0, error: true };
         } finally {
-            loadingMoreRef.current = false;
-            setLoadingMore(false);
+            if (isCurrentVotingRequest(requestScope, scopeRef.current)) {
+                loadingMoreRef.current = false;
+                setLoadingMore(false);
+            }
         }
-    }, [client, orgId, oldestHeldId]);
+    }, [client, orgId, oldestHeldId, scope]);
 
     // Ref-stabilize refetch so callbacks don't re-create when Apollo returns a new reference
     const refetchRef = useRef(refetch);
@@ -637,7 +649,24 @@ export const VotingProvider = ({ children }) => {
     const [optimisticVotes, setOptimisticVotes] = useState({});
     const optimisticTimersRef = useRef(new Map());
 
+    // Reset every org-derived pool together. Same-org navigation keeps the
+    // token, pagination, and the complete 65s optimistic grace unchanged.
+    useEffect(() => {
+        dispatch({ type: 'RESET_VOTING_SCOPE', scope });
+        setExtraProposals({});
+        rescueAttemptedRef.current = new Set();
+        setMorePages({ hybrid: 0, dd: 0 });
+        setMoreDone({ hybrid: false, dd: false });
+        setLoadingMore(false);
+        loadingMoreRef.current = false;
+        setOptimisticVotes({});
+        optimisticTimersRef.current.forEach((timer) => clearTimeout(timer));
+        optimisticTimersRef.current.clear();
+        prevOngoingRef.current = { scope, ongoing: new Set() };
+    }, [scope]);
+
     const addOptimisticVote = useCallback((proposalCompositeId, vote) => {
+        if (!isCurrentVotingRequest(scope, scopeRef.current)) return;
         if (!proposalCompositeId || !vote) return;
         setOptimisticVotes(prev => ({
             ...prev,
@@ -650,6 +679,7 @@ export const VotingProvider = ({ children }) => {
         const existingTimer = optimisticTimersRef.current.get(proposalCompositeId);
         if (existingTimer) clearTimeout(existingTimer);
         const timer = setTimeout(() => {
+            if (!isCurrentVotingRequest(scope, scopeRef.current)) return;
             optimisticTimersRef.current.delete(proposalCompositeId);
             setOptimisticVotes(prev => {
                 if (!prev[proposalCompositeId]) return prev;
@@ -659,12 +689,13 @@ export const VotingProvider = ({ children }) => {
             });
         }, OPTIMISTIC_VOTE_GRACE_MS);
         optimisticTimersRef.current.set(proposalCompositeId, timer);
-    }, []);
+    }, [scope]);
 
     // Roll back an optimistic vote (e.g. the cast tx failed). Clears the entry
     // and its pending expiry timer so the celebration can restore the ballot
     // without a stale merged vote lingering for the rest of the grace window.
     const removeOptimisticVote = useCallback((proposalCompositeId) => {
+        if (!isCurrentVotingRequest(scope, scopeRef.current)) return;
         if (!proposalCompositeId) return;
         const timer = optimisticTimersRef.current.get(proposalCompositeId);
         if (timer) {
@@ -677,7 +708,7 @@ export const VotingProvider = ({ children }) => {
             delete next[proposalCompositeId];
             return next;
         });
-    }, []);
+    }, [scope]);
 
     // Clear any pending expiry timers on unmount.
     useEffect(() => {
@@ -715,7 +746,7 @@ export const VotingProvider = ({ children }) => {
             // from the same voter already exists, drop the optimistic one (the
             // real vote wins). Returns the proposal (possibly a shallow copy).
             const mergeOptimistic = (proposal) => {
-                const entry = optimisticVotes[proposal.id];
+                const entry = scopeMatches ? optimisticVotes[proposal.id] : null;
                 if (!entry) return proposal;
                 const { vote } = entry;
                 const voterLower = (vote.voter || '').toLowerCase();
@@ -851,24 +882,24 @@ export const VotingProvider = ({ children }) => {
                 [...hybridProposals, ...ddProposals].filter(p => !p.isOngoing).map(p => p.id)
             );
             const prev = prevOngoingRef.current;
-            if (prev.orgId === orgId) {
+            if (prev.scope === scope) {
                 const newlyCompleted = [...prev.ongoing].filter(id => completedNow.has(id));
                 if (newlyCompleted.length > 0) {
                     emitRef.current(RefreshEvent.PROPOSAL_COMPLETED, { remote: true, ids: newlyCompleted });
                 }
             }
             prevOngoingRef.current = {
-                orgId,
+                scope,
                 ongoing: new Set(update.ongoingPolls.map(p => p.id)),
             };
 
             // Single dispatch — one re-render instead of 7
-            dispatch({ type: 'SET_VOTING_DATA', payload: update });
+            dispatch({ type: 'SET_VOTING_DATA', scope, payload: update });
         }
         // `extraProposals` is a dependency: an on-demand fetch lands AFTER this
         // effect last ran, and without it the fetched proposals would sit in
         // state and never reach the arrays.
-    }, [data, optimisticVotes, accountAddress, extraProposals, withRescued]);
+    }, [data, optimisticVotes, accountAddress, extraProposals, withRescued, scope, scopeMatches]);
 
     // Stable refetch passthrough so a retry banner can re-run the query.
     const refetchVoting = useCallback(() => refetchRef.current?.(), []);
@@ -880,13 +911,14 @@ export const VotingProvider = ({ children }) => {
      * (Argus has no direct democracy) never qualifies.
      */
     const hasMoreProposals = useMemo(() => {
+        if (!scopeMatches) return false;
         const full = (list) => (list?.length || 0) === PROPOSAL_PAGE_SIZE;
         const hybridMaybe = !moreDone.hybrid
             && (morePages.hybrid > 0 || full(data?.organization?.hybridVoting?.proposals));
         const ddMaybe = !moreDone.dd
             && (morePages.dd > 0 || full(data?.organization?.directDemocracyVoting?.ddvProposals));
         return hybridMaybe || ddMaybe;
-    }, [data, moreDone, morePages]);
+    }, [data, moreDone, morePages, scopeMatches]);
 
     const contextValue = useMemo(() => ({
         hybridVotingOngoing: state.hybridVotingOngoing,
@@ -898,7 +930,7 @@ export const VotingProvider = ({ children }) => {
         refetch: refetchVoting,
         resolveMissingPoll,
         loadMoreProposals,
-        loadingMoreProposals: loadingMore,
+        loadingMoreProposals: scopeMatches && loadingMore,
         hasMoreProposals,
         addOptimisticVote,
         removeOptimisticVote,
@@ -913,7 +945,7 @@ export const VotingProvider = ({ children }) => {
         ddQuorum: state.ddQuorum,
     }), [
         state, loading, error, refetchVoting, resolveMissingPoll,
-        loadMoreProposals, loadingMore, hasMoreProposals,
+        loadMoreProposals, loadingMore, hasMoreProposals, scopeMatches,
         addOptimisticVote, removeOptimisticVote, ddVotingHats,
     ]);
 

@@ -141,7 +141,7 @@ export default function DeadlineFields({
                 }}
               />
               <Text fontSize="xs" color="gray.500" mt={1}>
-                Shown on cards and the timeline. Display-only unless enforced below.
+                Shown on cards and the timeline. It won&apos;t affect claims unless the option below is selected.
               </Text>
             </FormControl>
 
@@ -150,17 +150,16 @@ export default function DeadlineFields({
                 <HStack spacing={2}>
                   <Checkbox
                     isChecked={enforceOnChain}
-                    isDisabled={!dueDateStr}
                     onChange={(e) => setEnforceOnChain(e.target.checked)}
                     colorScheme="purple"
                     size="sm"
                   >
                     <Text fontSize="sm" color="gray.300">
-                      Enforce on-chain (hard deadline)
+                      Allow the task to be claimed again after the due date
                     </Text>
                   </Checkbox>
                   <Tooltip
-                    label="Writes the deadline to the contract. If the assignee misses it, anyone can take the task over."
+                    label="Once the due date passes, anyone can claim the task again."
                     placement="top"
                     bg="gray.800"
                     color="white"

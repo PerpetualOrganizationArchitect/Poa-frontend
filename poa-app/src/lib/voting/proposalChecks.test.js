@@ -235,7 +235,7 @@ describe('configError — createRole', () => {
     expect(configError(withType('createRole', { roleConfig: { ...rc, maxSupply: undefined } }), v2)).toBeNull();
     for (const maxSupply of [-1, 'abc', 4294967296]) {
       expect(configError(withType('createRole', { roleConfig: { ...rc, maxSupply } }), v2))
-        .toBe('The seat limit must be 0 (no limit) or more.');
+        .toBe('The seat limit must be a whole number from 0 (no limit) to 4,294,967,295.');
     }
   });
 
@@ -286,7 +286,7 @@ describe('configError — createRole on an access-v2 org', () => {
 
   it('gates the decisions that only exist on the new screen', () => {
     expect(configError(form({ limitSeats: true, maxMembers: -1 }), v2))
-      .toBe('The seat limit must be 0 (no limit) or more.');
+      .toBe('The seat limit must be a whole number from 0 (no limit) to 4,294,967,295.');
     expect(configError(form({ bindingVote: true, bindingClassIdx: null }), v2))
       .toBe('Pick which group of voters this role joins.');
     expect(configError(form({ vouching: { enabled: true, quorum: 1, voucherSubjectId: '' } }), v2))

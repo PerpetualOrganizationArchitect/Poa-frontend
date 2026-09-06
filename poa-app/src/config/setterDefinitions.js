@@ -8,7 +8,7 @@
 
 import { utils } from 'ethers';
 import { parseProjectId } from '@/services/web3/utils/encoding';
-import { PERM_CATALOGUE, TASK_PERM_BITS } from '@/lib/accessV2/permKeys';
+import { PERM_CATALOGUE, PERM_KEYS, TASK_PERM_BITS } from '@/lib/accessV2/permKeys';
 import { buildPermRows, buildEditPermsBatch, estimateBatchGas } from '@/lib/accessV2/proposalBuilders';
 import {
   buildClassVoterCall,
@@ -120,6 +120,12 @@ const permWords = (id) => PERM_ACTION_WORDS[id]
   || (PERM_CATALOGUE.find((e) => e.id === id)?.label || id).toLowerCase();
 const taskWords = (bit) => TASK_ACTION_WORDS[bit.id] || bit.label.toLowerCase();
 
+// Autojoin is configured under Joining, but remains a real permission row. Preserve it when
+// reading/diffing stored permissions so moving the control cannot silently remove an org's rule.
+const PERM_CONFIG_ENTRIES = PERM_CATALOGUE.flatMap((entry) => entry.id === 'SUBJECT_RENAME'
+  ? [{ id: 'QJ_AUTOJOIN', key: PERM_KEYS.QJ_AUTOJOIN }, entry]
+  : [entry]);
+
 /** "a", "a and b", "a, b and c" — the list voice the rest of the vote copy uses. */
 export function joinPhrases(items = []) {
   const list = items.filter(Boolean);
@@ -145,7 +151,7 @@ export function permsFromSubject(subject) {
   const out = {};
   if (!subject) return out;
   const rows = subject.permRows || [];
-  for (const entry of PERM_CATALOGUE) {
+  for (const entry of PERM_CONFIG_ENTRIES) {
     const row = typeof subject.permGlobal === 'function'
       ? subject.permGlobal(entry.key)
       : rows.find((r) => (
@@ -169,7 +175,7 @@ export function permsFromSubject(subject) {
 export function normalizePermSelection(perms) {
   const out = {};
   if (!perms || typeof perms !== 'object') return out;
-  for (const entry of PERM_CATALOGUE) {
+  for (const entry of PERM_CONFIG_ENTRIES) {
     const value = perms[entry.id];
     if (entry.mask) {
       const mask = Number(value) || 0;
@@ -192,7 +198,7 @@ export function describePermChanges(currentPerms = {}, nextPerms = {}) {
 
   const granted = [];
   const removed = [];
-  for (const entry of PERM_CATALOGUE) {
+  for (const entry of PERM_CONFIG_ENTRIES) {
     if (entry.mask) continue;
     const had = Boolean(before[entry.id]);
     const has = Boolean(after[entry.id]);

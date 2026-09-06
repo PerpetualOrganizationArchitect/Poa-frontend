@@ -15,7 +15,6 @@ import React from 'react';
 import {
   Box,
   VStack,
-  HStack,
   Text,
   Checkbox,
   CheckboxGroup,
@@ -24,7 +23,7 @@ import {
   Divider,
 } from '@chakra-ui/react';
 import { PERM_CATALOGUE, TASK_PERM_BITS } from '@/lib/accessV2/permKeys';
-import { tokensFor } from './roleForm/formTokens';
+import { tokensFor } from '@/components/accessV2/roleForm/formTokens';
 
 const groupsOf = (catalogue) => {
   const out = [];
@@ -62,7 +61,7 @@ function TaskMaskPicker({ mask, onChange, t }) {
   );
 }
 
-export default function PermissionPicker({ value = {}, onChange, exclude = [], variant = 'light' }) {
+export default function PermissionPicker({ value = {}, onChange, exclude = [], variant = 'light', groupExtras = {} }) {
   const t = tokensFor(variant);
   const catalogue = PERM_CATALOGUE.filter((e) => !exclude.includes(e.id));
 
@@ -77,6 +76,7 @@ export default function PermissionPicker({ value = {}, onChange, exclude = [], v
             {group.name}
           </Text>
           <VStack align="stretch" spacing={3}>
+            {groupExtras[group.name]}
             {group.entries.map((entry) => {
               const checked = entry.mask ? Number(value[entry.id] || 0) > 0 : Boolean(value[entry.id]);
               return (
@@ -110,7 +110,6 @@ export default function PermissionPicker({ value = {}, onChange, exclude = [], v
           </VStack>
         </Box>
       ))}
-      <HStack />
     </VStack>
   );
 }

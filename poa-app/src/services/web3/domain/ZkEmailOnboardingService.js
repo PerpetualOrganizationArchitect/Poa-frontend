@@ -58,12 +58,48 @@ export class ZkEmailOnboardingService {
     this.chainId = chainId;
   }
 
+  /** Read on the same org chain that receives the onboarding UserOp. */
+  async getActiveAllowlist() {
+    const read = (functionName) => this.publicClient.readContract({
+      address: this.zkEmailInvitesAddress, abi: ZkEmailInvitesABI, functionName,
+    });
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const root = await read('merkleRoot');
+        const cid = await read('allowlistCid');
+        return { root, cid };
+      } catch (error) {
+        if (attempt >= 2) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      }
+    }
+  }
+
+  async isEmailRegistered(hash) {
+    return this.publicClient.readContract({
+      address: this.zkEmailInvitesAddress, abi: ZkEmailInvitesABI,
+      functionName: 'isEmailRegistered', args: [hash],
+    });
+  }
+
   /**
    * Create a passkey credential LOCALLY (one biometric prompt, no transaction) and compute the
    * counterfactual account address — the address the verification email's subject binds the claim to.
    * @returns {{ credential: Object, accountAddress: string }}
    */
   async createPendingCredential(username) {
+    // Bare email claims do not need enrollment infrastructure, but this combined path does.
+    // Verify the module's factory before producing a credential/address for the claim email.
+    const accountRegistry = await this.publicClient.readContract({
+      address: this.zkEmailInvitesAddress, abi: ZkEmailInvitesABI, functionName: 'accountRegistry',
+    });
+    const universalFactory = await this.publicClient.readContract({
+      address: this.zkEmailInvitesAddress, abi: ZkEmailInvitesABI, functionName: 'universalFactory',
+    });
+    if (String(accountRegistry).toLowerCase() !== this.registryAddress.toLowerCase()
+      || String(universalFactory).toLowerCase() !== this.factoryAddress.toLowerCase()) {
+      throw new Error('Creating an account while claiming an email invite is not configured for this org. Sign in with an existing account to claim.');
+    }
     const credential = await createPasskeyCredential(username);
     const accountAddress = await this.publicClient.readContract({
       address: this.factoryAddress,

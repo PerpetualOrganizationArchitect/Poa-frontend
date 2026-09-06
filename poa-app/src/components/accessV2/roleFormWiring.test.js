@@ -1,11 +1,9 @@
 /**
- * ONE form, ONE encoder, TWO doors — enforced over the SOURCE.
+ * ONE vote wizard and ONE encoder, reached from the vote gallery or org structure.
  *
  * The form and the encoder are pure and unit-tested elsewhere
- * (`lib/accessV2/roleFormBatch.test.js`). What that cannot prove is that BOTH doors render the
- * same form and go through the same encoder — and "two doors that disagree about what a role is"
- * is the entire bug this work closes. A regression here is invisible in every other test: each
- * screen keeps working, they just quietly stop meaning the same thing.
+ * (`lib/accessV2/roleFormBatch.test.js`). These checks keep both entry points connected to
+ * the normal vote wizard rather than letting a separate creation/submission flow reappear.
  *
  * There is no React harness in this repo (vitest runs in `node`, no jsdom, no testing-library), so
  * the wiring is checked the only way it can be: against the files. Precedent:
@@ -22,23 +20,23 @@ const SRC = resolve(HERE, '..', '..');
 const read = (...p) => readFileSync(join(SRC, ...p), 'utf8');
 
 const roleForm = read('components', 'accessV2', 'RoleForm.jsx');
-const teamModal = read('components', 'accessV2', 'CreateRoleWizard.jsx');
+const votePage = read('components', 'voting', 'VotingPage.js');
 const voteModal = read('components', 'voting', 'CreateVoteModal.js');
 const proposalForm = read('hooks', 'useProposalForm.js');
 const intentGallery = read('components', 'voting', 'create', 'IntentGallery.js');
 const rolesPanel = read('components', 'accessV2', 'RolesGroupsPanel.jsx');
 
-describe('both doors render the same form', () => {
+describe('both entry points use the normal vote wizard', () => {
   it('reads the files at all (guards against a silently empty scan)', () => {
     expect(roleForm).toContain('export default function RoleForm');
-    expect(teamModal).toContain('export default function CreateRoleWizard');
+    expect(votePage).toContain('<CreateVoteModal');
   });
 
-  it('/team’s modal is a shell around RoleForm, not a second form', () => {
-    expect(teamModal).toContain("import RoleForm from './RoleForm'");
-    expect(teamModal).toMatch(/<RoleForm[\s\S]*?value=\{form\}/);
-    // The decisions live in the form: the shell must not have grown its own pickers back.
-    expect(teamModal).not.toContain('PermissionPicker');
+  it('/team links into the org’s vote wizard with role creation selected', () => {
+    expect(rolesPanel).toContain("query: { org: orgName, propose: 'create-role' }");
+    expect(rolesPanel).not.toContain('CreateRoleWizard');
+    expect(votePage).toContain("restoreProposal({ type: 'createRole', roleFormV2: defaultRoleForm() })");
+    expect(votePage).toContain("templateId === 'create-role' && authority.loading");
   });
 
   it('the vote wizard renders RoleForm on a v2 org and RoleConfigurator on a legacy one', () => {
@@ -77,11 +75,9 @@ describe('both doors render the same form', () => {
 });
 
 describe('one encoder', () => {
-  it('both doors build through buildRoleFormBatch', () => {
-    for (const [name, src] of [['/team modal', teamModal], ['useProposalForm', proposalForm]]) {
-      expect(src, `${name} does not import the shared encoder`).toContain('buildRoleFormBatch');
-      expect(src.split('buildRoleFormBatch(').length - 1, `${name} never calls it`).toBeGreaterThan(0);
-    }
+  it('the vote wizard builds through buildRoleFormBatch', () => {
+    expect(proposalForm).toContain('buildRoleFormBatch');
+    expect(proposalForm.split('buildRoleFormBatch(').length - 1).toBeGreaterThan(0);
   });
 
   it('the create-role encoder that used to live in v2VoteActions is gone, not duplicated', () => {
@@ -119,5 +115,34 @@ describe('the copy both doors show', () => {
 
   it('/team’s button says what it now does', () => {
     expect(rolesPanel).toContain('Create a role or group');
+  });
+});
+
+
+describe('v2 creation keeps configuration and proposal preview connected', () => {
+  it('passes the full live context to the encoder and blocks on preview errors', () => {
+    expect(roleForm).toMatch(/buildRoleFormBatch\(\{\s*\.\.\.ctx,\s*preview: true/);
+    expect(roleForm).toContain("blocked: current === 'review' ? reviewError : null");
+    expect(roleForm).toContain('currentError || preview.error');
+  });
+
+  it('keeps joining and people role-only and binding voting under permissions', () => {
+    expect(roleForm).toContain("s !== 'people' && s !== 'joining'");
+    const permissions = roleForm.slice(roleForm.indexOf("{current === 'permissions'"), roleForm.indexOf("{current === 'joining'"));
+    expect(permissions).toContain('role-form-class-vote');
+    expect(permissions).toContain('role-form-edit-org-details');
+    expect(roleForm).not.toContain("current === 'voting'");
+    expect(roleForm).not.toContain('co-op');
+  });
+
+  it('wires email access and real advanced settings into the shared form value', () => {
+    expect(roleForm).toContain('value={form.join.domains}');
+    expect(roleForm).toContain('value={form.emailInvites}');
+    expect(roleForm).toContain('value={form.sponsorship}');
+    expect(roleForm).toContain('value={form.manager}');
+    expect(roleForm).toContain('defaultIndex={[]}');
+    const invites = read('components', 'accessV2', 'roleForm', 'InviteListInput.jsx');
+    expect(invites).toContain('mergeInviteTokens(value, draft, kind)');
+    expect(invites).toContain('isDisabled={openRole}');
   });
 });

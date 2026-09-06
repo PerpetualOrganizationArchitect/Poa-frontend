@@ -14,13 +14,20 @@
 import ZkEmailInvitesABI from '../../../../abi/ZkEmailInvites.json';
 import { requireAddress } from '../utils/validation';
 
+const EXECUTOR_READ_ABI = [
+  'function hats() view returns (address)',
+  'function isAuthorizedHatMinter(address minter) view returns (bool)',
+];
+const nonzero = (address) => /^0x[\da-f]{40}$/i.test(address || '') && !/^0x0{40}$/i.test(address);
+
 export class ZkEmailInvitesService {
   /**
    * @param {ContractFactory} contractFactory
    * @param {TransactionManager} transactionManager
    */
-  constructor(contractFactory, transactionManager) {
+  constructor(contractFactory, transactionManager, readFactory = contractFactory) {
     this.factory = contractFactory;
+    this.readFactory = readFactory;
     this.txManager = transactionManager;
   }
 
@@ -59,7 +66,7 @@ export class ZkEmailInvitesService {
    */
   async getActiveAllowlist(contractAddress) {
     requireAddress(contractAddress, 'ZkEmailInvites contract address');
-    const contract = this.factory.createReadOnly(contractAddress, ZkEmailInvitesABI);
+    const contract = this.readFactory.createReadOnly(contractAddress, ZkEmailInvitesABI);
     // Sequential (not Promise.all) + one retry: concurrent eth_calls to a rate-limited public RPC
     // intermittently return empty for the second call → ethers CALL_EXCEPTION data="0x".
     for (let attempt = 0; ; attempt++) {
@@ -74,10 +81,64 @@ export class ZkEmailInvitesService {
     }
   }
 
+  /**
+   * Verify the migrated email path before offering it for a new authority role.
+   * Executor.hats() must point at MembershipAuthority: its IHats compatibility surface resolves
+   * email eligibility and accepts the seat. Minter authorization can be enabled in the same vote.
+   */
+  async getRoleEmailConfig(contractAddress, authorityAddress, executorAddress) {
+    requireAddress(contractAddress, 'ZkEmailInvites contract address');
+    requireAddress(authorityAddress, 'Membership authority address');
+    requireAddress(executorAddress, 'Executor address');
+    const contract = this.readFactory.createReadOnly(contractAddress, ZkEmailInvitesABI);
+    const executor = this.readFactory.createReadOnly(executorAddress, EXECUTOR_READ_ABI);
+    const moduleExecutor = await contract.executor();
+    const hats = await executor.hats();
+    const authorityMatches = String(hats).toLowerCase() === authorityAddress.toLowerCase()
+      && String(moduleExecutor).toLowerCase() === executorAddress.toLowerCase();
+    const minterAuthorized = await executor.isAuthorizedHatMinter(contractAddress);
+    const domainVerifier = await contract.domainVerifier();
+    const emailVerifier = await contract.emailVerifier();
+    const dkimRegistry = await contract.dkimRegistry();
+    const accountRegistry = await contract.accountRegistry();
+    const universalFactory = await contract.universalFactory();
+    const { root, cid } = await this.getActiveAllowlist(contractAddress);
+    // Bare claims need only their own verifier. Account enrollment is a separate optional path:
+    // an unset passkey factory must never disable a member's existing-account email claim.
+    const claimReady = authorityMatches && nonzero(dkimRegistry);
+    const domainEnabled = claimReady && nonzero(domainVerifier);
+    const emailEnabled = claimReady && nonzero(emailVerifier);
+    const enabled = domainEnabled || emailEnabled;
+    const passkeyEnrollmentEnabled = enabled && nonzero(accountRegistry) && nonzero(universalFactory);
+    return {
+      ready: true,
+      enabled,
+      domainEnabled,
+      emailEnabled,
+      passkeyEnrollmentEnabled,
+      authorityMatches,
+      minterAuthorized,
+      error: !authorityMatches
+        ? 'Email joining is not connected to this org’s current roles yet.'
+        : !enabled ? 'Email verification is not fully configured for this org yet.' : null,
+      onboardingError: !passkeyEnrollmentEnabled
+        ? 'Creating an account while claiming an email invite is not configured for this org. Sign in with an existing account to claim.'
+        : null,
+      root, cid, domainVerifier, emailVerifier, dkimRegistry, accountRegistry, universalFactory,
+    };
+  }
+
+  /** Specific email claims are once per org, even after another role is added to the invite. */
+  async isEmailRegistered(contractAddress, hash) {
+    requireAddress(contractAddress, 'ZkEmailInvites contract address');
+    const contract = this.readFactory.createReadOnly(contractAddress, ZkEmailInvitesABI);
+    return contract.isEmailRegistered(hash);
+  }
+
   /** Whether an email nullifier has already been consumed at this org (prevents double-claim). */
   async isNullifierUsed(contractAddress, nullifier) {
     requireAddress(contractAddress, 'ZkEmailInvites contract address');
-    const contract = this.factory.createReadOnly(contractAddress, ZkEmailInvitesABI);
+    const contract = this.readFactory.createReadOnly(contractAddress, ZkEmailInvitesABI);
     return contract.isNullifierUsed(nullifier);
   }
 }
@@ -88,6 +149,6 @@ export class ZkEmailInvitesService {
  * @param {TransactionManager} txManager
  * @returns {ZkEmailInvitesService}
  */
-export function createZkEmailInvitesService(factory, txManager) {
-  return new ZkEmailInvitesService(factory, txManager);
+export function createZkEmailInvitesService(factory, txManager, readFactory = factory) {
+  return new ZkEmailInvitesService(factory, txManager, readFactory);
 }

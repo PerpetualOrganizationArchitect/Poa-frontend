@@ -62,7 +62,7 @@ const OrgStructurePage = () => {
   // Voting classes for governance display, and the ongoing proposals the access-v2 create-role
   // wizard needs: a subject-creating proposal that executes before ours shifts every predicted
   // subject id in our batch, and the only signal that another one is in flight is this list.
-  const { votingClasses, ongoingPolls } = useVotingContext();
+  const { votingClasses } = useVotingContext();
 
   const {
     orgName,
@@ -291,7 +291,7 @@ const OrgStructurePage = () => {
           {/* Access v2 — roles + groups, the claimable panel and the review window.
               Self-gating: `null` for legacy, status-only while pending, panels once router-bound.
               `activeProposals` feeds the create-role wizard's id-prediction race warning. */}
-          <AccessV2TeamSection activeProposals={ongoingPolls} />
+          <AccessV2TeamSection />
 
           {/* Role Hierarchy Section — legacy orgs only: on a live authority the v2 panel above
               IS the roles surface, and this tree would re-render the retired hat entities

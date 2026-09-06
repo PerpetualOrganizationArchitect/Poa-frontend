@@ -21,7 +21,7 @@ import { getNetworkByChainId } from '@/config/networks';
 import { readCommitment, FALLBACK_RPCS } from '@/hooks/useZkEmailInviteSummary';
 import { assertRootMatches } from '@/lib/zkemail/allowlist';
 import {
-  readInvites, diffInvites, describeWho, inviteRoleNames, summarizeProposal, describeProposal,
+  readInvites, diffInvites, describeWho, inviteKey, inviteRoleNames, summarizeProposal, describeProposal,
 } from '@/lib/zkemail/inviteDisplay';
 
 const ZERO = '0x0000000000000000000000000000000000000000000000000000000000000000';
@@ -88,7 +88,7 @@ function Band({ label, tone, invites, ctx, note, muted }) {
       )}
       <Box mt={1}>
         {invites.map((i) => (
-          <InviteRow key={`${i.type}:${i.identifier}`} invite={i} ctx={ctx} tone={tone} muted={muted} />
+          <InviteRow key={inviteKey(i)} invite={i} ctx={ctx} tone={tone} muted={muted} />
         ))}
       </Box>
     </Box>
@@ -287,7 +287,7 @@ export default function EmailInviteListField({ cid, root, onReport }) {
               {showKept ? (
                 <Box mt={1}>
                   {diff.kept.map((i) => (
-                    <InviteRow key={`${i.type}:${i.identifier}`} invite={i} ctx={ctx} muted />
+                    <InviteRow key={inviteKey(i)} invite={i} ctx={ctx} muted />
                   ))}
                 </Box>
               ) : (
@@ -307,7 +307,7 @@ export default function EmailInviteListField({ cid, root, onReport }) {
       ) : (
         <Box mt={3}>
           {invites.map((i) => (
-            <InviteRow key={`${i.type}:${i.identifier}`} invite={i} ctx={ctx} />
+            <InviteRow key={inviteKey(i)} invite={i} ctx={ctx} />
           ))}
           {!invites.length && (
             <Text fontSize="sm" color="whiteAlpha.700">This list is empty. Nobody could join with it.</Text>

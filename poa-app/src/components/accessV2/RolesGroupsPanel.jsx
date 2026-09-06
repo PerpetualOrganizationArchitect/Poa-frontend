@@ -14,6 +14,7 @@
  */
 
 import React, { useState } from 'react';
+import NextLink from 'next/link';
 import {
   Box,
   VStack,
@@ -39,7 +40,7 @@ import { lightSectionStyle, lightCardStyle } from '@/components/shared/glassStyl
 import { useAuthoritySubjects, useAuthorityMemberships } from '@/hooks/accessV2';
 import { groupChangeBlastRadius } from '@/lib/accessV2/subjects';
 import { managerConfigSummary } from '@/lib/accessV2/pendingActions';
-import CreateRoleWizard from './CreateRoleWizard';
+import { useOrgName } from '@/hooks/useOrgName';
 import SubjectDetailPanel from './SubjectDetailPanel';
 
 function SeatLabel({ subject }) {
@@ -101,10 +102,10 @@ function SubjectCard({ subject, memberCount, onOpen }) {
   );
 }
 
-export default function RolesGroupsPanel({ activeProposals = [] }) {
+export default function RolesGroupsPanel() {
   const { roles, groups, loading, authority } = useAuthoritySubjects();
   const { groupMembers, membersOf } = useAuthorityMemberships();
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const orgName = useOrgName();
   const [selected, setSelected] = useState(null);
 
   if (loading) {
@@ -129,10 +130,11 @@ export default function RolesGroupsPanel({ activeProposals = [] }) {
           </Text>
         </VStack>
         <Button
+          as={NextLink}
+          href={{ pathname: '/voting', query: { org: orgName, propose: 'create-role' } }}
           leftIcon={<FiPlus />}
           colorScheme="coral"
           size="sm"
-          onClick={() => setWizardOpen(true)}
           data-testid="create-role-or-group"
         >
           Create a role or group
@@ -199,11 +201,6 @@ export default function RolesGroupsPanel({ activeProposals = [] }) {
         </TabPanels>
       </Tabs>
 
-      <CreateRoleWizard
-        isOpen={wizardOpen}
-        onClose={() => setWizardOpen(false)}
-        activeProposals={activeProposals}
-      />
       <SubjectDetailPanel
         subject={selected}
         isOpen={Boolean(selected)}

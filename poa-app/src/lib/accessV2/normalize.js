@@ -205,7 +205,7 @@ export function normalizeAuthoritySubjects(rawSubjects = []) {
     groups,
     compositions: visibleCompositions,
     // Creation-id prediction must see hidden structural/native ids even though no UI should render
-    // them. `CreateRoleWizard` consumes this collection instead of the display projection.
+    // them. Role creation consumes this collection instead of the display projection.
     indexedSubjects,
     // Legacy-shaped lookups, so existing consumers can be pointed here with no render change.
     roleNames: subjectNameMap(subjects),

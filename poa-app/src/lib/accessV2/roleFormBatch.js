@@ -30,10 +30,10 @@
  * this batch then lands on the wrong subject, with no revert (lib/accessV2/proposalRace).
  */
 
-import { utils } from 'ethers';
-import { buildCreateRoleBatch, buildCreateGroupBatch, mergeBatches } from './proposalBuilders';
-import { checkBatchSubmittable } from './submission';
-import { predictLints } from './vouch';
+import { utils, constants } from 'ethers';
+import { buildCreateRoleBatch, buildCreateGroupBatch, mergeBatches } from '@/lib/accessV2/proposalBuilders';
+import { checkBatchSubmittable } from '@/lib/accessV2/submission';
+import { predictLints } from '@/lib/accessV2/vouch';
 import {
   buildClassVoterCall,
   classByIndex,
@@ -43,6 +43,21 @@ import {
   directClassIndex,
 } from '@/lib/voting/votingClasses';
 import { describePermChanges, permChangeSummaries } from '@/config/setterDefinitions';
+import {
+  dedupeDomains,
+  dedupeEmails,
+  domainError,
+  emailError,
+  joinMethods,
+  joinConfigError,
+  usesEmailEligibility,
+  EMAIL_ELIGIBILITY_UNAVAILABLE,
+} from '@/lib/accessV2/joinConfig';
+import { buildSetOrgMetadataAdminCall, canSetOrgMetadataAdmin } from '@/lib/accessV2/orgAdmin';
+import { DEFAULT_SPONSORSHIP, PAYMASTER_SUBJECT_TYPE, sponsorshipError, buildSubjectBudgetCall, buildPasskeyRulesCall } from '@/lib/accessV2/sponsorship';
+import { PERM_KEYS } from '@/lib/accessV2/permKeys';
+import { buildSetManagerConfig } from '@/lib/accessV2/txBuilders';
+import { ipfsCidToBytes32 } from '@/services/web3/utils/encoding';
 
 // Re-exported so the two doors (and their tests) keep one import for everything class-related.
 export { classByIndex, contractClassIndex };
@@ -59,9 +74,17 @@ export const TM_CONFIG_KEY = Object.freeze({
 export const taskManagerConfigInterface = new utils.Interface([
   'function setConfig(uint8 key, bytes value)',
 ]);
+export const roleEmailConfigInterface = new utils.Interface([
+  'function setActiveAllowlist(bytes32 root, bytes32 cid)',
+  'function setHatMinterAuthorization(address minter, bool authorized)',
+]);
+const PREVIEW_COMMITMENT = `0x${'01'.repeat(32)}`;
 
 const MAX_SEATS = 4294967295;
-const isAddress = (a) => typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a);
+const isAddress = (a) => typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a) && !/^0x0{40}$/i.test(a);
+const isSubject = (value) => {
+  try { const n = BigInt(String(value)); return n > 0n && n < (1n << 256n); } catch { return false; }
+};
 const lower = (v) => String(v ?? '').toLowerCase();
 const trimmed = (v) => String(v ?? '').trim();
 
@@ -104,6 +127,15 @@ export function defaultRoleForm() {
     bindingVote: false,
     bindingClassIdx: null,
     vouching: { enabled: false, quorum: 1, voucherSubjectId: '', selfVouch: false },
+    // Email can be combined with vouching, but ZkEmailInvites rejects openly claimable roles.
+    join: { domains: [] },
+    // Specific-email invitees (ZkEmail allowlist, keyed by a one-way hash of the address).
+    emailInvites: [],
+    // "Edit org details" — make this role the org's single metadata editor
+    // (OrgRegistry.setOrgMetadataAdminHat). NOT a permission key; a single org-wide designation.
+    editOrgDetails: false,
+    sponsorship: { ...DEFAULT_SPONSORSHIP },
+    manager: { enabled: false, managerSubjectId: '', canGrant: true, canRemove: false, delaySecs: 0 },
     holders: [],
   };
 }
@@ -114,11 +146,29 @@ export function normalizeRoleForm(form = {}) {
   const f = { ...base, ...(form || {}) };
   f.kind = f.kind === ROLE_FORM_KIND.GROUP ? ROLE_FORM_KIND.GROUP : ROLE_FORM_KIND.ROLE;
   f.vouching = { ...base.vouching, ...(form?.vouching || {}) };
+  f.join = { ...base.join, ...(form?.join || {}) };
+  f.join.domains = [...(form?.join?.domains || [])];
   f.perms = { ...(form?.perms || {}) };
   f.groupIds = [...(form?.groupIds || [])];
   f.memberRoleIds = [...(form?.memberRoleIds || [])];
   f.projectPerms = [...(form?.projectPerms || [])];
+  f.emailInvites = [...(form?.emailInvites || [])];
   f.holders = [...(form?.holders || [])];
+  f.editOrgDetails = Boolean(form?.editOrgDetails);
+  f.sponsorship = { ...base.sponsorship, ...(form?.sponsorship || {}) };
+  f.manager = { ...base.manager, ...(form?.manager || {}) };
+  if (f.kind === ROLE_FORM_KIND.GROUP) {
+    // A kind switch must not submit invisible role-only settings.
+    f.openRole = false;
+    f.limitSeats = false;
+    f.maxMembers = 0;
+    f.vouching = { ...base.vouching };
+    f.join = { domains: [] };
+    f.emailInvites = [];
+    f.holders = [];
+    f.groupIds = [];
+    delete f.perms.QJ_AUTOJOIN;
+  }
   return f;
 }
 
@@ -130,7 +180,7 @@ export function effectiveMaxMembers(form) {
   if (f.kind === ROLE_FORM_KIND.GROUP) return 0;
   if (!f.limitSeats) return 0;
   const n = Number(f.maxMembers);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  return Number.isInteger(n) && n > 0 && n <= MAX_SEATS ? n : 0;
 }
 
 /** Does this form ask for anything the DefaultAllowStrongPerms lint cares about? */
@@ -159,18 +209,32 @@ export function roleFormError(form) {
     // an error about a hidden control cannot be fixed. (0 still reads as “no limit”.)
     if (f.limitSeats) {
       const seats = Number(f.maxMembers);
-      if (!Number.isFinite(seats) || seats < 0 || seats > MAX_SEATS) {
-        return 'The seat limit must be 0 (no limit) or more.';
+      if (!Number.isInteger(seats) || seats < 0 || seats > MAX_SEATS) {
+        return 'The seat limit must be a whole number from 0 (no limit) to 4,294,967,295.';
       }
     }
 
     if (f.vouching?.enabled) {
       const quorum = Number(f.vouching.quorum);
-      if (!Number.isFinite(quorum) || quorum < 1) return 'Vouching needs at least 1 vouch.';
+      if (!Number.isInteger(quorum) || quorum < 1 || quorum > MAX_SEATS) return 'Vouching needs a whole number from 1 to 4,294,967,295 vouches.';
       if (!f.vouching.selfVouch && !trimmed(f.vouching.voucherSubjectId)) {
         return 'Pick the role whose members can vouch, or let the new role vouch for itself.';
       }
+      if (!f.vouching.selfVouch && !isSubject(f.vouching.voucherSubjectId)) return 'Pick a valid role or group whose members can vouch.';
     }
+
+    // Email domains + specific-email invites (ZkEmail allowlist). Each entry must survive the exact
+    // ASCII normalisation the merkle leaf uses, or it would be a permanently-unclaimable invite.
+    for (const d of f.join?.domains || []) {
+      const err = domainError(d);
+      if (err) return err;
+    }
+    for (const invite of f.emailInvites || []) {
+      const err = emailError(invite?.email ?? invite);
+      if (err) return err;
+    }
+    const joinError = joinConfigError(f);
+    if (joinError) return joinError;
 
     const seen = new Set();
     for (const h of f.holders || []) {
@@ -184,6 +248,16 @@ export function roleFormError(form) {
     }
   }
 
+  if (f.manager.enabled) {
+    if (!isSubject(f.manager.managerSubjectId)) return 'Pick the role or group that manages membership.';
+    if (!f.manager.canGrant && !f.manager.canRemove) return 'Choose what the membership manager can do.';
+    const delay = Number(f.manager.delaySecs);
+    if (!Number.isInteger(delay) || delay < 0 || delay > MAX_SEATS) return 'The management delay must be a whole number of seconds from 0 to 4,294,967,295.';
+    if (group && f.memberRoleIds.some((id) => isSubject(id) && BigInt(String(id)) === BigInt(String(f.manager.managerSubjectId)))) {
+      return 'A role inside this group cannot manage the group’s membership.';
+    }
+  }
+
   const seenProjects = new Set();
   for (const p of f.projectPerms || []) {
     if (p?.projectId === null || p?.projectId === undefined || p?.projectId === '') {
@@ -192,13 +266,22 @@ export function roleFormError(form) {
     const key = String(p.projectId);
     if (seenProjects.has(key)) return 'Each project can only appear once in the permissions list.';
     seenProjects.add(key);
+    if (!Number.isInteger(Number(p.mask)) || Number(p.mask) < 0 || Number(p.mask) > 255) return 'Task permissions must use a valid set of actions.';
   }
+
+  for (const [key, value] of Object.entries(f.perms)) {
+    if (value && !PERM_KEYS[key]) return 'A selected permission is no longer supported. Review the permissions.';
+    if (key === 'TM_PERMS' && (!Number.isInteger(Number(value)) || Number(value) < 0 || Number(value) > 255)) return 'Task permissions must use a valid set of actions.';
+  }
+  const ids = group ? f.memberRoleIds : f.groupIds;
+  if (ids.some((id) => !isSubject(id))) return group ? 'Pick valid roles for the group.' : 'Pick valid groups for the role.';
+  if (new Set(ids.map(String)).size > (group ? 16 : 8)) return group ? 'A group can contain at most 16 roles.' : 'A role can belong to at most 8 groups.';
 
   if (f.bindingVote && pickedClassIdx(f.bindingClassIdx) === null) {
     return 'Pick which group of voters this role joins.';
   }
-
-  return null;
+  if (f.bindingVote && pickedClassIdx(f.bindingClassIdx) > 255) return 'Pick a valid group of voters.';
+  return sponsorshipError(f.sponsorship);
 }
 
 // ── Legacy bridge ─────────────────────────────────────────────────────────────────────────────
@@ -292,7 +375,7 @@ export function roleFormCopy(form) {
   }
 
   const bits = [];
-  if (f.openRole) bits.push('anyone in the group can join it');
+  if (f.openRole) bits.push('anyone can claim it');
   if (f.limitSeats && Number(f.maxMembers) > 0) bits.push(`${Math.floor(Number(f.maxMembers))} seats`);
   if (f.vouching?.enabled) {
     const q = Number(f.vouching.quorum) || 1;
@@ -337,11 +420,13 @@ function describePerms(form, name) {
   const f = normalizeRoleForm(form);
   const out = permChangeSummaries(name, describePermChanges({}, f.perms));
   const projects = (f.projectPerms || []).filter(
-    (p) => Number(p?.mask) > 0 && p.projectId !== null && p.projectId !== undefined && p.projectId !== ''
+    (p) => (Number(p?.mask) > 0 || p?.inheritGlobal === false) && p.projectId !== null && p.projectId !== undefined && p.projectId !== ''
   );
   if (projects.length) {
     const names = projects.map((p) => p.projectName || `project ${p.projectId}`);
     out.push(`Set what “${name}” can do on ${names.join(', ')}`);
+    const overrides = projects.filter((p) => p.inheritGlobal === false).map((p) => p.projectName || `project ${p.projectId}`);
+    if (overrides.length) out.push(`Use only the selected task actions from “${name}” on ${overrides.join(', ')}, replacing its org-wide task permissions there`);
   }
   if (f.kind === ROLE_FORM_KIND.GROUP && out.length) out.push('Every role in the group gets these.');
   return out;
@@ -398,14 +483,14 @@ function buildBindingVoteCall({ hybridVoting, votingClasses, form, subjectId, na
   const classIdx = resolveBindingClassIdx(f, votingClasses);
   if (classIdx < 0) {
     warnings.push(
-      'This co-op has no one-member-one-vote class to join, so the new role was not given a vote '
+      'This org has no one-member-one-vote class to join, so the new role was not given a vote '
       + 'in binding votes.'
     );
     return { batch, summaries, warnings };
   }
   if (!hybridVoting) {
     warnings.push(
-      'This co-op’s binding-vote contract hasn’t loaded, so the new role was not given a vote in '
+      'This org’s binding-vote contract hasn’t loaded, so the new role was not given a vote in '
       + 'binding votes.'
     );
     return { batch, summaries, warnings };
@@ -463,6 +548,16 @@ export function buildRoleFormBatch({
   authority,
   hybridVoting = '',
   taskManagerAddress = '',
+  orgRegistry = '',
+  orgId = '',
+  paymasterHub = '',
+  sponsorshipConfig = null,
+  nativeSymbol = 'native tokens',
+  zkEmailAddress = '',
+  emailConfig = null,
+  emailAllowlist = null,
+  executor = '',
+  preview = false,
   indexedSubjects = [],
   activeProposals = [],
   inOrgUsers = null,
@@ -471,17 +566,23 @@ export function buildRoleFormBatch({
   metadataCID = null,
 } = {}) {
   if (!authority) {
-    throw new Error('This group’s roles contract hasn’t loaded yet — please try again in a moment.');
+    throw new Error('This org’s roles contract hasn’t loaded yet — please try again in a moment.');
   }
 
   const f = normalizeRoleForm(form);
+  // Encoding has the same validation as the visible form. A missing class pick may resolve to
+  // the current DIRECT class; every other invalid field must stop instead of being rounded/dropped.
+  const resolvedClass = f.bindingVote ? resolveBindingClassIdx(f, votingClasses) : f.bindingClassIdx;
+  const validationForm = { ...f, bindingVote: f.bindingVote && resolvedClass >= 0, bindingClassIdx: resolvedClass };
+  const formError = roleFormError(validationForm);
+  if (formError) throw new Error(formError);
   const group = f.kind === ROLE_FORM_KIND.GROUP;
   const name = trimmed(f.name);
   const inOrg = toAddressSet(inOrgUsers);
 
   const projectPerms = (f.projectPerms || [])
     .filter((p) => p && p.projectId !== null && p.projectId !== undefined && p.projectId !== '')
-    .map((p) => ({ projectId: p.projectId, mask: Number(p.mask) || 0 }));
+    .map((p) => ({ projectId: p.projectId, mask: Number(p.mask) || 0, inheritGlobal: p.inheritGlobal !== false }));
 
   const holders = (f.holders || [])
     .filter((h) => h && isAddress(h.address))
@@ -508,7 +609,7 @@ export function buildRoleFormBatch({
         name,
         imageURI: f.imageURI || '',
         ...metadata,
-        memberRoleIds: (f.memberRoleIds || []).map((id) => String(id)),
+        memberRoleIds: [...new Set((f.memberRoleIds || []).map((id) => String(id)))],
         perms: f.perms,
         projectPerms,
       },
@@ -521,7 +622,7 @@ export function buildRoleFormBatch({
         ...metadata,
         maxMembers: effectiveMaxMembers(f),
         defaultAllow: Boolean(f.openRole),
-        groupIds: (f.groupIds || []).map((id) => String(id)),
+        groupIds: [...new Set((f.groupIds || []).map((id) => String(id)))],
         perms: f.perms,
         projectPerms,
         vouch: f.vouching?.enabled
@@ -531,11 +632,17 @@ export function buildRoleFormBatch({
             selfVouch: Boolean(f.vouching.selfVouch),
           }
           : null,
+        manager: f.manager.enabled ? f.manager : null,
         initialHolders: holders,
       },
     });
 
   const subjectId = base.subjectId;
+  const groupManager = { batch: [], summaries: [] };
+  if (group && f.manager.enabled) {
+    groupManager.batch.push(buildSetManagerConfig(authority, subjectId, f.manager));
+    groupManager.summaries.push('Let the selected membership manager manage the roles in this group');
+  }
 
   const taskGrants = buildTaskManagerGrants({
     taskManagerAddress,
@@ -552,7 +659,91 @@ export function buildRoleFormBatch({
     name: name || 'this role',
   });
 
-  const merged = mergeBatches(base, taskGrants, binding);
+  const contextErrors = [];
+  // This designation can be a role OR a group: OrgRegistry resolves the opaque subject via router.
+  const orgDetails = { batch: [], summaries: [], warnings: [] };
+  if (f.editOrgDetails) {
+    if (canSetOrgMetadataAdmin({ orgRegistry, orgId })) {
+      orgDetails.batch.push(buildSetOrgMetadataAdminCall({ orgRegistry, orgId, subjectId }));
+      orgDetails.summaries.push(`Let members of “${name}” edit the org’s name and details`);
+      orgDetails.warnings.push(
+        'The org has one role or group designated to edit its details. This replaces the current designation.'
+      );
+    } else {
+      contextErrors.push('The org registry must load before editing org details can be assigned.');
+    }
+  }
+
+  const sponsorship = { batch: [], summaries: [], warnings: [] };
+  if (f.sponsorship.enabled) {
+    if (!isAddress(paymasterHub) || !sponsorshipConfig?.ready || !sponsorshipConfig?.canConfigure) {
+      contextErrors.push(sponsorshipConfig?.error || 'Gas sponsorship is not ready or this org’s voting executor cannot configure it.');
+    } else {
+      sponsorship.batch.push(buildSubjectBudgetCall({ paymasterHub, orgId, subjectId, config: f.sponsorship }));
+      sponsorship.summaries.push(`Set a shared gas sponsorship limit of ${f.sponsorship.capNative} ${nativeSymbol} per ${f.sponsorship.epochDays} days for “${name}”`);
+      if (f.sponsorship.supportPasskeys) {
+        sponsorship.batch.push(buildPasskeyRulesCall({ paymasterHub, orgId, authority, zkEmailAddress, orgRegistry, editOrgDetails: f.editOrgDetails }));
+        sponsorship.summaries.push('Enable org sponsorship rules for passkey membership actions and configured email claims');
+        if (!group && usesEmailEligibility(f)) {
+          if (sponsorshipConfig.claimBudgetMissing === true && isAddress(zkEmailAddress)) {
+            sponsorship.batch.push(buildSubjectBudgetCall({
+              paymasterHub, orgId, subjectId: zkEmailAddress, config: f.sponsorship,
+              subjectType: PAYMASTER_SUBJECT_TYPE.CLAIM,
+            }));
+            sponsorship.summaries.push(`Initialize the org’s shared email-claim gas budget at ${f.sponsorship.capNative} ${nativeSymbol} per ${f.sponsorship.epochDays} days`);
+          } else if (sponsorshipConfig.claimBudgetMissing !== false) {
+            contextErrors.push('The org’s email-claim gas budget must be checked before enabling passkey email joining.');
+          }
+        }
+      }
+      sponsorship.warnings.push('Gas sponsorship also needs available org funds and compatible fee limits. These limits are shared by all members of the role or group.');
+    }
+  }
+
+  const inviteDomains = group ? [] : dedupeDomains(f.join?.domains);
+  const inviteEmails = group ? [] : dedupeEmails((f.emailInvites || []).map((e) => e?.email ?? e));
+  const invitePlan = { domains: inviteDomains, emails: inviteEmails };
+  const email = { batch: [], summaries: [], warnings: [] };
+  if (!group && usesEmailEligibility(f)) {
+    if (!isAddress(zkEmailAddress) || !emailConfig?.ready || !emailConfig.enabled || !emailConfig.authorityMatches) {
+      contextErrors.push(emailConfig?.error || EMAIL_ELIGIBILITY_UNAVAILABLE);
+    } else {
+      if (inviteDomains.length && emailConfig.domainEnabled === false) contextErrors.push('This org’s email-domain verifier is not configured.');
+      if (inviteEmails.length && emailConfig.emailEnabled === false) contextErrors.push('This org’s specific-email verifier is not configured.');
+      // Authorizing the existing org module enables MembershipAuthority.setEmailVerified and
+      // Executor.mintHatsForUser. It does not change the Executor's authority/router wiring.
+      if (emailConfig.minterAuthorized === false) {
+        if (!isAddress(executor)) contextErrors.push('The org executor must load before email joining can be enabled.');
+        else email.batch.push({ target: executor, value: '0', data: roleEmailConfigInterface.encodeFunctionData('setHatMinterAuthorization', [zkEmailAddress, true]) });
+      } else if (emailConfig.minterAuthorized !== true) {
+        contextErrors.push('Email joining authorization has not loaded.');
+      }
+      let root = emailAllowlist?.root;
+      let cid = emailAllowlist?.cid;
+      if (emailAllowlist && String(emailAllowlist.subjectId || '') !== subjectId) {
+        contextErrors.push('The role id changed while preparing email invites. Refresh and review the proposal again.');
+      } else if (!root || !cid) {
+        if (preview) { root = PREVIEW_COMMITMENT; cid = PREVIEW_COMMITMENT; }
+        else contextErrors.push('Prepare the merged email allowlist before submitting this proposal.');
+      }
+      if (root && cid) {
+        try {
+          if (!utils.isHexString(root, 32) || root === constants.HashZero) throw new Error();
+          // The general CID utility hashes arbitrary strings as a fallback; that is unsafe for
+          // a committed allowlist because it produces a CID that can never be fetched.
+          if (!utils.isHexString(cid, 32) && !/^Qm[1-9A-HJ-NP-Za-km-z]{44}$/.test(cid)) throw new Error();
+          const cidBytes = utils.isHexString(cid, 32) ? cid : ipfsCidToBytes32(cid);
+          if (!utils.isHexString(cidBytes, 32) || cidBytes === constants.HashZero) throw new Error();
+          email.batch.push({ target: zkEmailAddress, value: '0', data: roleEmailConfigInterface.encodeFunctionData('setActiveAllowlist', [root, cidBytes]) });
+        } catch { contextErrors.push('The prepared email allowlist has an invalid root or content address.'); }
+      }
+      if (inviteDomains.length) email.summaries.push(`Allow verified emails from ${inviteDomains.join(', ')} to claim “${name}”`);
+      if (inviteEmails.length) email.summaries.push(`Allow ${inviteEmails.length} specific email address${inviteEmails.length === 1 ? '' : 'es'} to claim “${name}” after proving ownership`);
+      email.warnings.push('This merges the org’s current email allowlist. Another email-list vote executing first can make the list stale; coordinate those votes before execution.');
+    }
+  }
+
+  const merged = mergeBatches(base, groupManager, taskGrants, binding, orgDetails, sponsorship, email);
   const warnings = [...merged.warnings];
 
   // The config-time lints the contract emits AFTER the write. Shown here, before the vote opens,
@@ -573,7 +764,7 @@ export function buildRoleFormBatch({
 
   // A kind switch can leave the other kind's answers behind. They are dropped rather than
   // encoded — say so instead of silently losing people.
-  if (group && (f.holders || []).some((h) => isAddress(h?.address))) {
+  if (group && (form.holders || []).some((h) => isAddress(h?.address))) {
     warnings.push(
       'Groups have no members of their own — the people you listed were left out. Add them to one '
       + 'of the roles in this group instead.'
@@ -589,19 +780,27 @@ export function buildRoleFormBatch({
   // tasks” without the TaskManager grants, is a different role from the one on screen.
   const missingContext = [];
   if (f.bindingVote && !hybridVoting) missingContext.push('binding-vote contract');
+  if (f.bindingVote && (!classByIndex(votingClasses, resolveBindingClassIdx(f, votingClasses)) || !binding.batch.length)) {
+    contextErrors.push('The selected group of voters no longer exists. Choose an available voting group.');
+  }
   if ((f.canCreateTasks || f.canOrganizeFolders) && !taskManagerAddress) missingContext.push('task manager');
   const submittable = missingContext.length
     ? {
       ok: false,
       code: 'context-missing',
-      message: `This co-op’s ${missingContext.join(' and ')} hasn’t loaded, so this can’t be proposed yet — give it a moment.`,
+      message: `This org’s ${missingContext.join(' and ')} hasn’t loaded, so this can’t be proposed yet — give it a moment.`,
     }
-    : checkBatchSubmittable(merged.batch);
+    : contextErrors.length
+      ? { ok: false, code: 'context-missing', message: contextErrors.join(' ') }
+      : checkBatchSubmittable(merged.batch);
 
   return {
     batch: merged.batch,
     summaries: merged.summaries.flatMap((s) => (PERM_COUNT_LINE.test(s) ? describePerms(f, name) : [s])),
     warnings,
+    invitePlan,
+    preview: Boolean(preview),
+    joinSummary: group ? [] : joinMethods(f),
     gasLimit: merged.gasLimit,
     predictedSubjectId: subjectId,
     kind: f.kind,

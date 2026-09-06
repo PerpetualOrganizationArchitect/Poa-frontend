@@ -1,5 +1,16 @@
 # POA Frontend
 
+## Product purpose and voice
+
+Poa makes worker and community ownership practical: the people doing the work and
+the communities it serves can share in decisions, value, and a lasting future.
+Censorship resistance matters because that ownership should remain in their hands,
+with organizations able to keep going independently of any one platform operator.
+Express this warmly through shared agency, care, and possibility. Keep product copy
+approachable and inspiring; avoid polarizing, partisan, or heavily libertarian
+language. Loading reflections are original drafts in
+`poa-app/src/components/shared/loadingQuotes.js`, ready for Hudson's own writing.
+
 ## Commands
 
 All commands run from `poa-app/`:

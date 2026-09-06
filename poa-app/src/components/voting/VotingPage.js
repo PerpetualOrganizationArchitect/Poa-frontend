@@ -21,7 +21,7 @@ import { PiPlusCircle, PiScales } from "react-icons/pi";
 import {
   isContractAvailable, CONTRACT_MAP, buildSetterCopy,
 } from "@/config/setterDefinitions";
-import PulseLoader from "@/components/shared/PulseLoader";
+import CommunityLoadingState from "@/components/shared/CommunityLoadingState";
 import GlassBack from "./GlassBack";
 import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 import { usePOContext } from "@/context/POContext";
@@ -586,8 +586,8 @@ const VotingPage = () => {
     <>
       <Navbar />
       {poContextLoading ? (
-        <Center height="90vh" background={pageBackground()}>
-          <PulseLoader size="xl" />
+        <Center minH="90vh" background={pageBackground()}>
+          <CommunityLoadingState label="Loading community decisions…" />
         </Center>
       ) : (
         <Container maxW="container.2xl" py={4} px={{ base: "1%", md: "3%" }} minH="100vh" background={pageBackground()}>

@@ -1,5 +1,6 @@
 import { ChakraProvider, extendTheme } from '@chakra-ui/react';
 import dynamic from 'next/dynamic';
+import CommunityLoadingState from '@/components/shared/CommunityLoadingState';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import '@rainbow-me/rainbowkit/styles.css';
 import '../styles/globals.css';
@@ -7,12 +8,15 @@ import '/public/css/prism.css';
 
 const CoreProviders = dynamic(
   () => import('@/components/providers/CoreProviders'),
+  { loading: () => <CommunityLoadingState fullScreen label="Opening Poa…" /> },
 );
 const OrganizationProviders = dynamic(
   () => import('@/components/providers/OrganizationProviders'),
+  { loading: () => <CommunityLoadingState fullScreen label="Opening Poa…" /> },
 );
 const RegistryProvider = dynamic(
   () => import('@/components/providers/RegistryProvider'),
+  { loading: () => <CommunityLoadingState fullScreen label="Opening Poa…" /> },
 );
 
 // Fully static reading and redirect routes do not initialize wallets, Apollo,

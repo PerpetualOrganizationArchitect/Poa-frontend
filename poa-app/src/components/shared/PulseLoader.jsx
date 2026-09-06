@@ -1,84 +1,70 @@
 import { Box, VisuallyHidden } from "@chakra-ui/react";
 import { keyframes } from "@emotion/react";
+import MorphingPresence from "@/components/shared/MorphingPresence";
 
-const breathe = keyframes`
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.85;
-  }
-  50% {
-    transform: scale(1.2);
-    opacity: 1;
-  }
-`;
-
-const ripple = keyframes`
-  0% {
-    transform: scale(1);
-    opacity: 0.55;
-  }
-  100% {
-    transform: scale(2.6);
-    opacity: 0;
-  }
+const orbit = keyframes`
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 `;
 
 const motionOk = "@media (prefers-reduced-motion: no-preference)";
-
-const sizeMap = {
-  xs: { box: 3, dot: "4px", ring: "1px" },
-  sm: { box: 4, dot: "6px", ring: "1px" },
-  md: { box: 6, dot: "8px", ring: "1.5px" },
-  lg: { box: 8, dot: "10px", ring: "1.5px" },
-  xl: { box: 12, dot: "14px", ring: "2px" },
-};
+const sizeMap = { xs: 3, sm: 4, md: 6, lg: 8, xl: 12, "2xl": 56 };
 
 export default function PulseLoader({
   size = "md",
-  color = "coral.400",
+  color = "amethyst.400",
+  secondaryColor = color,
   label = "Loading",
   ...props
 }) {
-  const s = sizeMap[size] || sizeMap.md;
+  const large = size === "2xl";
 
   return (
     <Box
-      role="status"
+      role={label ? "status" : undefined}
       position="relative"
       display="inline-flex"
       alignItems="center"
       justifyContent="center"
-      w={s.box}
-      h={s.box}
+      flexShrink={0}
+      w={sizeMap[size] || sizeMap.md}
+      h={sizeMap[size] || sizeMap.md}
+      color={color}
       {...props}
     >
-      <VisuallyHidden>{label}</VisuallyHidden>
-      <Box
-        position="absolute"
-        w={s.dot}
-        h={s.dot}
-        borderRadius="full"
-        bg={color}
-        sx={{ [motionOk]: { animation: `${breathe} 2s ease-in-out infinite` } }}
-      />
-      <Box
-        position="absolute"
-        w={s.dot}
-        h={s.dot}
-        borderRadius="full"
-        border={`${s.ring} solid`}
-        borderColor={color}
-        sx={{ [motionOk]: { animation: `${ripple} 2s ease-out infinite` } }}
-      />
-      <Box
-        position="absolute"
-        w={s.dot}
-        h={s.dot}
-        borderRadius="full"
-        border={`${s.ring} solid`}
-        borderColor={color}
-        sx={{ [motionOk]: { animation: `${ripple} 2s ease-out 1s infinite` } }}
-      />
+      {label && <VisuallyHidden>{label}</VisuallyHidden>}
+      {large ? (
+        <MorphingPresence color={color} secondaryColor={secondaryColor} />
+      ) : (
+        <Box
+          as="svg"
+          aria-hidden="true"
+          viewBox="0 0 100 100"
+          w="100%"
+          h="100%"
+          fill="none"
+          focusable="false"
+        >
+          <circle cx="50" cy="50" r="43" stroke="currentColor" strokeWidth="5" opacity="0.18" />
+
+          <Box
+            as="g"
+            sx={{
+              transformOrigin: "50px 50px",
+              transformBox: "view-box",
+              [motionOk]: { animation: `${orbit} 3.2s linear infinite` },
+            }}
+          >
+            <path
+              d="M50 7 A43 43 0 0 1 93 50"
+              stroke="currentColor"
+              strokeWidth="7"
+              strokeLinecap="round"
+            />
+            <Box as="circle" cx="93" cy="50" r="4" fill="currentColor" color={secondaryColor} />
+          </Box>
+        </Box>
+      )}
     </Box>
   );
 }

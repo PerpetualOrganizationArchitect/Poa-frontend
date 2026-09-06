@@ -23,7 +23,7 @@ import Link2 from 'next/link';
 import { useRouter } from 'next/router';
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import ExecutiveMenuModal from '@/components/profileHub/ExecutiveMenuModal';
-import PulseLoader from "@/components/shared/PulseLoader";
+import CommunityLoadingState from "@/components/shared/CommunityLoadingState";
 import { useOrgStructure, useOrgTheme } from '@/hooks';
 import { useOrgName } from '@/hooks/useOrgName';
 import { useVouches } from '@/hooks/useVouches';
@@ -405,8 +405,8 @@ const UserprofileHub = () => {
       <>
         {seoHead}
         <Navbar />
-        <Center height="100vh" background={pageBackground()}>
-          <PulseLoader size="xl" />
+        <Center minH="100vh" background={pageBackground()}>
+          <CommunityLoadingState label="Loading your place in the community…" />
         </Center>
       </>
     );

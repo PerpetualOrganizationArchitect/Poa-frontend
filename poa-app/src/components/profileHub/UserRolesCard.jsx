@@ -1,85 +1,33 @@
-/**
- * UserRolesCard - Display user's current Hats Protocol roles
- * Shows role names, icons, and permission badges
- */
+/** UserRolesCard — the user's roles and a quiet summary of their access. */
 
 import React, { useMemo } from 'react';
-import {
-  Box,
-  VStack,
-  HStack,
-  Text,
-  Badge,
-  Icon,
-  Button,
-  Tooltip,
-} from '@chakra-ui/react';
-import { FiShield, FiUsers, FiArrowRight } from 'react-icons/fi';
+import { Box, VStack, HStack, Text, Icon, Button } from '@chakra-ui/react';
+import { FiShield, FiArrowRight } from 'react-icons/fi';
 import Link from 'next/link';
 import { glassLayerStyle } from '@/components/shared/glassStyles';
 import { normalizeHatId, getPermissionBadges } from '@/utils/profileUtils';
 
-/**
- * Single role display card
- */
 function RoleCard({ role }) {
   const permissionBadges = getPermissionBadges(role.permissions);
 
   return (
-    <HStack
-      bg="whiteAlpha.50"
-      p={3}
-      borderRadius="lg"
-      borderLeft="3px solid"
-      borderLeftColor="purple.400"
-      spacing={3}
-      _hover={{ bg: 'whiteAlpha.100', transform: 'translateX(2px)' }}
-      transition="transform 0.2s, box-shadow 0.2s, background 0.2s, border-color 0.2s"
-    >
-      <Icon as={FiShield} color="purple.300" boxSize={5} />
-      <VStack align="start" spacing={1} flex={1}>
-        <Text fontWeight="medium" color="white" fontSize="sm">
-          {role.name || 'Unnamed Role'}
+    <HStack spacing={3} py={2.5} align="start">
+      <Icon as={FiShield} color="purple.300" boxSize={4} mt={1} flexShrink={0} />
+      <VStack align="start" spacing={1} flex={1} minW={0}>
+        <Text fontWeight="medium" color="white" fontSize="sm" overflowWrap="anywhere">
+          {role.name || 'Unnamed role'}
         </Text>
         {permissionBadges.length > 0 && (
-          <HStack spacing={1} flexWrap="wrap">
-            {permissionBadges.slice(0, 3).map((badge) => (
-              <Badge
-                key={badge.label}
-                colorScheme={badge.colorScheme}
-                fontSize="xs"
-                px={1.5}
-                py={0}
-              >
-                {badge.label}
-              </Badge>
-            ))}
-          </HStack>
+          <Text fontSize="xs" color="gray.400" lineHeight="tall">
+            {permissionBadges.map((badge) => badge.label).join(' · ')}
+          </Text>
         )}
       </VStack>
-      {role.memberCount !== undefined && (
-        <Tooltip label={`${role.memberCount} members with this role`}>
-          <HStack spacing={1} color="gray.400">
-            <Icon as={FiUsers} boxSize={3} />
-            <Text fontSize="xs">{role.memberCount}</Text>
-          </HStack>
-        </Tooltip>
-      )}
     </HStack>
   );
 }
 
-/**
- * UserRolesCard component
- * @param {Object} props
- * @param {string[]} props.userHatIds - User's current hat IDs
- * @param {Object[]} props.roles - All roles from org structure
- * @param {Object} props.permissionsMatrix - Permissions matrix from org structure
- * @param {string} props.userDAO - DAO identifier for links
- */
-export function UserRolesCard({ userHatIds = [], roles = [], permissionsMatrix, userDAO }) {
-
-  // Filter roles to get only the ones the user has
+export function UserRolesCard({ userHatIds = [], roles = [], userDAO }) {
   const userRoles = useMemo(() => {
     if (!userHatIds.length || !roles.length) return [];
 
@@ -91,72 +39,57 @@ export function UserRolesCard({ userHatIds = [], roles = [], permissionsMatrix, 
     });
   }, [userHatIds, roles]);
 
-  const hasNoRoles = userRoles.length === 0;
-
   return (
     <Box
+      as="section"
+      aria-label="Your roles"
       w="100%"
       borderRadius="2xl"
-      bg="transparent"
-      boxShadow="lg"
+      border="1px solid"
+      borderColor="whiteAlpha.100"
       position="relative"
       zIndex={2}
     >
       <div style={glassLayerStyle} />
-
-      {/* Darker header section */}
-      <VStack pb={2} align="flex-start" position="relative" borderTopRadius="2xl">
-        <div style={glassLayerStyle} />
-        <Text pl={6} pt={2} fontWeight="bold" fontSize={{ base: 'xl', md: '2xl' }} color="white">
-          Your Roles
+      <VStack spacing={4} align="stretch" p={{ base: 5, md: 6 }}>
+        <Text as="h2" fontWeight="semibold" fontSize="lg" color="white" letterSpacing="-0.02em">
+          Your roles
         </Text>
-      </VStack>
 
-      {/* Content */}
-      <VStack spacing={4} align="stretch" p={4} pt={2}>
-        {hasNoRoles ? (
-          <VStack py={4} spacing={3}>
-            <Text color="gray.400" textAlign="center">
-              You haven't claimed any roles yet
-            </Text>
-            <Link href={`/team?org=${encodeURIComponent(userDAO)}`} passHref>
-              <Button
-                size="sm"
-                variant="outline"
-                colorScheme="purple"
-                rightIcon={<FiArrowRight />}
-              >
-                Claim Your First Role
-              </Button>
-            </Link>
-          </VStack>
+        {userRoles.length === 0 ? (
+          <Text color="gray.400" fontSize="sm" lineHeight="tall">
+            Join a role to find your place in the team.
+          </Text>
         ) : (
-          <>
-            <VStack spacing={2} align="stretch">
-              {userRoles.slice(0, 4).map((role) => (
-                <RoleCard key={role.hatId || role.id} role={role} />
-              ))}
-            </VStack>
-
+          <VStack
+            spacing={0}
+            align="stretch"
+            sx={{ '& > * + *': { borderTop: '1px solid', borderColor: 'whiteAlpha.100' } }}
+          >
+            {userRoles.slice(0, 4).map((role) => (
+              <RoleCard key={role.hatId || role.id} role={role} />
+            ))}
             {userRoles.length > 4 && (
-              <Text fontSize="xs" color="gray.400" textAlign="center">
-                + {userRoles.length - 4} more roles
+              <Text fontSize="xs" color="gray.400" pt={3}>
+                And {userRoles.length - 4} more {userRoles.length - 4 === 1 ? 'role' : 'roles'}
               </Text>
             )}
-
-            <Link href={`/team?org=${encodeURIComponent(userDAO)}`} passHref>
-              <Button
-                size="sm"
-                variant="ghost"
-                colorScheme="purple"
-                rightIcon={<FiArrowRight />}
-                alignSelf="flex-start"
-              >
-                Browse All Roles
-              </Button>
-            </Link>
-          </>
+          </VStack>
         )}
+
+        <Button
+          as={Link}
+          href={`/team?org=${encodeURIComponent(userDAO)}`}
+          size="sm"
+          variant="link"
+          color="purple.200"
+          rightIcon={<FiArrowRight />}
+          alignSelf="flex-start"
+          fontWeight="medium"
+          whiteSpace="normal"
+        >
+          {userRoles.length === 0 ? 'Explore roles' : 'View team & roles'}
+        </Button>
       </VStack>
     </Box>
   );

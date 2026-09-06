@@ -20,6 +20,7 @@ import {
   FETCH_ORG_STRUCTURE_DATA,
   FETCH_PROJECT_MANAGERS,
   FETCH_TREASURY_DATA,
+  FETCH_USER_DATA_NEW,
 } from './queries';
 
 /** Print the selection set of the first field named `name` (by field name, not alias). */
@@ -150,6 +151,24 @@ describe('projects query — v7 claim-release gating', () => {
       expect(text).not.toContain('totalTasksReleased');
       expect(text).not.toContain('releaseCount');
     }
+  });
+});
+
+describe('live task scopes exclude deleted projects', () => {
+  it('filters the account assignment feed used by Profile Hub work', () => {
+    const printed = print(FETCH_USER_DATA_NEW).replace(/\s+/g, ' ');
+    expect(printed).toContain(
+      'assignedTasks(where: {project_: {deleted: false}}, first: 20)'
+    );
+  });
+
+  it.each([
+    ['base project feed', FETCH_PROJECTS_DATA_NEW],
+    ['release-aware project feed', FETCH_PROJECTS_DATA_WITH_RELEASES],
+    ['app-wide org feed', FETCH_ORG_FULL_DATA],
+  ])('%s filters projects before exposing tasks', (_label, doc) => {
+    const printed = print(doc).replace(/\s+/g, ' ');
+    expect(printed).toMatch(/projects\(where: \{deleted: false\}, first: (50|100)\)/);
   });
 });
 

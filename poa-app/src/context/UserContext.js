@@ -169,6 +169,9 @@ export const UserProvider = ({ children }) => {
             RefreshEvent.TASK_CANCELLED,
             RefreshEvent.TASK_UPDATED,
             RefreshEvent.TASK_APPLICATION_APPROVED,
+            // Deleting a project soft-deletes the parent only; assignedTasks
+            // otherwise stays cached with its now-hidden child tasks.
+            RefreshEvent.PROJECT_DELETED,
             // modulesCompleted + module payout → balance
             RefreshEvent.MODULE_COMPLETED,
             // participationTokenBalance (self-approval; requester side is poll-covered)

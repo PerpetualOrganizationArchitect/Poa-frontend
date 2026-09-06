@@ -871,7 +871,11 @@ export const FETCH_USER_DATA_NEW = gql`
       totalModulesCompleted
       firstSeenAt
       lastActiveAt
-      assignedTasks(first: 20) {
+      # ProjectDeleted is a soft delete, so the User -> assignedTasks relation
+      # still contains work from removed projects unless it is filtered here.
+      # This feed powers the Profile Hub's "Your work" section; the board and
+      # dashboard already inherit the same rule from their filtered projects.
+      assignedTasks(where: { project_: { deleted: false } }, first: 20) {
         id
         taskId
         title

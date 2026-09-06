@@ -37,7 +37,7 @@ const AllTasksView = ({ isDesktop = true, sidebarVisible, toggleSidebar }) => {
     if (viewMode === 'gantt' && !isMobile) {
       return <GanttView projectName="All Tasks" tasks={tasks} />;
     }
-    return <ListView projectName="All Tasks" tasks={tasks} showProject />;
+    return <ListView projectName="All Tasks" tasks={tasks} />;
   };
 
   return (

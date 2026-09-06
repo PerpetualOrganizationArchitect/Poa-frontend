@@ -1,21 +1,4 @@
-/**
- * useOrgAuthority — THE feature-detection gate for access v2.
- *
- * Every v2 surface in this app hangs off this hook. It answers one question:
- *
- *     Is this org on the MembershipAuthority path, right now, on the endpoint we are reading?
- *
- * Both halves are load-bearing:
- *   • the SUBGRAPH half — the app reads the decentralised gateway endpoints, which lag Studio by a
- *     manual publish, and a single unknown field fails the whole document, so the v2 query is not
- *     even put on the wire until the capability probe passes;
- *   • the ORG half — the authority must exist AND be router-bound (the cutover). Deployed but
- *     unbound is `pending`: reads work, but the modules still resolve legacy Hats.
- *
- * `enabled === false` means the caller must render EXACTLY what it renders today. That is the
- * whole contract of this hook.
- */
-
+/** The authority gate fails closed; a failed read must never restore legacy controls. */
 import { useMemo } from 'react';
 import { useQuery } from '@apollo/client';
 import { usePOContext } from '@/context/POContext';
@@ -39,8 +22,8 @@ export function useOrgAuthority() {
   });
 
   const authority = useMemo(
-    () => classifyAuthority(data?.organization?.membershipAuthority, { capable }),
-    [data, capable]
+    () => classifyAuthority(!error && data?.organization?.id === orgId ? data.organization.membershipAuthority : null, { capable }),
+    [data, capable, orgId, error]
   );
 
   return useMemo(

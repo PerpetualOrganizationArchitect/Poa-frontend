@@ -1,3 +1,4 @@
+import { rawSetterUnavailableReason, templateUnavailableReason } from '@/lib/voting/setterAvailability';
 /**
  * useProposalForm
  * Hook for managing proposal form state and submission
@@ -21,8 +22,6 @@ import { usePOContext } from '@/context/POContext';
 import { useProjectContext } from '@/context/ProjectContext';
 import { useIPFScontext } from '@/context/ipfsContext';
 import { getNetworkByChainId } from '../config/networks';
-import { getInfrastructureAddress, CONTRACT_NAMES } from '@/config/contracts';
-import { createHatsService } from '@/services/web3/domain/HatsService';
 import { ipfsCidToBytes32 } from '@/services/web3/utils/encoding';
 import { getTokenByAddress } from '@/util/tokens';
 import {
@@ -119,20 +118,8 @@ const defaultProposal = {
   setterFunction: "",     // Function name (e.g., "setConfig")
   setterValues: {},       // Template input values
   setterParams: [],       // Raw function parameters (for advanced mode)
-  // Create-role fields — bundle that builds a multi-call batch:
-  //   1. EligibilityModule.createHatWithEligibility(...)
-  //   2. EligibilityModule.configureVouching(predictedHatId, ...)       (if vouching)
-  //   3. HybridVoting.setCreatorHatAllowed(predictedHatId, true)        (if canVote)
-  //   4. TaskManager.setProjectRolePerm(pid, predictedHatId, mask)      (per project)
-  //   5. TaskManager.setConfig(ROLE_PERM/CREATOR_HAT/ORGANIZER_HAT, …)  (global perms)
-  //   6. EligibilityModule.updateHatMetadata(predictedHatId, name, cid) (if description)
-  // Hat ID is pre-computed via Hats.getNextId at submit time.
+  // Draft compatibility only; retired Hats drafts cannot be submitted.
   roleConfig: { ...defaultRoleConfig },
-  // ACCESS V2 — the same createRole intent, on an org whose roles are authority SUBJECTS. The
-  // wizard renders `components/accessV2/RoleForm` instead of RoleConfigurator and the batch comes
-  // from `lib/accessV2/roleFormBatch` — the encoder /team's "Create a role or group" modal also
-  // uses, so a role made from either door is the same role. `roleConfig` is left untouched: a
-  // legacy org still walks the branch above, byte for byte.
   roleFormV2: defaultRoleForm(),
   // Access-v2 role removal — one authority role and up to 20 current members.
   roleRemovalConfig: { ...defaultRoleRemovalConfig },
@@ -514,58 +501,7 @@ export function useProposalForm({ onSubmit }) {
       return true;
     }
 
-    if (!rc.parentHatId || String(rc.parentHatId).trim() === '') {
-      return fail('No Parent Role Selected', 'Pick which role this new role should sit under.');
-    }
-    if (!rc.name || rc.name.trim() === '') {
-      return fail('Missing Role Name', 'Give the new role a name.');
-    }
-    const maxSupply = Number(rc.maxSupply);
-    if (!Number.isFinite(maxSupply) || maxSupply < 1 || maxSupply > 4294967295) {
-      return fail('Invalid Max Supply', 'Max supply must be between 1 and 4,294,967,295.');
-    }
-
-    if (rc.vouching?.enabled) {
-      const quorum = Number(rc.vouching.quorum);
-      if (!Number.isFinite(quorum) || quorum < 1) {
-        return fail('Invalid Vouching Quorum', 'Vouching quorum must be at least 1.');
-      }
-      if (!rc.vouching.selfVouch && (!rc.vouching.voucherHatId || String(rc.vouching.voucherHatId).trim() === '')) {
-        return fail('Missing Voucher Role', 'Pick the role whose members can vouch, or toggle on self-vouching.');
-      }
-    }
-
-    const wearers = rc.initialWearers || [];
-    const seen = new Set();
-    for (const w of wearers) {
-      if (!w.address || !utils.isAddress(w.address)) {
-        return fail('Invalid Wearer Address', `"${w.name || 'Unnamed'}" has an invalid address.`);
-      }
-      const key = w.address.toLowerCase();
-      if (seen.has(key)) {
-        return fail('Duplicate Wearer', `Address ${w.address.slice(0, 6)}…${w.address.slice(-4)} is listed twice.`);
-      }
-      seen.add(key);
-    }
-
-    const projectPerms = rc.projectPerms || [];
-    const seenProjects = new Set();
-    for (const p of projectPerms) {
-      if (!p.projectId) {
-        return fail('Missing Project', 'Pick a project for each project-permission row, or remove the row.');
-      }
-      if (seenProjects.has(p.projectId)) {
-        return fail('Duplicate Project Permission', 'Each project can only appear once in the permissions list.');
-      }
-      seenProjects.add(p.projectId);
-    }
-
-    const globalPerms = Number(rc.globalPerms) || 0;
-    if (globalPerms < 0 || globalPerms > 255) {
-      return fail('Invalid Permissions', 'Global task permission mask must be between 0 and 255.');
-    }
-
-    return true;
+    return fail('Organization unavailable', 'Current authority permissions are required.');
   }, [proposal, toast]);
 
   const validateRoleRemovalProposal = useCallback((accessV2Enabled = false) => {
@@ -584,6 +520,13 @@ export function useProposalForm({ onSubmit }) {
   }, [proposal.roleRemovalConfig, toast]);
 
   const validateSetterProposal = useCallback(() => {
+    const retired = proposal.setterMode === 'advanced'
+      ? rawSetterUnavailableReason(proposal)
+      : templateUnavailableReason(getTemplateById(proposal.setterTemplate), { authorityEnabled: true });
+    if (retired) {
+      toast({ title: 'Action unavailable', description: retired, status: 'error' });
+      return false;
+    }
     if (proposal.setterMode === 'template') {
       if (!proposal.setterTemplate) {
         toast({
@@ -799,7 +742,7 @@ export function useProposalForm({ onSubmit }) {
     }
 
     return true;
-  }, [proposal.setterMode, proposal.setterTemplate, proposal.setterContract, proposal.setterFunction, proposal.setterValues, proposal.setterParams, toast]);
+  }, [proposal, toast]);
 
   // Project id → name map, derived exactly like CreateVoteModal's so the setter
   // description the member reads on the details step and the actionSummary
@@ -890,6 +833,7 @@ export function useProposalForm({ onSubmit }) {
   // Builders may also hand back `summaries` (the sentences voters read) and a
   // `gasLimit` (the announceWinner floor) alongside the batch.
   const buildProposalData = useCallback((eligibilityModuleAddress, contractAddresses, freshHoldersOverride = null, hatsProtocolAddress = null, predictedRoleHatId = null, metadataCIDBytes32 = null, extras = {}) => {
+    if (!extras?.accessV2?.enabled || !contractAddresses?.membershipAuthorityAddress) throw new Error('Authority permissions are required to create a proposal.');
     let numOptions;
     let batches = [];
     let optionNames = [];
@@ -983,188 +927,6 @@ export function useProposalForm({ onSubmit }) {
       // exactly the people who need to read them.
       summaries = [...built.summaries, ...built.warnings.map(worthKnowing)];
       gasLimit = built.gasLimit;
-    } else if (proposal.type === "election") {
-      // Election proposal - each candidate is an option
-      // When they win: revoke hat from current holders who lost, mint to winner
-      numOptions = proposal.electionCandidates.length;
-      optionNames = proposal.electionCandidates.map(c => c.name);
-
-      const iface = new utils.Interface([
-        "function mintHatToAddress(uint256 hatId, address wearer)",
-        "function setWearerEligibility(address wearer, uint256 hatId, bool eligible, bool standing)",
-        // EligibilityModule v2: surgically zero a single wearer's vouch state
-        // for one hat. Combined with the eligibility revoke, this fully blocks
-        // an election loser from re-claiming via claimVouchedHat — without
-        // affecting any other wearer or the org's vouching config.
-        "function clearWearerVouches(address wearer, uint256 hatId)"
-      ]);
-      // Hats Protocol — used for the 1-incumbent transfer optimization. When
-      // exactly one incumbent is being replaced by a candidate who doesn't
-      // already hold the role, we use Hats.transferHat to atomically move the
-      // slot. transferHat does NOT decrement supply (just moves the balance)
-      // so it works for capped-supply hats (e.g. KUBI's Executive at 10/10)
-      // AND it bypasses the eligibility module's getWearerStatus check on the
-      // FROM side — vouching can't keep an incumbent in their seat. Verified
-      // on a Gnosis fork against KUBI's actual contracts.
-      const hatsIface = new utils.Interface([
-        "function transferHat(uint256 hatId, address from, address to)"
-      ]);
-
-      // Only revoke from the specific incumbents the user selected — not all holders
-      const selectedIncumbents = proposal.electionSelectedIncumbents || [];
-      // All holders is used to check if candidate already holds the hat.
-      // Prefer the fresh on-chain snapshot from handleSubmit when available;
-      // form state can be stale (subgraph lag) and that produced AlreadyWearingHat
-      // reverts in past KUBI elections.
-      const allHolders = freshHoldersOverride
-        ? freshHoldersOverride.allHolders
-        : (proposal.electionCurrentHolders || []);
-      // Fallback role: losers get downgraded to this hat instead of being fully removed
-      const fallbackRoleId = proposal.electionFallbackRoleId;
-      const fallbackHolders = freshHoldersOverride
-        ? freshHoldersOverride.fallbackHolders
-        : (proposal.electionFallbackHolders || []);
-
-      batches = proposal.electionCandidates.map(candidate => {
-        const batch = [];
-        const candidateLower = candidate.address.toLowerCase();
-        const otherIncumbents = selectedIncumbents.filter(
-          i => i.address.toLowerCase() !== candidateLower
-        );
-        const candidateAlreadyHolds = allHolders.some(
-          h => h.address.toLowerCase() === candidateLower
-        );
-
-        // 1-incumbent transfer optimization: when exactly one incumbent is
-        // being replaced by a candidate who doesn't already hold the role,
-        // use Hats.transferHat. Atomic, supply-preserving, and works through
-        // vouching gates. For 0 or 2+ incumbents, fall back to the legacy
-        // setEligibility(revoke) + mint flow (best-effort for vouching-gated
-        // hats — KUBI's Executive transfer requires this 1-incumbent path).
-        const useTransferHat =
-          Boolean(hatsProtocolAddress) &&
-          otherIncumbents.length === 1 &&
-          !candidateAlreadyHolds;
-        const transferSourceLower = useTransferHat
-          ? otherIncumbents[0].address.toLowerCase()
-          : null;
-
-        selectedIncumbents.forEach(incumbent => {
-          const incumbentLower = incumbent.address.toLowerCase();
-          if (incumbentLower === candidateLower) return; // skip self
-
-          // Revoke the elected hat from the incumbent.
-          // Even when we're going to transferHat from this incumbent, the
-          // explicit revoke is still required: transferHat moves the token
-          // but leaves wearerRules untouched, so the loser could call
-          // claimVouchedHat or otherwise re-acquire if a slot opens up.
-          batch.push({
-            target: eligibilityModuleAddress,
-            value: "0",
-            data: iface.encodeFunctionData("setWearerEligibility", [
-              incumbent.address,
-              proposal.electionRoleId,
-              false,
-              false,
-            ]),
-          });
-
-          // Surgical vouch clear (EligibilityModule v2). Without this, a
-          // vouched-in incumbent can still pass getWearerStatus's vouch path
-          // and re-claim if supply opens up (combineWithHierarchy=true ORs
-          // hierarchy with vouching). Calling clearWearerVouches sets the
-          // incumbent's wearerVouchEpoch to a sentinel that won't match the
-          // config epoch — their effective vouch count for THIS hat becomes 0.
-          // No effect on other wearers; org-wide vouching stays enabled.
-          //
-          // Wrapped in try/catch at execute-time semantics by the EligibilityModule's
-          // ABI: if the deployed impl is pre-v2 (no clearWearerVouches), the
-          // call would revert and bubble up via Executor.CallFailed. Frontend
-          // assumes v2 has shipped (per the EligibilityModule upgrade PR);
-          // gate by version-detect if needed for staged rollout.
-          batch.push({
-            target: eligibilityModuleAddress,
-            value: "0",
-            data: iface.encodeFunctionData("clearWearerVouches", [
-              incumbent.address,
-              proposal.electionRoleId,
-            ]),
-          });
-
-          // Fallback role handling (independent of transfer optimization).
-          if (fallbackRoleId) {
-            batch.push({
-              target: eligibilityModuleAddress,
-              value: "0",
-              data: iface.encodeFunctionData("setWearerEligibility", [
-                incumbent.address,
-                fallbackRoleId,
-                true,
-                true,
-              ]),
-            });
-            const alreadyHoldsFallback = fallbackHolders.some(
-              addr => addr.toLowerCase() === incumbentLower
-            );
-            if (!alreadyHoldsFallback) {
-              batch.push({
-                target: eligibilityModuleAddress,
-                value: "0",
-                data: iface.encodeFunctionData("mintHatToAddress", [
-                  fallbackRoleId,
-                  incumbent.address,
-                ]),
-              });
-            }
-          }
-        });
-
-        // Grant the candidate eligibility on the elected hat. Required by
-        // both transferHat's isEligible(to) check and mintHatToAddress's
-        // EligibilityModule check. Idempotent — safe if already eligible.
-        batch.push({
-          target: eligibilityModuleAddress,
-          value: "0",
-          data: iface.encodeFunctionData("setWearerEligibility", [
-            candidate.address,
-            proposal.electionRoleId,
-            true,
-            true,
-          ]),
-        });
-
-        // Final move: transferHat (1-incumbent case) or mint.
-        if (useTransferHat) {
-          batch.push({
-            target: hatsProtocolAddress,
-            value: "0",
-            data: hatsIface.encodeFunctionData("transferHat", [
-              proposal.electionRoleId,
-              otherIncumbents[0].address,
-              candidate.address,
-            ]),
-          });
-        } else if (!candidateAlreadyHolds) {
-          batch.push({
-            target: eligibilityModuleAddress,
-            value: "0",
-            data: iface.encodeFunctionData("mintHatToAddress", [
-              proposal.electionRoleId,
-              candidate.address,
-            ]),
-          });
-        }
-
-        return batch;
-      });
-
-      // First-class "No One" option — appended last so existing batch indices stay aligned.
-      // Empty batch = no on-chain effect when this option wins.
-      if (proposal.electionIncludeNoOneOption) {
-        optionNames.push("No One");
-        batches.push([]);
-        numOptions = optionNames.length;
-      }
     } else if (proposal.type === "createRole" && extras?.accessV2?.enabled) {
       // ── CREATE ROLE (or GROUP), access-v2 org ──
       // The legacy arm below SUCCEEDS here, which is worse than reverting: it mints an inert
@@ -1242,191 +1004,13 @@ export function useProposalForm({ onSubmit }) {
       optionNames = ['Remove from role', 'Keep current members'];
       summaries = [...built.summaries, ...built.warnings.map(worthKnowing)];
       gasLimit = built.gasLimit;
-    } else if (proposal.type === "createRole") {
-      // Create-role proposal — a single winning batch that calls:
-      //   1. EligibilityModule.createHatWithEligibility(params)
-      //   2. EligibilityModule.configureVouching(predictedHatId, ...)        (optional)
-      //   3. HybridVoting.setCreatorHatAllowed(predictedHatId, true)         (optional)
-      //   4. TaskManager.setProjectRolePerm(pid, predictedHatId, mask)       (per project)
-      //   5. TaskManager.setConfig(ROLE_PERM/CREATOR_HAT/ORGANIZER_HAT, ...) (org-wide)
-      //   6. EligibilityModule.updateHatMetadata(predictedHatId, name, cid)  (if description)
-      //
-      // predictedRoleHatId is pre-computed in handleSubmit via Hats.getNextId.
-      // Race condition: a sibling hat created under the same parent between
-      // submit and execution shifts the real id; ALL downstream calls (2-6)
-      // then point at the wrong hat. The configurator surfaces a warning when
-      // another active createRole proposal targets the same parent.
-      const rc = proposal.roleConfig || {};
-      const wearers = rc.initialWearers || [];
-      const projectPerms = rc.projectPerms || [];
-
-      const hatParams = [
-        rc.parentHatId,
-        rc.name || '',
-        Number(rc.maxSupply) || 1,
-        Boolean(rc.mutable),
-        rc.imageURI || '',
-        Boolean(rc.defaultEligible),
-        Boolean(rc.defaultStanding),
-        wearers.map(w => w.address),
-        wearers.map(w => Boolean(w.eligible ?? rc.defaultEligible)),
-        wearers.map(w => Boolean(w.standing ?? rc.defaultStanding)),
-      ];
-
-      const elIface = new utils.Interface([
-        {
-          type: 'function',
-          name: 'createHatWithEligibility',
-          stateMutability: 'nonpayable',
-          inputs: [{
-            name: 'params',
-            type: 'tuple',
-            components: [
-              { name: 'parentHatId', type: 'uint256' },
-              { name: 'details', type: 'string' },
-              { name: 'maxSupply', type: 'uint32' },
-              { name: '_mutable', type: 'bool' },
-              { name: 'imageURI', type: 'string' },
-              { name: 'defaultEligible', type: 'bool' },
-              { name: 'defaultStanding', type: 'bool' },
-              { name: 'mintToAddresses', type: 'address[]' },
-              { name: 'wearerEligibleFlags', type: 'bool[]' },
-              { name: 'wearerStandingFlags', type: 'bool[]' },
-            ],
-          }],
-          outputs: [{ name: 'newHatId', type: 'uint256' }],
-        },
-        'function configureVouching(uint256 hatId, uint32 quorum, uint256 membershipHatId, bool combineWithHierarchy)',
-        'function updateHatMetadata(uint256 hatId, string name, bytes32 metadataCID)',
-      ]);
-
-      const hvIface = new utils.Interface([
-        'function setCreatorHatAllowed(uint256 h, bool ok)',
-      ]);
-
-      const tmIface = new utils.Interface([
-        'function setProjectRolePerm(bytes32 pid, uint256 hatId, uint8 mask)',
-        'function setConfig(uint8 key, bytes value)',
-      ]);
-
-      const batch = [];
-
-      // 1. Create the hat
-      batch.push({
-        target: eligibilityModuleAddress,
-        value: '0',
-        data: elIface.encodeFunctionData('createHatWithEligibility', [hatParams]),
-      });
-
-      // 2. Vouching config (downstream calls need the predicted hatId)
-      if (rc.vouching?.enabled && predictedRoleHatId) {
-        const voucherHatId = rc.vouching.selfVouch ? predictedRoleHatId : rc.vouching.voucherHatId;
-        batch.push({
-          target: eligibilityModuleAddress,
-          value: '0',
-          data: elIface.encodeFunctionData('configureVouching', [
-            predictedRoleHatId,
-            Number(rc.vouching.quorum) || 1,
-            voucherHatId,
-            Boolean(rc.vouching.combineWithHierarchy),
-          ]),
-        });
-      }
-
-      // 3. Proposal-creator permission on HybridVoting
-      if (rc.canVote && predictedRoleHatId) {
-        const hybridAddr = contractAddresses?.votingContractAddress
-          || contractAddresses?.hybridVotingContractAddress;
-        if (hybridAddr) {
-          batch.push({
-            target: hybridAddr,
-            value: '0',
-            data: hvIface.encodeFunctionData('setCreatorHatAllowed', [predictedRoleHatId, true]),
-          });
-        }
-      }
-
-      const taskManagerAddr = contractAddresses?.taskManagerContractAddress;
-
-      // 4. Per-project permission overrides
-      if (projectPerms.length > 0 && predictedRoleHatId && taskManagerAddr) {
-        for (const p of projectPerms) {
-          batch.push({
-            target: taskManagerAddr,
-            value: '0',
-            data: tmIface.encodeFunctionData('setProjectRolePerm', [
-              p.projectId,
-              predictedRoleHatId,
-              Number(p.mask) || 0,
-            ]),
-          });
-        }
-      }
-
-      // 5. Org-wide task-system grants via TaskManager.setConfig.
-      //    Mirrors setterDefinitions.js: ROLE_PERM (global mask), CREATOR_HAT_ALLOWED
-      //    (create projects/tasks), ORGANIZER_HAT_ALLOWED (reorganize folder tree).
-      if (taskManagerAddr && predictedRoleHatId) {
-        const ROLE_PERM_KEY = 2;       // TaskManager ConfigKey.ROLE_PERM
-        const CREATOR_HAT_KEY = 1;     // TaskManager ConfigKey.CREATOR_HAT_ALLOWED
-        const ORGANIZER_HAT_KEY = 7;   // TaskManager ConfigKey.ORGANIZER_HAT_ALLOWED
-
-        const globalPerms = Number(rc.globalPerms) || 0;
-        if (globalPerms > 0) {
-          batch.push({
-            target: taskManagerAddr,
-            value: '0',
-            data: tmIface.encodeFunctionData('setConfig', [
-              ROLE_PERM_KEY,
-              utils.defaultAbiCoder.encode(['uint256', 'uint8'], [predictedRoleHatId, globalPerms]),
-            ]),
-          });
-        }
-        if (rc.canCreateTasks) {
-          batch.push({
-            target: taskManagerAddr,
-            value: '0',
-            data: tmIface.encodeFunctionData('setConfig', [
-              CREATOR_HAT_KEY,
-              utils.defaultAbiCoder.encode(['uint256', 'bool'], [predictedRoleHatId, true]),
-            ]),
-          });
-        }
-        if (rc.canOrganizeFolders) {
-          batch.push({
-            target: taskManagerAddr,
-            value: '0',
-            data: tmIface.encodeFunctionData('setConfig', [
-              ORGANIZER_HAT_KEY,
-              utils.defaultAbiCoder.encode(['uint256', 'bool'], [predictedRoleHatId, true]),
-            ]),
-          });
-        }
-      }
-
-      // 6. Role metadata — set name + description on-chain via Hats metadata.
-      //    updateHatMetadata stores the IPFS CID in the hat details (requires a
-      //    mutable hat) and emits HatMetadataUpdated, which the subgraph indexes
-      //    into hat.name + hat.metadata.description. No contract changes needed.
-      //    metadataCIDBytes32 is computed in handleSubmit (IPFS upload).
-      if (metadataCIDBytes32 && predictedRoleHatId) {
-        batch.push({
-          target: eligibilityModuleAddress,
-          value: '0',
-          data: elIface.encodeFunctionData('updateHatMetadata', [
-            predictedRoleHatId,
-            rc.name || '',
-            metadataCIDBytes32,
-          ]),
-        });
-      }
-
-      batches = [batch, []];   // Yes wins: create + configure. No wins: nothing.
-      numOptions = 2;
-      optionNames = ['Create role', 'Reject'];
     } else if (proposal.type === "setter") {
       // Setter proposal - call contract setter function(s)
       let setterCalls = [];
+      const retired = proposal.setterMode === 'advanced'
+        ? rawSetterUnavailableReason(proposal)
+        : templateUnavailableReason(getTemplateById(proposal.setterTemplate), { authorityEnabled: true });
+      if (retired) throw new Error(retired);
 
       if (proposal.setterMode === 'template' && proposal.setterTemplate) {
         // Template mode
@@ -1610,6 +1194,10 @@ export function useProposalForm({ onSubmit }) {
   ]);
 
   const handleSubmit = useCallback(async (eligibilityModuleAddress, contractAddresses = {}, extras = {}) => {
+    if (!extras?.accessV2?.enabled || !contractAddresses?.membershipAuthorityAddress) {
+      toast({ title: 'Organization permissions are unavailable', description: 'Wait for the current roles to load and try again.', status: 'error' });
+      return;
+    }
     setLoadingSubmit(true);
 
     // Access v2: the org's roles live on a MembershipAuthority, so the two Hats reads below
@@ -1719,116 +1307,9 @@ export function useProposalForm({ onSubmit }) {
           }
         }
       }
-      if (proposal.type === "election" && !accessV2Enabled) {
-        const hatsAddr = getInfrastructureAddress(CONTRACT_NAMES.HATS_PROTOCOL, orgChainId);
-        if (hatsAddr && orgNetwork?.rpcUrl && orgChainId) {
-          try {
-            const readProvider = new ethersProviders.JsonRpcProvider(
-              orgNetwork.rpcUrl,
-              { chainId: orgChainId, name: orgNetwork.name || `chain-${orgChainId}` }
-            );
-            const hats = createHatsService(readProvider);
-            const candidateAddrs = proposal.electionCandidates.map(c => c.address);
-            const incumbentAddrs = (proposal.electionSelectedIncumbents || []).map(i => i.address);
-
-            const candidateMap = await hats.getHolderStatuses(
-              hatsAddr,
-              proposal.electionRoleId,
-              candidateAddrs,
-            );
-            const fallbackMap = proposal.electionFallbackRoleId
-              ? await hats.getHolderStatuses(
-                  hatsAddr,
-                  proposal.electionFallbackRoleId,
-                  incumbentAddrs,
-                )
-              : new Map();
-
-            freshHoldersOverride = {
-              allHolders: candidateAddrs
-                .filter(a => candidateMap.get(a.toLowerCase()) === true)
-                .map(a => ({ address: a, name: '' })),
-              fallbackHolders: incumbentAddrs.filter(
-                a => fallbackMap.get(a.toLowerCase()) === true,
-              ),
-            };
-          } catch (err) {
-            console.error('[useProposalForm] Hats holder refresh failed:', err);
-            toast({
-              title: "Cannot verify current role holders",
-              description: "Could not read the Hats contract. Please try again.",
-              status: "error",
-              duration: 5000,
-              isClosable: true,
-            });
-            setLoadingSubmit(false);
-            return;
-          }
-        } else {
-          // No Hats address / RPC configured for this chain — defensive fall-through
-          // to cached form state. Not expected on Gnosis/Arbitrum/Sepolia.
-          console.warn('[useProposalForm] No HATS_PROTOCOL or RPC for chain', orgChainId);
-        }
-      }
-
-      const hatsProtocolAddress = getInfrastructureAddress(CONTRACT_NAMES.HATS_PROTOCOL, orgChainId) || null;
-
-      // Pre-compute the new role's hat ID via Hats.getNextId(parent). This
-      // lets the same batch chain configureVouching / setCreatorHatAllowed /
-      // setProjectRolePerm against the new role. The id is deterministic
-      // (parent || childIndex bit-packing), so as long as no sibling hat is
-      // created under the same parent between submit and execution, the
-      // prediction is accurate. The configurator warns when a concurrent
-      // createRole proposal targets the same parent.
-      let predictedRoleHatId = null;
-      if (proposal.type === 'createRole' && !accessV2Enabled) {
-        const parentHatId = proposal.roleConfig?.parentHatId;
-        if (hatsProtocolAddress && orgNetwork?.rpcUrl && orgChainId && parentHatId) {
-          try {
-            const readProvider = new ethersProviders.JsonRpcProvider(
-              orgNetwork.rpcUrl,
-              { chainId: orgChainId, name: orgNetwork.name || `chain-${orgChainId}` }
-            );
-            const hats = createHatsService(readProvider);
-            const nextId = await hats.getNextId(hatsProtocolAddress, parentHatId);
-            predictedRoleHatId = nextId.toString();
-          } catch (err) {
-            console.error('[useProposalForm] Hats.getNextId failed:', err);
-            toast({
-              title: "Cannot predict new role's hat ID",
-              description: "Could not read Hats Protocol to pre-compute the new role's ID. Please try again.",
-              status: "error",
-              duration: 5000,
-              isClosable: true,
-            });
-            setLoadingSubmit(false);
-            return;
-          }
-        } else {
-          toast({
-            title: "Missing infrastructure config",
-            description: "Hats Protocol address or RPC is not configured for this chain.",
-            status: "error",
-            duration: 5000,
-            isClosable: true,
-          });
-          setLoadingSubmit(false);
-          return;
-        }
-      }
-
-      // Create-role only: persist the role's name + description on-chain via the
-      // Hats metadata pattern. Upload { name, description } to IPFS, encode the CID
-      // to bytes32, and let buildProposalData append an updateHatMetadata call (the
-      // subgraph indexes it into hat.name + hat.metadata.description).
-      // Gated on description only: the hat image is already stored via
-      // createHatWithEligibility's imageURI, and the subgraph metadata parser reads
-      // name + description only — so an image would add on-chain cost for no effect.
-      // updateHatMetadata calls changeHatDetails, which requires a mutable hat — so
-      // only attempt it when the role is mutable.
-      //
-      // ACCESS V2: the CID is an argument of `createRole` itself, so there is no second metadata
-      // call and no mutability precondition — the description alone decides whether we upload.
+      const hatsProtocolAddress = null;
+      const predictedRoleHatId = null;
+      // Authority creation stores the description CID directly on the subject.
       let metadataCIDBytes32 = null;
       if (proposal.type === 'createRole') {
         // The v2 screen writes `roleFormV2` (and can be making a GROUP), the legacy one writes

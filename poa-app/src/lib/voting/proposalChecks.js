@@ -20,7 +20,7 @@
 
 import { utils, constants as ethersConstants } from 'ethers';
 import { getTemplateById, templateParamsReady } from '@/config/setterDefinitions';
-import { templateUnavailableReason } from './setterAvailability';
+import { rawSetterUnavailableReason, templateUnavailableReason } from './setterAvailability';
 import { amountDecimalsError, amountToWei } from './treasuryBatches';
 import { resolveRoleForm, roleFormError } from '@/lib/accessV2/roleFormBatch';
 import {
@@ -51,7 +51,7 @@ export function configError(proposal, ctx = null) {
       // so this module doesn't have to pull in the setter template registry.)
       if (!p.setterContract) return 'Please select a target contract.';
       if (!p.setterFunction) return 'Please select a function to call.';
-      return null;
+      return rawSetterUnavailableReason(p);
     }
     if (!p.setterTemplate) return 'Please select an action from the templates.';
     // Params belong to the config screen, so they gate it. Without this a bare
@@ -62,8 +62,8 @@ export function configError(proposal, ctx = null) {
     // access-v2 cutover, or a v2-only one before it) must not clear the config
     // gate just because a restored draft or an old deep link still names it —
     // it would pass on chain and change nothing.
-    if (tmpl && ctx?.accessV2) {
-      const reason = templateUnavailableReason(tmpl, { authorityEnabled: Boolean(ctx.accessV2.enabled) });
+    if (tmpl && (tmpl.legacyOnly || ctx?.accessV2)) {
+      const reason = templateUnavailableReason(tmpl, { authorityEnabled: Boolean(ctx?.accessV2?.enabled) });
       if (reason) return reason;
     }
     if (tmpl && !templateParamsReady(tmpl, p.setterValues)) {

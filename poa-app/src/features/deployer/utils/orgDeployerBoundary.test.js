@@ -128,8 +128,8 @@ describe('exact OrgDeployer ABI boundary', () => {
     ]);
   });
 
-  it('encodes each schema with only its own selector and tuple shape', () => {
-    const legacy = encodeOrgDeploymentCalldata({ schema: ORG_DEPLOYER_SCHEMA.LEGACY, params: legacyParams() });
+  it('encodes authority-native deployments and identifies historical calldata', () => {
+    const legacy = getOrgDeployerInterface(ORG_DEPLOYER_SCHEMA.LEGACY).encodeFunctionData('deployFullOrg', [legacyParams()]);
     const v2 = encodeOrgDeploymentCalldata({ schema: ORG_DEPLOYER_SCHEMA.ACCESS_V2, params: accessV2Params() });
     expect(legacy.slice(0, 10)).toBe(ORG_DEPLOYER_SELECTORS[ORG_DEPLOYER_SCHEMA.LEGACY].deployFullOrg);
     expect(v2.slice(0, 10)).toBe(ORG_DEPLOYER_SELECTORS[ORG_DEPLOYER_SCHEMA.ACCESS_V2].deployFullOrg);
@@ -142,6 +142,10 @@ describe('exact OrgDeployer ABI boundary', () => {
     expect(decoded.groups[0].memberRoleIndices[0].toNumber()).toBe(0);
   });
 
+  it('rejects explicit legacy deployment encoding', () => {
+    expect(() => encodeOrgDeploymentCalldata({ schema: ORG_DEPLOYER_SCHEMA.LEGACY, params: legacyParams() })).toThrow(/retired/);
+  });
+
   it('fails instead of mixing role schemas', () => {
     expect(() => assertDeploymentParamsSchema(
       ORG_DEPLOYER_SCHEMA.ACCESS_V2,
@@ -152,14 +156,14 @@ describe('exact OrgDeployer ABI boundary', () => {
       ORG_DEPLOYER_SCHEMA.LEGACY,
       { ...accessV2Params(), groups: [] }
     ))
-      .toThrow(/Access v2 fields|legacy Hats RoleConfig/i);
+      .toThrow(/Legacy organization deployment is retired/i);
     expect(() => encodeOrgDeploymentCalldata({ params: legacyParams() })).toThrow(/missing/i);
     expect(() => encodeOrgDeploymentCalldata({ schema: '__proto__', params: legacyParams() }))
       .toThrow(/Unsupported OrgDeployer schema/i);
   });
 
   it('rejects pre-built calldata from the other schema or with a malformed tuple', () => {
-    const legacy = encodeOrgDeploymentCalldata({ schema: ORG_DEPLOYER_SCHEMA.LEGACY, params: legacyParams() });
+    const legacy = getOrgDeployerInterface(ORG_DEPLOYER_SCHEMA.LEGACY).encodeFunctionData('deployFullOrg', [legacyParams()]);
     expect(() => assertOrgDeploymentCalldataSchema({
       schema: ORG_DEPLOYER_SCHEMA.ACCESS_V2,
       calldata: legacy,
@@ -167,7 +171,7 @@ describe('exact OrgDeployer ABI boundary', () => {
     expect(() => assertOrgDeploymentCalldataSchema({
       schema: ORG_DEPLOYER_SCHEMA.LEGACY,
       calldata: legacy.slice(0, -64),
-    })).toThrow(/not a valid/i);
+    })).toThrow(/Legacy organization deployment is retired/i);
   });
 });
 
@@ -178,7 +182,6 @@ describe('VERSION major dispatch', () => {
   });
 
   it.each([
-    ['1.0.1', ORG_DEPLOYER_SCHEMA.LEGACY],
     ['2.0.0', ORG_DEPLOYER_SCHEMA.ACCESS_V2],
     ['2.3.4-beta.1', ORG_DEPLOYER_SCHEMA.ACCESS_V2],
   ])('maps VERSION %s to %s', async (version, schema) => {
@@ -187,6 +190,7 @@ describe('VERSION major dispatch', () => {
   });
 
   it.each([
+    '1.0.1',
     'not-semver',
     'v2',
     '2.0',
@@ -216,7 +220,7 @@ describe('VERSION major dispatch', () => {
       provider: providerFor('1.0.1'),
       address: DEPLOYER,
       schema: ORG_DEPLOYER_SCHEMA.ACCESS_V2,
-    })).rejects.toThrow(/reports legacy-hats-v17.*Refusing to send/i);
+    })).rejects.toThrow(/unsupported ABI major 1/i);
   });
 });
 

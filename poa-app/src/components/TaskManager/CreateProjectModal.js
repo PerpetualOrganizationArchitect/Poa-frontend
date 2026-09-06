@@ -140,46 +140,6 @@ const CreateProjectModal = ({ isOpen, onClose, onCreateProject, roleHatIds = [],
   const [newManager, setNewManager] = useState('');
   const [isAddingManager, setIsAddingManager] = useState(false);
 
-  // Role-based permissions: sets of hatIds that have each permission
-  const [createRoles, setCreateRoles] = useState(new Set());
-  const [claimRoles, setClaimRoles] = useState(new Set());
-  const [reviewRoles, setReviewRoles] = useState(new Set());
-  const [assignRoles, setAssignRoles] = useState(new Set());
-
-  // Compute smart defaults when modal opens
-  useEffect(() => {
-    if (isOpen && roleHatIds.length > 0) {
-      const creatorSet = new Set(creatorHatIds.map(String));
-
-      // CREATE: roles in creatorHatIds (they can create projects, so they should create
-      // tasks). With no creatorHatIds indexed, pre-check every role rather than guessing
-      // by deploy order — role index carries no authority, and these boxes seed a real
-      // on-chain permission set. The admin can uncheck what they don't want.
-      let defaultCreate;
-      if (creatorSet.size > 0) {
-        defaultCreate = new Set(roleHatIds.filter(id => creatorSet.has(String(id))));
-      } else {
-        defaultCreate = new Set(roleHatIds);
-      }
-      // If still empty, give all roles create permission
-      if (defaultCreate.size === 0) defaultCreate = new Set(roleHatIds);
-
-      // CLAIM: all roles
-      const defaultClaim = new Set(roleHatIds);
-
-      // REVIEW: same as create (trusted roles review work)
-      const defaultReview = new Set(defaultCreate);
-
-      // ASSIGN: same as create
-      const defaultAssign = new Set(defaultCreate);
-
-      setCreateRoles(defaultCreate);
-      setClaimRoles(defaultClaim);
-      setReviewRoles(defaultReview);
-      setAssignRoles(defaultAssign);
-    }
-  }, [isOpen, roleHatIds, creatorHatIds]);
-
   const getRoleName = (hatId) => {
     return roleNames[hatId] || roleNames[String(hatId)] || `Role ${hatId.toString().slice(-6)}`;
   };
@@ -203,17 +163,7 @@ const CreateProjectModal = ({ isOpen, onClose, onCreateProject, roleHatIds = [],
     [globalPermissionSummary],
   );
 
-  const toggleRole = (hatId, setter) => {
-    setter(prev => {
-      const next = new Set(prev);
-      if (next.has(hatId)) {
-        next.delete(hatId);
-      } else {
-        next.add(hatId);
-      }
-      return next;
-    });
-  };
+
 
   // Supports both usernames and addresses
   const handleAddManager = async () => {
@@ -360,10 +310,10 @@ const CreateProjectModal = ({ isOpen, onClose, onCreateProject, roleHatIds = [],
         description: description.trim(),
         cap: capWei,
         managers: managers.map(m => m.address),
-        createHats: Array.from(createRoles).map(String),
-        claimHats: Array.from(claimRoles).map(String),
-        reviewHats: Array.from(reviewRoles).map(String),
-        assignHats: Array.from(assignRoles).map(String),
+        createHats: [],
+        claimHats: [],
+        reviewHats: [],
+        assignHats: [],
         bountyTokens: bountyTokenAddrs,
         bountyCaps: bountyCapsWei,
       });
@@ -382,12 +332,7 @@ const CreateProjectModal = ({ isOpen, onClose, onCreateProject, roleHatIds = [],
     }
   };
 
-  const permissionConfig = [
-    { label: 'Create Tasks', description: 'Create and manage tasks in this project', set: createRoles, setter: setCreateRoles, color: 'green' },
-    { label: 'Claim Tasks', description: 'Pick up and work on tasks', set: claimRoles, setter: setClaimRoles, color: 'blue' },
-    { label: 'Review Tasks', description: 'Approve or reject submitted work', set: reviewRoles, setter: setReviewRoles, color: 'orange' },
-    { label: 'Assign Tasks', description: 'Assign tasks to specific members', set: assignRoles, setter: setAssignRoles, color: 'purple' },
-  ];
+
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} size="lg" scrollBehavior="inside">
@@ -585,7 +530,7 @@ const CreateProjectModal = ({ isOpen, onClose, onCreateProject, roleHatIds = [],
                     <FormControl>
                       <HStack spacing={1} mb={2}>
                         <FormLabel mb={0}>Additional Managers</FormLabel>
-                        <Tooltip label="Add other users that can manage this project. Managers bypass all role permission checks." placement="top">
+                        <Tooltip label="Add other users that can manage this project. Managers can manage tasks. Budget edits still require budget permission." placement="top">
                           <InfoIcon color="gray.400" boxSize={3} />
                         </Tooltip>
                       </HStack>
@@ -624,46 +569,11 @@ const CreateProjectModal = ({ isOpen, onClose, onCreateProject, roleHatIds = [],
 
                     <Divider />
 
-                    {/* Role Permissions (per-project) — the primary, editable control.
-                        Kept first so it isn't buried under the org-wide reference. */}
-                    <Box>
-                      <HStack spacing={1} mb={3}>
-                        <Text fontWeight="medium">Role Permissions</Text>
-                        <Tooltip label="Choose which roles can perform each action in this project. Defaults are based on your org's configuration." placement="top">
-                          <InfoIcon color="gray.400" boxSize={3} />
-                        </Tooltip>
-                      </HStack>
-
-                      {roleHatIds.length > 0 ? (
-                        <VStack spacing={3} align="stretch">
-                          {permissionConfig.map(({ label, description: desc, set, setter, color }) => (
-                            <Box key={label} p={3} bg="gray.50" borderRadius="md" borderLeft="3px solid" borderLeftColor={`${color}.400`}>
-                              <Text fontSize="sm" fontWeight="600" color="gray.700" mb={0.5}>{label}</Text>
-                              <Text fontSize="xs" color="gray.500" mb={2}>{desc}</Text>
-                              <Wrap spacing={3}>
-                                {roleHatIds.map((hatId) => (
-                                  <WrapItem key={hatId}>
-                                    <Checkbox
-                                      size="sm"
-                                      colorScheme={color}
-                                      isChecked={set.has(hatId)}
-                                      onChange={() => toggleRole(hatId, setter)}
-                                    >
-                                      <Text fontSize="sm">{getRoleName(hatId)}</Text>
-                                    </Checkbox>
-                                  </WrapItem>
-                                ))}
-                              </Wrap>
-                            </Box>
-                          ))}
-                        </VStack>
-                      ) : (
-                        <Text fontSize="sm" color="gray.500">
-                          Organization roles are still loading...
-                        </Text>
-                      )}
-                    </Box>
-
+                    <Text fontSize="sm" color="gray.600">
+                      This project starts with your organization’s current task permissions.
+                      Change a role’s project permissions through a governance proposal after creating it.
+                      Project managers can manage tasks; editing budgets requires budget permission.
+                    </Text>
                     <Divider />
 
                     {/* Organization-wide defaults — compact, collapsed reference so it
@@ -684,7 +594,7 @@ const CreateProjectModal = ({ isOpen, onClose, onCreateProject, roleHatIds = [],
                           transition="transform 0.15s"
                         />
                         <Text fontSize="xs" fontWeight="medium">Organization-wide defaults</Text>
-                        <Tooltip label="Task permissions already granted to roles across the whole org. The per-project settings above override these for this project." placement="top">
+                        <Tooltip label="Current task permissions inherited from your organization. Project overrides are managed through governance." placement="top">
                           <InfoIcon boxSize={3} />
                         </Tooltip>
                       </HStack>
@@ -709,7 +619,7 @@ const CreateProjectModal = ({ isOpen, onClose, onCreateProject, roleHatIds = [],
                             </VStack>
                           ) : (
                             <Text fontSize="xs" color="gray.500">
-                              No org-wide task permissions are configured, so only this project&apos;s own role permissions (and its managers) grant task access.
+                              No organization-wide task permissions are configured. Project managers can manage tasks; a proposal can grant roles additional permissions.
                             </Text>
                           )}
                         </Box>

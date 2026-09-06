@@ -62,8 +62,12 @@ export function useAuthoritySubjects() {
   );
 
   const value = useMemo(
-    () => normalizeAuthoritySubjects(data?.membershipAuthorityContract?.subjects || []),
-    [data]
+    () => normalizeAuthoritySubjects(
+      authority.enabled && !error && data?.membershipAuthorityContract?.id === authority.address
+        ? data.membershipAuthorityContract.subjects || []
+        : []
+    ),
+    [data, authority.enabled, authority.address, error]
   );
 
   return {

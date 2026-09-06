@@ -768,9 +768,8 @@ export const SETTER_TEMPLATES = [
     description: 'Grant or revoke a role\'s permission to create new blended voting proposals',
     contract: 'hybridVoting',
     functionName: 'setCreatorHatAllowed',
-    // DEAD on access v2 and SILENT about it: `setCreatorHatAllowed` still succeeds and still emits
-    // the event the subgraph indexes, but HybridVoting.createProposal now gates on
-    // `authority.hasPerm(user, HV_CREATE)`. Use `edit-role-permissions` instead.
+    // Retired setter. HybridVoting.createProposal gates on authority HV_CREATE;
+    // keep this descriptor only to recognize and reject historical saved drafts.
     legacyOnly: true,
     inputs: [
       {
@@ -805,9 +804,8 @@ export const SETTER_TEMPLATES = [
     description: 'Grant or revoke a role\'s permission to vote in direct democracy',
     contract: 'directDemocracyVoting',
     functionName: 'setConfig',
-    // DEAD on access v2 and SILENT about it: HAT_ALLOWED (config key 3) still writes and still
-    // emits, but DirectDemocracyVoting now gates on `authority.hasPerm(user, DD_VOTE / DD_CREATE)`.
-    // Use `edit-role-permissions` instead.
+    // Retired key. Current DirectDemocracy grants live in authority DD_VOTE / DD_CREATE.
+    // Keep this descriptor only to recognize and reject historical saved drafts.
     legacyOnly: true,
     inputs: [
       {
@@ -1025,9 +1023,8 @@ export const SETTER_TEMPLATES = [
     description: 'Configure what a role can do within a specific project',
     contract: 'taskManager',
     functionName: 'setProjectRolePerm',
-    // DEAD on access v2 and SILENT about it: `setProjectRolePerm` still writes its own table and
-    // still emits, but TaskManager now reads `authority.hasPerm(user, TM_PERMS, bytes32(pid + 1))`.
-    // Per-project rows are edited through the authority; see BACKLOG.
+    // Retired setter. TaskManager reads authority TM_PERMS at bytes32(pid + 1).
+    // Keep this descriptor only to recognize and reject historical saved drafts.
     legacyOnly: true,
     inputs: [
       {
@@ -1326,13 +1323,13 @@ export const RAW_FUNCTIONS = {
       name: 'setConfig',
       signature: 'function setConfig(uint8 key, bytes calldata value)',
       params: [
-        { name: 'key', type: 'uint8', label: 'Config Key (0=THRESHOLD, 1=EXECUTOR, 2=TARGET_ALLOWED, 3=HAT_ALLOWED, 4=QUORUM)' },
+        { name: 'key', type: 'uint8', label: 'Config Key (0=THRESHOLD, 1=EXECUTOR, 2=TARGET_ALLOWED, 3=RETIRED, 4=QUORUM)' },
         { name: 'value', type: 'bytes', label: 'Encoded Value' }
       ],
       description: 'Set a configuration value',
       // Not legacyOnly — THRESHOLD and QUORUM are still read on v2. Only key 3 (HAT_ALLOWED) went
       // dead, and it is the one key someone reaching for Developer mode is most likely to want.
-      v2Note: 'Key 3 (HAT_ALLOWED) no longer does anything on this group — voting rights now come '
+      v2Note: 'Key 3 (HAT_ALLOWED) is retired and rejected — voting rights now come '
         + 'from Roles and permissions'
     },
     {
@@ -1359,7 +1356,7 @@ export const RAW_FUNCTIONS = {
       description: 'Set a configuration value',
       // CREATOR_HAT_ALLOWED (1) and ORGANIZER_HAT_ALLOWED (7) are still read on v2; ROLE_PERM (2)
       // is not — the task permission mask lives in the authority now.
-      v2Note: 'Key 2 (ROLE_PERM) no longer does anything on this group — task permissions now come '
+      v2Note: 'Key 2 (ROLE_PERM) is retired and rejected — task permissions now come '
         + 'from Roles and permissions'
     },
     {

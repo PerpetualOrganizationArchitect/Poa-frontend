@@ -26,8 +26,6 @@ import ExecutiveMenuModal from '@/components/profileHub/ExecutiveMenuModal';
 import PulseLoader from "@/components/shared/PulseLoader";
 import { useOrgStructure, useOrgTheme } from '@/hooks';
 import { useOrgName } from '@/hooks/useOrgName';
-import { useVouches } from '@/hooks/useVouches';
-import WelcomeClaimPage from '@/components/profileHub/WelcomeClaimPage';
 import { useAuth } from '@/context/AuthContext';
 import { useAuthoritySubjects, useMyMemberships } from '@/hooks/accessV2';
 import { buildV2ProfileView } from '@/lib/accessV2/profileBridge';
@@ -234,7 +232,6 @@ const UserprofileHub = () => {
     loading: orgLoading,
     error: orgError,
   } = useOrgStructure();
-  const legacyClaimableRoles = roles || [];
 
   // A router-bound Access v2 org no longer reads role truth from Hats. Join the live subject list
   // to this user's fold-mirror memberships so native roles, renamed roles, group-inherited
@@ -248,17 +245,6 @@ const UserprofileHub = () => {
     memberships: v2Memberships.rows,
     claimableMemberships: v2Memberships.claimable,
   }), [v2.roles, v2Memberships.rows, v2Memberships.claimable]);
-
-  // Vouching data
-  const rolesWithVouching = v2Live ? [] : (roles?.filter(r => r.vouchingEnabled) || []);
-  const legacyVouchAddress = v2Live || v2.authority.loading || v2.authority.error
-    ? null
-    : eligibilityModuleAddress;
-  const {
-    getVouchProgress,
-    pendingVouchRequests,
-    loading: legacyVouchesLoading,
-  } = useVouches(legacyVouchAddress, rolesWithVouching);
 
   // Modal states
   const [isSettingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -295,39 +281,16 @@ const UserprofileHub = () => {
     };
   }, [userData, graphUsername, userAddress]);
 
-  // Check if user has claimed any roles
   const userHatIds = useMemo(() => userData?.hatIds || [], [userData?.hatIds]);
-  const hasClaimedRole = v2Live ? v2Profile.hasClaimedRole : userHatIds.length > 0;
-
-  // Get user's actual roles for header display
-  const legacyUserRoles = useMemo(() => {
-    if (!userHatIds.length || !roles?.length) return [];
-    const normalizedUserHatIds = userHatIds.map((id) => normalizeHatId(id));
-    return roles.filter((role) => {
-      const normalizedRoleHatId = normalizeHatId(role.hatId);
-      return normalizedUserHatIds.includes(normalizedRoleHatId);
-    });
-  }, [userHatIds, roles]);
-
-  const profileRoles = v2Live ? v2Profile.roles : roles;
-  const profileUserHatIds = v2Live ? v2Profile.userRoleIds : userHatIds;
-  const userRoles = v2Live ? v2Profile.userRoles : legacyUserRoles;
-  const canApproveRequests = v2Live ? v2Profile.canApproveRequests : hasApproverRole;
-  const canRequestTokens = v2Live ? v2Profile.canRequestTokens : hasMemberRole;
-  const v2Error = v2.authority.error || (v2Live ? (v2.error || v2Memberships.error) : null);
-
-  // Check if there's role progression content to show
-  const showRoleProgression = useMemo(() => {
-    if (v2Live) {
-      return v2Profile.progressionItems.length > 0 || v2Profile.claimableRoles.length > 0;
-    }
-    return hasRoleProgressionContent(userAddress, userHatIds, roles, getVouchProgress);
-  }, [v2Live, v2Profile.progressionItems, v2Profile.claimableRoles, userAddress, userHatIds, roles, getVouchProgress]);
-
-  // Composite loading state
-  const isFullyLoaded = !orgLoading && !userDataLoading && !v2.authority.loading && orgName &&
-    (!v2Live || (!v2.loading && !v2Memberships.loading)) &&
-    (!legacyVouchAddress || !legacyVouchesLoading);
+  const hasClaimedRole = v2Profile.hasClaimedRole;
+  const profileRoles = v2Profile.roles;
+  const profileUserHatIds = v2Profile.userRoleIds;
+  const userRoles = v2Profile.userRoles;
+  const canApproveRequests = v2Profile.canApproveRequests;
+  const canRequestTokens = v2Profile.canRequestTokens;
+  const v2Error = v2.authority.error || v2.error || v2Memberships.error;
+  const showRoleProgression = v2Profile.progressionItems.length > 0 || v2Profile.claimableRoles.length > 0;
+  const isFullyLoaded = !orgLoading && !userDataLoading && !v2.authority.loading && orgName && !v2.loading && !v2Memberships.loading;
 
   const seoHead = (
     <SEOHead
@@ -412,23 +375,6 @@ const UserprofileHub = () => {
     );
   }
 
-  // Show welcome/claim page if user hasn't claimed any role yet
-  if (!v2Live && !hasClaimedRole && legacyClaimableRoles.length > 0) {
-    return (
-      <>
-        {seoHead}
-        <WelcomeClaimPage
-          orgName={orgName}
-          orgMetadata={orgMetadata}
-          claimableRoles={legacyClaimableRoles}
-          eligibilityModuleAddress={eligibilityModuleAddress}
-        />
-      </>
-    );
-  }
-
-  // Preserve the legacy onboarding path above: it historically remains usable when the broader
-  // user-data query is degraded, because role claiming has its own data source.
   if (error) {
     return (
       <>
@@ -497,10 +443,10 @@ const UserprofileHub = () => {
                 userAddress={userAddress}
                 userHatIds={profileUserHatIds}
                 roles={profileRoles}
-                getVouchProgress={getVouchProgress}
-                progressionItems={v2Live ? v2Profile.progressionItems : undefined}
-                claimableRoleItems={v2Live ? v2Profile.claimableRoles : undefined}
-                pendingVouchRequests={pendingVouchRequests}
+                getVouchProgress={undefined}
+                progressionItems={v2Profile.progressionItems}
+                claimableRoleItems={v2Profile.claimableRoles}
+                pendingVouchRequests={[]}
                 userDAO={userDAO}
               />
             ) : (

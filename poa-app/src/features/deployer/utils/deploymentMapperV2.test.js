@@ -197,7 +197,7 @@ describe('Kyoto DeploymentParams mapper', () => {
       calldata,
       orgDeployerSchema: ORG_DEPLOYER_SCHEMA.ACCESS_V2,
       expectedChainId: 100,
-    })).rejects.toThrow(/reports legacy-hats-v17.*Refusing to send/i);
+    })).rejects.toThrow(/unsupported ABI major 1/i);
     expect(wallet.estimateGas).not.toHaveBeenCalled();
     expect(wallet.sendTransaction).not.toHaveBeenCalled();
   });

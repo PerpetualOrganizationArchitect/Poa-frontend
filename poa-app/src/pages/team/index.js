@@ -23,19 +23,15 @@ import { useAccount } from 'wagmi';
 
 import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
 import { useAuth } from '@/context/AuthContext';
-import { useOrgStructure, useClaimRole, useVouches } from '@/hooks';
+import { useOrgStructure } from '@/hooks';
 import { useOrgName } from '@/hooks/useOrgName';
 import { useUserContext } from '@/context/UserContext';
 import { useVotingContext } from '@/context/VotingContext';
 import {
   OrgOverviewCard,
-  RoleHierarchyTree,
   PermissionsMatrix,
-  MembersSection,
   GovernanceConfigSection,
   DeveloperInfoSection,
-  VouchingSection,
-  RoleApplicationModal,
 } from '@/components/orgStructure';
 import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 // Access v2 renders only its status/v2 panels; this page retains legacy Hats surfaces until the
@@ -127,62 +123,6 @@ const OrgStructurePage = () => {
     }
     return notes;
   }, [v2Sections]);
-
-  // Role claiming and application functionality
-  const {
-    claimRole,
-    isClaimingHat,
-    isReady: claimReady,
-    applyForRole,
-    withdrawApplication,
-    checkApplicationStatuses,
-    hasApplied,
-    isApplyingForHat,
-    isWithdrawingFromHat,
-  } = useClaimRole(eligibilityModuleAddress);
-
-  // Vouching data for claim eligibility
-  const rolesWithVouching = roles?.filter(role => role.vouchingEnabled) || [];
-  const { getVouchProgress } = useVouches(eligibilityModuleAddress, rolesWithVouching);
-
-  // Default-eligible quick-join hats sponsor a role application's gas: the applicant
-  // is eligible for these (so the paymaster pays) even though they're not yet eligible
-  // for the vouch-gated hat they're applying for. See useClaimRole.applyForRole.
-  const quickJoinHatIds = useMemo(
-    () => (roles || []).filter((r) => r.isQuickJoinEligible).map((r) => r.hatId),
-    [roles],
-  );
-
-  // Application modal state
-  const [applicationModal, setApplicationModal] = useState({ isOpen: false, hatId: null, roleName: '' });
-
-  const handleOpenApplicationModal = useCallback((hatId) => {
-    const role = roles.find(r => r.hatId === hatId);
-    setApplicationModal({ isOpen: true, hatId, roleName: role?.name || 'Role' });
-  }, [roles]);
-
-  const handleCloseApplicationModal = useCallback(() => {
-    setApplicationModal({ isOpen: false, hatId: null, roleName: '' });
-  }, []);
-
-  const handleSubmitApplication = useCallback(async (applicationData) => {
-    if (!applicationModal.hatId) return;
-    handleCloseApplicationModal();
-    await applyForRole(applicationModal.hatId, applicationData, quickJoinHatIds);
-  }, [applicationModal.hatId, applyForRole, handleCloseApplicationModal, quickJoinHatIds]);
-
-  // Withdraw is gas-sponsored the same way as applying — see quickJoinHatIds above.
-  const handleWithdrawApplication = useCallback(
-    (hatId) => withdrawApplication(hatId, quickJoinHatIds),
-    [withdrawApplication, quickJoinHatIds],
-  );
-
-  // Refresh application statuses when roles data is available
-  useEffect(() => {
-    if (roles?.length && eligibilityModuleAddress && (userAddress || accountAddress)) {
-      checkApplicationStatuses();
-    }
-  }, [roles, eligibilityModuleAddress, userAddress, accountAddress, checkApplicationStatuses]);
 
   const seoHead = (
     <SEOHead
@@ -293,36 +233,6 @@ const OrgStructurePage = () => {
               `activeProposals` feeds the create-role wizard's id-prediction race warning. */}
           <AccessV2TeamSection />
 
-          {/* Role Hierarchy Section — legacy orgs only: on a live authority the v2 panel above
-              IS the roles surface, and this tree would re-render the retired hat entities
-              (raw bytes32 names, ghost roles) beside it. */}
-          {!v2Live && (
-            <Box as="section" data-tour="org-roles">
-              <Heading size="lg" color="warmGray.900" mb={4}>
-                Roles
-              </Heading>
-              <Text color="warmGray.600" mb={4}>
-                The organizational hierarchy defines who can do what within the organization
-              </Text>
-              <RoleHierarchyTree
-                roles={roles}
-                loading={loading}
-                userHatIds={userHatIds}
-                userAddress={userAddress}
-                getVouchProgress={getVouchProgress}
-                onClaimRole={claimRole}
-                isClaimingHat={isClaimingHat}
-                isConnected={isAuthenticated}
-                showClaimButtons={Boolean(eligibilityModuleAddress)}
-                hasApplied={hasApplied}
-                isApplyingForHat={isApplyingForHat}
-                isWithdrawingFromHat={isWithdrawingFromHat}
-                onApplyForRole={handleOpenApplicationModal}
-                onWithdrawApplication={handleWithdrawApplication}
-              />
-            </Box>
-          )}
-
           {/* Permissions Matrix Section — v2 orgs read the fold mirror via the legacy bridge.
               Only rows with DISTINCT permissions render; the notes explain everyone else. */}
           <Box as="section">
@@ -335,10 +245,10 @@ const OrgStructurePage = () => {
                 : "What each role can do across the organization's systems"}
             </Text>
             <PermissionsMatrix
-              roles={v2Sections ? v2Sections.matrixRoles : roles}
-              permissionsMatrix={v2Sections ? v2Sections.permissionsMatrix : permissionsMatrix}
-              permissionColumns={v2Sections ? v2Sections.permissionColumns : permissionColumns}
-              loading={v2Live ? v2.loading : loading}
+              roles={v2Sections?.matrixRoles || []}
+              permissionsMatrix={v2Sections?.permissionsMatrix || {}}
+              permissionColumns={v2Sections?.permissionColumns || []}
+              loading={v2.loading}
             />
             {matrixNotes.map((note) => (
               <Text key={note} fontSize="sm" color="warmGray.500" mt={2}>
@@ -356,36 +266,8 @@ const OrgStructurePage = () => {
             <Text color="warmGray.600" mb={4}>
               {v2Live ? 'The people behind the org — expand to meet everyone' : 'Members of the organization grouped by their roles'}
             </Text>
-            {v2Live ? (
-              <MembersSpotlight legacyMembersByRole={membersByRole} loading={loading} />
-            ) : (
-              <MembersSection
-                roles={roles}
-                membersByRole={membersByRole}
-                loading={loading}
-              />
-            )}
+            <MembersSpotlight legacyMembersByRole={membersByRole} loading={loading} />
           </Box>
-
-          {/* Vouching Section — legacy orgs only: v2 vouching lives in the role drawer and the
-              claimable panel, with per-subject quorums the legacy section cannot express. */}
-          {!v2Live && roles.some(role => role.vouchingEnabled) && (
-            <Box as="section">
-              <Heading size="lg" color="warmGray.900" mb={4}>
-                Member Vouching
-              </Heading>
-              <Text color="warmGray.600" mb={4}>
-                Vouch for new members seeking roles in the organization
-              </Text>
-              <VouchingSection
-                roles={roles}
-                eligibilityModuleAddress={eligibilityModuleAddress}
-                userHatIds={userHatIds}
-                userAddress={userAddress}
-                isConnected={isAuthenticated}
-              />
-            </Box>
-          )}
 
           {/* Governance Section */}
           <Box as="section">
@@ -409,12 +291,7 @@ const OrgStructurePage = () => {
         </VStack>
       </Box>
 
-      <RoleApplicationModal
-        isOpen={applicationModal.isOpen}
-        onClose={handleCloseApplicationModal}
-        onApply={handleSubmitApplication}
-        roleName={applicationModal.roleName}
-      />
+
     </Box>
     </>
   );

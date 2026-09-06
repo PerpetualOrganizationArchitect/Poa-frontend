@@ -208,8 +208,8 @@ const BrowserPage = () => {
     onOpen();
   };
 
-  const filteredOrganizations = perpetualOrganizations.filter(po => {
-    if (isHiddenOrg(po.id)) return false;
+  const listedOrganizations = perpetualOrganizations.filter(po => !isHiddenOrg(po.id));
+  const filteredOrganizations = listedOrganizations.filter(po => {
     const matchesSearch = po.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (po.aboutInfo?.description && po.aboutInfo.description.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesNetwork = networkFilter === "all" || po.networkName === networkFilter;
@@ -217,7 +217,7 @@ const BrowserPage = () => {
   });
 
   // Get unique network names for filter chips
-  const availableNetworks = [...new Set(perpetualOrganizations.map(po => po.networkName).filter(Boolean))];
+  const availableNetworks = [...new Set(listedOrganizations.map(po => po.networkName).filter(Boolean))];
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -532,8 +532,8 @@ const BrowserPage = () => {
                 flexWrap="wrap"
               >
                 {[
-                  { value: perpetualOrganizations.length, label: "Organizations", icon: FaBuilding, color: "amethyst.500" },
-                  { value: perpetualOrganizations.reduce((acc, po) => acc + (parseInt(po.totalMembers) || 0), 0), label: "Members", icon: FaUserFriends, color: "rose.500" },
+                  { value: listedOrganizations.length, label: "Organizations", icon: FaBuilding, color: "amethyst.500" },
+                  { value: listedOrganizations.reduce((acc, po) => acc + (parseInt(po.totalMembers) || 0), 0), label: "Members", icon: FaUserFriends, color: "rose.500" },
                   { value: "100%", label: "Community-owned", icon: FaShieldAlt, color: "coral.500" },
                 ].map((stat, i) => (
                   <Flex key={i} direction="column" align="center" px={[3, 5]}>

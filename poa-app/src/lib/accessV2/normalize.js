@@ -81,18 +81,27 @@ export function attachPerms(subject, rawPerms = []) {
  * @param {Array} holders - subjects with an attached `permGlobal`
  * @returns {{ value: string, sources: string[] }} sources = subjectIds that actually contribute
  */
-export function foldPermKey(key, holders = []) {
+export function foldPermKey(key, holders = [], ctx = null) {
   const orMask = foldTag(key) === FOLD_TAG.OR_MASK;
   let acc = 0n;
   const sources = [];
 
   for (const h of holders) {
     if (!h || typeof h.permGlobal !== 'function') continue;
-    const row = h.permGlobal(key);
+    const global = h.permGlobal(key);
+    const local = ctx && !isGlobalCtx(ctx)
+      ? (h.permRows || []).find(row => row.exists && String(row.permKey).toLowerCase() === String(key).toLowerCase() && String(row.ctx).toLowerCase() === String(ctx).toLowerCase())
+      : null;
+    // A present zero project row suppresses global permissions unless INHERIT_GLOBAL is set.
+    const row = local || global;
     if (!row || !row.exists) continue;
     let v;
     try {
       v = BigInt(row.value);
+      if (local?.inheritGlobal && global?.exists) {
+        const g = BigInt(global.value);
+        v = orMask ? v | g : (g !== 0n ? g : v);
+      }
     } catch {
       continue;
     }
@@ -138,9 +147,9 @@ export function foldGroupPerms(subjects = []) {
       canCreateVote: ddCreate.value !== '0' || hvCreate.value !== '0',
       taskMask: tm.value,
       /** Which subjects (self and/or groups) actually carry a key — the "why" for a badge. */
-      permSources: (key) => foldPermKey(key, holders).sources,
+      permSources: (key, ctx) => foldPermKey(key, holders, ctx).sources,
       /** The folded global value of any key, as a decimal string. */
-      permEffective: (key) => foldPermKey(key, holders).value,
+      permEffective: (key, ctx) => foldPermKey(key, holders, ctx).value,
       /** True when the permission comes from a group rather than the role itself. */
       permViaGroup: (key) => foldPermKey(key, holders).sources.some((id) => id !== s.subjectId),
     };

@@ -1,7 +1,8 @@
 //profileHubContext
 
 import React, { createContext, useContext, useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { NETWORKS } from '../config/networks';
+import { NETWORKS } from '@/config/networks';
+import { fetchSupportedOrganizations } from '@/util/orgDirectory';
 
 const ProfileHubContext = createContext();
 
@@ -16,55 +17,6 @@ export const useProfileHubContext = () => {
     }, [ctx]);
     return ctx;
 };
-
-/**
- * Raw GQL string for fetching all orgs.
- * Direct fetch() per-subgraph to query all chains in parallel.
- */
-const ALL_ORGS_QUERY = `
-  query FetchAllOrgs {
-    organizations(first: 100, orderBy: deployedAt, orderDirection: desc) {
-      id
-      name
-      metadataHash
-      deployedAt
-      metadata { description logo }
-      participationToken { id totalSupply }
-      quickJoin { id }
-      hybridVoting { id }
-      directDemocracyVoting { id }
-      taskManager { id }
-      educationHub { id }
-      users { id }
-    }
-  }
-`;
-
-/**
- * Fetches orgs from a single subgraph endpoint.
- * Returns [] on failure so one broken source doesn't block the page.
- */
-async function fetchOrgsFromSource(endpoint, networkConfig) {
-    try {
-        const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: ALL_ORGS_QUERY }),
-            // A hung gateway must degrade like a failed one ([] from the
-            // catch below) instead of stranding isLoading=true forever.
-            signal: AbortSignal.timeout(8000),
-        });
-        const json = await res.json();
-        const orgs = json?.data?.organizations || [];
-        return orgs.map(org => ({
-            ...org,
-            _network: networkConfig,
-        }));
-    } catch (err) {
-        console.warn(`[ProfileHub] Failed to fetch from ${networkConfig.name}:`, err.message);
-        return [];
-    }
-}
 
 export const ProfileHubProvider = ({ children }) => {
     const [allOrgs, setAllOrgs] = useState([]);
@@ -82,7 +34,10 @@ export const ProfileHubProvider = ({ children }) => {
         (async () => {
             const entries = Object.values(NETWORKS).filter(n => !n.isTestnet);
             const results = await Promise.all(
-                entries.map(net => fetchOrgsFromSource(net.subgraphUrl, net))
+                entries.map(net => fetchSupportedOrganizations(net.subgraphUrl).then(orgs => orgs.map(org => ({ ...org, _network: net }))).catch(error => {
+                    console.warn(`[ProfileHub] ${net.name} organization directory unavailable:`, error.message);
+                    return [];
+                }))
             );
             const merged = results.flat().sort((a, b) =>
                 Number(a.deployedAt || 0) - Number(b.deployedAt || 0)

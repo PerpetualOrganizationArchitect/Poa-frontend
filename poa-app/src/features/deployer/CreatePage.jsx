@@ -38,7 +38,6 @@ import {
   DeployerProvider,
   useDeployer,
   DeployerWizard,
-  mapStateToDeploymentParams,
   mapStateToAccessV2DeploymentParams,
   mapPaymasterConfig,
   getPaymasterFundingValue,
@@ -345,11 +344,7 @@ function DeployerPageContent() {
         }
       }
 
-      // VERSION is the explicit ABI route: major 1 selects the bundled current-v1
-      // Hats tuple and major 2 selects Kyoto's authority-native tuple. Detect
-      // before uploads or signing and fail closed on an unknown major. The exact
-      // read-only deploy simulation below also protects historic v1 proxies whose
-      // tuple changed without a VERSION bump.
+      // Verify authority-native deployment support before uploads or signing.
       const simRpcUrl = getNetworkByChainId(targetChainId)?.rpcUrl;
       if (!simRpcUrl) throw new Error(`No RPC URL is configured for deploy chain ${targetChainId}.`);
       const schemaProvider = new ethers.providers.JsonRpcProvider(simRpcUrl);
@@ -466,9 +461,7 @@ function DeployerPageContent() {
       // address, and the mapper uses this to drop a duplicate wearer from a role
       // that is already minted to the deployer. Passing undefined silently skips
       // that, and the same hat minted twice reverts the whole deploy.
-      const deployParams = orgDeployerSchema === ORG_DEPLOYER_SCHEMA.ACCESS_V2
-        ? mapStateToAccessV2DeploymentParams(stateWithResolvedRoles, deployerAddr, infrastructureAddresses)
-        : mapStateToDeploymentParams(stateWithResolvedRoles, deployerAddr, infrastructureAddresses);
+      const deployParams = mapStateToAccessV2DeploymentParams(stateWithResolvedRoles, deployerAddr, infrastructureAddresses);
 
       console.log('Deployment params:', deployParams);
 
@@ -643,9 +636,7 @@ function DeployerPageContent() {
         autoUpgrade: deployParams.autoUpgrade,
         // Legacy keeps its shipped name-derived bitmaps. Kyoto consumes the
         // wizard's exact permission matrix and validates Quick Join against `open`.
-        roleAssignments: orgDeployerSchema === ORG_DEPLOYER_SCHEMA.ACCESS_V2
-          ? deployParams.roleAssignments
-          : null,
+        roleAssignments: deployParams.roleAssignments,
         infrastructureAddresses,
         orgDeployerSchema,
         regSignatureData,

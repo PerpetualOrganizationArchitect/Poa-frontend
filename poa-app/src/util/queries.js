@@ -1,4 +1,5 @@
 import { gql } from '@apollo/client';
+import { ORGANIZATION_SUPPORT_FIELDS } from '@/lib/supportedOrganizations';
 
 // ============================================
 // POP SUBGRAPH QUERIES (Arbitrum + Gnosis)
@@ -131,6 +132,7 @@ export const FETCH_USER_ORGANIZATIONS = gql`
       totalTasksCompleted
       totalVotes
       organization {
+        ${ORGANIZATION_SUPPORT_FIELDS}
         id
         name
         metadataHash

@@ -74,9 +74,9 @@ describe('availableTemplates', () => {
     for (const dead of DEAD_ON_V2) expect(ids, dead).not.toContain(dead);
   });
 
-  it('still offers them on a legacy org — they work there', () => {
+  it('never reoffers retired setters while authority is unresolved', () => {
     const ids = idsFor({ authorityEnabled: false, contractAddresses: LEGACY_ADDRESSES });
-    for (const dead of DEAD_ON_V2) expect(ids, dead).toContain(dead);
+    for (const dead of DEAD_ON_V2) expect(ids, dead).not.toContain(dead);
   });
 
   it('offers the v2 replacement only on a v2 org', () => {
@@ -87,8 +87,8 @@ describe('availableTemplates', () => {
   });
 
   // The whole contract of useOrgAuthority: `enabled === false` renders exactly what shipped.
-  it('changes nothing else for a legacy org', () => {
-    const before = SETTER_TEMPLATES.filter((t) => !t.v2Only).map((t) => t.id);
+  it('drops retired actions even before authority readiness', () => {
+    const before = SETTER_TEMPLATES.filter((t) => !t.v2Only && !t.legacyOnly).map((t) => t.id);
     expect(idsFor({ authorityEnabled: false, contractAddresses: LEGACY_ADDRESSES })).toEqual(before);
   });
 
@@ -182,7 +182,7 @@ describe('deep links (OPEN_RIGHTS_TEMPLATE and ?propose=)', () => {
   it('getAvailableTemplateById hands back a clear null, never a dead template', () => {
     for (const id of Object.values(OPEN_RIGHTS_TEMPLATE)) {
       expect(getAvailableTemplateById(id, v2), id).toBeNull();
-      expect(getAvailableTemplateById(id, legacy)?.id, id).toBe(id);
+      expect(getAvailableTemplateById(id, legacy), id).toBeNull();
     }
   });
 
@@ -234,12 +234,12 @@ describe('availableRawFunctions', () => {
     expect(fns.taskManager.map((f) => f.name)).not.toContain('setProjectRolePerm');
   });
 
-  it('keeps them on a legacy org', () => {
+  it('never offers retired raw functions', () => {
     const fns = availableRawFunctions({ rawFunctions: RAW_FUNCTIONS, authorityEnabled: false });
-    expect(fns.hybridVoting.map((f) => f.name)).toContain('setCreatorHatAllowed');
-    expect(fns.taskManager.map((f) => f.name)).toContain('setProjectRolePerm');
+    expect(fns.hybridVoting.map((f) => f.name)).not.toContain('setCreatorHatAllowed');
+    expect(fns.taskManager.map((f) => f.name)).not.toContain('setProjectRolePerm');
     for (const [key, list] of Object.entries(RAW_FUNCTIONS)) {
-      expect(fns[key].map((f) => f.name), key).toEqual(list.map((f) => f.name));
+      expect(fns[key].map((f) => f.name), key).toEqual(list.filter(f => !f.legacyOnly).map((f) => f.name));
     }
   });
 
@@ -265,5 +265,22 @@ describe('availableRawFunctions', () => {
     availableRawFunctions({ rawFunctions: RAW_FUNCTIONS, authorityEnabled: true });
     expect(RAW_FUNCTIONS.taskManager.find((f) => f.name === 'setConfig').description)
       .toBe('Set a configuration value');
+  });
+});
+
+describe('retired raw config keys and restored drafts', () => {
+  it.each([
+    { setterContract: 'directDemocracyVoting', setterFunction: 'setConfig', setterParams: [3, '0x'] },
+    { setterContract: 'taskManager', setterFunction: 'setConfig', setterParams: ['2', '0x'] },
+    { setterContract: 'hybridVoting', setterFunction: 'setCreatorHatAllowed', setterParams: [] },
+    { setterContract: 'taskManager', setterFunction: 'setProjectRolePerm', setterParams: [] },
+  ])('rejects %j even when restored directly', async proposal => {
+    const { rawSetterUnavailableReason } = await import('@/lib/voting/setterAvailability');
+    expect(rawSetterUnavailableReason(proposal)).toMatch(/retired/);
+  });
+  it('keeps current config keys available', async () => {
+    const { rawSetterUnavailableReason } = await import('@/lib/voting/setterAvailability');
+    expect(rawSetterUnavailableReason({ setterContract: 'taskManager', setterFunction: 'setConfig', setterParams: [1, '0x'] })).toBeNull();
+    expect(rawSetterUnavailableReason({ setterContract: 'directDemocracyVoting', setterFunction: 'setConfig', setterParams: [4, '0x'] })).toBeNull();
   });
 });

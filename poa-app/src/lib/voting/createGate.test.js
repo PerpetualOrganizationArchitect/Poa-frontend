@@ -125,118 +125,13 @@ const v2Input = (over = {}) => ({
 
 // ── LEGACY PARITY ───────────────────────────────────────────────────────────────────────────────
 
-describe('foldCreateGate — legacy org (authorityEnabled: false)', () => {
-  it('reports the legacy source and never claims to be authority-gated', () => {
-    const g = foldCreateGate(legacyInput());
-    expect(g.source).toBe(CREATE_GATE_SOURCE.LEGACY);
-    expect(g.authorityGated).toBe(false);
-  });
-
-  it('fails OPEN to plain membership while the org query is in flight', () => {
-    const g = foldCreateGate(legacyInput({
-      legacyLoading: true,
-      hasMemberRole: true,
-      legacyBindingCreatorHatIds: ['10'],
-      legacyPollCreatorHatIds: ['10'],
-      userHatIds: ['999'], // wears none of them
-    }));
-    expect(g.canCreateProposal).toBe(true);
-    expect(g.canCreatePoll).toBe(true);
-    expect(g.creatorGateLoading).toBe(true);
-    expect(g.creatorGateSettled).toBe(false);
-  });
-
-  it('fails OPEN to plain membership when the creator set is empty', () => {
-    const g = foldCreateGate(legacyInput({ hasMemberRole: true }));
-    expect(g.canCreateProposal).toBe(true);
-    expect(g.canCreatePoll).toBe(true);
-    expect(g.canCreateAny).toBe(true);
-    // The hedge does NOT invent creator ids — copy has to see the empty set.
-    expect(g.bindingCreatorHatIds).toEqual([]);
-    expect(g.creatorGateSettled).toBe(true);
-  });
-
-  it('intersects the creator hats with the hats the viewer wears', () => {
-    const g = foldCreateGate(legacyInput({
-      hasMemberRole: true,
-      legacyBindingCreatorHatIds: ['10', '20'],
-      legacyPollCreatorHatIds: ['30'],
-      userHatIds: ['20'],
-    }));
-    expect(g.canCreateProposal).toBe(true);
-    expect(g.canCreatePoll).toBe(false);
-    expect(g.canCreateAny).toBe(true);
-  });
-
-  it('compares hat ids across hex / decimal representations', () => {
-    const g = foldCreateGate(legacyInput({
-      hasMemberRole: true,
-      legacyBindingCreatorHatIds: ['0x14'],
-      userHatIds: ['20'],
-      hasPolls: false,
-    }));
-    expect(g.canCreateProposal).toBe(true);
-  });
-
-  it('requires legacy membership even when the viewer wears a creator hat', () => {
-    const g = foldCreateGate(legacyInput({
-      hasMemberRole: false,
-      legacyBindingCreatorHatIds: ['10'],
-      userHatIds: ['10'],
-    }));
-    expect(g.canCreateProposal).toBe(false);
-    expect(g.isMember).toBe(false);
-  });
-
-  it('is false for a contract the org never deployed, whatever the hats say', () => {
-    const g = foldCreateGate(legacyInput({
-      hasMemberRole: true,
-      hasHybrid: false,
-      legacyBindingCreatorHatIds: ['10'],
-      userHatIds: ['10'],
-    }));
-    expect(g.canCreateProposal).toBe(false);
-    expect(g.hasBinding).toBe(false);
-    expect(g.canCreatePoll).toBe(true);
-  });
-
-  it('returns the creator arrays verbatim and mirrors the org read failure onto both tracks', () => {
-    const binding = ['10'];
-    const poll = ['20'];
-    const g = foldCreateGate(legacyInput({
-      legacyBindingCreatorHatIds: binding,
-      legacyPollCreatorHatIds: poll,
-      legacyReadFailed: true,
-    }));
-    expect(g.bindingCreatorHatIds).toBe(binding);
-    expect(g.pollCreatorHatIds).toBe(poll);
-    expect(g.bindingReadFailed).toBe(true);
-    expect(g.pollReadFailed).toBe(true);
-  });
-
-  it('IGNORES every v2 input — the feature gate is the whole contract of useOrgAuthority', () => {
-    const subjects = execsCanOpenBinding();
-    const withV2 = foldCreateGate(legacyInput({
-      hasMemberRole: true,
-      legacyBindingCreatorHatIds: ['10'],
-      legacyPollCreatorHatIds: ['10'],
-      userHatIds: ['10'],
-      subjects,
-      mySubjectIds: [MEMBERS_ID],
-      v2Loading: true,
-      v2ReadFailed: true,
-    }));
-    const withoutV2 = foldCreateGate(legacyInput({
-      hasMemberRole: true,
-      legacyBindingCreatorHatIds: ['10'],
-      legacyPollCreatorHatIds: ['10'],
-      userHatIds: ['10'],
-    }));
-    expect(withV2).toEqual(withoutV2);
+describe('foldCreateGate — retired or unverified authority', () => {
+  it('never restores creator access from legacy role tables', () => {
+    expect(foldCreateGate(legacyInput({ hasMemberRole: true, userHatIds: [EXECS_ID], legacyBindingCreatorHatIds: [EXECS_ID] }))).toMatchObject({
+      canCreatePoll: false, canCreateProposal: false, canCreateAny: false, isMember: false,
+    });
   });
 });
-
-// ── ACCESS V2 ───────────────────────────────────────────────────────────────────────────────────
 
 describe('foldCreateGate — access v2 org (authorityEnabled: true)', () => {
   it('grants a viewer who is an active member of a subject carrying HV_CREATE', () => {
@@ -311,15 +206,15 @@ describe('foldCreateGate — access v2 org (authorityEnabled: true)', () => {
     expect(g.pollCreatorHatIds).toEqual([STEWARDS_ID]);
   });
 
-  it('fails OPEN to plain membership while the v2 reads are in flight', () => {
+  it('fails closed while the v2 reads are in flight', () => {
     const g = foldCreateGate(v2Input({
       subjects: execsCanOpenBinding(),
       mySubjectIds: [],
       hasMemberRole: true,
       v2Loading: true,
     }));
-    expect(g.canCreateProposal).toBe(true);
-    expect(g.canCreatePoll).toBe(true);
+    expect(g.canCreateProposal).toBe(false);
+    expect(g.canCreatePoll).toBe(false);
     expect(g.creatorGateLoading).toBe(true);
     expect(g.creatorGateSettled).toBe(false);
     // The hedge must never leak into copy — an unsettled read describes nothing.
@@ -327,13 +222,13 @@ describe('foldCreateGate — access v2 org (authorityEnabled: true)', () => {
     expect(g.pollCreatorSubjectIds).toEqual([]);
   });
 
-  it('fails OPEN when the subjects read answered with nothing at all', () => {
+  it('fails closed when the subjects read answered with nothing at all', () => {
     const g = foldCreateGate(v2Input({ subjects: [], hasMemberRole: true }));
-    expect(g.canCreateProposal).toBe(true);
+    expect(g.canCreateProposal).toBe(false);
     expect(g.creatorGateSettled).toBe(false);
   });
 
-  it('locks nobody out but claims nothing when the read fails', () => {
+  it('denies creation when the read fails', () => {
     const g = foldCreateGate(v2Input({
       subjects: [],
       hasMemberRole: true,
@@ -341,11 +236,11 @@ describe('foldCreateGate — access v2 org (authorityEnabled: true)', () => {
     }));
     expect(g.bindingReadFailed).toBe(true);
     expect(g.pollReadFailed).toBe(true);
-    expect(g.canCreateAny).toBe(true);
+    expect(g.canCreateAny).toBe(false);
     expect(g.creatorGateSettled).toBe(false);
   });
 
-  it('does not lock out a real creator when only the membership read failed', () => {
+  it('denies creation when only the membership read failed', () => {
     // Subjects answered, the per-user memberships query errored (429): `mine` is empty for a
     // reason that has nothing to do with the member. Hedge open, and say the gate is unsettled.
     const g = foldCreateGate(v2Input({
@@ -354,7 +249,7 @@ describe('foldCreateGate — access v2 org (authorityEnabled: true)', () => {
       hasMemberRole: true,
       v2ReadFailed: true,
     }));
-    expect(g.canCreateProposal).toBe(true);
+    expect(g.canCreateProposal).toBe(false);
     expect(g.creatorGateSettled).toBe(false);
     expect(g.bindingReadFailed).toBe(true);
   });

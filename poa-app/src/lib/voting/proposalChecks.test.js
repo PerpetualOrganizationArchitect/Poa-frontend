@@ -518,8 +518,8 @@ describe('configError(transferFunds, ctx)', () => {
 describe('configError(setter) on an access-v2 org', () => {
   it('refuses a legacy-only template once the authority is live, with the member-facing reason', () => {
     const p = withType('setter', { setterTemplate: 'allow-voter-dd', setterValues: { role: '1', hatType: '0', allowed: 'Grant' } });
-    expect(configError(p)).toBeNull();
-    expect(configError(p, { accessV2: { enabled: false } })).toBeNull();
+    expect(configError(p)).toMatch(/no longer/);
+    expect(configError(p, { accessV2: { enabled: false } })).toMatch(/no longer/);
     expect(configError(p, { accessV2: { enabled: true } })).toMatch(/no longer how this group works/);
   });
 

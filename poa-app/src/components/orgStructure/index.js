@@ -11,7 +11,6 @@ export { GovernanceConfigSection } from './GovernanceConfigSection';
 export { DeveloperInfoSection } from './DeveloperInfoSection';
 
 // Vouching components
-export { VouchingSection } from './VouchingSection';
 export { VouchRequestCard } from './VouchRequestCard';
 export { VouchProgressBar } from './VouchProgressBar';
 export { VouchForNewMember } from './VouchForNewMember';

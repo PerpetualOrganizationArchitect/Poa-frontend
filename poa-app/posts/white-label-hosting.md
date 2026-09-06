@@ -1,71 +1,45 @@
-# White-label hosting
+---
+title: "Custom domains and independent hosting with Poa"
+description: "Use a custom domain or host the open-source Poa frontend yourself. Understand what changes, what stays shared, and how domain setup works today."
+date: '2026-09-06'
+updated: '2026-09-06'
+category: 'Infrastructure'
+---
 
-You can run a Poa organization on your own domain. Members visit `yourorg.example.com` instead of `poa.box/explore/yourorg`. They see your branding instead of Poa's. They never necessarily realize they are using the Poa platform underneath. The underlying organization is exactly the same. Same governance. Same treasury. Same members. The front door is just yours.
+To put your organization at an address you control, configure a custom domain. To change the interface and manage its release schedule, host your own build of Poa’s open-source frontend.
 
-This is the right setup for organizations that want a distinct public identity. A worker co-op with its own customer-facing brand. A student club with a campus subdomain. A foundation that wants to look like a foundation. For everyone else, the default `poa.box` hosting is simpler and fine.
+Both options require technical setup. Custom domains are configured manually with the deployment; they are not a field members can fill in through organization settings.
 
-## How it works at a high level
+## A custom domain for the same organization
 
-You point a DNS record (a CNAME or an A record, depending on your host) at Poa's hosting infrastructure. We map that hostname to your organization's slug. When members visit your domain, they get the Poa app shell but pre-loaded with your organization's identity. They are on your org's home page from the moment the page loads. Your logo. Your description. Your members. Your proposals.
+A configured domain can open the app with your organization selected. Its members, decisions, ownership records, and funds remain attached to the same underlying organization.
 
-Sign-in still works the same way (passkey or wallet). Cross-org features (the global explore directory, account-level settings) are reachable from your domain. You can also hide them from the nav if you want a more focused experience.
+The current frontend includes a host mapping for Kansas Blockchain. The mechanism maps a hostname to the organization's current name. The deployment maintains that mapping.
 
-## A worked example: a worker co-op with its own brand
+A custom domain does not automatically replace every brand element or create a separate private copy of the records. Additional visual changes require frontend work.
 
-Bread & Roses Co-op already has a website at `breadandroses.coop` that advertises their delivery service. They want their member portal to live on the same domain. `members.breadandroses.coop`. So their workers do not have to remember a separate URL.
+## What setup involves
 
-1. They add a CNAME record for `members.breadandroses.coop` pointing at our hosting.
-2. They register the mapping in their org's settings: `members.breadandroses.coop` to `bread-and-roses` (their org's slug).
-3. The first time they visit `members.breadandroses.coop`, the page loads as the Bread & Roses Co-op home. Their workers sign in with passkey and start using the platform.
-4. The "Poa" branding is replaced by their own (logo, theme colors, footer text). We still attribute the platform in the footer as required.
+1. Create the organization and confirm its exact current name.
+2. Choose a domain you control and arrange its hosting or proxy configuration.
+3. Add the hostname-to-organization mapping in the frontend deployment.
+4. Configure and verify sign-in for the domain.
+5. Test the organization's home, member navigation, and key actions on the new address.
 
-What did not change: the organization is still the same organization underneath. Same governance. Same treasury. Same audit trail in the [protocol dashboard](/docs/protocol). They are just renting the front door.
+The existing setup uses a Cloudflare Worker to proxy the frontend and direct the root to the organization's home. Technical maintainers can find the implementation and deployment notes in the [frontend repository](https://github.com/poa-box/Poa-frontend).
 
-## What is customizable vs. what is not
+If your organization changes its name, update the host mapping and any name aliases used by existing links. The domain lookup currently uses an exact name match.
 
-**Customizable per white-label deployment:**
+## Hosting independently
 
-- Domain
-- Brand name displayed in navigation and headers
-- Logo
-- Default theme (within the available palette)
-- Which top-level pages appear in the nav
-- Default landing route (most go straight to the org home. Some go to a custom marketing page.)
+The frontend is open source under AGPL-3.0. You can run your own deployment in accordance with that license, configure its network connections, and keep using the same organization contracts.
 
-**Not customizable** (and we will not change this on request):
+The app builds as a static export. The repository includes its build instructions and the worker used for Poa's own hosting. An independent deployment still needs working network endpoints, indexed data, access to referenced content, and any services required by the features you use.
 
-- The underlying protocol the org is built on. White-label means brand, not fork.
-- Removing the small "Powered by Poa" attribution in the footer.
-- Bypassing security review for custom JavaScript. We do not run customer JS on the platform domain.
+A proxy follows upstream interface updates. An independently hosted build makes that release schedule yours to manage, so you can test a change against your group's workflow before adopting it. Choose a maintainer and document the services the deployment depends on.
 
-## Setting it up
+## Make the address easy to trust
 
-White-label is currently set up via direct configuration with the Poa team. We want to verify the org has good standing. We want the right contact information. We want to do a security review on any non-standard requests. The flow:
+Tell members which domain to use. Follow an invitation link and a task link as a returning member would, and check that each opens the right organization. Decide which public URL search engines should treat as canonical; inspect the deployed page metadata rather than assuming a custom domain changes it automatically.
 
-1. Ping us via the contact path in the protocol dashboard, or reach out through the [Poa Discord](https://discord.gg/9SD6u4QjTt).
-2. Confirm your org's slug and the domain you want to use.
-3. Add the DNS record we provide.
-4. We register the mapping. Verification happens automatically on the next DNS resolution.
-5. Test on the new domain. If you want any branding overrides, send them via the same contact thread.
-
-For a worked example with all the Cloudflare clicks documented, see [`docs/kubi-dao-setup.md`](https://github.com/poa-box/Poa-frontend/blob/main/docs/kubi-dao-setup.md). The runbook we wrote for `dao.kublockchain.com`. Self-serve white-label setup is on the roadmap. In the meantime, the manual path is short.
-
-## How it works under the hood
-
-Mechanics:
-
-- **Host to org-slug mapping** is held in `poa-app/src/config/hostDefaultOrg.js` in the [Poa-frontend](https://github.com/poa-box/Poa-frontend) repo. When the app boots, it checks `window.location.host` against the configured mapping. If there is a match, the app is initialized in "single-org" mode for that slug.
-- **Edge proxying via Cloudflare Worker.** Your custom domain points at a Cloudflare Worker that reverse-proxies to `https://poa.box` and rewrites the root path to your org's home (so visitors do not see a brief "exploring all orgs" flash on the first paint). A canonical worker template, with all the Cloudflare clicks documented, is in [`docs/kubi-dao-setup.md`](https://github.com/poa-box/Poa-frontend/blob/main/docs/kubi-dao-setup.md). Poa's own production worker (the one fronting `poa.box` itself) is in [`cloudflare-worker/worker.mjs`](https://github.com/poa-box/Poa-frontend/blob/main/cloudflare-worker/worker.mjs).
-- **WebAuthn related origins.** Passkeys work across your custom domain because `poa.box` registers your hostname as a WebAuthn related origin. This is what lets a passkey created on one domain authenticate on another within the configured allowlist.
-- **No data isolation difference.** A white-label org's data is the same on-chain data as a non-white-label org. Anyone visiting `poa.box/explore/bread-and-roses` directly would see the same org. Just inside Poa's main shell.
-
-## Caveats
-
-- **SSL certificate.** Your DNS must support modern TLS. We handle certificate provisioning via the underlying CDN once the DNS is set up.
-- **Search engine visibility.** Both URLs (your white-label and the canonical `poa.box/explore/yourorg`) resolve. We set a canonical URL on the page so search engines do not see this as duplicate content. If you care strongly about SEO on your own domain, talk to us about the canonical strategy that fits your case.
-- **Member confusion.** Your members might still get sign-in links pointing at `poa.box` from external integrations (Discord bots, email). Most of these we can configure to use your white-label domain instead. Worth checking after setup.
-
-## Related reading
-
-- [Deployment wizard](/docs/deployment-wizard). The org itself is set up here. White-label is a layer on top.
-- [Protocol dashboard](/docs/protocol). How to verify your white-label org is mapped correctly
+Once the address works, use [your first week](/docs/first-week) to check the experience you are inviting members into. [Why decentralization matters](/docs/why-decentralization) explains how independent access fits the underlying organization.

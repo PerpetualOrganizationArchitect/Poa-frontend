@@ -1,34 +1,43 @@
-# How to Join a Perpetual Organization
+---
+title: "Join an organization"
+description: "Find a group and get involved on Poa. Follow its joining steps, pick a first task, explore learning modules, and help choose what happens next."
+date: '2026-09-06'
+updated: '2026-09-06'
+category: "Get started"
+order: 30
+---
 
-Joining a Perpetual Organization (PO) through the Poa platform offers a seamless gateway into the world of worker-owned and community-driven initiatives. Here’s a comprehensive guide to get you started on your journey.
+# Join an organization
 
-### **Choose Your Sign-in Method**
-To join a PO, you need a digital identity. Poa provides two convenient options:
+A group's public pages can help you decide whether you want to take part. Browse its work and decisions, check what its roles allow, and follow the joining path for the one that fits.
 
-1. **Magic Link**: For a hassle-free sign-in experience, Poa supports Magic Link, an email-based authentication that simplifies access without compromising security. This option does not require handling private keys directly.
-   
-2. **Use Your Own Wallet**: If you prefer full control, connect using a blockchain-compatible wallet like MetaMask or Trust Wallet. This method allows you to manage transactions and interact directly with blockchain features.
+Open an invitation link or [explore organizations](/explore).
 
+## Take a look around
 
-### **Ensure You’re on the Correct Blockchain Network**
-Poa’s Perpetual Organizations operate on specific blockchain networks. Make sure your wallet is set to the correct network, such as Ethereum or Polygon, to ensure seamless interactions. Poa will prompt you to chnage netowrks if needed. 
+Look for work or activities that interest you. A reading group might be choosing its next paper; a software collective might need someone to test a release. The description and recent decisions can tell you what the group spends its time on.
 
-### **Acquire Necessary Tokens**
-Participation in some POs on Poa may require holding certain tokens for gas fees. Some POs are set up to pay gas fees for you. Acquire these tokens through exchanges or direct transactions as needed.
+Check the joining rules for the role you want, what it lets you do, and where it gives you a vote. A reviewer role may have different requirements from ordinary membership.
 
-## Joining the Organization
+## Follow the joining steps
 
-Once your sign-in method is established and you have the necessary tokens:
-   
-1. **Connect Your Wallet or Use Magic Link**: Depending on your chosen method, connect your wallet to the platform or sign in using your Magic Link.
+Choose **Create Account**, enter a username, and follow your device's fingerprint, face, or PIN prompt. If you already have an account, use **Sign In** or **Connect Wallet**. Creating an account and qualifying for a role are separate steps; follow the path shown for your chosen role:
 
-3. **Click ‘Join’**: Select the ‘Join’ button associated with the PO of your choice, follow the prompts to confirm your membership, and make sure to confirm the wallet transaction to mint your membership NFT
+- **Open membership:** select Join and confirm.
+- **Vouched membership:** choose the role, provide the requested details, and share your application or vouch link with eligible members. Accept the role when its requirements are met.
+- **Invitation:** review the offered role and accept it when available. Some invitations have a review period.
+- **Other entry rules:** follow the requirements shown, such as an enabled email invitation.
 
-## Browsing Perpetual Organizations
+Check your profile to confirm the role is active. Submitting an application or receiving a vouch may leave an acceptance step to complete.
 
-### **Explore Options on Poa**
-Poa lists various Perpetual Organizations, allowing you to explore different POs by mission, size, and governance structure. Detailed information about each organization’s goals and membership requirements is available to aid your decision.
+If you are waiting, look for the next action or countdown. The group may need someone to respond, another vouch, or an available seat. An organizer can help identify what remains.
 
-## Conclusion
+## Pick something you can do
 
-Joining a Perpetual Organization on Poa is streamlined and user-friendly, thanks to flexible sign-in options and comprehensive support. By setting up your digital identity, ensuring network compatibility, and understanding the membership dynamics, you can contribute to a sustainable, decentralized future.
+Introduce yourself wherever the group talks. Say what caught your interest or what you would like to help with. If the organization offers [learning modules](/docs/learn-and-earn), browse them for an introduction. Then choose a [task](/docs/task-manager) with an outcome you can deliver.
+
+Before taking it, read the reward, deadline, and review requirements. A first task might be checking the links in a reading list or trying a project's installation instructions.
+
+When approved and completed, a task awards its configured reward. Ownership units can give you voting weight and a share in approved distributions under the group's rules. A direct payment needs a funded bounty; check what the task offers.
+
+Tasks are one way to participate. You can also suggest a discussion topic, propose useful work through the group's usual channels, or vote where your role allows.

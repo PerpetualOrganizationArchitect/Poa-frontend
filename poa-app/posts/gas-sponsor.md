@@ -1,60 +1,48 @@
-# Gas sponsorship and the solidarity fund
+---
+title: "Network fee sponsorship and the shared fund"
+description: "Learn how organization fee balances and the shared solidarity fund support participation in Poa, and what to check when sponsorship is unavailable."
+date: '2026-09-06'
+updated: '2026-09-06'
+category: 'Infrastructure'
+---
 
-When a member of your organization votes on a proposal, claims a task, or joins for the first time, those actions cost a tiny amount in network fees. Typically fractions of a cent. Most communities do not want their members worrying about that, especially since most members will not be carrying anything to pay it with. So by default, Poa pays.
+Your organization can maintain a fee balance to cover eligible network actions, such as supported votes or task submissions. Shared funding can also help eligible organizations get started. Poa calls that shared pool the **solidarity fund**.
 
-The mechanism is the solidarity fund. A shared pool of resources covers transaction costs on every supported chain. Most organizations opt in automatically during setup, get sponsorship for free, and never think about it again. This doc is for the times you do need to think about it.
+Before members rely on sponsorship, check which actions and account routes it covers, whether funding is available, and who will replenish your organization’s balance.
 
-## What sponsorship covers, and what it doesn't
+## What the fund pays for
 
-Sponsorship covers the user-facing transactions members initiate inside an organization. That includes:
+Network fees pay for recording actions on the underlying network. Sponsorship can cover those fees for supported actions and account routes, subject to the deployed configuration and available funds.
 
-- Joining an organization
-- Voting on proposals
-- Claiming, submitting, and getting paid for tasks
-- Completing learn-and-earn modules
-- Triggering small treasury operations like accepting an approved distribution
+This is separate from paying people for work. A sponsored task approval still needs its own funding if the task promises a payment. The shared fund does not supply your organization's task budget or revenue distributions.
 
-It does not cover the transaction that originally deploys an organization (that one is funded once by whoever creates the org, since it is a much larger operation). It also does not cover treasury *outflows*. Treasury spending requires its own community vote, and the gas to execute the resulting transfer is paid from the treasury itself.
+Sponsorship is also different from an ordinary wallet transaction. The protocol dashboard's sponsored usage figures exclude fees that people pay directly from their own wallets.
 
-For an org that is actively using sponsorship, the practical experience is straightforward. Members never see a "gas fee" prompt. Voting is free. Claiming work is free. Joining is free.
+## Organization balances and shared support
 
-## How the solidarity fund stays solvent
+The [protocol dashboard](/protocol) shows organization fee deposits and spending aggregated by network. Its solidarity section shows the shared balance, fees collected, distribution status, grace-period settings, and recent fund events. Sponsorship settings also include limits for account creation and organization deployment where enabled.
 
-The fund is replenished from a few sources:
+These are related sources of support, with their own rules. A positive shared balance does not mean every action is eligible or every organization can spend freely. Available balances, per-action limits, grace allowances, and whether distribution is paused all matter.
 
-- **Protocol-level contributions.** Poa contributes to the fund as the platform operator.
-- **Org-level top-ups.** Organizations that opt into sponsorship contribute a configurable amount during deployment, which seeds their portion of the fund.
-- **Voluntary deposits.** Anyone (a generous member, a sponsor, a foundation) can top up the fund directly.
+A configurable fee on eligible sponsored operations replenishes the shared fund. The protocol source also describes startup grace allowances and deposit-based matching, subject to funding and pause settings. Check the deployed version for the policy that applies to your organization. [Fee accounting](https://github.com/poa-box/POP/blob/main/src/libs/PaymasterFinanceLib.sol) and [support allowances](https://github.com/poa-box/POP/blob/main/src/libs/PaymasterGraceLib.sol) are available for independent inspection.
 
-All of this is visible on the [protocol dashboard](/docs/protocol) in the Solidarity fund section. You can see the current balance, recent inflows and outflows, and the sponsorship success rate at a glance.
+## A possible direction for shared support
 
-## When sponsorship isn't available
+A future model could let organizations vouch for one another, with their contributions to shared fees informing support. That is a design direction, not a funding control exposed in the current frontend. Plan around the available balances, fee accounting, and allocation rules described above.
 
-If the fund is depleted on a given chain, or if a specific transaction can not be sponsored for any reason, the system falls back to self-funded. The member pays the network fee themselves out of their own balance, like a regular wallet transaction. This is the exception, not the default. Most orgs running healthy sponsorship never hit the fallback. But it is the right fallback to have. Even if Poa as a company shut down, your organization still functions. Members just pay their own gas.
+[Member vouching](/docs/vouching-and-trust) serves a separate purpose: helping people join a group. A personal endorsement does not grant an allocation from the solidarity fund.
 
-You can also configure a per-org override. Some orgs want to always self-fund (perhaps they are large enough to handle it from their own treasury), and that is a one-time setting during [deployment](/docs/deployment-wizard).
+## Check the member experience
 
-## A worked example
+1. Check your organization's network and fee arrangements.
+2. Review the shared fund status and sponsorship limits on the protocol dashboard.
+3. Try the intended member action with the intended account route and inspect the fee estimate.
+4. Explain who is responsible for replenishing the organization's fee balance.
 
-The Computer Science Co-op deployed two months ago with sponsorship turned on. In those two months:
+If sponsorship is unavailable, read the transaction message before retrying. As a member, share that message with the person managing the fee balance so they can identify what needs attention. Depending on the account route, you may need to add funds or use an available self-funded path. Do not assume every failed sponsorship attempt will automatically switch payment methods.
 
-- 47 members joined (47 sponsored transactions)
-- 312 votes cast across 19 proposals (312 sponsored transactions)
-- 84 task claims, with 78 approvals minting participation tokens (162 sponsored transactions)
+## For developers
 
-Total: 521 sponsored UserOps. At average gas costs on the org's chain (Gnosis), that is a few dollars of total protocol expense. Members never saw a fee prompt for any of it.
+The paymaster is the contract system that handles supported sponsored operations. The app reads its balances and indexed activity through the protocol data layer. For exact eligibility, fee accounting, and allocation rules, inspect the deployed version and the [protocol source](https://github.com/poa-box/POP).
 
-If you want to see your own org's sponsorship draw, head to `/protocol`, find your org's chain in the Gas usage section, and you will see the running total.
-
-## How it works under the hood
-
-- **The fee is paid for the member before the action even runs.** When a member clicks "Vote" or "Claim," the system checks whether the action is one the shared fund covers and whether the fund has enough left. If yes, the fund pays the network fee on the member's behalf. The member never sees a wallet popup asking for gas.
-- **Each kind of action is approved or refused on its own.** Joining is sponsored. Voting is sponsored. Claiming a task is sponsored. Spending from the treasury is not. That one comes out of the treasury itself, which the community already voted to approve.
-- **If the fund cannot pay, the member pays.** This almost never happens for active orgs. But it is the safe fallback. Even if every shared fund went dry tomorrow, every org would keep working. Members would just see a small network fee on each action.
-- **Open source and verifiable.** The sponsorship code is at [poa-box/POP](https://github.com/poa-box/POP) under AGPL-3.0. The detailed design is in [`docs/PAYMASTER_HUB.md`](https://github.com/poa-box/POP/blob/main/docs/PAYMASTER_HUB.md). The current balance and recent activity are on the [protocol dashboard](/docs/protocol).
-
-## Related reading
-
-- [Protocol dashboard](/docs/protocol). Where to check sponsorship health
-- [Account abstraction](/docs/account-abstraction). The ERC-4337 mechanics that make this possible
-- [Deployment wizard](/docs/deployment-wizard). Where you turn sponsorship on for your org
+The [protocol dashboard guide](/docs/protocol) explains how to read the funding totals and their limits. Include this check when preparing [your organization’s first week](/docs/first-week).

@@ -1,3 +1,5 @@
+import { getDocsRedirect } from '../poa-app/src/lib/docs.mjs';
+
 const PINATA_GATEWAY = 'https://ipfs.poa.earth';
 
 // White-label hosts whose root ("/") should land directly on the org home page
@@ -35,6 +37,14 @@ export default {
     if (url.pathname === '/' && WHITE_LABEL_HOSTS.has(url.hostname)) {
       url.pathname = '/home/';
       return Response.redirect(url.toString(), 302);
+    }
+
+    // Documentation migrations happen before the IPFS fetch. The exported
+    // site also includes a noindex fallback for gateways without this worker.
+    const docsRedirect = getDocsRedirect(url.pathname);
+    if (docsRedirect) {
+      url.pathname = docsRedirect;
+      return Response.redirect(url.toString(), 301);
     }
 
     // Get CID from environment variable (set by CI/CD)

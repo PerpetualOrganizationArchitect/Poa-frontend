@@ -67,22 +67,22 @@ const SideBar = () => {
             </AccordionButton>
             <AccordionPanel pb={4} pl={6}>
               <VStack align="flex-start" width="100%" spacing={3}>
-                <Link href={`/docs/perpetualOrganization`} passHref>
+                <Link href={`/docs/what-is-poa`} passHref>
                   <ChakraLink 
                     as="span" 
                     display="block" 
                     width="100%" 
                     p={2} 
                     borderRadius="md"
-                    bg={currentPath === '/docs/perpetualOrganization' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'}
-                    color={currentPath === '/docs/perpetualOrganization' ? 'white' : 'gray.300'}
-                    fontWeight={currentPath === '/docs/perpetualOrganization' ? '600' : '500'}
+                    bg={currentPath === '/docs/what-is-poa' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'}
+                    color={currentPath === '/docs/what-is-poa' ? 'white' : 'gray.300'}
+                    fontWeight={currentPath === '/docs/what-is-poa' ? '600' : '500'}
                     _hover={{ 
                       bg: 'rgba(255, 255, 255, 0.15)',
                       color: 'white'
                     }}
                   >
-                    What is a Community-Owned Organization
+                    What is Poa?
                   </ChakraLink>
                 </Link>
                 
@@ -101,7 +101,7 @@ const SideBar = () => {
                       color: 'white'
                     }}
                   >
-                    Creating a PO
+                    Start an organization
                   </ChakraLink>
                 </Link>
                 
@@ -120,7 +120,7 @@ const SideBar = () => {
                       color: 'white'
                     }}
                   >
-                    Joining a PO
+                    Join an organization
                   </ChakraLink>
                 </Link>
               </VStack>
@@ -207,22 +207,22 @@ const SideBar = () => {
             </AccordionButton>
             <AccordionPanel pb={4} pl={6}>
               <VStack align="flex-start" width="100%" spacing={3}>
-                <Link href={`/docs/AlphaV1`} passHref>
+                <Link href={`/docs/protocol`} passHref>
                   <ChakraLink 
                     as="span" 
                     display="block" 
                     width="100%" 
                     p={2} 
                     borderRadius="md"
-                    bg={currentPath === '/docs/AlphaV1' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'}
-                    color={currentPath === '/docs/AlphaV1' ? 'white' : 'gray.300'}
-                    fontWeight={currentPath === '/docs/AlphaV1' ? '600' : '500'}
+                    bg={currentPath === '/docs/protocol' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'}
+                    color={currentPath === '/docs/protocol' ? 'white' : 'gray.300'}
+                    fontWeight={currentPath === '/docs/protocol' ? '600' : '500'}
                     _hover={{ 
                       bg: 'rgba(255, 255, 255, 0.15)',
                       color: 'white'
                     }}
                   >
-                    Alpha V1
+                    Protocol dashboard
                   </ChakraLink>
                 </Link>
                 

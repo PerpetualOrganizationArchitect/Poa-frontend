@@ -1,63 +1,36 @@
-# Learn and earn
+---
+title: "Learning modules: help members get started"
+description: "Give new members a way to get started with Poa learning modules. Share a useful guide, add a question, and award the configured reward on completion."
+date: '2026-09-06'
+updated: '2026-09-06'
+category: "Work together"
+order: 120
+---
 
-Communities run better when new members actually understand how the org works. Poa's education hub lets any organization build short learning modules: quizzes, links, walkthroughs. New members complete them. They earn participation tokens for finishing. Some modules also unlock specific roles.
+# Learning modules: help members get started
 
-It is the same idea as the onboarding course you have taken at a job. The difference is that the completion is verifiable on the same ledger that runs governance. Finishing the Treasurer Onboarding module is not just a checkmark in someone's HR system. It can be the prerequisite that lets you actually hold the Treasurer role.
+Open **Learn** to work through your organization's guides, if its education hub is enabled. Each module pairs learning material with a multiple-choice question and a configured participation reward.
 
-## What a module looks like
+## Try a module
 
-A module has:
+1. Pick an available module and read its description and linked material.
+2. Answer the multiple-choice question and submit through the prompts.
+3. After confirmation, check the completion and configured reward.
 
-- A title and description
-- A set of content items. Anyone with the Create permission can mix written content, external links (a doc, a video, a slideshow), and quiz questions.
-- A pass criterion. Usually "answer N out of M questions correctly".
-- A reward. Participation tokens minted to the learner on completion.
-- An optional role gate. Completing this module unlocks eligibility for a specific role.
+For a weekend software project, a module might link to the installation guide and ask which command runs the project locally. A newcomer can work through it before taking their first task.
 
-Modules are public to members by default. Some orgs gate certain modules to specific roles (a leadership module that only Officers can take), which is a way to scaffold tiered learning.
+## Make your first module
 
-## A worked example
+If your role can create modules, open the creation form in Learn. Add a title, description, learning link, multiple-choice question, expected answer, and reward.
 
-The Computer Science Club has 50 members and elects three Officers each semester. They have built three modules:
+Choose one useful process. A print studio could link its risograph guide and ask which file format to use. Make sure newcomers can open the material, keep it current, and write a specific question.
 
-1. **New Member Onboarding.** 10 PT reward, no role gate. What the club does, how voting works, where to find the meeting calendar. A five-question quiz at the end.
-2. **Project Lead Onboarding.** 50 PT reward, unlocks the Project Lead role. How to run a working group, the club's task-review standards, an example of a well-written project proposal.
-3. **Treasurer Onboarding.** 100 PT reward, unlocks the Treasurer role. How to read the treasury page, how to propose transfers, how cashout works for member reimbursements.
+Access to modules and permission to publish them are separate settings. Check with an organizer if the action you need is unavailable.
 
-A new member joins. Completes the New Member module. Gets 10 PT. A few weeks later they want to lead a project. They complete the Project Lead module. The role becomes available to them (still subject to whatever [vouching](/docs/vouching-and-trust) the club requires). They get 50 PT. The same path scales to Treasurer.
+## What completion gives you
 
-## Why pay people to learn
+Successful completion awards the module's configured participation units, also called participation tokens or shares. Depending on the organization's rules, they can count toward [voting weight](/docs/contributionVoting) and separately approved [distributions](/docs/treasury-management). They are not an automatic cash payment.
 
-Two reasons.
+Learning a process can also prepare someone for a new role. Role entry still follows the group's membership rules; completing a module does not itself grant reviewer or coordinator powers.
 
-First: participation tokens are the contribution accounting system. Finishing a module is a real contribution to the org's ability to grow. It is recognized like other contributions.
-
-Second: it gives a clean, non-political path into roles. You do not have to know an Officer or be the loudest voice in the chat. You do the work to learn. You earn the seat.
-
-For orgs using [contribution-based voting](/docs/contributionVoting), this means new members can earn meaningful voting weight relatively quickly by completing onboarding modules. The gap between "I just joined" and "I have a real say" closes by doing.
-
-## Creating a module
-
-From inside an organization, head to the education hub (the "Learn" tab in your nav). If you have the Create permission for the hub, you will see a "+" button to start a new module. The editor lets you:
-
-- Add content blocks (text, link, embed, quiz question)
-- Set the pass criterion
-- Set the reward amount
-- Pick the unlocked role, if any
-- Preview the module from a learner's perspective before publishing
-
-Once published, the module appears in every member's Learn tab.
-
-## How it works under the hood
-
-Mechanics:
-
-- **Modules are stored on the blockchain.** Each module's pass criterion, reward amount, and optional role unlock are part of the public record. Source for the underlying contract at [poa-box/POP](https://github.com/poa-box/POP), AGPL-3.0.
-- **Completion is verified in the same place.** When a learner submits passing answers, the system checks the answers against the recorded criterion, lands the participation token reward in the learner's account, and (if the module unlocks a role) flags them as eligible.
-- **Content lives off the blockchain.** The text, video links, and quiz prompts inside a module are stored separately for cost reasons. The blockchain holds a tamper-evident reference, so if anyone changes the content after the fact, it no longer matches the record.
-
-## Related reading
-
-- [Roles and permissions](/docs/roles-and-permissions). How modules can gate role progression
-- [Task manager](/docs/task-manager). The other primary way to earn participation tokens
-- [Contribution-based voting](/docs/contributionVoting). How tokens earned from modules translate to governance
+Link the material to a useful next step. After the installation module, point members to a [first task](/docs/task-manager) they can try. After the equipment guide, invite someone to help at the next session.

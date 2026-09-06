@@ -1,26 +1,48 @@
-# Where roles live (the technical bit)
+---
+title: "Poa role records: Hats and MembershipAuthority"
+description: "Understand the records behind Poa roles and permissions, including legacy Hats roles and the newer membership authority used for eligibility and access."
+date: '2026-09-06'
+updated: '2026-09-06'
+category: "Go deeper"
+order: 170
+---
 
-Most readers do not need this page. The user-facing guide is [roles and permissions](/docs/roles-and-permissions). This page is here for people who want to know what's under the floorboards.
+# Poa role records: Hats and MembershipAuthority
 
-## The short version
+If a role is active but a review or voting action is unavailable, check which access system the organization uses. Earlier organizations use Hats Protocol; newer ones may use MembershipAuthority. Their controls differ, and changing a legacy setting may have no effect on a newer organization.
 
-Every role in a Poa organization is recorded on the blockchain. The record says "this person has this role in this organization." When a member tries to do something that requires the role, the system looks at the record and either lets them through or not.
+The shared contracts enforce access rules; the interface reads them to show membership status and available actions. For everyday role setup, use [roles and permissions](/docs/roles-and-permissions).
 
-There is no admin database where the role-holders are listed. There is no secret backup list. The on-chain record is the only record. That is what makes a role durable. You can grant. You can revoke. You can change the rules. But you cannot quietly demote someone, because every change is logged and visible.
+## Two access-system versions
 
-## What the protocol is called
+Earlier Poa organizations use **Hats Protocol** to represent roles. Role identifiers, administration relationships, and Poa's permission settings connect those roles to organizational actions.
 
-The piece that holds the role records is an external open-source project called **[Hats Protocol](https://www.hatsprotocol.org/)**. Poa uses it. Many other projects use it. We did not invent it. Hats Protocol is mature, well-audited, and widely used in the on-chain governance space.
+Organizations using the newer **MembershipAuthority** system resolve membership and permissions through that authority. It supports explicit membership rules, invitations, vouches, role managers, and governance control. On these organizations, legacy role settings may no longer determine who can act.
 
-We chose it for three reasons. It is well-tested. It supports the role hierarchies real organizations actually use. And it gives our members a guarantee we could not give them on a private database: that the rules of the organization are enforced by code, not by whoever happens to control the admin login.
+The app checks which system the organization uses and displays the corresponding controls. Read and update the active system for that organization.
 
-## What this means in practice
+## Eligibility and acceptance
 
-For most users this never comes up. You join an org, you do work, you get the Officer role when the community votes you in, you keep doing work. The fact that the role lives on Hats Protocol is the same kind of detail as "your bank account is held at a bank that uses a particular database vendor." It is true, it matters technically, and it never appears in your day-to-day.
+In the newer system, a person holds a role when they have accepted it and remain eligible under its rules. Eligibility can come from an open role, sufficient vouches, an enabled verification rule, or an explicit grant.
 
-For developers, the Poa-side code that wires roles into voting, tasks, treasury, and vouching is open source in [poa-box/POP](https://github.com/poa-box/POP) under AGPL-3.0.
+An invitation may also have a review window before it becomes available. The membership interface explains what makes a role claimable and when it can be accepted.
 
-## Related reading
+A grant can allow delegated management or be protected by governance. With a protected governance grant, a role manager cannot simply remove the person's entitlement. Other grants follow their configured management rules.
 
-- [Roles and permissions](/docs/roles-and-permissions). What roles do in practice and how members earn into them.
-- [Vouching and trust](/docs/vouching-and-trust). The main way roles get granted: peer review by existing role-holders.
+## Permissions are a separate check
+
+A role's presence in a chart does not grant every organizational power. Tasks, learning, proposal creation, and voting have their own permission or eligibility configuration.
+
+In particular, binding voting classes name the roles whose members count. Creating a role or giving it task authority does not automatically add it to those classes.
+
+If a member can join but cannot review work or vote, check the permission for that specific action after confirming their role is active. For an organization using MembershipAuthority, update its authority permissions; changing the role’s name or editing a legacy setting will not supply the missing access.
+
+## Use the records in your own tools
+
+A custom task interface should resolve the organization's active access system before showing a review action. A member directory can explain which roles someone holds, but should not infer their voting power from a role name or its position in a list. The contract governing each action remains the authority.
+
+Members and independent tools can inspect recorded membership rules and changes. The interface reads those records, often through an indexed view, so a recently confirmed change can take time to appear everywhere.
+
+Show who can change a role as well as who holds it. Roles may be revoked and rules may change through the relevant process; a public record does not make access permanent.
+
+Read [vouching and trust](/docs/vouching-and-trust) for peer-supported membership and [why decentralization matters](/docs/why-decentralization) for the broader purpose of these shared records.

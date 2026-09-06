@@ -82,13 +82,15 @@ export function ProfileHeader({
   };
 
   return (
+    // The header sits one layer above the profile cards (z-index 2) so its
+    // account dropdown is not covered by cards rendered later in DOM order.
     <Box
       w="100%"
       borderRadius="2xl"
       bg="transparent"
       boxShadow="lg"
       position="relative"
-      zIndex={2}
+      zIndex={3}
     >
       <div style={glassLayerStyle} />
 

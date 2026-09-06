@@ -173,6 +173,16 @@ describe('Profile Hub uses one authenticated account control', () => {
     expect(passkeyAccountInfo).toContain('borderColor="whiteAlpha.300"');
   });
 
+  it('keeps the account dropdown above the Profile Hub cards', () => {
+    // The cards below the header are positioned at z-index 2 and render later.
+    // Matching that layer lets them cover the dropdown despite its own z-index,
+    // because the menu cannot escape the ProfileHeader stacking context.
+    const headerLayer = linesAround(profileHeader, 'boxShadow="lg"', 8);
+    expect(headerLayer).toContain('position="relative"');
+    expect(headerLayer).toContain('zIndex={3}');
+    expect(accountControl).toContain('zIndex={1500}');
+  });
+
   it('keeps an explicit sign-out suppressed across reloads in the same tab', () => {
     expect(authContext).toContain('EXPLICIT_SIGN_OUT_KEY');
     expect(authContext).toContain('window.sessionStorage.setItem(EXPLICIT_SIGN_OUT_KEY');

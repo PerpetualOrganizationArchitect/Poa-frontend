@@ -296,23 +296,11 @@
   }
 }
 
-/* Scroll-triggered reveal for below-the-fold sections. Where the browser
-   supports scroll-driven animations (Chromium, Safari 26+) each section fades
-   up as it scrolls into view — purely from CSS, no JS. Everywhere else (older
-   iOS Safari, Firefox) the @supports block is skipped and the content is simply
-   visible by default, never stuck invisible waiting on JS. Once an element has
-   passed the reveal range it holds the end state, so it can never get stuck. */
-@media (prefers-reduced-motion: no-preference) {
-  @supports (animation-timeline: view()) {
-    .poa-reveal {
-      opacity: 0;
-      animation-name: poaRiseIn;
-      animation-fill-mode: both;
-      animation-timing-function: linear;
-      animation-timeline: view();
-      animation-range: entry 0% cover 40%;
-    }
-  }
+/* Reading content stays fully visible. View-timeline fades can fail to reach
+   their end state near the bottom of a page (especially inside overflow roots),
+   leaving the final sections and calls to action permanently washed out. */
+.poa-reveal {
+  opacity: 1;
 }
 
 /* Scrollbar styling */

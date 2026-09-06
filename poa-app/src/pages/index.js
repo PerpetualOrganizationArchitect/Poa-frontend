@@ -31,7 +31,6 @@ import {
   TheSay,
   TheMoney,
   ThePeople,
-  ProofBand,
   Ethos,
   StartClose,
 } from "@/components/marketing/landing";
@@ -208,7 +207,7 @@ export default function Home() {
         <link rel="preload" href="/fonts/plex-mono-500-latin.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
       </Head>
 
-      <MarketingRoot>
+      <MarketingRoot className="pa-landing">
         {/* Skip link — off-screen until focused, then pinned top-left. Same
             anchor semantics + focus behavior as before, plain <a> + styled-jsx. */}
         <a href="#main-content" className="pa-skip">
@@ -226,13 +225,12 @@ export default function Home() {
 
         <main id="main-content">
           <Hero />
-          <LedgerStrip />
           <Problem />
           <TheWork />
           <TheSay />
           <TheMoney />
           <ThePeople />
-          <ProofBand />
+          <LedgerStrip />
           <Ethos />
           <StartClose />
         </main>

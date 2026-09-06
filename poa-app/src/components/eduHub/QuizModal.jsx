@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import {
+  Box,
   Button,
+  Flex,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -15,18 +17,21 @@ import {
   useToast,
   useDisclosure
 } from '@chakra-ui/react';
+import { ArrowForwardIcon, CheckIcon } from '@chakra-ui/icons';
 import { useAccount, useSwitchChain } from 'wagmi';
 
 import { usePOContext } from '@/context/POContext';
+import { DEFAULT_TOKEN_LABEL } from '@/util/tokenLabel';
+import { educationDialogStyle } from '@/components/eduHub/educationStyles';
 import { useAuth } from '@/context/AuthContext';
 import { useWeb3 } from '@/hooks';
 import { getNetworkByChainId } from '@/config/networks';
 
-const QuizModal = ({ module }) => {
+const QuizModal = ({ module, isCompleted = false }) => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [selectedAnswerIndex, setSelectedAnswerIndex] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { educationHubAddress, orgChainId } = usePOContext();
+  const { educationHubAddress, orgChainId, tokenLabel = DEFAULT_TOKEN_LABEL } = usePOContext();
   const { education, executeWithNotification } = useWeb3();
   const { isPasskeyUser } = useAuth();
   const { chain: connectedChain } = useAccount();
@@ -93,37 +98,146 @@ const QuizModal = ({ module }) => {
 
   return (
     <>
-      <Button size="sm" onClick={onOpen}>Take Quiz</Button>
+      <Button
+        size="sm"
+        h="40px"
+        px={4}
+        borderRadius="lg"
+        variant="outline"
+        borderColor="whiteAlpha.300"
+        color={isCompleted ? 'green.200' : 'purple.200'}
+        rightIcon={isCompleted ? <CheckIcon boxSize={3} /> : <ArrowForwardIcon />}
+        onClick={onOpen}
+        isDisabled={isCompleted}
+        _hover={{ bg: 'whiteAlpha.100', borderColor: 'whiteAlpha.500' }}
+        _active={{ bg: 'whiteAlpha.200' }}
+        _disabled={{ opacity: 1, cursor: 'default', borderColor: 'transparent' }}
+      >
+        {isCompleted ? 'Completed' : 'Take quiz'}
+      </Button>
 
-      <Modal isOpen={isOpen} onClose={onClose}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>{module.name} Quiz</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <Text mb={4}>{module.question}</Text>
-            <RadioGroup onChange={setSelectedAnswerIndex} value={selectedAnswerIndex}>
-              <Stack direction="column">
-                {module.answers?.map((answerObj) => (
-                  <Radio key={answerObj.index} value={`${answerObj.index}`}>
-                    {answerObj.answer}
-                  </Radio>
-                ))}
-              </Stack>
-            </RadioGroup>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        size="lg"
+        scrollBehavior="inside"
+        isCentered
+        closeOnOverlayClick={!isSubmitting}
+        closeOnEsc={!isSubmitting}
+      >
+        <ModalOverlay bg="blackAlpha.800" />
+        <ModalContent
+          {...educationDialogStyle}
+          mx={4}
+          my={{ base: 4, md: 8 }}
+          maxH="calc(100dvh - 32px)"
+          overflow="hidden"
+        >
+          <ModalHeader px={{ base: 6, md: 8 }} pt={8} pb={6} pr={14}>
+            <Text fontSize="xl" fontWeight="bold">
+              Take a quiz
+            </Text>
+            <Text fontSize="sm" fontWeight="400" color="gray.300" mt={3} lineHeight="1.6" overflowWrap="anywhere">
+              {module.name}
+            </Text>
+          </ModalHeader>
+          <ModalCloseButton
+            top={5}
+            right={5}
+            borderRadius="lg"
+            color="gray.300"
+            isDisabled={isSubmitting}
+            _hover={{ bg: 'whiteAlpha.200', color: 'white' }}
+          />
+          <ModalBody px={{ base: 6, md: 8 }} pb={8}>
+            <Flex
+              align="center"
+              justify="space-between"
+              gap={4}
+              py={4}
+              mb={7}
+              borderY="1px solid"
+              borderColor="whiteAlpha.200"
+            >
+              <Text fontSize="sm" color="gray.300">Completion reward</Text>
+              <Text fontSize="sm" color="purple.200" fontWeight="600">
+                {module.payout} {tokenLabel}
+              </Text>
+            </Flex>
+            <Box as="fieldset" minW={0} border="0" p={0} m={0}>
+              <Text as="legend" fontSize="lg" fontWeight="600" lineHeight="1.5" mb={2} overflowWrap="anywhere">
+                {module.question}
+              </Text>
+              <Text fontSize="sm" color="gray.300" mb={5}>Choose one answer.</Text>
+              <RadioGroup onChange={setSelectedAnswerIndex} value={selectedAnswerIndex} isDisabled={isSubmitting}>
+                <Stack direction="column" spacing={3}>
+                  {module.answers?.map((answerObj) => {
+                    const isSelected = selectedAnswerIndex === `${answerObj.index}`;
+                    return (
+                      <Box
+                        key={answerObj.index}
+                        border="1px solid"
+                        borderColor={isSelected ? 'purple.400' : 'whiteAlpha.200'}
+                        borderRadius="xl"
+                        bg={isSelected ? 'rgba(148, 115, 220, 0.16)' : 'whiteAlpha.50'}
+                        transition="background 0.15s ease, border-color 0.15s ease"
+                        _hover={{ borderColor: isSelected ? 'purple.400' : 'whiteAlpha.400' }}
+                        _focusWithin={{ boxShadow: '0 0 0 3px rgba(148, 115, 220, 0.25)' }}
+                        sx={{ '.chakra-radio__label': { fontSize: 'sm', lineHeight: '1.6', overflowWrap: 'anywhere' } }}
+                      >
+                        <Radio
+                          value={`${answerObj.index}`}
+                          w="full"
+                          px={4}
+                          py={4}
+                          minH="56px"
+                          spacing={3}
+                          borderColor="whiteAlpha.500"
+                          colorScheme="purple"
+                        >
+                          {answerObj.answer}
+                        </Radio>
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              </RadioGroup>
+            </Box>
           </ModalBody>
 
-          <ModalFooter>
+          <ModalFooter
+            px={{ base: 6, md: 8 }}
+            py={5}
+            borderTop="1px solid"
+            borderColor="whiteAlpha.200"
+            bg="whiteAlpha.50"
+            gap={3}
+            justifyContent="space-between"
+            flexDirection={{ base: 'column-reverse', sm: 'row' }}
+          >
             <Button
-              colorScheme="blue"
-              mr={3}
+              variant="ghost"
+              color="gray.300"
+              borderRadius="lg"
+              w={{ base: 'full', sm: 'auto' }}
+              onClick={onClose}
+              isDisabled={isSubmitting}
+              _hover={{ bg: 'whiteAlpha.100', color: 'white' }}
+            >
+              Back to learning
+            </Button>
+            <Button
+              colorScheme="purple"
+              borderRadius="lg"
+              w={{ base: 'full', sm: 'auto' }}
+              px={6}
               onClick={handleSubmit}
               isLoading={isSubmitting}
+              loadingText="Submitting"
               isDisabled={selectedAnswerIndex === ''}
             >
-              Submit
+              Submit answer
             </Button>
-            <Button variant="ghost" onClick={onClose} isDisabled={isSubmitting}>Cancel</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>

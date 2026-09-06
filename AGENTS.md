@@ -1,0 +1,319 @@
+# POA Frontend
+
+This `AGENTS.md` is the canonical repository guidance for coding agents.
+`CLAUDE.md` imports it for compatibility with existing tools and workflows.
+
+## Product purpose and voice
+
+Poa makes worker and community ownership practical: the people doing the work and
+the communities it serves can share in decisions, value, and a lasting future.
+Censorship resistance matters because that ownership should remain in their hands,
+with organizations able to keep going independently of any one platform operator.
+Express this warmly through shared agency, care, and possibility. Keep product copy
+approachable and inspiring; avoid polarizing, partisan, or heavily libertarian
+language. Loading reflections are original drafts in
+`poa-app/src/components/shared/loadingQuotes.js`, ready for Hudson's own writing.
+
+## Member-facing language and Shares
+
+Use plain product language in member-facing pages, dialogs, form labels, empty
+states, loading text, and notifications. Prefer words such as members, organization,
+Shares, rewards, learning, and voting. Do not introduce Web3 jargon such as tokens,
+minting, gas, smart contracts, IPFS, subgraphs, or on-chain transactions into these
+flows. Describe the action or outcome people care about accurately; keep underlying
+implementation details in developer-facing code and documentation.
+
+**Shares is the default reward and ownership label.** Organization settings can opt
+into the participation symbol with the `useTokenSymbol` flag. The canonical resolver
+is `resolveTokenLabel({ useTokenSymbol, symbol: participationTokenSymbol })` in
+`@/util/tokenLabel`: only an explicit `true` flag and a nonblank symbol use that
+symbol; otherwise it returns `DEFAULT_TOKEN_LABEL` (`'Shares'`). Preserve the
+configured symbol's case. Never lowercase or uppercase the resolved label.
+
+- Components should consume `usePOContext().tokenLabel`, with
+  `DEFAULT_TOKEN_LABEL` imported from `@/util/tokenLabel` as the fallback. Use this
+  label consistently in headings, balances, rewards, input units, buttons, dialogs,
+  and notifications. Do not hardcode `Token`, `tokens`, or other competing labels,
+  and do not add `$` prefixes to reward or ownership amounts.
+- `POContext` resolves the label from organization metadata's `useTokenSymbol`
+  and `participationTokenSymbol`. The organization settings editor persists that
+  flag. Honor the setting rather than inferring a preference from the presence of
+  a symbol. When constructing data outside the context, call `resolveTokenLabel`
+  instead of duplicating its logic.
+- Preview, tour, fixture, and sample data must follow the same resolver and
+  organization configuration as live data. A preview must not silently switch
+  vocabulary or invent its own default.
+- Verify both modes for affected UI: default/missing or disabled `useTokenSymbol`
+  displays `Shares`; enabled symbol mode displays the configured symbol with its
+  original case. Also check that an enabled setting with an empty or missing symbol
+  falls back to `Shares`. Include forms, dialogs, and preview/sample data in this
+  check, not just the page heading.
+
+```javascript
+import { usePOContext } from '@/context/POContext';
+import { DEFAULT_TOKEN_LABEL } from '@/util/tokenLabel';
+
+// Inside an organization component:
+const { tokenLabel = DEFAULT_TOKEN_LABEL } = usePOContext();
+```
+
+## Commands
+
+All commands run from `poa-app/`:
+
+```bash
+cd poa-app && yarn dev              # dev server
+cd poa-app && yarn dev:e2e          # dev server in E2E mode (burner EOA auto-connects)
+cd poa-app && yarn dev:e2e-passkey  # dev server in E2E mode, passkey identity
+cd poa-app && yarn build            # production build (static export to IPFS)
+cd poa-app && yarn lint             # ESLint + Next.js Core Web Vitals rules
+cd poa-app && yarn test             # vitest (unit tests for the pure `src/lib/**` layer)
+cd poa-app && yarn e2e:setup        # one-time machine setup (writes ~/.poa/e2e.env)
+cd poa-app && yarn e2e:check        # CI guard — fails if E2E code leaks into prod bundle
+cd poa-app && yarn e2e:test-passkey # virtual-passkey crypto self-test
+```
+
+Automated coverage is vitest over the pure layer (colocated `*.test.js`, mostly
+`src/lib/**` + `src/util/**`) plus the E2E harness. React-coupled code has no unit
+tests — drive it through Test6 instead. No Prettier. No formatting commands.
+
+## Frontend changes: verify on Test6
+
+To make AND verify a frontend change, drive it through the **`test6-verify`** Smithers
+workflow (see the Smithers section) — it *enforces* the implement → build → Test6
+Playwright verification (gif) → review loop. Doing it inline? Follow the same flow by
+hand. Either way these repo facts hold:
+
+- **Test6 (Gnosis) is the sandbox — fire real tx there.** Both agent identities (burner
+  EOA + passkey) are authorized for every permission-gated flow. **Stop** for mainnet
+  orgs, multi-sig broadcasts, or anything that would burn real value.
+- Dev server: `cd poa-app && yarn dev:e2e-passkey` (passkey identity, full perms,
+  auto-connects). Use `yarn dev:e2e` (burner EOA) only to test as an unvouched /
+  minimal-permission user or the direct-EOA tx path. Never plain `yarn dev` for agent
+  work. `yarn e2e:setup` is one-time per laptop (writes `~/.poa/e2e.env`).
+- **Run ONE dev server, under Node 22.23.2 (not bun).** Multiple `next dev` processes
+  share `poa-app/.next/` and corrupt each other's webpack chunks → `Cannot find
+  module ./chunks/vendor-chunks/react-icons.js` → pages 500 in the browser (this is
+  what breaks Playwright/Chromium). If chunks break: `lsof -ti:<port> | xargs kill -9`,
+  `rm -rf poa-app/.next`, then start a single server.
+- Browser testing uses the Playwright MCP (`.mcp.json`). Share a **gif** (gitignored:
+  `/*.gif`, `/poa-app/*.gif`), not PNGs.
+- Before a PR touching E2E-intercepted files (`AuthContext.js`, `_app.js`,
+  `passkeySign.js`, `passkeyCreate.js`, `ProviderConverter.jsx`, anything under
+  `src/services/e2e/`): `yarn build && yarn e2e:check` (no E2E symbols in the prod bundle).
+
+Full E2E docs: `poa-app/scripts/e2e/README.md`. Known follow-ups: `BACKLOG.md` next to it.
+
+## Smithers (durable agent orchestration)
+
+`.smithers/` holds Smithers workflows that run long / multi-step / verify-heavy work
+as durable, resumable runs. The agent operates Smithers on the user's behalf — don't
+hand these commands to the user.
+
+- **When to reach for it:** work with phases, iterate-until-pass loops, Test6
+  verification, runs while the user is away, or that spans repos. Skip it for
+  one-shot edits or quick questions — do those inline.
+- **`test6-verify` is the standard verify loop.** It *automates* the "Default workflow
+  for agents" Test6 flow above — implement → `yarn build` gate → Playwright
+  verification on Test6 (real tx + a recorded gif) → independent code review →
+  independent design review of the screenshots, looping until all pass:
+  `bunx smithers-orchestrator workflow run test6-verify --prompt "<change>"`
+- Spawned agents run at the repo root and **read this AGENTS.md** (also imported by `CLAUDE.md`), so the Test6 / E2E
+  details above are the shared source of truth for both inline work and Smithers runs
+  — keep them here rather than duplicating them into the workflow.
+- **Catalog:** `bunx smithers-orchestrator workflow list`. **Watch a run:**
+  `bunx smithers-orchestrator ps | inspect <id> | logs <id> -f | ui <id>`.
+- Always invoke as `bunx smithers-orchestrator <cmd>` (never bare `smithers` — that's
+  an unrelated npm package).
+
+## Stack
+
+Next.js 16, React 18, **JavaScript** (not TypeScript). Chakra UI 2. Wagmi 2 + ethers 5 + viem 2.
+Static export (`output: 'export'`). Yarn. Node 22.23.2 (Volta).
+
+## Path Aliases
+
+`@/*` maps to `poa-app/src/*` (jsconfig.json). Always use `@/` imports, never relative `../../`.
+ABIs live at `poa-app/abi/` (outside src) — import with `../../abi/FooBar.json`.
+
+## Gotchas
+
+### Three util directories — don't confuse them
+
+- `src/util/` — queries, apolloClient, formatToken, permissions, tokens, crossChainUsername, etc.
+- `src/utils/` — profileUtils.js only
+- `src/services/web3/utils/` — encoding.js (IPFS CID conversion, parseTaskId, parseProjectId)
+
+`encoding.js` is in `services/web3/utils/`, NOT in `src/util/`.
+
+### Dual auth system
+
+AuthContext unifies EOA (RainbowKit/wagmi) and Passkey (ERC-4337 smart accounts).
+- EOA uses `TransactionManager` (direct ethers tx)
+- Passkey uses `SmartAccountTransactionManager` (UserOp via Pimlico bundler)
+- `useWeb3Services()` returns the correct manager based on auth type automatically
+- **Never** call ethers/viem directly from components — always go through services
+
+### Token amounts are always 18-decimal wei from subgraph
+
+Use `formatTokenAmount()` / `parseTokenAmount()` from `src/util/formatToken.js`.
+Getting this wrong produces numbers that are 10^18 too large or too small.
+
+### Subgraph queries need chain routing
+
+Org-scoped queries must pass a per-endpoint client: `useQuery(QUERY, { client:
+useSubgraphClient(subgraphUrl) })` (subgraphUrl from POContext), or
+`getClient(subgraphUrl)` for imperative queries. Without it, queries hit the
+default (Arbitrum) subgraph and return wrong-chain data.
+
+Each endpoint gets its OWN ApolloClient + InMemoryCache, so cross-chain cache
+poisoning is structurally impossible — no `fetchPolicy: 'no-cache'` needed for
+that. The old `context: { subgraphUrl }` plumbing is deprecated (apolloClient.js);
+do not use it in new code. For query-all-chains fan-outs, use the helpers in
+`src/util/crossChainUsername.js` (queryAllChains pattern).
+
+### Subgraph IDs have composite format
+
+Entity IDs from The Graph: `"{contractAddress}-{numericId}"`. Contracts expect
+just the numeric part. Use `parseTaskId()`, `parseProjectId()`, `parseModuleId()`
+from `services/web3/utils/encoding.js`. Wrong format = silent contract reverts.
+
+### Org-scoped state via query param
+
+All org pages read `router.query.userDAO`. POContext uses this to resolve `orgId`,
+`subgraphUrl`, `orgChainId`. If `userDAO` is missing, POContext provides nulls —
+this is expected on non-org pages.
+
+### DirectDemocracy is polls-only — any executing proposal goes to HybridVoting
+
+`OrgDeployer` sets `Executor.setCaller(hybridVoting)` on every org, and DirectDemocracy's
+target allow-list is empty on every deploy, so a DD proposal carrying a batch reverts
+`TargetNotAllowed` at creation (and could never execute anyway). Route on the BATCH, not the
+intent name: `votingLaneForBatches(batches)` in `components/voting/create/wizardSteps.js`
+(`BINDING_TYPES` there is the one list the gallery badges, creator gate and routing share).
+
+### Three money pots, one word "treasury"
+
+The Executor is what POContext aliases as `treasuryContractAddress` and is what a passed
+batch spends directly, but "Deposit to treasury" lands in the **PaymentManager** (owner ==
+Executor; `withdraw` only by vote) and task rewards are paid from the **TaskManager**'s own
+balance. `lib/voting/treasuryBatches.js` encodes a payout from either source (PaymentManager
+funds committed to an unfinalized distribution are NOT spendable — fully-claimed rounds get
+closed in-batch first) and `hooks/useOrgPotBalances.js` reads all three.
+
+### Access v2 orgs (MembershipAuthority) — gate on `useOrgAuthority().enabled`
+
+On a cut-over org (Test6 since 2026-08-27) creator/voter/task permissions are read from the
+authority, not the legacy hat tables: `setCreatorHatAllowed`, DD `HAT_ALLOWED` and
+`setProjectRolePerm` still succeed on chain but change nothing (flagged `legacyOnly` in
+`setterDefinitions.js`, filtered by `lib/voting/setterAvailability.js`), the vote-creator gate
+folds authority perms (`lib/voting/createGate.js`), and role pickers list authority subjects
+(`lib/voting/roleOptions.js`). When `enabled` is false every one of these must render exactly
+the legacy UI.
+
+### Optimistic updates have grace period locks
+
+UserContext (15s) and TaskBoardContext (65s) use `optimisticLockRef` to prevent stale
+subgraph data from overwriting optimistic state. The subgraph has indexing delay —
+do not reduce these timeouts.
+
+### IPFS CID ↔ bytes32 encoding
+
+Contracts store IPFS content as bytes32. Use `ipfsCidToBytes32(cid)` and
+`bytes32ToIpfsCid(hash)` from `services/web3/utils/encoding.js`.
+CIDs must be CIDv0 (start with "Qm"). CIDv1 will not work.
+
+### Pages are thin wrappers
+
+Page files in `src/pages/` should only import components and set up routing. All
+business logic and UI lives in `src/components/` or `src/features/`. Do not add
+logic to page files.
+
+## Conventions
+
+### Service layer is mandatory for all contract calls
+
+```
+services/web3/core/    → ContractFactory, TransactionManager, SmartAccountTransactionManager
+services/web3/domain/  → UserService, VotingService, TaskService, EducationService, etc.
+```
+
+Components use hooks (`useWeb3Services`, `useWeb3`) to get services. Use
+`useTransactionWithNotification().executeWithNotification()` for the pending → success/error
+notification flow.
+
+### RefreshContext for cross-context data updates
+
+After a transaction, emit a `RefreshEvent` (e.g., `TASK_CREATED`, `PROPOSAL_VOTED`).
+Other contexts subscribe via `useRefreshSubscription`. Do NOT import contexts into
+each other to trigger refetches — that creates circular dependencies.
+
+### Error handling
+
+`ErrorParser.js` in `src/lib/errors/` maps 26+ custom contract error selectors and
+revert strings to user-friendly messages. Let the service layer's error parsing handle
+contract errors — do not catch and reformat them in components.
+
+### Multi-chain architecture
+
+- **Arbitrum** (42161) = home chain (accounts, usernames, infrastructure)
+- **Gnosis** (100) = default org deployment chain
+- **Sepolia** / **Base Sepolia** = testnets
+
+Config in `src/config/networks.js`. Never hardcode chain IDs.
+
+### Chakra UI theme
+
+Custom palettes: `coral`, `rose`, `amethyst`, `warmGray` — not standard Chakra colors.
+Custom variants: `glass`, `elevated`, `primary`. Theme is defined inline in `_app.js`.
+
+### Provider nesting order matters
+
+The provider tree is dependency-sensitive: `CoreProviders.jsx` owns wallet/account
+services, `RegistryProvider.jsx` supplies live public organization data, and
+`OrganizationProviders.jsx` adds org-scoped data only on application routes. Fully
+static reading routes skip all three async bundles. Check these provider modules and
+`_app.js` before adding or reordering providers.
+
+### Task permissions
+
+Hat-based permission system matching `TaskPerm.sol`. Resolve a whole project at once with
+`projectTaskPermissions(project, userHatIds, address)` from `src/util/permissions.js`, and
+use `taskEditRights(perms, columnId)` for the edit/delete affordances. It mirrors
+TaskManager's `_checkPerm` exactly:
+
+```
+_checkPerm(pid, FLAG) = TaskPerm.has(_permMask(sender, pid), FLAG) || _isPM(pid, sender)
+```
+
+Three rules people keep getting wrong:
+
+- **The global fallback is per-hat.** A hat's *non-zero* per-project mask REPLACES its
+  global mask (it does not OR); a zero/absent project mask falls back to global.
+- **`_isPM` is the only human bypass** — being a manager of *that* project
+  (`Project.managers`, fetched by `FETCH_PROJECT_MANAGERS`, deliberately its own document
+  so an endpoint without the field can't blank the board). `BUDGET` is the one permission
+  with **no** manager bypass (`_requireBudgetEditor`).
+- **There is no "executive" hat.** Role order in `roleHatIds` carries zero authority —
+  Argus deployed its senior role first, so `roleHatIds[1]` is its *junior* role. Never gate
+  on a role index; gate on the contract that enforces the action (`projectTaskPermissions`,
+  `useVoteCreateGate`, `useEducationCreateGate`, `creatorHatIds` for projects,
+  `hasApproverRole` for token approvals).
+
+### Glass morphism styling
+
+Use `glassLayerStyle` / `glassLayerLightStyle` from `@/components/shared/glassStyles`.
+These are used in 40+ files. Do NOT use `backdrop-filter: blur()` — it was removed
+for Safari CPU performance. The constants use opacity-based fallbacks instead.
+
+## Environment Variables
+
+All prefixed `NEXT_PUBLIC_*`. `NEXT_PUBLIC_PIMLICO_API_KEY` is required for passkey auth.
+RPCs and subgraph URLs have hardcoded fallbacks in `config/networks.js`.
+No `.env` file is committed — defaults work for read-only browsing.
+
+E2E mode (`NEXT_PUBLIC_E2E_MODE=true`) reads `~/.poa/e2e.env` (machine-level,
+shared across workspaces). All `NEXT_PUBLIC_E2E_*` vars are force-inlined at
+build time via webpack `DefinePlugin` in `next.config.mjs` so production builds
+tree-shake every E2E branch. The `yarn e2e:check` guard verifies this on every
+build. Never read these env vars at runtime in non-E2E code paths.

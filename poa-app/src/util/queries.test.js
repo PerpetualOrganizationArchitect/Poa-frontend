@@ -19,6 +19,7 @@ import {
   FETCH_ORG_FULL_DATA,
   FETCH_ORG_STRUCTURE_DATA,
   FETCH_PROJECT_MANAGERS,
+  FETCH_TREASURY_DATA,
 } from './queries';
 
 /** Print the selection set of the first field named `name` (by field name, not alias). */
@@ -219,5 +220,20 @@ describe('FETCH_PROJECT_MANAGERS isolation', () => {
     ['FETCH_PROJECTS_DATA_WITH_RELEASES', FETCH_PROJECTS_DATA_WITH_RELEASES],
   ])('%s does NOT select managers (would risk blanking the board)', (_label, doc) => {
     expect(print(doc)).not.toContain('managers');
+  });
+});
+
+describe('treasury project scopes', () => {
+  it('keeps active bounty commitments separate from historical task activity', () => {
+    const printed = print(FETCH_TREASURY_DATA).replace(/\s+/g, ' ');
+
+    // Deleted projects must not reserve live bounty funds.
+    expect(printed).toContain('projects(where: {deleted: false}, first: 100)');
+    // ProjectDeleted is a soft delete in the subgraph, so the unfiltered alias
+    // keeps completed task mints available to the Share Activity modal.
+    expect(printed).toContain('activityProjects: projects(first: 100)');
+    expect(printed).toMatch(
+      /activityProjects: projects\(first: 100\) \{ tasks\( where: \{status: "Completed"\}/
+    );
   });
 });

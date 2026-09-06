@@ -15,7 +15,7 @@ import {
   Alert,
   AlertIcon,
 } from '@chakra-ui/react';
-import PulseLoader from "@/components/shared/PulseLoader";
+import CommunityLoadingState from "@/components/shared/CommunityLoadingState";
 import { FiArrowLeft } from 'react-icons/fi';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
@@ -204,10 +204,7 @@ const OrgStructurePage = () => {
         <Box minH="100vh">
           <Navbar />
           <Center minH="60vh">
-            <VStack spacing={4}>
-              <PulseLoader size="xl" color="coral.500" />
-              <Text color="warmGray.500">Loading organization structure...</Text>
-            </VStack>
+            <CommunityLoadingState label="Loading your community…" />
           </Center>
         </Box>
       </>

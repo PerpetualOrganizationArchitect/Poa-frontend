@@ -22,7 +22,7 @@ import {
   Tooltip,
 } from '@chakra-ui/react';
 import PostDeployLoadingScreen from '@/components/shared/PostDeployLoadingScreen';
-import PulseLoader from "@/components/shared/PulseLoader";
+import CommunityLoadingState from "@/components/shared/CommunityLoadingState";
 import { useVotingContext } from '@/context/VotingContext';
 import { usePOContext } from '@/context/POContext';
 import { useProjectContext } from '@/context/ProjectContext';
@@ -165,8 +165,8 @@ const PerpetualOrgDashboard = () => {
         router.query.newOrg === 'true' ? (
           <PostDeployLoadingScreen orgName={userDAO} />
         ) : (
-          <Center height="100vh" background={pageBackground()}>
-            <PulseLoader size="xl" />
+          <Center minH="100vh" background={pageBackground()}>
+            <CommunityLoadingState label="Loading your community…" />
           </Center>
         )
       ) : (

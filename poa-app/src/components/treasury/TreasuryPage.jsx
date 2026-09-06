@@ -11,7 +11,7 @@ import {
   useDisclosure,
   usePrefersReducedMotion,
 } from '@chakra-ui/react';
-import PulseLoader from "@/components/shared/PulseLoader";
+import CommunityLoadingState from "@/components/shared/CommunityLoadingState";
 import { useRouter } from 'next/router';
 import { useQuery } from '@apollo/client';
 import { getClient, useSubgraphClient } from '@/util/apolloClient';
@@ -290,11 +290,8 @@ const TreasuryPage = () => {
     <>
       <Navbar />
       {isLoading ? (
-        <Center height="100vh" background={pageBackground()}>
-          <VStack spacing={4}>
-            <PulseLoader size="xl" color="purple.400" />
-            <Text color="gray.400">Loading treasury data...</Text>
-          </VStack>
+        <Center minH="100vh" background={pageBackground()}>
+          <CommunityLoadingState label="Loading your shared treasury…" />
         </Center>
       ) : (
         <Box p={{ base: 2, md: 4 }} mt={{ base: 16, md: 0 }} minH="100vh" background={pageBackground()}>

@@ -12,7 +12,7 @@ import React, { useCallback } from "react";
 import { useRouter } from "next/router";
 import { Box, Container, Center } from "@chakra-ui/react";
 import SEOHead from "@/components/common/SEOHead";
-import PulseLoader from "@/components/shared/PulseLoader";
+import CommunityLoadingState from "@/components/shared/CommunityLoadingState";
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
 import { usePOContext } from "@/context/POContext";
 import { useVoteCreateGate } from "@/hooks/useVoteCreateGate";
@@ -60,8 +60,8 @@ const RulesPage = () => {
       {seoHead}
       <Navbar />
       {poContextLoading ? (
-        <Center height="90vh" background={pageBackground()}>
-          <PulseLoader size="xl" />
+        <Center minH="90vh" background={pageBackground()}>
+          <CommunityLoadingState label="Loading your shared agreements…" />
         </Center>
       ) : (
         <Box position="relative" w="100%" minH="100vh" py={6} px={{ base: "1%", md: "3%" }} background={pageBackground()}>

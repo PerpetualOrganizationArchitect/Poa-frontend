@@ -6,7 +6,7 @@ import SEOHead from '@/components/common/SEOHead';
 import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
 import AccountSettingsModal from '@/components/userPage/AccountSettingsModal';
 import ExecutiveMenuModal from '@/components/profileHub/ExecutiveMenuModal';
-import PulseLoader from '@/components/shared/PulseLoader';
+import CommunityLoadingState from '@/components/shared/CommunityLoadingState';
 import { useUserContext } from '@/context/UserContext';
 import { usePOContext } from '@/context/POContext';
 import { useProjectContext } from '@/context/ProjectContext';
@@ -221,8 +221,8 @@ export default function ProfileHub() {
       <>
         {seoHead}
         <Navbar />
-        <Center height="100vh" background={pageBackground()}>
-          <PulseLoader size="xl" />
+        <Center minH="100vh" background={pageBackground()}>
+          <CommunityLoadingState label="Loading your place in the community…" />
         </Center>
       </>
     );

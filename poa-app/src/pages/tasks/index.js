@@ -1,7 +1,7 @@
 import SEOHead from "@/components/common/SEOHead";
 import React, { useRef } from 'react';
 import { Box, Center } from '@chakra-ui/react';
-import PulseLoader from "@/components/shared/PulseLoader";
+import CommunityLoadingState from "@/components/shared/CommunityLoadingState";
 import MainLayout from '@/components/TaskManager/MainLayout';
 import { useProjectContext } from '@/context/ProjectContext';
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
@@ -29,8 +29,8 @@ const Tasks = () => {
       />
       <Navbar />
       {poContextLoading || projectsLoading ? (
-        <Center height="90vh" background={pageBackground()}>
-          <PulseLoader size="xl" />
+        <Center minH="90vh" background={pageBackground()}>
+          <CommunityLoadingState label="Loading your task board…" />
         </Center>
       ) : (
         <Box minH="90vh" position="relative" bg="blackAlpha.600" ref={containerRef} background={pageBackground()}>

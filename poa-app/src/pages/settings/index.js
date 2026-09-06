@@ -16,7 +16,7 @@ import {
   AlertTitle,
   AlertDescription,
 } from '@chakra-ui/react';
-import PulseLoader from "@/components/shared/PulseLoader";
+import CommunityLoadingState from "@/components/shared/CommunityLoadingState";
 import { useRouter } from 'next/router';
 
 import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
@@ -75,10 +75,7 @@ const SettingsPage = () => {
         <Box minH="100vh" background={pageBackground()}>
           <Navbar />
           <Center minH="80vh">
-            <VStack spacing={4}>
-              <PulseLoader size="xl" color="coral.500" />
-              <Text color={onBackgroundSubtle}>Loading settings...</Text>
-            </VStack>
+            <CommunityLoadingState label="Loading your settings…" />
           </Center>
         </Box>
       </>

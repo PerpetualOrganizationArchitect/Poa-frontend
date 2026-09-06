@@ -28,7 +28,7 @@ import {
   Center,
   useBreakpointValue,
 } from "@chakra-ui/react";
-import PulseLoader from "@/components/shared/PulseLoader";
+import CommunityLoadingState from "@/components/shared/CommunityLoadingState";
 import { SearchIcon, ArrowBackIcon } from "@chakra-ui/icons";
 import { useRouter } from "next/router";
 
@@ -247,8 +247,8 @@ const VotingHistoryPage = () => {
       <>
         {seoHead}
         <Navbar />
-        <Center height="90vh" background={pageBackground()}>
-          <PulseLoader size="xl" color="purple.400" />
+        <Center minH="90vh" background={pageBackground()}>
+          <CommunityLoadingState label="Loading community decisions…" />
         </Center>
       </>
     );

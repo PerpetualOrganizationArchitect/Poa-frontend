@@ -30,7 +30,7 @@ import {
   Progress,
   Icon,
 } from '@chakra-ui/react';
-import PulseLoader from "@/components/shared/PulseLoader";
+import CommunityLoadingState from "@/components/shared/CommunityLoadingState";
 import { CheckIcon } from '@chakra-ui/icons';
 import { useAccount, useSwitchChain } from 'wagmi';
 import Navbar from "@/templateComponents/studentOrgDAO/NavBar";
@@ -180,8 +180,8 @@ const EducationHub = () => {
       <Box minH="100vh" background={pageBackground()}>
       <Navbar />
       {poContextLoading ? (
-        <Center height="90vh">
-          <PulseLoader size="xl" />
+        <Center minH="90vh">
+          <CommunityLoadingState label="Loading your learning space…" />
         </Center>
       ) : (
         <Box position="relative" data-tour="education-hub-content">

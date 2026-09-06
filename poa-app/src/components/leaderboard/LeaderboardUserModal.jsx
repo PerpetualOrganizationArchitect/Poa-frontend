@@ -30,6 +30,7 @@ import { glassLayerStyle } from '@/components/shared/glassStyles';
 import UsernameLink from '@/components/common/UsernameLink';
 import { usePOContext } from '@/context/POContext';
 import { useIdentity } from '@/context/IdentityContext';
+import useIpfsImage from '@/hooks/useIpfsImage';
 
 const getMedalColor = (rank) => {
   switch (rank) {
@@ -87,11 +88,16 @@ function LeaderboardUserModal({ isOpen, onClose, user, rank, roleNames = {} }) {
   const { hasCopied, onCopy } = useClipboard(user?.address || '');
   const { tokenLabel } = usePOContext();
   const identity = useIdentity(user?.address);
+  // Same precedence as <UserIdentity>: the cross-chain identity wins only when
+  // it resolved an avatar at all, otherwise this org's own leaderboard record
+  // does. See UserIdentity for why a resolved record can legitimately be
+  // avatar-less while the org chain holds the image.
+  const avatarCid = identity?.avatarCid || user?.avatarCid || null;
+  const avatarSrc = useIpfsImage(avatarCid);
 
   if (!user) return null;
 
   const medalColor = getMedalColor(rank);
-  const avatarCid = user.avatarCid || identity?.avatarCid || null;
   const userRoles = (user.hatIds || [])
     .map((hatId) => roleNames[hatId])
     .filter(Boolean);
@@ -135,7 +141,7 @@ function LeaderboardUserModal({ isOpen, onClose, user, rank, roleNames = {} }) {
             <Avatar
               size="xl"
               name={user.name}
-              src={avatarCid ? `https://ipfs.io/ipfs/${avatarCid}` : undefined}
+              src={avatarSrc || undefined}
               bg="purple.500"
               border={`3px solid ${medalColor || 'purple.400'}`}
             />

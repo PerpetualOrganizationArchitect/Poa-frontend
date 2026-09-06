@@ -33,6 +33,7 @@ import Navbar from '@/components/landing/Navbar';
 import { findUserProfileByUsername, findUserOrgsAcrossChains } from '@/util/crossChainUsername';
 import { filterUserOrgsForViewedProfile } from '@/util/profileOrgFilter';
 import UserOrgCard from '@/components/profile/UserOrgCard';
+import useIpfsImage from '@/hooks/useIpfsImage';
 
 const PublicProfilePage = () => {
   const router = useRouter();
@@ -108,6 +109,7 @@ const PublicProfilePage = () => {
 
   const meta = profile?.metadata;
   const displayName = profile?.username || username;
+  const avatarSrc = useIpfsImage(meta?.avatar);
 
   const seoHead = (
     <SEOHead
@@ -156,7 +158,7 @@ const PublicProfilePage = () => {
                     <Avatar
                       size="2xl"
                       name={displayName}
-                      src={meta?.avatar ? `https://ipfs.io/ipfs/${meta.avatar}` : undefined}
+                      src={avatarSrc || undefined}
                       bg="purple.500"
                     />
 

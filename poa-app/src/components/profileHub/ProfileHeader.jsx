@@ -7,6 +7,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Box,
   HStack,
+  Stack,
   VStack,
   Text,
   Avatar,
@@ -18,12 +19,11 @@ import {
   CloseButton,
 } from '@chakra-ui/react';
 import { SettingsIcon, CopyIcon, CheckIcon, EditIcon } from '@chakra-ui/icons';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { glassLayerStyle } from '@/components/shared/glassStyles';
 import { truncateAddress } from '@/utils/profileUtils';
-import { useAuth } from '@/context/AuthContext';
 import { useIdentity } from '@/context/IdentityContext';
-import PasskeyAccountInfo from '@/components/passkey/PasskeyAccountInfo';
+import AccountControl from '@/components/common/AccountControl';
+import useIpfsImage from '@/hooks/useIpfsImage';
 
 const NUDGE_DISMISS_KEY = (address) => `poa:profileNudgeDismissed:${address?.toLowerCase()}`;
 
@@ -32,7 +32,7 @@ const NUDGE_DISMISS_KEY = (address) => `poa:profileNudgeDismissed:${address?.toL
  * @param {Object} props
  * @param {string} props.username
  * @param {string} props.address
- * @param {string} [props.avatarUrl]
+ * @param {string} [props.avatarCid]
  * @param {Object[]} [props.userRoles]
  * @param {boolean} [props.canApproveRequests] - Wears one of the participation token's
  *   approver hats; the only authority behind the menu this button opens.
@@ -45,7 +45,7 @@ const NUDGE_DISMISS_KEY = (address) => `poa:profileNudgeDismissed:${address?.toL
 export function ProfileHeader({
   username,
   address,
-  avatarUrl,
+  avatarCid,
   userRoles = [],
   canApproveRequests,
   profileMetadata,
@@ -55,9 +55,13 @@ export function ProfileHeader({
   onExecutiveMenuClick,
 }) {
   const { hasCopied, onCopy } = useClipboard(address || '');
-  const { isPasskeyUser } = useAuth();
   const identity = useIdentity(address);
-  const resolvedAvatarUrl = avatarUrl || (identity?.avatarCid ? `https://ipfs.io/ipfs/${identity.avatarCid}` : undefined);
+  // The caller already has this profile's own data (org leaderboard entry, or
+  // the freshly-saved account metadata). It is authoritative: IdentityContext is
+  // a TTL'd cross-chain cache that can still be holding the pre-edit CID, and
+  // preferring it made a just-uploaded avatar appear to revert.
+  const selectedAvatarCid = avatarCid || identity?.avatarCid || null;
+  const resolvedAvatarUrl = useIpfsImage(selectedAvatarCid);
 
   const profileIncomplete = canEdit && !!address && (
     !profileMetadata?.avatar || !profileMetadata?.bio
@@ -89,11 +93,12 @@ export function ProfileHeader({
       <div style={glassLayerStyle} />
 
       {/* Content - Single row layout */}
-      <HStack
-        spacing={{ base: 4, md: 6 }}
+      <Stack
+        direction={{ base: 'column', md: 'row' }}
+        spacing={{ base: 3, md: 6 }}
         p={{ base: 4, md: 5 }}
         position="relative"
-        align="center"
+        align={{ base: 'stretch', md: 'center' }}
         justify="space-between"
       >
         {/* Left: Avatar + User Info */}
@@ -180,7 +185,13 @@ export function ProfileHeader({
         </HStack>
 
         {/* Right: Action buttons */}
-        <HStack spacing={2} flexShrink={0}>
+        <HStack
+          spacing={2}
+          flexShrink={0}
+          justify={{ base: 'flex-end', md: 'initial' }}
+          w={{ base: '100%', md: 'auto' }}
+          flexWrap="wrap"
+        >
           {canEdit && onEditProfileClick && (
             <>
               <Button
@@ -207,17 +218,7 @@ export function ProfileHeader({
               />
             </>
           )}
-          {isPasskeyUser ? (
-            <PasskeyAccountInfo />
-          ) : (
-            <Box display={{ base: 'none', md: 'block' }}>
-              <ConnectButton
-                showBalance={false}
-                chainStatus="icon"
-                accountStatus="address"
-              />
-            </Box>
-          )}
+          <AccountControl compact />
 
           <IconButton
             icon={<SettingsIcon />}
@@ -231,16 +232,28 @@ export function ProfileHeader({
           />
 
           {canApproveRequests && (
-            <Button
-              size="sm"
-              colorScheme="teal"
-              onClick={onExecutiveMenuClick}
-            >
-              Approvals & Roles
-            </Button>
+            <>
+              <Button
+                size="sm"
+                colorScheme="teal"
+                onClick={onExecutiveMenuClick}
+                display={{ base: 'none', md: 'inline-flex' }}
+              >
+                Approvals & Roles
+              </Button>
+              <IconButton
+                icon={<CheckIcon />}
+                isRound
+                size="sm"
+                colorScheme="teal"
+                aria-label="Approvals & Roles"
+                onClick={onExecutiveMenuClick}
+                display={{ base: 'inline-flex', md: 'none' }}
+              />
+            </>
           )}
         </HStack>
-      </HStack>
+      </Stack>
 
       {profileIncomplete && !nudgeDismissed && (
         <HStack

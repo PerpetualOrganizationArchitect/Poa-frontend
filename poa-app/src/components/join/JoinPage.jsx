@@ -58,6 +58,7 @@ import EmailInviteCard from '@/components/zkEmail/EmailInviteCard';
 import { useZkEmailInviteSummary } from '@/hooks/useZkEmailInviteSummary';
 import { orgUrl } from '@/util/orgUrl';
 import ConnectedAccountBadge from '@/components/common/ConnectedAccountBadge';
+import AccountControl from '@/components/common/AccountControl';
 import { VouchFirstPhase } from '@/hooks/useVouchFirstOnboarding';
 import { getAllCredentials } from '@/services/web3/passkey/passkeyStorage';
 import { useOrgGate } from "@/components/shared/OrgDeadEnd";
@@ -652,7 +653,7 @@ const User = () => {
       <Container maxW="container.xl" pt={{ base: 4, md: 8 }} overflowX="hidden">
         {address && !isPasskeyUser ? (
           <Flex justify="flex-end" mb={4}>
-            <ConnectButton showBalance={false} chainStatus="icon" />
+            <AccountControl />
           </Flex>
         ) : null}
 

@@ -32,13 +32,12 @@ import { EditIcon, CloseIcon } from '@chakra-ui/icons';
 import { FiCamera } from 'react-icons/fi';
 import Cropper from 'react-easy-crop';
 import { useIPFScontext } from '@/context/ipfsContext';
+import useIpfsImage from '@/hooks/useIpfsImage';
 import {
   validateImageFile,
   MAX_AVATAR_SIZE_BYTES,
   ACCEPTED_IMAGE_INPUT,
 } from '@/util/imageUpload';
-
-const IPFS_GATEWAY = 'https://ipfs.io/ipfs/';
 
 /**
  * Create a cropped image blob from the source image and crop area.
@@ -89,6 +88,7 @@ function loadImage(src) {
 
 function AvatarUpload({ avatarCid, localPreview, onUpload, onRemove, isDisabled }) {
   const { addToIpfs } = useIPFScontext();
+  const resolvedAvatarSrc = useIpfsImage(avatarCid);
   const toast = useToast();
   const fileInputRef = useRef(null);
   const prevPreviewRef = useRef(null);
@@ -111,7 +111,8 @@ function AvatarUpload({ avatarCid, localPreview, onUpload, onRemove, isDisabled 
     };
   }, [localPreview]);
 
-  const previewSrc = localPreview || (avatarCid ? `${IPFS_GATEWAY}${avatarCid}` : null);
+  const previewSrc = localPreview || resolvedAvatarSrc;
+  const hasAvatar = Boolean(localPreview || avatarCid);
 
   const onFileSelected = useCallback((e) => {
     const file = e.target.files?.[0];
@@ -174,7 +175,7 @@ function AvatarUpload({ avatarCid, localPreview, onUpload, onRemove, isDisabled 
         <Box position="relative" cursor={isDisabled ? 'default' : 'pointer'}>
           <Avatar
             size="xl"
-            src={previewSrc}
+            src={previewSrc || undefined}
             bg="purple.500"
             border="3px solid"
             borderColor="purple.400"
@@ -206,9 +207,9 @@ function AvatarUpload({ avatarCid, localPreview, onUpload, onRemove, isDisabled 
             onClick={() => fileInputRef.current?.click()}
             isDisabled={isDisabled || isUploading}
           >
-            {previewSrc ? 'Change' : 'Upload'}
+            {hasAvatar ? 'Change' : 'Upload'}
           </Button>
-          {previewSrc && (
+          {hasAvatar && (
             <Button
               size="xs"
               variant="ghost"

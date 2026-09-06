@@ -15,6 +15,7 @@ import React, { useMemo } from 'react';
 import { Avatar, HStack, Text, Box, Tooltip } from '@chakra-ui/react';
 import Link from 'next/link';
 import { useIdentity } from '@/context/IdentityContext';
+import useIpfsImage from '@/hooks/useIpfsImage';
 import { truncateAddress } from '@/utils/profileUtils';
 
 const GRADIENT_PALETTES = [
@@ -38,12 +39,6 @@ function gradientForAddress(address) {
   return GRADIENT_PALETTES[idx];
 }
 
-function ipfsUrl(cid) {
-  if (!cid) return null;
-  if (cid.startsWith('http')) return cid;
-  return `https://ipfs.io/ipfs/${cid}`;
-}
-
 function UserIdentity({
   address,
   size = 'sm',
@@ -63,11 +58,17 @@ function UserIdentity({
 }) {
   const identity = useIdentity(address);
   const username = identity?.username || usernameHint || null;
+  // A resolved identity is only authoritative for the avatar when it actually
+  // found one. findUserProfileByAddress picks the single richest record across
+  // chains, so an address whose home-chain account has a username and bio but no
+  // avatar outranks the org chain's record that does have one — which is exactly
+  // how a member's photo went missing from a group they had uploaded it in.
+  // The caller's hint is that org's own live subgraph data, so it fills the gap.
   const avatarCid = identity?.avatarCid || avatarCidHint || null;
   const lowerAddress = address ? String(address).toLowerCase() : null;
 
   const gradient = useMemo(() => gradientForAddress(lowerAddress), [lowerAddress]);
-  const avatarSrc = ipfsUrl(avatarCid);
+  const avatarSrc = useIpfsImage(showAvatar ? avatarCid : null);
 
   const displayName = useMemo(() => {
     if (username) return username;

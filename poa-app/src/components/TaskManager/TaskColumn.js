@@ -34,7 +34,7 @@ const glassLayerStyle = {
 const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile = false, isEmpty = false, hideTitleInMobile = false, takeoverTasks = [] }, ref) => {
   const router = useRouter();
   const userDAO = useOrgName();
-  const { moveTask, addTask, addTaskBatch, editTask, editTaskMetadata } = useTaskBoard();
+  const { moveTask, addTask, addTaskBatch } = useTaskBoard();
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('quick');
   const [isSubmittingDrafts, setIsSubmittingDrafts] = useState(false);
@@ -197,44 +197,6 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   
   
 
-  const handleEditTask = async (updatedTask, taskIndex) => {
-    updatedTask = {
-      ...updatedTask,
-      difficulty: updatedTask.difficulty,
-      estHours: updatedTask.estHours,
-    };
-
-    await editTask(updatedTask, columnId, taskIndex, projectName);
-
-    toast ({
-      title: "Task edited.",
-      description: "Your task was successfully edited.",
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-    });
-  };
-
-  // Metadata-only edit path (TaskManager v5 `updateTaskMetadata`). Used when the editor
-  // has TaskPerm.EDIT_META but not EDIT_FULL — payout / bounty are left untouched.
-  const handleEditTaskMetadata = async (updatedTask, taskIndex) => {
-    await editTaskMetadata(
-      { ...updatedTask, difficulty: updatedTask.difficulty, estHours: updatedTask.estHours },
-      columnId,
-      taskIndex,
-      projectName,
-    );
-
-    toast({
-      title: 'Task metadata updated.',
-      description: 'Title and description were updated; payout and bounty are unchanged.',
-      status: 'success',
-      duration: 3000,
-      isClosable: true,
-    });
-
-  };
-
   // Enhanced drop behavior with debugging for tracing issues
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: 'task',
@@ -384,8 +346,7 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
   // Enhanced empty state style with drop zone highlighting
   const emptyStateStyle = {
     width: '100%',
-    height: '100%',
-    minHeight: '200px',
+    minHeight: '100%',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -395,7 +356,7 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
     backgroundColor: isOver ? 'rgba(123, 104, 238, 0.15)' : 'rgba(255, 255, 255, 0.05)',
     borderRadius: '8px',
     border: isOver ? '1px dashed rgba(123, 104, 238, 0.5)' : '1px dashed rgba(255, 255, 255, 0.2)',
-    margin: '0 auto 16px auto',
+    margin: '0 auto',
     transition: 'transform 0.3s ease, box-shadow 0.3s ease',
   };
 
@@ -431,8 +392,8 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
     </Box>
   );
 
-  // Filtered visibility. Keep the source arrays intact (map with the real index)
-  // and only decide what to paint — the header count + empty state read these.
+  // Filtered visibility only decides what to paint. The shared modal resolves
+  // edits against the complete source columns, preserving their real indexes.
   // Takeover ghosts are expired In Progress tasks mirrored into Open, so they
   // are matched against their real 'inProgress' column, not this column's id.
   const matchTask = (task) => !isFiltering || predicate(task, columnId);
@@ -446,7 +407,7 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
       ref={drop}
       w="100%"
       h="100%"
-      minH={isMobile ? "500px" : "auto"}
+      minH={0}
       bg="transparent" 
       borderRadius="xl"
       boxShadow={isMobile ? "none" : "lg"}
@@ -460,7 +421,7 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
       <div className="glass" style={glassLayerStyle} />
       
       {(!isMobile || (isMobile && !hideTitleInMobile)) && (
-        <Heading size="md" mb={3} mt={0} ml={3} alignItems="center" color='white'>
+        <Heading size="md" mb={3} mt={0} ml={3} alignItems="center" color='white' flexShrink={0}>
           {title}
           {isFiltering && (
             <Text as="span" fontSize="sm" fontWeight="400" color="whiteAlpha.600" ml={2}>
@@ -488,12 +449,12 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
       )}
       
       <Box
-        h={isMobile ? "calc(100% - 3rem)" : "calc(100% - 3rem)"}
+        minH={0}
         borderRadius="md"
         bg="transparent"
         p={isMobile ? 1 : 2}
         style={columnStyle}
-        overflowY={(tasks && tasks.length > 0) || takeoverTasks.length > 0 ? "auto" : "hidden"}
+        overflowY="auto"
         flex="1"
         width="100%"
         css={{
@@ -512,14 +473,12 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
       >
         {hasVisible ? (
           <>
-            {(tasks || []).map((task, index) =>
+            {(tasks || []).map((task) =>
               matchTask(task) ? (
                 <TaskCard
                   key={task.id}
                   task={task}
                   columnId={columnId}
-                  onEditTask={(updatedTask) => handleEditTask(updatedTask, index)}
-                  onEditTaskMetadata={(updatedTask) => handleEditTaskMetadata(updatedTask, index)}
                   isMobile={isMobile}
                 />
               ) : null,
@@ -534,8 +493,6 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
                   task={task}
                   columnId="inProgress"
                   isTakeoverGhost
-                  onEditTask={() => {}}
-                  onEditTaskMetadata={() => {}}
                   isMobile={isMobile}
                 />
               ) : null,
@@ -549,14 +506,7 @@ const TaskColumn = forwardRef(({ title, tasks, columnId, projectName, isMobile =
             <FilteredEmptyState compact />
           </Flex>
         ) : (
-          <Flex
-            justify="center"
-            align="center"
-            height="100%"
-            width="100%"
-          >
-            {renderEmptyState()}
-          </Flex>
+          renderEmptyState()
         )}
       </Box>
 

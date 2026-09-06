@@ -2,29 +2,27 @@ import { useMemo } from 'react';
 import { useToast } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
 import { useTaskBoard } from '@/context/TaskBoardContext';
-import TaskCardModal from '../TaskCardModal';
+import { useDataBaseContext } from '@/context/dataBaseContext';
+import TaskCardModal from '@/components/TaskManager/TaskCardModal';
+import { selectTaskModal } from '@/components/TaskManager/views/taskModalSelection';
 
-// In Kanban, TaskCardModal is rendered as a sibling of each TaskCard and
-// self-opens by matching `router.query.task` to its own task.id. List and
-// Gantt don't render TaskCard, so we mount a single TaskCardModal that
-// targets whichever task the URL currently points at.
+// One modal for every project view, including mobile columns and filtered
+// boards. Removing the task query (including browser Back) unmounts it.
 const TaskModalMount = () => {
   const router = useRouter();
   const { taskColumns, editTask, editTaskMetadata } = useTaskBoard();
+  const { selectedProject } = useDataBaseContext();
   const toast = useToast();
   const taskParam = router.query.task;
+  const requestedProjectId = router.query.projectId;
+  const selectedProjectId = selectedProject?.id;
 
-  const match = useMemo(() => {
-    if (!taskParam || !Array.isArray(taskColumns)) return null;
-    for (const col of taskColumns) {
-      if (!col?.tasks) continue;
-      const index = col.tasks.findIndex((t) => t && t.id === taskParam);
-      if (index !== -1) {
-        return { task: col.tasks[index], columnId: col.id, index };
-      }
-    }
-    return null;
-  }, [taskParam, taskColumns]);
+  const match = useMemo(() => selectTaskModal({
+    taskColumns,
+    taskId: taskParam,
+    selectedProjectId,
+    requestedProjectId,
+  }), [taskParam, taskColumns, selectedProjectId, requestedProjectId]);
 
   if (!match) return null;
 

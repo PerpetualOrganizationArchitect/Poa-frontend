@@ -2,7 +2,6 @@ import React from 'react';
 import { Box, Text, HStack, Badge, Flex, Spacer, Tooltip, Icon, Image } from '@chakra-ui/react';
 import UserIdentity from '@/components/common/UserIdentity';
 import { useDrag } from 'react-dnd';
-import TaskCardModal from './TaskCardModal';
 import { useRouter } from 'next/router';
 import { TimeIcon, CheckIcon, InfoIcon, WarningIcon, RepeatIcon } from '@chakra-ui/icons';
 import { hasBounty as checkHasBounty, getTokenByAddress } from '../../util/tokens';
@@ -26,10 +25,9 @@ import { useTaskIndicators } from '@/hooks/useTaskIndicators';
 import { darkCardStyle } from '@/components/shared/glassStyles';
 
 // `isTakeoverGhost`: render-only mirror of an expired-claimed task shown in the
-// Open column. Not draggable and mounts NO modal of its own — clicking routes to
-// the task URL, which opens the real In Progress card's modal (mounting a second
-// modal for the same task id would double-open, since modals watch router.query).
-const TaskCard = ({ task, columnId, onEditTask, onEditTaskMetadata, isMobile, isTakeoverGhost = false }) => {
+// Open column. Not draggable; its URL opens the shared board modal using the
+// real task's column, including when that column isn't mounted on mobile.
+const TaskCard = ({ task, columnId, isMobile, isTakeoverGhost = false }) => {
   const poContext = usePOContext();
   const tokenLabel = poContext?.tokenLabel || 'Shares';
   const { id, name, description, difficulty, estHours, claimedBy, claimerUsername, projectId, Payout, bountyToken, bountyPayout, bountyPayoutRaw, rejectionCount, releaseCount, requiresApplication, applicants } = task;
@@ -385,14 +383,6 @@ const TaskCard = ({ task, columnId, onEditTask, onEditTaskMetadata, isMobile, is
         </Flex>
       </Box>
 
-      {!isTakeoverGhost && (
-        <TaskCardModal
-          task={task}
-          columnId={columnId}
-          onEditTask={onEditTask}
-          onEditTaskMetadata={onEditTaskMetadata}
-        />
-      )}
     </>
   );
 };

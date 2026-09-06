@@ -59,7 +59,7 @@ const TaskBoard = ({
 
   return (
     <TaskFilterProvider>
-      <VStack w="100%" align="stretch" h="100%" spacing={0}>
+      <VStack w="100%" align="stretch" h="100%" minH={0} spacing={0}>
         {/* Project header - only show in desktop view */}
         {isDesktop && (
           <ProjectHeader
@@ -81,15 +81,14 @@ const TaskBoard = ({
           flex="1"
           minH={0}
           width="100%"
-          height={{ base: "100%", md: "calc(100vh - 120px)" }}
           overflow="hidden"
           mb={0}
         >
           {renderView()}
         </Box>
 
-        {/* List/Gantt don't render TaskCard, so the modal needs its own mount */}
-        {viewMode !== 'board' && <TaskModalMount />}
+        {/* One URL-driven modal works across hidden columns, filters, and views. */}
+        <TaskModalMount />
       </VStack>
     </TaskFilterProvider>
   );

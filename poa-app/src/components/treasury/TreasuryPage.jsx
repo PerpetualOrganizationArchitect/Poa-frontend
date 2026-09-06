@@ -1,4 +1,5 @@
 import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { useTour } from '@/features/tour';
 import {
   Box,
@@ -29,14 +30,17 @@ import TokenBalancesGrid from './TokenBalancesGrid';
 import CurrentDistributions from './CurrentDistributions';
 import HistoricalOverview from './HistoricalOverview';
 import ActivityFeed from './ActivityFeed';
-import ParticipationTokenModal from './ParticipationTokenModal';
-import DepositModal from './DepositModal';
-import CreateDistributionModal from './CreateDistributionModal';
 import GasPoolSection from './GasPoolSection';
-import GasPoolDepositModal from './GasPoolDepositModal';
 import { SectionHeader, LEDGER_GLASS, Rise, flashRing } from './treasuryStyles';
 import { useOrgTheme } from '@/hooks';
 import { useOrgGate } from '@/components/shared/OrgDeadEnd';
+
+// Closed transaction forms should not initialize wallet services or authority
+// queries. Their code and hooks are needed only after the corresponding action.
+const ParticipationTokenModal = dynamic(() => import('@/components/treasury/ParticipationTokenModal'));
+const DepositModal = dynamic(() => import('@/components/treasury/DepositModal'));
+const CreateDistributionModal = dynamic(() => import('@/components/treasury/CreateDistributionModal'));
+const GasPoolDepositModal = dynamic(() => import('@/components/treasury/GasPoolDepositModal'));
 
 // The ledger's glass surface — the accent palette in treasuryStyles.js was
 // validated against this exact opacity over the mint page.
@@ -381,24 +385,24 @@ const TreasuryPage = () => {
       )}
 
       {/* PT Stats Modal */}
-      <ParticipationTokenModal
+      {isPTModalOpen && <ParticipationTokenModal
         isOpen={isPTModalOpen}
         onClose={onPTModalClose}
         totalSupply={totalSupply}
         completedTasks={completedTasks}
         tokenAddress={participationTokenAddress}
-      />
+      />}
 
       {/* Deposit Modal (Treasury) */}
-      <DepositModal
+      {isDepositOpen && <DepositModal
         isOpen={isDepositOpen}
         onClose={onDepositClose}
         paymentManagerAddress={paymentManager?.id}
         orgChainId={orgChainId}
-      />
+      />}
 
       {/* Deposit Modal (Task Bounties) */}
-      {taskManagerAddress && (
+      {isBountyDepositOpen && taskManagerAddress && (
         <DepositModal
           isOpen={isBountyDepositOpen}
           onClose={onBountyDepositClose}
@@ -411,20 +415,20 @@ const TreasuryPage = () => {
       )}
 
       {/* Create Distribution Proposal Modal */}
-      <CreateDistributionModal
+      {isCreateDistOpen && <CreateDistributionModal
         isOpen={isCreateDistOpen}
         onClose={onCreateDistClose}
         paymentManagerAddress={paymentManager?.id}
         orgChainId={orgChainId}
         votingContractAddress={hybridVotingContractAddress}
-      />
+      />}
 
       {/* Gas Pool Deposit Modal */}
-      <GasPoolDepositModal
+      {isGasPoolDepositOpen && <GasPoolDepositModal
         isOpen={isGasPoolDepositOpen}
         onClose={onGasPoolDepositClose}
         paymasterHubAddress={paymasterHubAddress}
-      />
+      />}
     </>
   );
 };

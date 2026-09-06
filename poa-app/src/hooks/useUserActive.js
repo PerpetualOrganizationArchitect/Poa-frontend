@@ -51,7 +51,9 @@ function init() {
     window.addEventListener(e, onActivity, { passive: true }),
   );
 
-  onActivity(); // start idle timer
+  // A tab can mount while already hidden, without a visibilitychange event.
+  // Seed from visibility so background tabs never start an active poll cycle.
+  onVisibility();
 }
 
 // ── hook ─────────────────────────────────────────────────────────────

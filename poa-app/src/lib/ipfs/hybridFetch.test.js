@@ -61,6 +61,55 @@ afterEach(() => {
 });
 
 describe('hybridFetchBytes size cap', () => {
+  it('starts the gateway after 400ms even while Helia initialization is stalled', async () => {
+    vi.useFakeTimers();
+    getVerifiedFetch.mockReturnValue(new Promise(() => {}));
+    globalThis.fetch = vi.fn(async () => streamed(livePng()));
+    const result = hybridFetchBytes(CID, { maxBytes: MAX_AVATAR_IMAGE_BYTES });
+    await vi.advanceTimersByTimeAsync(399);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await result).length).toBe(126027);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a late Helia request after the gateway already completed', async () => {
+    vi.useFakeTimers();
+    let finishInit;
+    getVerifiedFetch.mockReturnValue(new Promise(resolve => { finishInit = resolve; }));
+    const verifiedFetch = vi.fn(async () => streamed(livePng()));
+    globalThis.fetch = vi.fn(async () => streamed(livePng()));
+    const result = hybridFetchBytes(CID, { maxBytes: MAX_AVATAR_IMAGE_BYTES });
+    await vi.advanceTimersByTimeAsync(400);
+    await result;
+    finishInit({ verifiedFetch, disabled: false });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(verifiedFetch).not.toHaveBeenCalled();
+  });
+
+  it('falls back immediately when Helia initialization rejects', async () => {
+    getVerifiedFetch.mockRejectedValue(new Error('CDN unavailable'));
+    globalThis.fetch = vi.fn(async () => streamed(livePng()));
+    const bytes = await hybridFetchBytes(CID, { maxBytes: MAX_AVATAR_IMAGE_BYTES });
+    expect(bytes.length).toBe(126027);
+  });
+
+  it('terminates when Helia initialization hangs and the gateway cannot respond', async () => {
+    vi.useFakeTimers();
+    getVerifiedFetch.mockReturnValue(new Promise(() => {}));
+    let gatewaySignal;
+    globalThis.fetch = vi.fn((_url, { signal }) => {
+      gatewaySignal = signal;
+      return new Promise(() => {});
+    });
+    const result = hybridFetchBytes(CID);
+    const rejected = expect(result).rejects.toMatchObject({ name: 'TimeoutError' });
+    await vi.advanceTimersByTimeAsync(20000);
+    await rejected;
+    expect(gatewaySignal.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('returns the live avatar payload unchanged through the gateway-only path', async () => {
     getVerifiedFetch.mockResolvedValue({ disabled: true });
     // The real shape observed on api.thegraph.com: brotli, no usable length.

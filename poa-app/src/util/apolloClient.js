@@ -4,6 +4,7 @@ import { ApolloClient, InMemoryCache, from } from '@apollo/client';
 import { HttpLink } from '@apollo/client/link/http';
 import { RetryLink } from '@apollo/client/link/retry';
 import { DEFAULT_SUBGRAPH_URL } from '../config/networks';
+import { fetchWithTimeout, shouldRetryNetworkError } from '@/util/fetchWithTimeout';
 
 // Increment this when subgraph schema changes significantly to clear stale cache
 const CACHE_VERSION = 'v13'; // v13: normalize Hat by hatId (preserve nested vouchConfig)
@@ -42,26 +43,10 @@ const retryLink = new RetryLink({
   attempts: {
     max: 3,
     // retryIf only receives network errors (not GraphQL errors).
-    // Retry any network failure: fetch timeout, CORS, HTTP 5xx/429, etc.
-    retryIf: (error) => !!error,
+    // Timeouts and transient failures retry; an abandoned query stays cancelled.
+    retryIf: shouldRetryNetworkError,
   },
 });
-
-/**
- * fetch wrapper that aborts after a timeout. A subgraph endpoint that hangs
- * (gateway latency, rate-limit queue, stalled connection) would otherwise leave
- * the request pending forever — no error fires, so RetryLink never retries and
- * the consuming query hangs in `loading: true` indefinitely. Aborting turns a
- * hang into a network error that RetryLink CAN retry, and that ultimately
- * surfaces to the UI as `error` instead of an eternal spinner.
- */
-const QUERY_TIMEOUT_MS = 15000;
-function fetchWithTimeout(input, init = {}) {
-  if (typeof AbortController === 'undefined') return fetch(input, init);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), QUERY_TIMEOUT_MS);
-  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
 
 /**
  * Create an Apollo link chain for a given endpoint.

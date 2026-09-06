@@ -59,6 +59,25 @@ export function usePollNavigation({
     onClose: onDetailCloseBase,
   } = useDisclosure();
 
+  // This hook survives navigation between organizations on the same page.
+  // A clicked poll is a local snapshot, so clearing the context arrays alone
+  // cannot close it. Keep same-org history behavior, but discard that snapshot
+  // before it can be rendered against another org's contracts.
+  const selectionOrgRef = useRef(userDAO);
+  const selectionIsCurrent = selectionOrgRef.current === userDAO;
+  useEffect(() => {
+    if (selectionOrgRef.current === userDAO) return;
+    selectionOrgRef.current = userDAO;
+    setSelectedPoll(null);
+    setSelectedOption('');
+    setIsPollCompleted(false);
+    setSelectedTab(0);
+    setVotingTypeSelected(PTVoteType);
+    userClosedPollRef.current = null;
+    notFoundShownRef.current = new Set();
+    onDetailCloseBase();
+  }, [userDAO, PTVoteType, onDetailCloseBase]);
+
   // Wrap the close handler to (1) remember which poll was closed so the
   // URL-based effect doesn't immediately re-open it while ?poll= lingers, and
   // (2) strip ?poll from the URL via router.replace while KEEPING userDAO
@@ -188,7 +207,7 @@ export function usePollNavigation({
       // gets 'pending'). Check the URL instead — if the user has moved on, the
       // param is gone and there is nothing to correct.
       const r = routerRef.current;
-      if (r?.query?.poll !== pollId) return;
+      if (r?.query?.poll !== pollId || userDAORef.current !== userDAO) return;
       notFoundShownRef.current.add(pollId);
       addNotification?.(
         outcome === 'foreign'
@@ -211,6 +230,7 @@ export function usePollNavigation({
     onDetailOpen,
     resolveMissingPoll,
     addNotification,
+    userDAO,
   ]);
 
   // Get the correct contract address based on voting type
@@ -219,7 +239,7 @@ export function usePollNavigation({
   }, [votingTypeSelected]);
 
   return {
-    selectedPoll,
+    selectedPoll: selectionIsCurrent ? selectedPoll : null,
     setSelectedPoll,
     selectedOption,
     setSelectedOption,
@@ -230,7 +250,7 @@ export function usePollNavigation({
     handlePollClick,
     getContractAddressForVotingType,
     // Unified PollDetail surface (Wave 2)
-    isDetailOpen,
+    isDetailOpen: selectionIsCurrent && isDetailOpen,
     onDetailOpen,
     onDetailClose,
   };

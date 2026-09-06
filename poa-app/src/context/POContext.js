@@ -14,6 +14,8 @@ import { useSubgraphClient } from '../util/apolloClient';
 import { getDefaultOrgForHost, getVisitUrlForOrg, resolveOrgAlias } from '../config/hostDefaultOrg';
 import { useOrgNameState } from '@/hooks/useOrgName';
 import { resolveLegacyRoleName } from '@/lib/roles/roleNames';
+import { createOrgStateReducer, selectOrgState } from '@/lib/orgState';
+import { lookupOrganization } from '@/util/orgLookup';
 
 // Re-export for back-compat with callers that imported these from POContext.
 export { getDefaultOrgForHost, getVisitUrlForOrg, resolveOrgAlias };
@@ -103,6 +105,7 @@ function transformEducationModules(modules) {
 }
 
 const initialState = {
+    scopeName: null,
     // Organization info
     orgId: null,
     orgChainId: null,
@@ -159,30 +162,7 @@ const initialState = {
     foldersRoot: null,
 };
 
-function poReducer(state, action) {
-    switch (action.type) {
-        case 'SET_ORG_DATA':
-            return { ...state, ...action.payload };
-        case 'SET_LOGO_URL':
-            return { ...state, logoUrl: action.payload };
-        case 'SET_LOADING':
-            return { ...state, poContextLoading: action.payload };
-        default:
-            return state;
-    }
-}
-
-// Org-lookup fetch timeout. A hanging subgraph endpoint (gateway latency,
-// rate-limit queue, stalled connection) must not hang the whole org resolution
-// forever — abort so the per-source try/catch treats it as a (retryable) failure
-// instead of leaving Promise.all pending indefinitely.
-const ORG_LOOKUP_TIMEOUT_MS = 12000;
-function fetchWithTimeout(url, init = {}, timeoutMs = ORG_LOOKUP_TIMEOUT_MS) {
-  if (typeof AbortController === 'undefined') return fetch(url, init);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
+const poReducer = createOrgStateReducer(initialState);
 
 export const POProvider = ({ children }) => {
     const router = useRouter();
@@ -192,7 +172,11 @@ export const POProvider = ({ children }) => {
     const { safeFetchFromIpfs } = useIPFScontext();
     const { seedIdentities } = useIdentityContext();
 
-    const [state, dispatch] = useReducer(poReducer, initialState);
+    const [storedState, dispatch] = useReducer(poReducer, initialState);
+    // Mask old addresses and metadata during the render where the name changes,
+    // before the effect below resets state. No consumer may pair a new org name
+    // with a previous org's contract addresses, even for a single commit.
+    const state = selectOrgState(storedState, poName, initialState);
 
     // Filtered leaderboard for display (only users with registered usernames)
     const leaderboardDisplayData = useMemo(() => {
@@ -225,9 +209,12 @@ export const POProvider = ({ children }) => {
         if (entries.length > 0) seedIdentities(entries);
     }, [state.leaderboardData, seedIdentities]);
 
-    // Step 1: Look up org by name across all chains via parallel fetch
-    const [orgLookupLoading, setOrgLookupLoading] = useState(!!poName);
-    const [orgLookupError, setOrgLookupError] = useState(null);
+    // Step 1: Resolve the name with ordered chain precedence and verified hints.
+    const [lookupLoading, setOrgLookupLoading] = useState(!!poName);
+    const [lookupError, setOrgLookupError] = useState(null);
+    const scopeMatches = storedState.scopeName === poName;
+    const orgLookupLoading = scopeMatches ? lookupLoading : !!poName;
+    const orgLookupError = scopeMatches ? lookupError : null;
     // The name we searched everywhere for and did NOT find. A positive verdict,
     // not the absence of one: `orgLookupLoading` starts false (poName is '' on
     // the first render, before useOrgName's fallback runs), so deriving
@@ -235,9 +222,14 @@ export const POProvider = ({ children }) => {
     // on every page load — between the name landing and the lookup effect
     // starting.
     const [orgNotFoundName, setOrgNotFoundName] = useState(null);
-    const isNewOrg = router.query.newOrg === 'true';
+    // Cleaning up ?newOrg after data arrives must not restart the org lookup.
+    const newOrgRef = React.useRef(false);
+    newOrgRef.current = router.query.newOrg === 'true';
 
     useEffect(() => {
+        dispatch({ type: 'RESET_ORG', orgName: poName });
+        setOrgLookupError(null);
+        setOrgNotFoundName(null);
         if (!poName) {
             // Nothing to look up. `poContextLoading` deliberately stays true:
             // eleven surfaces read it as "org data is still arriving" and would
@@ -248,54 +240,31 @@ export const POProvider = ({ children }) => {
             return;
         }
         let cancelled = false;
+        const controller = new AbortController();
+        let retryTimer;
+        const isNewOrg = newOrgRef.current;
         let retryCount = 0;
         const MAX_RETRIES = 20;
         const RETRY_INTERVAL = 3000;
         setOrgLookupLoading(true);
-        setOrgLookupError(null);
-        setOrgNotFoundName(null);
 
         async function findOrg() {
-            const sources = getAllSubgraphUrls();
-            // Track whether ANY source failed (timeout / network / abort) vs every
-            // source responding cleanly with "no such org". A failure is transient
-            // and should be retried; a clean "not found everywhere" is terminal.
-            let anySourceFailed = false;
             try {
-                const results = await Promise.all(sources.map(async (source) => {
-                    try {
-                        const res = await fetchWithTimeout(source.url, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                query: 'query FindOrg($name: String!) { organizations(where: { name: $name }, first: 1) { id name } }',
-                                variables: { name: poName },
-                            }),
-                        });
-                        const json = await res.json();
-                        // A 200 carrying GraphQL `errors` (auth, schema drift, a
-                        // rate-limited gateway) has no `data` — reading that as
-                        // "no such org" turns a transient fault into a permanent
-                        // not-found. Treat it as a source failure so the retry
-                        // loop handles it.
-                        if (json?.errors?.length) {
-                            anySourceFailed = true;
-                            console.warn(`[POContext] ${source.name} returned GraphQL errors:`, json.errors[0]?.message);
-                            return null;
-                        }
-                        const org = json?.data?.organizations?.[0];
-                        return org ? { ...org, chainId: source.chainId } : null;
-                    } catch (err) {
-                        anySourceFailed = true;
-                        console.warn(`[POContext] Failed to query ${source.name}:`, err.message);
-                        return null;
-                    }
-                }));
+                const { org: found, anySourceFailed } = await lookupOrganization({
+                    name: poName,
+                    sources: getAllSubgraphUrls(),
+                    signal: controller.signal,
+                    // Newly deployed orgs always check current chain precedence.
+                    bypassCache: isNewOrg,
+                    onSourceError: (source, error) => {
+                        console.warn(`[POContext] Failed to query ${source.name}:`, error.message);
+                    },
+                });
                 if (cancelled) return;
-                const found = results.find(Boolean);
                 if (found) {
                     dispatch({
                         type: 'SET_ORG_DATA',
+                        orgName: poName,
                         payload: { orgId: found.id, orgChainId: found.chainId },
                     });
                     setOrgLookupLoading(false);
@@ -306,7 +275,7 @@ export const POProvider = ({ children }) => {
                     // single slow gateway strands the user (e.g. on /join) at a dead end.
                     retryCount++;
                     console.log(`[POContext] Org "${poName}" unresolved (newOrg=${isNewOrg}, sourceFailed=${anySourceFailed}), retrying (${retryCount}/${MAX_RETRIES})...`);
-                    setTimeout(() => {
+                    retryTimer = setTimeout(() => {
                         if (!cancelled) findOrg();
                     }, RETRY_INTERVAL);
                     // Don't set loading to false — still polling
@@ -314,7 +283,7 @@ export const POProvider = ({ children }) => {
                     console.warn(`[POContext] Organization "${poName}" not found on any chain`);
                     setOrgLookupLoading(false);
                     setOrgNotFoundName(poName);
-                    dispatch({ type: 'SET_LOADING', payload: false });
+                    dispatch({ type: 'SET_LOADING', orgName: poName, payload: false });
                 }
             } catch (err) {
                 if (!cancelled) {
@@ -326,19 +295,28 @@ export const POProvider = ({ children }) => {
         }
 
         findOrg();
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+            clearTimeout(retryTimer);
+            controller.abort();
+        };
     }, [poName]);
 
     // Step 2: Fetch full org data using bytes ID, routed to the correct chain's subgraph
     const subgraphUrl = getSubgraphUrl(state.orgChainId);
     const client = useSubgraphClient(subgraphUrl);
 
-    const { data: orgData, loading: orgDataLoading, error: orgDataError, refetch: refetchOrgData } = useQuery(FETCH_ORG_FULL_DATA, {
+    const { data: queryData, loading: orgDataLoading, error: orgDataError, refetch: refetchOrgData } = useQuery(FETCH_ORG_FULL_DATA, {
         variables: { orgId: state.orgId },
         skip: !state.orgId,
         fetchPolicy: 'cache-first',
         client,
     });
+    // Apollo may retain a previous result while a query is skipped or changes
+    // variables. Process only the organization resolved for this scope.
+    const orgData = state.orgId && queryData?.organization?.id === state.orgId
+        ? queryData
+        : undefined;
 
     // Ref-stabilize refetch so callbacks don't re-create when Apollo returns a new reference
     const refetchRef = React.useRef(refetchOrgData);
@@ -483,6 +461,7 @@ export const POProvider = ({ children }) => {
             // Single atomic dispatch replaces 25+ individual setState calls
             dispatch({
                 type: 'SET_ORG_DATA',
+                orgName: poName,
                 payload: {
                     logoHash: org.metadataHash || '',
                     logoUrl: org.metadata?.logo || '',
@@ -559,15 +538,17 @@ export const POProvider = ({ children }) => {
                     poContextLoading: false,
                 },
             });
-
-            // Clean up newOrg query param now that full data is loaded
-            // (deferred from org lookup to prevent flashing from PostDeployLoadingScreen to bare Spinner)
-            if (router.query.newOrg === 'true') {
-                const { newOrg, ...restQuery } = router.query;
-                router.replace({ pathname: router.pathname, query: restQuery }, undefined, { shallow: true });
-            }
         }
-    }, [orgData, router]);
+    }, [orgData, poName]);
+
+    // URL housekeeping is separate from transforming org data: moving between
+    // routes replaces Next's router object but must not rebuild every role,
+    // leaderboard and module array (or restart their IPFS effects).
+    useEffect(() => {
+        if (!orgData?.organization || state.poContextLoading || router.query.newOrg !== 'true') return;
+        const { newOrg, ...restQuery } = router.query;
+        router.replace({ pathname: router.pathname, query: restQuery }, undefined, { shallow: true });
+    }, [orgData, state.poContextLoading, router]);
 
     // Backfill metadata fields from IPFS that the subgraph hasn't surfaced yet.
     // Two cases:
@@ -579,6 +560,7 @@ export const POProvider = ({ children }) => {
     //      self-disables once the subgraph returns `taskPayoutHoursOnly`
     //      (defined, even when false).
     useEffect(() => {
+        let cancelled = false;
         async function fetchMetadataFromIpfs() {
             const org = orgData?.organization;
             if (!org?.metadataHash) {
@@ -592,9 +574,10 @@ export const POProvider = ({ children }) => {
             }
             try {
                 const metadata = await safeFetchFromIpfs(org.metadataHash);
+                if (cancelled) return;
                 const payload = {};
                 if (!subgraphHasMetadata) {
-                    dispatch({ type: 'SET_LOGO_URL', payload: metadata?.logo || '' });
+                    payload.logoUrl = metadata?.logo || '';
                     const useTokenSymbol = metadata?.useTokenSymbol === true;
                     const symbol = org.participationToken?.symbol || null;
                     payload.hideTreasury = metadata?.hideTreasury === true;
@@ -608,18 +591,20 @@ export const POProvider = ({ children }) => {
                     payload.taskPayoutHourlyRate = normalizeHourlyRate(metadata?.taskPayoutHourlyRate);
                 }
                 if (Object.keys(payload).length > 0) {
-                    dispatch({ type: 'SET_ORG_DATA', payload });
+                    dispatch({ type: 'SET_ORG_DATA', orgName: poName, payload });
                 }
             } catch (e) {
                 console.warn('[POContext] Failed to fetch metadata from IPFS:', e);
             }
         }
         fetchMetadataFromIpfs();
-    }, [orgData, safeFetchFromIpfs]);
+        return () => { cancelled = true; };
+    }, [orgData, poName, safeFetchFromIpfs]);
 
     // Fetch IPFS content for education modules (description, quiz, answers, link)
     // The subgraph only stores title + contentHash; the rest lives in IPFS.
     useEffect(() => {
+        let cancelled = false;
         async function fetchModuleContent() {
             const modules = state.educationModules;
             if (!modules || modules.length === 0) return;
@@ -651,17 +636,20 @@ export const POProvider = ({ children }) => {
                 })
             );
 
+            if (cancelled) return;
             dispatch({
                 type: 'SET_ORG_DATA',
+                orgName: poName,
                 payload: { educationModules: updated },
             });
         }
         fetchModuleContent();
-    }, [state.educationModules, safeFetchFromIpfs]);
+        return () => { cancelled = true; };
+    }, [state.educationModules, poName, safeFetchFromIpfs]);
 
     // Combined loading and error states
-    const loading = orgLookupLoading || orgDataLoading;
-    const rawError = orgLookupError || orgDataError;
+    const loading = orgLookupLoading || (!!state.orgId && orgDataLoading);
+    const rawError = orgLookupError || (state.orgId ? orgDataError : null);
     // Stabilize error: only change when the message string changes, not the object reference
     const errorMessage = rawError?.message || null;
 
@@ -694,7 +682,7 @@ export const POProvider = ({ children }) => {
             ? 'loading'
             : !poName
                 ? 'missing'
-                : orgNotFoundName === poName
+                : scopeMatches && orgNotFoundName === poName
                     ? 'notFound'
                     : 'loading';
 

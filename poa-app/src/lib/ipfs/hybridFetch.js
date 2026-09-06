@@ -8,6 +8,7 @@ import { ImageTooLargeError, readCappedBytes } from './imageBytes';
 // If Helia errors *before* this window elapses, the gateway fires immediately
 // rather than waiting out the rest of the delay.
 const HEDGE_DELAY_MS = 400;
+const FETCH_TIMEOUT_MS = 20000;
 
 const GATEWAY_URL = 'https://api.thegraph.com/ipfs/api/v0/cat';
 const GATEWAY_MAX_RETRIES = 3;
@@ -68,7 +69,8 @@ async function gatewayFetch(cid, signal, maxBytes) {
 }
 
 async function heliaFetch(verifiedFetch, cid, signal, maxBytes) {
-  const res = await verifiedFetch(`ipfs://${cid}`, { signal });
+  // The worker must enforce the cap before transferring the response body.
+  const res = await verifiedFetch(`ipfs://${cid}`, { signal, maxBytes });
   if (!res.ok) throw new Error(`Helia fetch failed: ${res.status}`);
   return readBody(res, maxBytes);
 }
@@ -83,20 +85,6 @@ async function heliaFetch(verifiedFetch, cid, signal, maxBytes) {
 //
 // @param {{maxBytes?: number}} [options] - Cap the response size (0 = uncapped).
 export async function hybridFetchBytes(cid, { maxBytes = 0 } = {}) {
-  const { verifiedFetch, disabled } = await getVerifiedFetch();
-
-  // Helia disabled (init failed, no IDB, etc.) — gateway path only.
-  if (disabled || !verifiedFetch) {
-    try {
-      const bytes = await gatewayFetch(cid, undefined, maxBytes);
-      recordOutcome('gatewayOnly');
-      return bytes;
-    } catch (err) {
-      recordOutcome('failure');
-      throw err;
-    }
-  }
-
   return new Promise((resolve, reject) => {
     const heliaCtrl = new AbortController();
     const gatewayCtrl = new AbortController();
@@ -105,14 +93,25 @@ export async function hybridFetchBytes(cid, { maxBytes = 0 } = {}) {
     let gatewayError = null;
     let gatewayStarted = false;
     let hedgeTimer = null;
+    let heliaDisabled = false;
+    const deadlineTimer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(hedgeTimer);
+      heliaCtrl.abort();
+      gatewayCtrl.abort();
+      recordOutcome('failure');
+      reject(new DOMException('IPFS retrieval timed out', 'TimeoutError'));
+    }, FETCH_TIMEOUT_MS);
 
     const win = (source, bytes) => {
       if (settled) return;
       settled = true;
       clearTimeout(hedgeTimer);
+      clearTimeout(deadlineTimer);
       // Cancel the loser to free its socket immediately.
       (source === 'helia' ? gatewayCtrl : heliaCtrl).abort();
-      recordOutcome(source === 'helia' ? 'p2pWin' : 'gatewayWin');
+      recordOutcome(source === 'helia' ? 'p2pWin' : heliaDisabled ? 'gatewayOnly' : 'gatewayWin');
       resolve(bytes);
     };
 
@@ -122,6 +121,7 @@ export async function hybridFetchBytes(cid, { maxBytes = 0 } = {}) {
       // the caller would have seen pre-Helia.
       settled = true;
       clearTimeout(hedgeTimer);
+      clearTimeout(deadlineTimer);
       recordOutcome('failure');
       reject(gatewayError ?? heliaError ?? new Error('IPFS fetch failed'));
     };
@@ -138,7 +138,19 @@ export async function hybridFetchBytes(cid, { maxBytes = 0 } = {}) {
         });
     };
 
-    heliaFetch(verifiedFetch, cid, heliaCtrl.signal, maxBytes)
+    // The head start includes module loading and IndexedDB initialization.
+    // Otherwise an unreachable script CDN prevents even the HTTP fallback
+    // from starting. A late initializer must not fetch after the gateway won.
+    hedgeTimer = setTimeout(startGateway, HEDGE_DELAY_MS);
+    Promise.resolve().then(() => getVerifiedFetch())
+      .then(({ verifiedFetch, disabled }) => {
+        if (settled) return;
+        if (disabled || !verifiedFetch) {
+          heliaDisabled = true;
+          throw new Error('Verified IPFS retrieval unavailable');
+        }
+        return heliaFetch(verifiedFetch, cid, heliaCtrl.signal, maxBytes);
+      })
       .then((bytes) => win('helia', bytes))
       .catch((err) => {
         if (settled || err?.name === 'AbortError') return;
@@ -147,7 +159,5 @@ export async function hybridFetchBytes(cid, { maxBytes = 0 } = {}) {
         if (!gatewayStarted) startGateway();
         else if (gatewayError) fail();
       });
-
-    hedgeTimer = setTimeout(startGateway, HEDGE_DELAY_MS);
   });
 }

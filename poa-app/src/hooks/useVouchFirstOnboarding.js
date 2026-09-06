@@ -6,6 +6,7 @@
  * poll for vouches → once quorum met → deploy + join in single UserOp.
  */
 
+import { shareUrl } from '@/util/shortLinks';
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useQuery } from '@apollo/client';
 import { getClient } from '@/util/apolloClient';
@@ -99,14 +100,18 @@ export function useVouchFirstOnboarding({
   // On mount: check for existing pending credential
   useEffect(() => {
     if (!orgName) return;
+    let cancelled = false;
     const stored = getPendingCredentialForOrg(orgName);
     // A pending saved by the zk-email one-step claim flow is NOT a vouch application — adopting it
     // here would build a vouch link with hatId=undefined and crash completion. Leave it alone.
     if (stored && stored.flow !== 'zkemail') {
       setPendingCredential(stored);
       setPhase(VouchFirstPhase.AWAITING_VOUCHES);
-      setVouchLink(buildVouchLink(orgName, stored.accountAddress, stored.selectedHatId));
+      buildVouchLink(orgName, stored.accountAddress, stored.selectedHatId).then((link) => {
+        if (!cancelled) setVouchLink(link);
+      });
     }
+    return () => { cancelled = true; };
   }, [orgName]);
 
   const isActive = useUserActive();
@@ -174,7 +179,7 @@ export function useVouchFirstOnboarding({
       savePendingCredential(pending);
       setPendingCredential(pending);
 
-      const link = buildVouchLink(orgName, accountAddress, selectedHatId);
+      const link = await buildVouchLink(orgName, accountAddress, selectedHatId);
       setVouchLink(link);
 
       // Copy to clipboard
@@ -318,9 +323,7 @@ export function useVouchFirstOnboarding({
 }
 
 function buildVouchLink(orgName, accountAddress, hatId) {
-  if (typeof window === 'undefined') return '';
-  const base = `${window.location.origin}/join`;
-  return `${base}?org=${encodeURIComponent(orgName)}&vouch=${accountAddress}&hatId=${hatId}`;
+  return shareUrl('/join/', { org: orgName, vouch: accountAddress, hatId });
 }
 
 export default useVouchFirstOnboarding;

@@ -173,6 +173,8 @@ export const POProvider = ({ children }) => {
     const { seedIdentities } = useIdentityContext();
 
     const [storedState, dispatch] = useReducer(poReducer, initialState);
+    const storedStateRef = React.useRef(storedState);
+    storedStateRef.current = storedState;
     // Mask old addresses and metadata during the render where the name changes,
     // before the effect below resets state. No consumer may pair a new org name
     // with a previous org's contract addresses, even for a single commit.
@@ -225,17 +227,38 @@ export const POProvider = ({ children }) => {
     // Cleaning up ?newOrg after data arrives must not restart the org lookup.
     const newOrgRef = React.useRef(false);
     newOrgRef.current = router.query.newOrg === 'true';
+    const pinnedOrgId = router.query.orgId;
+    const pinnedChainId = Number(router.query.chainId);
 
     useEffect(() => {
-        dispatch({ type: 'RESET_ORG', orgName: poName });
+        // Keep loaded data when navigation carries or drops the same org's IDs.
+        if (storedStateRef.current.scopeName !== poName) {
+            dispatch({ type: 'RESET_ORG', orgName: poName });
+        }
         setOrgLookupError(null);
         setOrgNotFoundName(null);
+        function setResolvedOrg(orgId, orgChainId) {
+            const previous = storedStateRef.current;
+            if (previous.scopeName === poName && previous.orgId
+                && (previous.orgId !== orgId || previous.orgChainId !== orgChainId)) {
+                dispatch({ type: 'RESET_ORG', orgName: poName });
+            }
+            dispatch({ type: 'SET_ORG_DATA', orgName: poName, payload: { orgId, orgChainId } });
+        }
         if (!poName) {
             // Nothing to look up. `poContextLoading` deliberately stays true:
             // eleven surfaces read it as "org data is still arriving" and would
             // otherwise render a fabricated empty organisation. Pages tell this
             // terminal state apart via `orgStatus === 'missing'` and must check
             // that BEFORE the loading flag (see VotingPage / pages/votes).
+            setOrgLookupLoading(false);
+            return;
+        }
+        const sources = getAllSubgraphUrls();
+        const pinnedOrg = typeof pinnedOrgId === 'string' && /^0x[0-9a-f]{64}$/.test(pinnedOrgId)
+            && sources.some((source) => source.chainId === pinnedChainId)
+            ? { id: pinnedOrgId, chainId: pinnedChainId } : null;
+        if (!pinnedOrg && storedStateRef.current.scopeName === poName && storedStateRef.current.orgId) {
             setOrgLookupLoading(false);
             return;
         }
@@ -252,7 +275,8 @@ export const POProvider = ({ children }) => {
             try {
                 const { org: found, anySourceFailed } = await lookupOrganization({
                     name: poName,
-                    sources: getAllSubgraphUrls(),
+                    sources,
+                    pinnedOrg,
                     signal: controller.signal,
                     // Newly deployed orgs always check current chain precedence.
                     bypassCache: isNewOrg,
@@ -262,11 +286,7 @@ export const POProvider = ({ children }) => {
                 });
                 if (cancelled) return;
                 if (found) {
-                    dispatch({
-                        type: 'SET_ORG_DATA',
-                        orgName: poName,
-                        payload: { orgId: found.id, orgChainId: found.chainId },
-                    });
+                    setResolvedOrg(found.id, found.chainId);
                     setOrgLookupLoading(false);
                 } else if ((isNewOrg || anySourceFailed) && retryCount < MAX_RETRIES) {
                     // Either a newly deployed org the subgraph hasn't indexed yet, OR a
@@ -300,7 +320,7 @@ export const POProvider = ({ children }) => {
             clearTimeout(retryTimer);
             controller.abort();
         };
-    }, [poName]);
+    }, [poName, pinnedOrgId, pinnedChainId]);
 
     // Step 2: Fetch full org data using bytes ID, routed to the correct chain's subgraph
     const subgraphUrl = getSubgraphUrl(state.orgChainId);

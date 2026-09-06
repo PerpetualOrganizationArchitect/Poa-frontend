@@ -1,3 +1,4 @@
+import { useShareLink } from '@/hooks/useShareLink';
 import SEOHead from "@/components/common/SEOHead";
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -45,7 +46,8 @@ import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 const PerpetualOrgDashboard = () => {
   const { ongoingPolls, votingClasses } = useVotingContext();
-  const { poContextLoading, poDescription, poLinks, logoUrl, activeTaskAmount, completedTaskAmount, ptTokenBalance, poMembers, rules, educationModules, roleHatIds, educationHubEnabled, tokenLabel = 'Shares' } = usePOContext();
+  const poContext = usePOContext();
+  const { poContextLoading, poDescription, poLinks, logoUrl, activeTaskAmount, completedTaskAmount, ptTokenBalance, poMembers, rules, educationModules, roleHatIds, educationHubEnabled, tokenLabel = 'Shares' } = poContext;
   const { pageBackground } = useOrgTheme();
   const { startTour, isActive: isTourActive } = useTour();
   const router = useRouter();
@@ -59,9 +61,7 @@ const PerpetualOrgDashboard = () => {
   const [isVouchingExpanded, setIsVouchingExpanded] = useState(false);
   const { fetchImageFromIpfs } = useIPFScontext();
 
-  const inviteLink = typeof window !== 'undefined' && userDAO
-    ? `${window.location.origin}/join?org=${encodeURIComponent(userDAO)}`
-    : '';
+  const inviteLink = useShareLink('/join/', { org: userDAO }, poContext);
   const { hasCopied, onCopy } = useClipboard(inviteLink);
 
   // Responsive design breakpoints — single call to reduce matchMedia listeners
@@ -332,6 +332,7 @@ const PerpetualOrgDashboard = () => {
                   <Tooltip label={hasCopied ? 'Copied!' : 'Copy invite link to clipboard'} closeOnClick={false} hasArrow>
                     <Button
                       onClick={onCopy}
+                      isDisabled={!inviteLink}
                       size="sm"
                       variant="outline"
                       colorScheme={hasCopied ? 'green' : 'purple'}

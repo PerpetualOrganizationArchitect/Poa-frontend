@@ -74,6 +74,7 @@ import { useOrgName } from '@/hooks/useOrgName';
 import UsernameLink from '@/components/common/UsernameLink';
 import { usePOContext } from '@/context/POContext';
 import { formatEstTime } from '@/util/taskUtils';
+import { useShareLink } from '@/hooks/useShareLink';
 
 
 const glassLayerStyle = {
@@ -210,7 +211,9 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   const { safeFetchFromIpfs } = useIPFScontext();
   const router = useRouter();
   const userDAO = useOrgName();
-  const { tokenLabel, taskPayoutHoursOnly } = usePOContext();
+  const poContext = usePOContext();
+  const { tokenLabel, taskPayoutHoursOnly } = poContext;
+  const taskShareLink = useShareLink('/tasks/', { org: userDAO, projectId: task.projectId, task: task.id }, poContext);
   const toast = useToast();
   const { isOpen, onOpen, onClose} = useDisclosure();
   const { isOpen: isApplicationModalOpen, onOpen: onOpenApplicationModal, onClose: onCloseApplicationModal } = useDisclosure();
@@ -898,10 +901,7 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
   };
 
   const copyLinkToClipboard = () => {
-    const encodedProjectId = encodeURIComponent(task.projectId);
-    const link = `${window.location.origin}/tasks/?task=${task.id}&projectId=${encodedProjectId}&org=${encodeURIComponent(userDAO)}`;
-
-    navigator.clipboard.writeText(link).then(() => {
+    navigator.clipboard.writeText(taskShareLink).then(() => {
       toast({
         title: "Link copied",
         description: "Task link copied to clipboard.",
@@ -1480,6 +1480,7 @@ const TaskCardModal = ({ task, columnId, onEditTask, onEditTaskMetadata }) => {
                 <Button
                   variant="ghost"
                   onClick={copyLinkToClipboard}
+                  isDisabled={!taskShareLink}
                   color="gray.400"
                   _hover={{ bg: 'whiteAlpha.100', color: 'white' }}
                   size="sm"

@@ -2,6 +2,7 @@ import { ChakraProvider, extendTheme } from '@chakra-ui/react';
 import dynamic from 'next/dynamic';
 import CommunityLoadingState from '@/components/shared/CommunityLoadingState';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
+import ShortLinkRouter from '@/components/common/ShortLinkRouter';
 import '@rainbow-me/rainbowkit/styles.css';
 import '../styles/globals.css';
 import '/public/css/prism.css';
@@ -196,7 +197,7 @@ function MyApp({ Component, pageProps, router }) {
 
   return (
     <ErrorBoundary>
-      <ChakraProvider theme={theme}>{content}</ChakraProvider>
+      <ChakraProvider theme={theme}><ShortLinkRouter>{content}</ShortLinkRouter></ChakraProvider>
     </ErrorBoundary>
   );
 }

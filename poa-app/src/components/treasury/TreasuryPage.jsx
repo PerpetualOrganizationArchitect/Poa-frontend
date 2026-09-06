@@ -139,9 +139,11 @@ const TreasuryPage = () => {
   const gasDepositEvents = gasConfig?.depositEvents || [];
   const gasUsageEvents = gasConfig?.usageEvents || [];
 
-  // Extract completed tasks from all projects (flattened)
+  // Historical activity includes completed tasks from deleted projects. The
+  // subgraph retains those projects and tasks after ProjectDeleted; only the
+  // live bounty view above is filtered to active projects.
   const completedTasks = useMemo(() => {
-    const projects = treasuryData?.organization?.taskManager?.projects || [];
+    const projects = treasuryData?.organization?.taskManager?.activityProjects || [];
     return projects.flatMap(p => p.tasks || []);
   }, [treasuryData]);
 

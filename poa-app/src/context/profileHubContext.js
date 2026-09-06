@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { NETWORKS } from '../config/networks';
+import { fetchOrgTaskCounts } from '@/util/orgTaskCounts';
+import { isHiddenOrg } from '@/util/hiddenOrgs';
 
 const ProfileHubContext = createContext();
 
@@ -68,6 +70,7 @@ async function fetchOrgsFromSource(endpoint, networkConfig) {
 
 export const ProfileHubProvider = ({ children }) => {
     const [allOrgs, setAllOrgs] = useState([]);
+    const [taskCounts, setTaskCounts] = useState({});
     // Default to loading=true so consumers see a skeleton from frame 1 (no
     // empty-state flash). The actual network fetch is deferred until a
     // consumer subscribes via useProfileHubContext() — pages that never read
@@ -89,6 +92,25 @@ export const ProfileHubProvider = ({ children }) => {
             );
             setAllOrgs(merged);
             setLoading(false);
+
+            // Let the directory render while its task counts load separately.
+            // Failed sources keep their organizations and show unavailable counts.
+            await Promise.all(entries.map(async (net, index) => {
+                const managerIds = [...new Set(results[index]
+                    .filter(org => !isHiddenOrg(org.name || org.id))
+                    .map(org => org.taskManager?.id).filter(Boolean))];
+                let counts;
+                try {
+                    counts = await fetchOrgTaskCounts(net.subgraphUrl, managerIds);
+                } catch (error) {
+                    console.warn('[ProfileHub] Task counts unavailable:', error.message);
+                    counts = Object.fromEntries(managerIds.map(id => [id, null]));
+                }
+                setTaskCounts(previous => ({
+                    ...previous,
+                    ...Object.fromEntries(Object.entries(counts).map(([id, count]) => [`${net.chainId}:${id}`, count])),
+                }));
+            }));
         })();
     }, []);
 
@@ -101,6 +123,9 @@ export const ProfileHubProvider = ({ children }) => {
                 logoHash: org.metadataHash,
                 logoCid: org.metadata?.logo || null,
                 totalMembers: org.users?.length || 0,
+                taskCounts: org.taskManager?.id
+                    ? taskCounts[`${network.chainId}:${org.taskManager.id}`]
+                    : { open: 0, total: 0 },
                 aboutInfo: org.metadata || null,
                 deployedAt: org.deployedAt,
                 quickJoinContract: org.quickJoin?.id,
@@ -109,7 +134,7 @@ export const ProfileHubProvider = ({ children }) => {
                 networkName: network.name,
             };
         });
-    }, [allOrgs]);
+    }, [allOrgs, taskCounts]);
 
     const contextValue = useMemo(() => ({
         perpetualOrganizations,

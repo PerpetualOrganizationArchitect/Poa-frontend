@@ -32,7 +32,7 @@ const passkeyAccountInfo = read('components', 'passkey', 'PasskeyAccountInfo.jsx
 const accountBadge = read('components', 'common', 'ConnectedAccountBadge.jsx');
 const disconnectHook = read('hooks', 'useUnifiedDisconnect.js');
 const accountPage = read('pages', 'account', 'index.js');
-const profilePage = read('pages', 'profile', 'index.js');
+const profilePage = read('components', 'profileHub', 'ProfileHub.jsx');
 const authContext = read('context', 'AuthContext.js');
 const userContext = read('context', 'UserContext.js');
 
@@ -157,8 +157,8 @@ describe('Profile Hub uses one authenticated account control', () => {
     const rendered = linesAround(profileHeader, '<AccountControl');
     expect(rendered, 'ProfileHeader does not render the account control').toBeTruthy();
     expect(rendered).not.toMatch(/display=\{\{\s*base:\s*['"]none['"]/);
-    expect(profileHeader).toContain("direction={{ base: 'column', md: 'row' }}");
-    expect(profileHeader).toContain("w={{ base: '100%', md: 'auto' }}");
+    expect(profileHeader).toContain("direction={{ base: 'column', lg: 'row' }}");
+    expect(profileHeader).toContain("w={{ base: '100%', lg: 'auto' }}");
     expect(profileHeader).toContain('aria-label="Approvals & Roles"');
     expect(profileHeader).toContain("display={{ base: 'inline-flex', md: 'none' }}");
   });

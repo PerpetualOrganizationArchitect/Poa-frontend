@@ -148,20 +148,22 @@ export const PERM_CATALOGUE = [
     group: 'Treasury',
   },
   {
-    id: 'QJ_AUTOJOIN',
-    key: PERM_KEYS.QJ_AUTOJOIN,
-    label: 'Granted on join',
-    help: 'Anyone joining through the join link is auto-added to this role. Pair it with an open role.',
-    group: 'Membership',
-  },
-  {
     id: 'SUBJECT_RENAME',
     key: PERM_KEYS.SUBJECT_RENAME,
-    label: 'Rename roles and groups',
+    label: 'Edit role & group details',
     help: 'Can change the name, image and description of any role or group.',
-    group: 'Membership',
+    group: 'Organization',
   },
 ];
+
+/**
+ * QJ_AUTOJOIN is a real permission key, but it is a JOINING behaviour ("everyone who joins the org
+ * is auto-added to this role"), not something a member reasons about in a permission checklist. It
+ * is configured in the RoleForm Joining step and still encodes through `buildPermRows` from
+ * `form.perms.QJ_AUTOJOIN`, so it is deliberately kept OUT of the catalogue above rather than
+ * dropped. See `lib/accessV2/joinConfig`.
+ */
+export const AUTOJOIN_PERM_ID = 'QJ_AUTOJOIN';
 
 /**
  * TaskManager permission bits — the VALUE of a TM_PERMS row (OR-mask fold).

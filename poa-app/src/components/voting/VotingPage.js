@@ -35,8 +35,10 @@ import { useOrgName } from "@/hooks/useOrgName";
 import { useOrgAuthority } from "@/hooks/accessV2/useOrgAuthority";
 import { useAuthoritySubjects } from "@/hooks/accessV2/useAuthoritySubjects";
 import { useAuthorityMemberships } from "@/hooks/accessV2/useAuthorityMemberships";
+import { useRoleCreationContext } from '@/hooks/accessV2/useRoleCreationContext';
 import { parseCreatedProposalId } from "@/lib/voting/proposalReceipt";
 import { recordGasFloor } from "@/lib/accessV2/gasFloors";
+import { defaultRoleForm } from '@/lib/accessV2/roleFormBatch';
 import { estimateBatchGas } from "@/lib/accessV2/proposalBuilders";
 import { preflightRoleRemovals } from "@/lib/accessV2/roleRemoval";
 import { votingLaneForBatches, isBindingType } from "./create/wizardSteps";
@@ -102,6 +104,7 @@ const VotingPage = () => {
   const authority = useOrgAuthority();
   const authoritySubjects = useAuthoritySubjects();
   const authorityMemberships = useAuthorityMemberships();
+  const roleCreation = useRoleCreationContext({ enabled: authority.enabled && showCreatePoll, authority: authority.address });
 
   const {
     hybridVotingOngoing,
@@ -329,6 +332,7 @@ const VotingPage = () => {
   // who is already in the org for grant-vs-offer, in-flight proposals for the
   // id-prediction race). Empty on a legacy org.
   const accessV2 = useMemo(() => ({
+    roleCreation,
     enabled: !!authority.enabled,
     authority: authority.enabled ? (authority.address || '') : '',
     subjects: authoritySubjects.subjects || [],
@@ -352,7 +356,7 @@ const VotingPage = () => {
     // buy a role exactly zero votes, silently.
     votingClasses: votingClasses || [],
   }), [
-    authority.enabled, authority.address,
+    roleCreation, authority.enabled, authority.address,
     authoritySubjects.subjects, authoritySubjects.indexedSubjects,
     authoritySubjects.roles, authoritySubjects.groups,
     authorityMemberships.inOrgUsers, authorityMemberships.members,
@@ -512,11 +516,33 @@ const VotingPage = () => {
     setShowCreatePoll(true);
   }, [canCreateProposal, taskManagerContractAddress, orgChainId, restoreProposal, toast]);
 
+  const handleProposeCreateRole = useCallback(() => {
+    if (!authority.enabled || !canCreateProposal) {
+      toast({
+        title: "You can't propose a role or group here",
+        description: !authority.enabled
+          ? 'This org is not using the new roles system.'
+          : 'Only members holding a vote-creator role can open proposals.',
+        status: 'info',
+        duration: 6000,
+        isClosable: true,
+      });
+      return;
+    }
+    restoreProposal({ type: 'createRole', roleFormV2: defaultRoleForm() });
+    setDeepLinkedOpen(true);
+    setShowCreatePoll(true);
+  }, [authority.enabled, canCreateProposal, restoreProposal, toast]);
+
   // Deep link support: /voting?propose=<templateId> (from the /rules page)
   // opens the create modal with that rule template preselected, once.
-  // `?propose=fund-bounties` is the one non-template value (from /treasury).
+  // Role creation from org structure and treasury funding also use this entry point.
   const proposeParamHandledRef = useRef(false);
   useEffect(() => {
+    if (!router.query.propose) {
+      proposeParamHandledRef.current = false;
+      return;
+    }
     if (!router.isReady || proposeParamHandledRef.current) return;
     // Wait for POContext to resolve the org's contract addresses. Firing on
     // router.isReady alone races the subgraph fetch, and handleProposeRuleChange
@@ -530,9 +556,12 @@ const VotingPage = () => {
     if (creatorGateLoading || (isConnected && userDataLoading)) return;
     const templateId = router.query.propose;
     if (!templateId || typeof templateId !== 'string') return;
+    if (templateId === 'create-role' && authority.loading) return;
     proposeParamHandledRef.current = true;
     if (templateId === FUND_BOUNTIES_DEEP_LINK) {
       handleProposeFundBounties();
+    } else if (templateId === 'create-role') {
+      handleProposeCreateRole();
     } else {
       // Collect ?prefill_<inputName>=… params into the template's initial values.
       const prefill = {};
@@ -546,7 +575,7 @@ const VotingPage = () => {
       Object.entries(router.query).filter(([key]) => key !== 'propose' && !key.startsWith('prefill_')),
     );
     router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
-  }, [router.isReady, router.query, handleProposeRuleChange, handleProposeFundBounties, router, poContextLoading, creatorGateLoading, isConnected, userDataLoading]);
+  }, [router.isReady, router.query, handleProposeRuleChange, handleProposeFundBounties, handleProposeCreateRole, router, poContextLoading, creatorGateLoading, isConnected, userDataLoading, authority.loading]);
 
   const canCreate = canCreateAny;
 

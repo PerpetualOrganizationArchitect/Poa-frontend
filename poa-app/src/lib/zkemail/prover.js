@@ -65,7 +65,7 @@ export function parseEml(emlText) {
   const dkim = header('DKIM-Signature');
   const dMatch = dkim.match(/(?:^|;)\s*d=([A-Za-z0-9.-]+)/);
   const dkimDomain = dMatch ? dMatch[1].toLowerCase() : fromDomain;
-  return { from, fromEmail, dkimDomain };
+  return { from, fromEmail, fromDomain, dkimDomain };
 }
 
 const u256 = (s) => '0x' + BigInt(s).toString(16);
@@ -158,9 +158,9 @@ function _formatProof(proof) {
 export async function generateDomainProof({ emlText, claimer, onProgress }) {
   _requireManifest('PopRoleClaim');
   const { inputs, header } = await _baseInputs(emlText, claimer);
-  const { dkimDomain, fromEmail } = parseEml(emlText);
+  const { fromDomain, fromEmail } = parseEml(emlText);
   if (!fromEmail) throw new Error('Could not read the From email address from the email.');
-  if (!dkimDomain) throw new Error('Could not read the signing domain from the email.');
+  if (!fromDomain) throw new Error('Could not read the sender’s email domain.');
   // Blocker 2: v1 now extracts the From address in-circuit to prove its domain, so it needs the same
   // From-window hints as v2.
   _fromWindowInputs(inputs, header, fromEmail);
@@ -180,7 +180,7 @@ export async function generateDomainProof({ emlText, claimer, onProgress }) {
       emailNullifier: b32(publicSignals[1]),
       fromDomainHash: b32(publicSignals[3]),
     },
-    meta: { domain: dkimDomain, fromEmail, nullifier: b32(publicSignals[1]) },
+    meta: { domain: fromDomain, fromEmail, nullifier: b32(publicSignals[1]) },
   };
 }
 
@@ -193,9 +193,9 @@ export async function generateDomainProof({ emlText, claimer, onProgress }) {
 export async function generateEmailAddressProof({ emlText, claimer, onProgress }) {
   _requireManifest('PopRoleClaimV2');
   const { inputs, header } = await _baseInputs(emlText, claimer);
-  const { dkimDomain, fromEmail } = parseEml(emlText);
+  const { fromDomain, fromEmail } = parseEml(emlText);
   if (!fromEmail) throw new Error('Could not read the From email address from the email.');
-  if (!dkimDomain) throw new Error('Could not read the signing domain from the email.');
+  if (!fromDomain) throw new Error('Could not read the sender’s email domain.');
 
   // Locate the From field + the email + the '@' within a 256-byte window (matches the circuit + gen-inputs).
   _fromWindowInputs(inputs, header, fromEmail);
@@ -216,6 +216,6 @@ export async function generateEmailAddressProof({ emlText, claimer, onProgress }
       emailHash: b32(publicSignals[3]),
       fromDomainHash: b32(publicSignals[4]),
     },
-    meta: { domain: dkimDomain, fromEmail, emailHash: b32(publicSignals[3]), nullifier: b32(publicSignals[1]) },
+    meta: { domain: fromDomain, fromEmail, emailHash: b32(publicSignals[3]), nullifier: b32(publicSignals[1]) },
   };
 }

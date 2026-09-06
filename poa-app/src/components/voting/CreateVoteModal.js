@@ -563,6 +563,7 @@ const CreateVoteModal = ({
    * the wrong subject.
    */
   const roleFormCtx = useMemo(() => ({
+    ...accessV2?.roleCreation,
     authority: accessV2?.authority || contractAddresses?.membershipAuthorityAddress || '',
     hybridVoting: contractAddresses?.votingContractAddress || '',
     taskManagerAddress: taskManagerContractAddress || '',
@@ -581,6 +582,7 @@ const CreateVoteModal = ({
    * member typed themselves, so edit → Back → reconfigure survives.
    */
   const [roleFormStatus, setRoleFormStatus] = useState({ atReview: false, blocked: null });
+  const [roleNavigationTarget, setRoleNavigationTarget] = useState(null);
 
   const handleRoleFormChange = useCallback((nextForm) => {
     const copy = roleFormCopy(nextForm);
@@ -819,7 +821,9 @@ const CreateVoteModal = ({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={loadingSubmit ? () => {} : onClose}
+      closeOnEsc={!loadingSubmit}
+      closeOnOverlayClick={!loadingSubmit}
       size={{ base: 'full', md: 'xl' }}
       isCentered
       scrollBehavior="inside"
@@ -838,15 +842,20 @@ const CreateVoteModal = ({
 
         <ModalHeader color="white" fontSize="xl" fontWeight="bold" pb={2}>
           Create a vote
-          {step !== STEP_INTENT && (
+          {roleFormMounted ? (
+            <HStack justify="space-between" mt={1}>
+              <Text fontSize="sm" fontWeight="normal" color="gray.400">Set up a role or group</Text>
+              <Link fontSize="xs" fontWeight="normal" color="purple.200" onClick={handleChangeType}>Change vote type</Link>
+            </HStack>
+          ) : step !== STEP_INTENT && (
             <Text fontSize="xs" fontWeight="medium" color="gray.400" mt={0.5} noOfLines={1}>
               Step {stepIndex + 1} of {steps.length} · {stepTitle(step, proposal.type, accessV2Enabled)}
             </Text>
           )}
         </ModalHeader>
-        <ModalCloseButton color="white" />
+        <ModalCloseButton color="white" isDisabled={loadingSubmit} />
 
-        <ModalBody pb={6}>
+        <ModalBody pb={6} inert={loadingSubmit ? '' : undefined}>
           <VStack spacing={6} align="stretch">
             {/* Restore-draft prompt */}
             {draft.pendingDraft && (
@@ -893,7 +902,7 @@ const CreateVoteModal = ({
               <>
                 {/* Selected-type chip + change. Hidden on review, which carries
                     its own BINDING/POLL badge. */}
-                {step !== STEP_REVIEW && (
+                {step !== STEP_REVIEW && !roleFormMounted && (
                   <HStack justify="space-between" flexWrap="wrap" spacing={2}>
                     <Tag size="md" colorScheme="purple" variant="subtle" borderRadius="full">
                       <TagLabel>
@@ -909,11 +918,11 @@ const CreateVoteModal = ({
                 )}
 
                 {/* Binding-governance banner */}
-                {isBinding && step !== STEP_REVIEW && (
+                {isBinding && step === STEP_REVIEW && (
                   <Alert status="info" borderRadius="md" bg="rgba(66, 153, 225, 0.15)" fontSize="sm">
                     <AlertIcon color="blue.300" />
                     <Text color="gray.200">
-                      This creates a binding vote — it runs through your group's official
+                      This creates a binding vote — it runs through your org’s official
                       Blended-voting governance.
                     </Text>
                   </Alert>
@@ -1052,10 +1061,9 @@ const CreateVoteModal = ({
                       />
                     )}
 
-                    {/* CREATE ROLE. On a cut-over org this is the SAME form /team's
-                        "Create a role or group" modal renders — one screen, one encoder
-                        (lib/accessV2/roleFormBatch), so the door you came in by can't decide
-                        what your role is allowed to do. A legacy org keeps RoleConfigurator
+                    {/* CREATE ROLE. Both the intent gallery and the org structure link
+                        open this form and use the roleFormBatch encoder.
+                        A legacy org keeps RoleConfigurator
                         and its Hats-era batch, untouched. */}
                     {proposal.type === "createRole" && (accessV2Enabled ? (
                       <RoleForm
@@ -1064,6 +1072,8 @@ const CreateVoteModal = ({
                         ctx={roleFormCtx}
                         variant="dark"
                         onStatus={setRoleFormStatus}
+                        navigationTarget={roleNavigationTarget}
+                        onBackToType={handleChangeType}
                       />
                     ) : (
                       <RoleConfigurator
@@ -1370,10 +1380,12 @@ const CreateVoteModal = ({
 
         <ModalFooter borderTop="1px solid" borderColor="whiteAlpha.200" pt={4}>
           <HStack spacing={3} w="100%" justify="flex-end">
-            {prevStep ? (
+            {roleFormMounted && <Box ref={setRoleNavigationTarget} flex="1" minW={0} />}
+            {!roleFormMounted && (prevStep ? (
               <Button
                 variant="ghost"
                 onClick={goBack}
+                isDisabled={loadingSubmit}
                 color="gray.400"
                 _hover={{ bg: "whiteAlpha.100", color: "white" }}
               >
@@ -1383,12 +1395,13 @@ const CreateVoteModal = ({
               <Button
                 variant="ghost"
                 onClick={onClose}
+                isDisabled={loadingSubmit}
                 color="gray.400"
                 _hover={{ bg: "whiteAlpha.100", color: "white" }}
               >
                 Cancel
               </Button>
-            )}
+            ))}
             {/* No primary while the intent gallery is open — a grayed CTA next
                 to "what do you want to do?" reads broken, not disabled. The
                 tour is the exception: its disabled "Demo only" button is the

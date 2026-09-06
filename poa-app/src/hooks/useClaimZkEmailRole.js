@@ -261,29 +261,9 @@ export function useClaimZkEmailRole() {
         setStep(ZK_CLAIM_STEPS.CHECKING);
         let root;
         let cid;
-        if (oneStep) {
-          // Read directly (no tx manager for a not-yet-signed-in user). Sequential (not Promise.all)
-          // + retry: concurrent eth_calls to a rate-limited public RPC intermittently return empty for
-          // the second call → CALL_EXCEPTION data="0x". Mirrors ZkEmailInvitesService.getActiveAllowlist.
-          const readBytes32 = (functionName) =>
-            publicClient.readContract({
-              address: zkEmailInvitesAddress,
-              abi: [{ name: functionName, type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'bytes32' }] }],
-              functionName,
-            });
-          for (let attempt = 0; ; attempt++) {
-            try {
-              root = await readBytes32('merkleRoot');
-              cid = await readBytes32('allowlistCid');
-              break;
-            } catch (e) {
-              if (attempt >= 2) throw e;
-              await new Promise((res) => setTimeout(res, 600));
-            }
-          }
-        } else {
-          ({ root, cid } = await zkEmailInvites.getActiveAllowlist(zkEmailInvitesAddress));
-        }
+        ({ root, cid } = oneStep
+          ? await onboardingService.getActiveAllowlist()
+          : await zkEmailInvites.getActiveAllowlist(zkEmailInvitesAddress));
         if (!root || root === ZERO_ROOT) {
           return fail(new Error('This organization has not activated an email allowlist yet.'));
         }
@@ -339,7 +319,7 @@ export function useClaimZkEmailRole() {
         }
 
         // 3. Pick the claimer's entry: a specific-address entry for their From email wins, else domain.
-        const { fromEmail, dkimDomain } = parseEml(emlText);
+        const { fromEmail, fromDomain } = parseEml(emlText);
         let mode = null;
         let entry = null;
         if (fromEmail) {
@@ -351,18 +331,9 @@ export function useClaimZkEmailRole() {
           // the contract enforces regardless.
           if (entry) {
             try {
-              const already = await publicClient.readContract({
-                address: zkEmailInvitesAddress,
-                abi: [{
-                  name: 'isEmailRegistered',
-                  type: 'function',
-                  stateMutability: 'view',
-                  inputs: [{ type: 'bytes32' }],
-                  outputs: [{ type: 'bool' }],
-                }],
-                functionName: 'isEmailRegistered',
-                args: [eHash],
-              });
+              const already = oneStep
+                ? await onboardingService.isEmailRegistered(eHash)
+                : await zkEmailInvites.isEmailRegistered(zkEmailInvitesAddress, eHash);
               if (already) {
                 return fail(
                   new Error(
@@ -375,14 +346,14 @@ export function useClaimZkEmailRole() {
             }
           }
         }
-        if (!entry && dkimDomain) {
-          entry = await proofForDomain(tree, dkimDomain);
+        if (!entry && fromDomain) {
+          entry = await proofForDomain(tree, fromDomain);
           if (entry) mode = 'domain';
         }
         if (!entry) {
           return fail(
             new Error(
-              `Neither your address (${fromEmail || '?'}) nor your domain (@${dkimDomain || '?'}) is on this organization's allowlist.`,
+              `Neither your address (${fromEmail || '?'}) nor your domain (@${fromDomain || '?'}) is on this organization's allowlist.`,
             ),
           );
         }
@@ -409,7 +380,10 @@ export function useClaimZkEmailRole() {
         // file-pick activation, so auto-firing the ceremony here throws "The document is not focused".
         // Capture everything the submit needs (incl. the pending credential, so a mid-flow sign-in
         // can't strand it) and hand off to `finishClaim`, which runs on a button click.
-        readyRef.current = { proof, entry, mode, claimer, oneStep, credential: oneStep ? pendingAccount : null };
+        readyRef.current = {
+          proof, entry, mode, claimer, oneStep, credential: oneStep ? pendingAccount : null,
+          root, moduleAddress: zkEmailInvitesAddress, orgChainId,
+        };
         setReady(true);
         setStep(ZK_CLAIM_STEPS.PROOF_READY);
         return { success: true, proofReady: true };
@@ -421,11 +395,11 @@ export function useClaimZkEmailRole() {
       zkEmailInvites,
       zkEmailInvitesAddress,
       zkEmailInvitesEnabled,
+      orgChainId,
       accountAddress,
       isAuthenticated,
       pendingAccount,
       onboardingService,
-      publicClient,
       safeFetchFromIpfs,
       bytes32ToIpfsCid,
       fail,
@@ -445,6 +419,21 @@ export function useClaimZkEmailRole() {
       submittingRef.current = true;
       const { proof, entry, mode, claimer, oneStep, credential } = r;
       try {
+        // A proof can outlive an org switch or an invite-list update while the user is reading
+        // the Finish screen. Never submit its old Merkle path to another module/current root.
+        if (r.moduleAddress !== zkEmailInvitesAddress || r.orgChainId !== orgChainId) {
+          readyRef.current = null;
+          setReady(false);
+          return fail(new Error('The org changed. Verify your email again for this org.'));
+        }
+        const active = oneStep
+          ? await onboardingService.getActiveAllowlist()
+          : await zkEmailInvites.getActiveAllowlist(zkEmailInvitesAddress);
+        if (active.root.toLowerCase() !== r.root.toLowerCase()) {
+          readyRef.current = null;
+          setReady(false);
+          return fail(new Error('The org’s email invites changed. Verify your email again to use the current list.'));
+        }
         // ONE-STEP: single UserOp — deploy account + register username + claim. Wrapped in
         // executeWithNotification so subgraph-sync + 'role:claimed' fire like the tx-manager path.
         if (oneStep) {

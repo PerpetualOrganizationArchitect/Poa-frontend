@@ -55,8 +55,8 @@ import { useOrgStructure } from '@/hooks/useOrgStructure';
 import { useAuth } from '@/context/AuthContext';
 import { ipfsCidToBytes32, stringToBytes } from '@/services/web3/utils/encoding';
 import { RefreshEvent } from '@/context/RefreshContext';
-import { buildAllowlist } from '@/lib/zkemail/allowlist';
-import { inviteRoleNames } from '@/lib/zkemail/inviteDisplay';
+import { assertRootMatches, buildAllowlist } from '@/lib/zkemail/allowlist';
+import { describeWho, inviteKey, inviteRoleNames, readInvites } from '@/lib/zkemail/inviteDisplay';
 import { getClient } from '@/util/apolloClient';
 import { FETCH_INFRASTRUCTURE_ADDRESSES, FETCH_ORG_BY_ID } from '@/util/queries';
 import { getSubgraphUrl, getNetworkByChainId } from '@/config/networks';
@@ -160,7 +160,7 @@ function InviteRow({ entry, roleCtx, onRemove }) {
               <Text as="span" color="warmGray.500">Anyone at </Text>
               <Text as="span" fontWeight="600">{entry.identifier}</Text>
             </>
-          ) : entry.identifier}
+          ) : describeWho(entry)}
         </Text>
         {names.map((n) => (
           <Tag key={n} size="sm" borderRadius="full" bg="warmGray.100" color="warmGray.700" fontSize="11px">
@@ -169,7 +169,7 @@ function InviteRow({ entry, roleCtx, onRemove }) {
         ))}
       </HStack>
       <IconButton
-        aria-label={`Remove ${entry.identifier}`}
+        aria-label={`Remove ${describeWho(entry)}`}
         icon={<CloseIcon boxSize={2.5} />}
         size="xs"
         variant="ghost"
@@ -194,7 +194,7 @@ function InviteRow({ entry, roleCtx, onRemove }) {
 const normalizeHat = (h) => { try { return BigInt(h).toString(); } catch { return String(h); } };
 const signature = (list) => JSON.stringify(
   (list || [])
-    .map((e) => `${e.type}:${String(e.identifier).toLowerCase()}:${(e.hatIds || []).map(normalizeHat).sort().join(',')}`)
+    .map((e) => `${inviteKey(e)}:${(e.hatIds || []).map(normalizeHat).sort().join(',')}`)
     .sort(),
 );
 
@@ -325,10 +325,8 @@ export default function EmailAllowlistEditor({ orgId, orgChainId, currentName })
           const doc = await safeFetchFromIpfs(source.cid);
           if (!alive || prefilledRef.current) return;
           // Only trust a document that matches the hash it was committed under.
-          if (doc?.root?.toLowerCase() !== String(source.root).toLowerCase()) continue;
-          const current = (doc.entries || [])
-            .filter((e) => (e.type === 'domain' || e.type === 'email') && e.identifier && e.hatIds?.length)
-            .map((e) => ({ type: e.type, identifier: e.identifier, hatIds: e.hatIds }));
+          assertRootMatches(doc, source.root);
+          const current = readInvites(doc).filter((e) => e.hatIds.length);
           if (!current.length) continue;
           prefilledRef.current = true;
           setEntries((prev) => (prev.length ? prev : current));
@@ -509,7 +507,7 @@ export default function EmailAllowlistEditor({ orgId, orgChainId, currentName })
               <Box>
                 {entries.map((e, i) => (
                   <InviteRow
-                    key={`${e.type}-${e.identifier}`}
+                    key={inviteKey(e)}
                     entry={e}
                     roleCtx={roleCtx}
                     onRemove={() => removeEntry(i)}

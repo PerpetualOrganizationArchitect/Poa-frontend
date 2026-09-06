@@ -27,6 +27,11 @@ import { predictNextSubjectId } from './ids';
 import { PERM_KEYS, GLOBAL_CTX, decodePermWord } from './permKeys';
 import { MAX_SPONSORED_CALLS } from './submission';
 import { hybridVotingClassInterface } from '@/lib/voting/votingClasses';
+import OrgRegistryABI from '../../../abi/OrgRegistry.json';
+import ZkEmailInvitesABI from '../../../abi/ZkEmailInvites.json';
+import ExecutorABI from '../../../abi/Executor.json';
+import PaymasterABI from '../../../abi/PaymasterHub.json';
+import { DEFAULT_SPONSORSHIP, subjectBudgetKey } from '@/lib/accessV2/sponsorship';
 import { AUTHORITY_ADDRESS as A, ALICE, BOB, MEMBERS_ID, EXECS_ID, EVERYONE_GROUP_ID } from './fixtures';
 
 const HYBRID = '0xf642dde77848dc195c8089f4042a311ed650d7a6';
@@ -76,7 +81,7 @@ const build = (form = treasurerForm, overrides = {}) =>
     indexedSubjects,
     inOrgUsers: new Set([ALICE]),
     votingClasses,
-    form,
+    form: { ...form, sponsorship: form.sponsorship || { enabled: false } },
     ...overrides,
   });
 
@@ -122,7 +127,7 @@ describe('roleFormError', () => {
   it('refuses a seat limit that is negative, over uint32, or not a number', () => {
     for (const maxMembers of [-1, 'abc', undefined, 4294967296]) {
       expect(roleFormError({ name: 'X', limitSeats: true, maxMembers }))
-        .toBe('The seat limit must be 0 (no limit) or more.');
+        .toBe('The seat limit must be a whole number from 0 (no limit) to 4,294,967,295.');
     }
     expect(roleFormError({ name: 'X', limitSeats: true, maxMembers: 4294967295 })).toBeNull();
   });
@@ -134,7 +139,7 @@ describe('roleFormError', () => {
     expect(roleFormError({ name: 'X', vouching: { ...vouching, selfVouch: true } })).toBeNull();
     expect(roleFormError({ name: 'X', vouching: { ...vouching, voucherSubjectId: EXECS_ID } })).toBeNull();
     expect(roleFormError({ name: 'X', vouching: { ...vouching, quorum: 0 } }))
-      .toBe('Vouching needs at least 1 vouch.');
+      .toBe('Vouching needs a whole number from 1 to 4,294,967,295 vouches.');
   });
 
   it('catches a bad or repeated address before the batch is built', () => {
@@ -296,7 +301,7 @@ describe('buildRoleFormBatch — a role with everything on', () => {
 
   it('refuses to build without an authority or a name', () => {
     expect(() => build(treasurerForm, { authority: '' })).toThrow(/roles contract/);
-    expect(() => build({ ...treasurerForm, name: '  ' })).toThrow(/needs a name/);
+    expect(() => build({ ...treasurerForm, name: '  ' })).toThrow(/Give the new role a name/);
   });
 });
 
@@ -354,7 +359,7 @@ describe('buildRoleFormBatch — binding-vote power', () => {
     const { batch, warnings, submittable } = build({ ...treasurerForm, bindingClassIdx: 3 }, { votingClasses: only0 });
     expect(batch.some((c) => c.target === utils.getAddress(HYBRID))).toBe(false);
     expect(warnings.join(' ')).toMatch(/no longer exists/);
-    expect(submittable.ok).toBe(true);
+    expect(submittable.ok).toBe(false);
   });
 
   it('tells voters when the class being joined is open to everyone today', () => {
@@ -492,7 +497,7 @@ describe('the legacy roleConfig bridge', () => {
 
   it('keeps an out-of-range seat cap so the validator can say so', () => {
     expect(roleFormError(roleConfigToRoleForm({ name: 'X', maxSupply: -1 })))
-      .toBe('The seat limit must be 0 (no limit) or more.');
+      .toBe('The seat limit must be a whole number from 0 (no limit) to 4,294,967,295.');
     expect(roleFormError(roleConfigToRoleForm({ name: 'X', maxSupply: 0 }))).toBeNull();
   });
 
@@ -539,10 +544,196 @@ describe('roleFormCopy', () => {
 
   it('describes the decisions that were actually made', () => {
     const copy = roleFormCopy({ ...treasurerForm, openRole: true, vouching: { enabled: true, quorum: 2 } });
-    expect(copy.description).toMatch(/anyone in the group can join it/);
+    expect(copy.description).toMatch(/anyone can claim it/);
     expect(copy.description).toMatch(/5 seats/);
     expect(copy.description).toMatch(/2 vouches to join/);
     expect(copy.description).toMatch(/a vote in binding votes/);
     expect(copy.description).toMatch(/1 starting member/);
+  });
+});
+
+describe('complete v2 creation configuration', () => {
+  const REGISTRY = '0x5555555555555555555555555555555555555555';
+  const PAYMASTER = '0x2222222222222222222222222222222222222222';
+  const EMAIL = '0x3333333333333333333333333333333333333333';
+  const EXECUTOR = '0x4444444444444444444444444444444444444444';
+  const ORG = `0x${'12'.repeat(32)}`;
+  const ROOT = `0x${'34'.repeat(32)}`;
+  const CID = `0x${'56'.repeat(32)}`;
+  const registry = new utils.Interface(OrgRegistryABI);
+  const email = new utils.Interface(ZkEmailInvitesABI);
+  const executor = new utils.Interface(ExecutorABI);
+  const paymaster = new utils.Interface(PaymasterABI);
+  const subjectId = predictNextSubjectId(A, indexedSubjects);
+  const ctx = {
+    orgRegistry: REGISTRY, orgId: ORG, paymasterHub: PAYMASTER,
+    sponsorshipConfig: { ready: true, canConfigure: true, claimBudgetMissing: false },
+    executor: EXECUTOR, zkEmailAddress: EMAIL,
+    emailConfig: { ready: true, enabled: true, authorityMatches: true, minterAuthorized: true },
+    emailAllowlist: { root: ROOT, cid: CID, subjectId },
+  };
+  const emailForm = {
+    name: 'Researchers', join: { domains: ['Example.org', 'example.org'] },
+    emailInvites: ['alice@example.net', 'ALICE@example.net'],
+    vouching: { enabled: true, quorum: 2, voucherSubjectId: MEMBERS_ID },
+  };
+
+  it('writes a merged email commitment and vouching to the same new role without exposing email plaintext', () => {
+    const built = build(emailForm, ctx);
+    expect(built.submittable.ok).toBe(true);
+    const call = built.batch.find((c) => c.target === EMAIL);
+    const [root, cid] = email.decodeFunctionData('setActiveAllowlist', call.data);
+    expect(root).toBe(ROOT);
+    expect(cid).toBe(CID);
+    const vouch = decode(authorityCalls(built.batch)).find((c) => c.name === 'configureVouchAttestor');
+    expect(vouch.args[0].toString()).toBe(subjectId);
+    expect(built.invitePlan).toEqual({ domains: ['example.org'], emails: ['alice@example.net'] });
+    expect(JSON.stringify(built.summaries)).not.toContain('alice@');
+    expect(built.warnings.join(' ')).toMatch(/Another email-list vote/);
+  });
+
+  it('authorizes the existing zk-email module through an Executor self-call when needed', () => {
+    const built = build(emailForm, { ...ctx, emailConfig: { ...ctx.emailConfig, minterAuthorized: false } });
+    const auth = built.batch.find((c) => c.target === EXECUTOR);
+    const [minter, authorized] = executor.decodeFunctionData('setHatMinterAuthorization', auth.data);
+    expect(minter.toLowerCase()).toBe(EMAIL);
+    expect(authorized).toBe(true);
+    expect(built.batch.indexOf(auth)).toBeLessThan(built.batch.findIndex((c) => c.target === EMAIL));
+  });
+
+  it('requires the live prepared list at submit, but includes its call in preview sizing', () => {
+    const live = build(emailForm, { ...ctx, emailAllowlist: null });
+    const preview = build(emailForm, { ...ctx, emailAllowlist: null, preview: true });
+    expect(live.submittable.ok).toBe(false);
+    expect(live.submittable.message).toMatch(/Prepare the merged/);
+    expect(live.batch.some((c) => c.target === EMAIL)).toBe(false);
+    expect(preview.submittable.ok).toBe(true);
+    expect(preview.batch.length).toBe(build(emailForm, ctx).batch.length);
+    expect(preview.preview).toBe(true);
+  });
+
+  it('blocks stale subject ids, missing wiring, unavailable verifier modes and invalid commitments', () => {
+    for (const overrides of [
+      { emailAllowlist: { root: ROOT, cid: CID, subjectId: MEMBERS_ID } },
+      { emailConfig: { ...ctx.emailConfig, authorityMatches: false } },
+      { emailConfig: { ...ctx.emailConfig, domainEnabled: false } },
+      { emailConfig: { ...ctx.emailConfig, emailEnabled: false } },
+      { emailAllowlist: { root: constants.HashZero, cid: CID, subjectId } },
+      { emailAllowlist: { root: ROOT, cid: 'invalid', subjectId } },
+    ]) expect(build(emailForm, { ...ctx, ...overrides }).submittable.ok).toBe(false);
+  });
+
+  it('rejects email+open at both validation and encoding while allowing email+vouch', () => {
+    expect(roleFormError(emailForm)).toBeNull();
+    expect(roleFormError({ ...emailForm, openRole: true })).toMatch(/cannot be combined/);
+    expect(() => build({ ...emailForm, openRole: true }, ctx)).toThrow(/cannot be combined/);
+  });
+
+  it('encodes the real singleton metadata designation for a role and a derived group', () => {
+    for (const kind of ['role', 'group']) {
+      const built = build({ name: 'Editors', kind, editOrgDetails: true }, ctx);
+      const call = built.batch.find((c) => c.target === REGISTRY);
+      const [org, admin] = registry.decodeFunctionData('setOrgMetadataAdminHat', call.data);
+      expect(org).toBe(ORG);
+      expect(admin.toString()).toBe(subjectId);
+      expect(built.warnings.join(' ')).toMatch(/replaces the current designation/);
+      expect(built.submittable.ok).toBe(true);
+    }
+    expect(build({ name: 'Editors', editOrgDetails: true }).submittable.ok).toBe(false);
+  });
+
+  it('encodes finite native-token budgets as exact wei/seconds and real passkey selectors', () => {
+    const built = build({ name: 'Builders', sponsorship: { ...DEFAULT_SPONSORSHIP } }, ctx);
+    const calls = built.batch.filter((c) => c.target === PAYMASTER).map((c) => paymaster.parseTransaction({ data: c.data }));
+    expect(calls.map((c) => c.name)).toEqual(['setBudget', 'setRulesBatch']);
+    expect(calls[0].args[0]).toBe(ORG);
+    expect(calls[0].args[1]).toBe(subjectBudgetKey(subjectId));
+    expect(calls[0].args[2].toString()).toBe('250000000000000000');
+    expect(Number(calls[0].args[3])).toBe(2592000);
+    const selectors = calls[1].args[2];
+    expect(selectors).toContain(email.getSighash('registerAndClaimByDomainWithPasskey'));
+    expect(selectors).toContain(email.getSighash('registerAndClaimByEmailWithPasskey'));
+    expect(selectors).toContain(authorityInterface.getSighash('claim'));
+    expect(calls[1].args[3].every(Boolean)).toBe(true);
+    expect(built.submittable.ok).toBe(true);
+  });
+
+  it('blocks selected sponsorship when executor permission is unavailable, and honors explicit opt-out', () => {
+    const denied = { ...ctx, sponsorshipConfig: { ready: true, canConfigure: false, error: 'Not an org operator.' } };
+    const built = build({ name: 'Builders', sponsorship: { ...DEFAULT_SPONSORSHIP } }, denied);
+    expect(built.submittable.ok).toBe(false);
+    expect(built.submittable.message).toMatch(/Not an org operator/);
+    expect(built.batch.some((c) => c.target === PAYMASTER)).toBe(false);
+    expect(build({ name: 'Builders', sponsorship: { enabled: false } }, denied).submittable.ok).toBe(true);
+  });
+
+  it('initializes missing claim-contract budgets without replacing existing org claim limits', () => {
+    const form = { ...emailForm, sponsorship: { ...DEFAULT_SPONSORSHIP } };
+    const missing = build(form, { ...ctx, sponsorshipConfig: { ...ctx.sponsorshipConfig, claimBudgetMissing: true } });
+    const existing = build(form, ctx);
+    const budgets = (built) => built.batch.filter((c) => c.target === PAYMASTER)
+      .map((c) => paymaster.parseTransaction({ data: c.data })).filter((c) => c.name === 'setBudget');
+    expect(budgets(missing)).toHaveLength(2);
+    expect(budgets(existing)).toHaveLength(1);
+    expect(budgets(missing)[1].args[1]).toBe(subjectBudgetKey(EMAIL, 5));
+    expect(budgets(missing)[1].args[1]).not.toBe(subjectBudgetKey(subjectId, 5));
+    expect(missing.summaries.join(' ')).toMatch(/Initialize the org’s shared email-claim gas budget/);
+    expect(missing.submittable.ok).toBe(true);
+    const unknown = build(form, { ...ctx, sponsorshipConfig: { ready: true, canConfigure: true } });
+    expect(unknown.submittable.ok).toBe(false);
+    expect(unknown.submittable.message).toMatch(/email-claim gas budget must be checked/);
+  });
+
+  it('preserves a zero project override instead of silently restoring global permissions', () => {
+    const built = build({ name: 'Restricted', perms: { TM_PERMS: 255 }, projectPerms: [{ projectId: '0', mask: 0, inheritGlobal: false }] });
+    const rows = decode(authorityCalls(built.batch)).filter((c) => c.name === 'setPerm');
+    expect(rows).toHaveLength(2);
+    const word = decodePermWord(rows[1].args[3]);
+    expect(word.exists).toBe(true);
+    expect(word.inheritGlobal).toBe(false);
+    expect(word.value).toBe('0');
+    expect(built.summaries.join(' ')).toMatch(/replacing its org-wide task permissions/);
+  });
+
+  it('encodes all eleven semantic keys, with autojoin presented as joining configuration', () => {
+    const perms = Object.fromEntries(Object.keys(PERM_KEYS).map((key) => [key, key === 'TM_PERMS' ? 255 : true]));
+    const built = build({ name: 'Complete', openRole: true, perms });
+    const keys = decode(authorityCalls(built.batch)).filter((c) => c.name === 'setPerm').map((c) => c.args[1]);
+    expect(new Set(keys)).toEqual(new Set(Object.values(PERM_KEYS)));
+    expect(built.joinSummary.map((m) => m.id)).toContain('autojoin');
+  });
+
+  it('validates uint32 inputs without rounding and encodes delegated membership management', () => {
+    for (const value of [1.2, 4294967296, -1, NaN]) {
+      expect(roleFormError({ name: 'X', limitSeats: true, maxMembers: value })).toMatch(/whole number/);
+      expect(roleFormError({ name: 'X', vouching: { enabled: true, quorum: value, selfVouch: true } })).toMatch(/whole number/);
+    }
+    const built = build({ name: 'Managed', manager: { enabled: true, managerSubjectId: MEMBERS_ID, canGrant: true, canRemove: true, delaySecs: 86400 } });
+    const manager = decode(authorityCalls(built.batch)).find((c) => c.name === 'setManagerConfig');
+    expect(manager.args[0].toString()).toBe(subjectId);
+    expect(manager.args[1].toString()).toBe(MEMBERS_ID);
+    expect(Number(manager.args[2])).toBe(3);
+    expect(Number(manager.args[3])).toBe(86400);
+  });
+
+  it('encodes group management and rejects a member role managing its own group', () => {
+    const manager = { enabled: true, managerSubjectId: EXECS_ID, canGrant: true, canRemove: false, delaySecs: 60 };
+    const built = build({ name: 'Teams', kind: 'group', memberRoleIds: [MEMBERS_ID], manager });
+    expect(names(authorityCalls(built.batch))).toEqual(['createGroup', 'setManagerConfig']);
+    expect(normalizeRoleForm({ kind: 'group', manager }).manager).toEqual(manager);
+    expect(built.submittable.ok).toBe(true);
+    expect(roleFormError({ name: 'Teams', kind: 'group', memberRoleIds: [EXECS_ID], manager })).toMatch(/cannot manage the group/);
+  });
+
+  it('clears stale role-only settings after switching to group, preserving meaningful group settings', () => {
+    const f = normalizeRoleForm({ ...emailForm, kind: 'group', openRole: true, editOrgDetails: true, holders: [{ address: ALICE }], perms: { QJ_AUTOJOIN: true, DD_VOTE: true } });
+    expect(f.emailInvites).toEqual([]);
+    expect(f.join.domains).toEqual([]);
+    expect(f.holders).toEqual([]);
+    expect(f.vouching.enabled).toBe(false);
+    expect(f.openRole).toBe(false);
+    expect(f.perms).toEqual({ DD_VOTE: true });
+    expect(f.editOrgDetails).toBe(true);
+    expect(build(f, ctx).submittable.ok).toBe(true);
   });
 });

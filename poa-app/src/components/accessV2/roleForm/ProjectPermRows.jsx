@@ -27,7 +27,7 @@ import {
 } from '@chakra-ui/react';
 import { AddIcon, DeleteIcon } from '@chakra-ui/icons';
 import { TASK_PERM_BITS } from '@/lib/accessV2/permKeys';
-import { tokensFor } from './formTokens';
+import { tokensFor } from '@/components/accessV2/roleForm/formTokens';
 
 const projectLabel = (p) => p?.name || p?.title || String(p?.id || '').slice(0, 10);
 
@@ -38,7 +38,7 @@ export default function ProjectPermRows({ rows = [], onChange, projects = [], va
     onChange((rows || []).map((r, i) => (i === idx ? { ...r, ...changes } : r)));
   };
   const remove = (idx) => onChange((rows || []).filter((_, i) => i !== idx));
-  const add = () => onChange([...(rows || []), { projectId: '', projectName: '', mask: 0 }]);
+  const add = () => onChange([...(rows || []), { projectId: '', projectName: '', mask: 0, inheritGlobal: true }]);
 
   const toggleBit = (idx, bit) => {
     const current = Number(rows[idx]?.mask) || 0;
@@ -51,8 +51,8 @@ export default function ProjectPermRows({ rows = [], onChange, projects = [], va
         <Box>
           <Text fontSize="sm" fontWeight="medium" color={t.label}>On specific projects</Text>
           <Text fontSize="xs" color={t.help}>
-            Extra task permissions that apply on one project only. They add to what this role can
-            already do everywhere.
+            Set task permissions for individual projects. By default, these add to the permissions
+            granted across the org.
           </Text>
         </Box>
         <Button
@@ -71,7 +71,7 @@ export default function ProjectPermRows({ rows = [], onChange, projects = [], va
       {(rows || []).length === 0 ? (
         <Text fontSize="xs" color={t.help}>
           {(projects || []).length === 0
-            ? 'This group has no projects yet.'
+            ? 'This org has no projects yet.'
             : 'No per-project permissions.'}
         </Text>
       ) : (
@@ -108,6 +108,21 @@ export default function ProjectPermRows({ rows = [], onChange, projects = [], va
                   onClick={() => remove(idx)}
                 />
               </HStack>
+              <Checkbox
+                size="sm"
+                colorScheme={t.accent}
+                isChecked={row.inheritGlobal !== false}
+                onChange={(e) => update(idx, { inheritGlobal: e.target.checked })}
+                data-testid={`role-form-project-inherit-${idx}`}
+              >
+                <Text fontSize="xs" color={t.text}>Include org-wide task permissions</Text>
+              </Checkbox>
+              {row.inheritGlobal === false && (
+                <Text fontSize="xs" color={t.help}>
+                  Only the actions selected here are granted by this role or group on this project.
+                  Permissions from other roles and groups still apply.
+                </Text>
+              )}
               <Wrap spacing={3}>
                 {TASK_PERM_BITS.map((bit) => (
                   <WrapItem key={bit.value}>

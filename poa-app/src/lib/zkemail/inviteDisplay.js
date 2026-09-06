@@ -13,7 +13,7 @@
 
 /** Stable key for one invite — its type plus identifier, which is what the leaf commits to. */
 export function inviteKey(invite) {
-  return `${invite?.type || ''}:${String(invite?.identifier || '').toLowerCase()}`;
+  return `${invite?.type || ''}:${String(invite?.emailHash || invite?.identifier || '').toLowerCase()}`;
 }
 
 /**
@@ -23,6 +23,7 @@ export function inviteKey(invite) {
  */
 export function describeWho(invite) {
   const id = String(invite?.identifier || '').trim();
+  if (!id && invite?.type === 'email' && invite.emailHash) return 'Private email invite';
   if (!id) return '';
   return invite?.type === 'domain' ? `Anyone at ${id}` : id;
 }
@@ -78,10 +79,11 @@ export function canonicalHatId(hatId) {
 export function readInvites(doc) {
   const raw = Array.isArray(doc?.entries) ? doc.entries : [];
   return raw
-    .filter((e) => (e?.type === 'domain' || e?.type === 'email') && e?.identifier)
+    .filter((e) => (e?.type === 'domain' || e?.type === 'email') && (e?.identifier || (e.type === 'email' && /^0x[\da-f]{64}$/i.test(e.emailHash || ''))))
     .map((e) => ({
       type: e.type,
-      identifier: String(e.identifier),
+      identifier: String(e.identifier || ''),
+      ...(e.type === 'email' && e.emailHash ? { emailHash: e.emailHash } : {}),
       hatIds: Array.isArray(e.hatIds) ? e.hatIds : [],
       roleIndexes: Array.isArray(e.roleIndexes) ? e.roleIndexes : [],
     }));

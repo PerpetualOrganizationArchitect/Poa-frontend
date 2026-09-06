@@ -62,6 +62,7 @@ import {
 } from '@/lib/accessV2/roleRemoval';
 import { buildRoleRemovalBatch } from '@/lib/accessV2/proposalBuilders';
 import { checkBatchSubmittable } from '@/lib/accessV2/submission';
+import { usesEmailEligibility } from '@/lib/accessV2/joinConfig';
 import { supportsVotingRestrictions } from '@/components/voting/create/wizardSteps';
 
 /**
@@ -1181,11 +1182,12 @@ export function useProposalForm({ onSubmit }) {
       const holdersWanted = (resolveRoleForm(proposal).holders || []).some((h) => h?.address);
       if (holdersWanted && (!Array.isArray(v2.memberships) || v2.memberships.length === 0)) {
         throw new Error(
-          'We’re still reading who is in this co-op — it decides whether each starting holder is '
+          'We’re still reading who is in this org — it decides whether each starting holder is '
           + 'seated or invited. Give it a moment and try again.'
         );
       }
       const built = buildRoleFormBatch({
+        ...v2.roleCreation,
         authority: v2.authority || contractAddresses?.membershipAuthorityAddress,
         hybridVoting: contractAddresses?.votingContractAddress || '',
         taskManagerAddress: contractAddresses?.taskManagerContractAddress || '',
@@ -1199,6 +1201,7 @@ export function useProposalForm({ onSubmit }) {
         // describing one thing and encode another.
         form: resolveRoleForm(proposal),
         metadataCID: metadataCIDBytes32,
+        emailAllowlist: v2.emailAllowlist,
       });
       // The on-chain call ceiling is a gate, not a warning: HybridVoting reverts `TooManyCalls`
       // at CREATION, after the IPFS upload and — for a passkey member — a burned UserOp.
@@ -1838,6 +1841,7 @@ export function useProposalForm({ onSubmit }) {
               name: rc.name || '',
               description: rc.description || '',
             }));
+            if (accessV2Enabled && !result?.path) throw new Error('The description upload did not return a content address.');
             if (result?.path) {
               metadataCIDBytes32 = ipfsCidToBytes32(result.path);
             }
@@ -1856,6 +1860,32 @@ export function useProposalForm({ onSubmit }) {
         }
       }
 
+      let preparedExtras = extras;
+      if (proposal.type === 'createRole' && accessV2Enabled) {
+        const v2 = extras.accessV2;
+        const creation = v2.roleCreation;
+        if (!creation?.refreshRoleCreation) throw new Error('Role configuration is still loading. Please try again.');
+        const freshCreation = { ...creation, ...await creation.refreshRoleCreation() };
+        const roleForm = resolveRoleForm(proposal);
+        const preview = buildRoleFormBatch({
+          ...freshCreation,
+          authority: v2.authority || contractAddresses.membershipAuthorityAddress,
+          hybridVoting: contractAddresses.votingContractAddress || '',
+          taskManagerAddress: contractAddresses.taskManagerContractAddress || '',
+          indexedSubjects: v2.indexedSubjects?.length ? v2.indexedSubjects : (v2.subjects || []),
+          activeProposals: v2.activeProposals || [],
+          inOrgUsers: v2.inOrgUsers,
+          votingClasses: v2.votingClasses || [],
+          form: roleForm,
+          metadataCID: metadataCIDBytes32,
+          preview: true,
+        });
+        if (!preview.submittable.ok) throw new Error(preview.submittable.message);
+        const emailAllowlist = roleForm.kind !== ROLE_FORM_KIND.GROUP && usesEmailEligibility(roleForm)
+          ? await creation.prepareRoleEmail(roleForm, preview.predictedSubjectId) : null;
+        preparedExtras = { ...extras, accessV2: { ...v2, roleCreation: freshCreation, emailAllowlist } };
+      }
+
       const {
         numOptions, batches, optionNames, summaries: builtSummaries, gasLimit,
       } = buildProposalData(
@@ -1866,8 +1896,8 @@ export function useProposalForm({ onSubmit }) {
         predictedRoleHatId,
         metadataCIDBytes32,
         v2FreshAccepted
-          ? { ...extras, accessV2: { ...(extras?.accessV2 || {}), freshAccepted: v2FreshAccepted } }
-          : extras,
+          ? { ...preparedExtras, accessV2: { ...(preparedExtras?.accessV2 || {}), freshAccepted: v2FreshAccepted } }
+          : preparedExtras,
       );
 
       // Form collects hours; contract ABI expects minutes (uint32 minutesDuration).

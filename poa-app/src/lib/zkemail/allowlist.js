@@ -20,6 +20,7 @@ export const ALLOWLIST_SCHEMA = 'poa.zkemail.allowlist/1';
 export const LEAF_TYPES = ['uint8', 'bytes32', 'uint256[]'];
 const EMAIL_PAD = 192; // == EMAX in PopRoleClaimV2.circom
 const CHUNKS = 7; // ceil(192 / 31)
+let poseidonPromise;
 
 // ASCII-only lowercase — EXACTLY mirrors the circuit's `ToLower` (PopRoleClaimV2.circom) and the
 // contract's `_lower`/`domainHashOf`, both of which transform only bytes 0x41–0x5A. JS
@@ -46,10 +47,14 @@ const sortHats = (hatIds) => hatIds.map((h) => BigInt(h)).sort((a, b) => (a < b 
  * @returns {Promise<string>} 0x-padded bytes32
  */
 async function poseidonCommit(str) {
-  const { buildPoseidon } = await import('circomlibjs');
-  const poseidon = await buildPoseidon();
+  const input = new TextEncoder().encode(norm(str));
+  if (input.length > EMAIL_PAD) throw new Error('Email proof identifiers must be at most 192 bytes.');
+  // Reuse the circuit primitive across entries, not the identifiers themselves. Building the
+  // WASM field for every row made preserving a large org invite list needlessly expensive.
+  if (!poseidonPromise) poseidonPromise = import('circomlibjs').then(({ buildPoseidon }) => buildPoseidon());
+  const poseidon = await poseidonPromise;
   const bytes = new Uint8Array(EMAIL_PAD);
-  bytes.set(new TextEncoder().encode(norm(str)).slice(0, EMAIL_PAD));
+  bytes.set(input);
   const chunks = [];
   for (let i = 0; i < CHUNKS; i++) {
     let acc = 0n;
@@ -87,14 +92,18 @@ export function emailHash(address) {
 export async function buildAllowlist({ orgId, entries }) {
   const rows = [];
   for (const e of entries) {
-    if (!isPrintableAscii(e.identifier)) {
+    // Role proposals publish specific addresses as commitments only. Preserve those rows when
+    // the membership settings editor republishes the whole list; never hash a display label.
+    const privateEmail = e.type === 'email' && !e.identifier && /^0x[\da-f]{64}$/i.test(e.emailHash || '');
+    if (!privateEmail && !isPrintableAscii(e.identifier)) {
       throw new Error(
         `Allowlist identifier "${e.identifier}" contains non-ASCII characters, which can never be ` +
           'matched by an email proof on-chain. Use the plain ASCII domain/email.',
       );
     }
     const hatIds = sortHats(e.hatIds);
-    const id = e.type === 'domain' ? await domainHash(e.identifier) : await emailHash(e.identifier);
+    const id = privateEmail ? e.emailHash.toLowerCase()
+      : e.type === 'domain' ? await domainHash(e.identifier) : await emailHash(e.identifier);
     // Store the canonical (trimmed, ASCII-lowercased) identifier — exactly what was hashed into the
     // leaf — so the doc's displayed identifier can never drift from its committed id.
     rows.push({ ...e, identifier: norm(e.identifier), id, hatIds });
@@ -131,6 +140,9 @@ export function treeFromDoc(doc) {
 /** Recompute the root from a doc and assert it matches `onchainRoot` (anti-swapped-CID guard). */
 export function assertRootMatches(doc, onchainRoot) {
   const tree = treeFromDoc(doc);
+  if (JSON.stringify(tree.leafEncoding) !== JSON.stringify(LEAF_TYPES)) {
+    throw new Error('Allowlist file uses an unsupported email proof format.');
+  }
   if (tree.root.toLowerCase() !== String(onchainRoot).toLowerCase()) {
     throw new Error('Allowlist file does not match the active on-chain root.');
   }

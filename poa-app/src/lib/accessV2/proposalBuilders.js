@@ -144,7 +144,9 @@ export function buildPermRows(perms = {}, projectPerms = []) {
     // falsy test here would silently drop every rule about the first project an org ever made.
     if (!p || p.projectId === null || p.projectId === undefined || p.projectId === '') continue;
     const mask = Number(p.mask) || 0;
-    if (mask <= 0) continue;
+    // A present zero with inheritance disabled deliberately suppresses this subject's global
+    // task grants for the project; omitting it would restore those grants.
+    if (mask <= 0 && p.inheritGlobal !== false) continue;
     // NEW project rows default to inherit=true. That is deliberate: v1's implicit REPLACE is the
     // twice-bitten shadowing bug where a role's global grant went silently dead inside a project.
     rows.push({
@@ -200,7 +202,7 @@ export function buildCreateRoleBatch({ authority, existingSubjects = [], activeP
   if (defaultAllow) {
     // A brand-new subject has no members, so `force` is never needed here.
     batch.push(buildSetSubjectDefault(authority, subjectId, true, false));
-    summaries.push('Make it open — anyone in the co-op can join it');
+    summaries.push('Make it open — anyone in the org can join it');
   }
 
   for (const groupId of groupIds || []) {
@@ -218,7 +220,7 @@ export function buildCreateRoleBatch({ authority, existingSubjects = [], activeP
     // A self-vouching config points at the role being created — its id is the predicted one.
     const voucherSubjectId = vouch.selfVouch ? subjectId : vouch.voucherSubjectId;
     batch.push(buildConfigureVouchAttestor(authority, subjectId, vouch.quorum, voucherSubjectId));
-    summaries.push(`Require ${vouch.quorum} vouch${Number(vouch.quorum) === 1 ? '' : 'es'} to join`);
+    summaries.push(`Allow joining with ${vouch.quorum} vouch${Number(vouch.quorum) === 1 ? '' : 'es'}`);
   }
 
   if (manager && manager.managerSubjectId) {

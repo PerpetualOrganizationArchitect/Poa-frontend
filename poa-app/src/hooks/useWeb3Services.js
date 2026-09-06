@@ -47,6 +47,7 @@ import { createMembershipAuthorityService } from '../services/web3/domain/Member
 import { ZkEmailInvitesService, createZkEmailInvitesService } from '../services/web3/domain/ZkEmailInvitesService';
 import { TokenRequestService, createTokenRequestService } from '../services/web3/domain/TokenRequestService';
 import { TreasuryService, createTreasuryService } from '../services/web3/domain/TreasuryService';
+import { RoleCreationService } from '@/services/web3/domain/RoleCreationService';
 
 /**
  * Hook to access all Web3 services
@@ -337,6 +338,7 @@ export function useWeb3Services(options = {}) {
         // Access v2. Non-null on every org — the SERVICE is harmless without an authority address;
         // it is the callers that gate on useOrgAuthority().enabled.
         membershipAuthority: null,
+        roleCreation: null,
         zkEmailInvites: null,
         tokenRequest: null,
         treasury: null,
@@ -351,7 +353,8 @@ export function useWeb3Services(options = {}) {
       education: createEducationService(factory, txManager, ipfsService),
       eligibility: createEligibilityService(factory, txManager),
       membershipAuthority: createMembershipAuthorityService(factory, txManager, authorityReadFactory),
-      zkEmailInvites: createZkEmailInvitesService(factory, txManager),
+      roleCreation: new RoleCreationService(authorityReadFactory),
+      zkEmailInvites: createZkEmailInvitesService(factory, txManager, authorityReadFactory),
       tokenRequest: createTokenRequestService(factory, txManager, ipfsService),
       treasury: createTreasuryService(factory, txManager),
     };

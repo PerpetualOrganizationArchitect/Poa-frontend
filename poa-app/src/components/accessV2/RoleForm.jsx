@@ -1,31 +1,14 @@
-/**
- * RoleForm — ONE screen for "bring a new role (or group) into existence".
- *
- * CONTROLLED and chrome-less on purpose: it takes `value` / `onChange` / `ctx`, owns its own step
- * navigation and nothing else. No modal, no submit button, no contract call. That is what lets the
- * SAME form be the whole of /team's "Create a role or group" modal and the whole of the
- * Create-a-Vote wizard's createRole config step — the two doors that used to disagree about what a
- * role is (one could not set vouching or task permissions, the other could not make a group,
- * neither could give the new role a vote).
- *
- * The decisions it exists to make un-missable, because on chain they are invisible until it is too
- * late to change them without another vote:
- *
- *   • A ROLE is what people hold; a GROUP is a bundle of permissions that ROLES go into. Picking
- *     the wrong one is a whole proposal wasted, so it is the first question, not a checkbox.
- *   • Permissions do NOT include voting. A role with every permission in the catalogue still has
- *     zero weight in a binding vote until it is added to a voting class — so the Voting step asks
- *     for that explicitly and says what happens if you say no.
- *   • ADDED vs INVITED is the contract's own `_isInOrg`, never a guess: `grant` on someone outside
- *     the org does not revert, it silently becomes an offer they have to accept. The badge is read
- *     from the fold mirror so it cannot describe something that did not happen.
- *
- * Everything it produces is `value` — a plain object the caller stores (in the wizard's draft, or
- * in local state) and hands to `lib/accessV2/roleFormBatch` to encode.
- */
+/** Shared, controlled v2 role/group creation form. The review uses the proposal encoder so
+ * the displayed changes and submitted contract calls always describe the same configuration. */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
+  Accordion,
+  AccordionButton,
+  AccordionIcon,
+  AccordionItem,
+  AccordionPanel,
   Alert,
   AlertIcon,
   Badge,
@@ -45,7 +28,6 @@ import {
   Select,
   Stack,
   Switch,
-  Tag,
   Text,
   Textarea,
   VStack,
@@ -67,20 +49,25 @@ import {
   roleFormError,
 } from '@/lib/accessV2/roleFormBatch';
 import { classLabel } from '@/lib/voting/votingClasses';
-import PermissionPicker from './PermissionPicker';
-import ProjectPermRows from './roleForm/ProjectPermRows';
-import { tokensFor } from './roleForm/formTokens';
+import { canSetOrgMetadataAdmin } from '@/lib/accessV2/orgAdmin';
+import PermissionPicker from '@/components/accessV2/PermissionPicker';
+import InviteListInput from '@/components/accessV2/roleForm/InviteListInput';
+import SponsorshipSettings from '@/components/accessV2/roleForm/SponsorshipSettings';
+import ManagerSettings from '@/components/accessV2/roleForm/ManagerSettings';
+import InheritedPermissions from '@/components/accessV2/roleForm/InheritedPermissions';
+import ProjectPermRows from '@/components/accessV2/roleForm/ProjectPermRows';
+import { tokensFor } from '@/components/accessV2/roleForm/formTokens';
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 /** The steps, in order. `people` and the vouching block are role-only; a group has no members. */
-const ALL_STEPS = ['basics', 'membership', 'permissions', 'voting', 'people', 'review'];
+const ALL_STEPS = ['basics', 'membership', 'permissions', 'joining', 'people', 'review'];
 
 const STEP_LABEL = {
-  basics: 'Basics',
+  basics: 'Details',
   membership: { role: 'Groups', group: 'Roles' },
   permissions: 'Permissions',
-  voting: 'Voting',
+  joining: 'Joining',
   people: 'People',
   review: 'Review',
 };
@@ -90,7 +77,7 @@ const stepLabel = (step, kind) => {
   return typeof label === 'string' ? label : label[kind] || label.role;
 };
 
-const stepsFor = (kind) => ALL_STEPS.filter((s) => (kind === ROLE_FORM_KIND.GROUP ? s !== 'people' : true));
+const stepsFor = (kind) => ALL_STEPS.filter((s) => (kind === ROLE_FORM_KIND.GROUP ? s !== 'people' && s !== 'joining' : true));
 
 /**
  * Which step a validation error belongs to, so Next can refuse on the screen that owns the answer
@@ -100,13 +87,13 @@ function stepError(step, form) {
   const error = roleFormError(form);
   if (!error) return null;
   const onBasics = /name|seat limit/i.test(error);
-  const onPeople = /address|listed twice/i.test(error);
-  const onPermissions = /project/i.test(error) && !onPeople;
-  const onVoting = /vouch|group of voters/i.test(error);
+  const onPeople = /address|listed twice|invited email/i.test(error) && !/domain|open/i.test(error);
+  const onPermissions = /project|group of voters|sponsor|epoch|gas cap|manager|management|delay/i.test(error) && !onPeople;
+  const onJoining = /vouch|domain|open|email eligibility/i.test(error);
 
   if (step === 'basics') return onBasics ? error : null;
   if (step === 'permissions') return onPermissions ? error : null;
-  if (step === 'voting') return onVoting ? error : null;
+  if (step === 'joining') return onJoining ? error : null;
   if (step === 'people') return onPeople ? error : null;
   // Review is the last gate: it owns everything, including an error whose own step was skipped
   // (a group never sees People, and a stale row there would otherwise be un-fixable).
@@ -121,7 +108,7 @@ const shortAddress = (a) => (String(a || '').length > 10 ? `${a.slice(0, 6)}…$
  * (the vote wizard) where the member is: the host hides its own Next until `atReview`, so there
  * is exactly one Next on screen, and refuses to submit while `blocked` names a reason.
  */
-export default function RoleForm({ value, onChange, ctx = {}, variant = 'light', onStatus = null }) {
+export default function RoleForm({ value, onChange, ctx = {}, variant = 'light', onStatus = null, navigationTarget = null, onBackToType = null }) {
   const t = tokensFor(variant);
   const form = useMemo(() => normalizeRoleForm(value), [value]);
   const isGroup = form.kind === ROLE_FORM_KIND.GROUP;
@@ -155,10 +142,13 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
   // The review preview comes from the SAME encoder that will build the proposal, so the sentences
   // on screen are the sentences that go into the proposal's metadata — not a second description of
   // what we hope it does.
-  const built = useMemo(() => {
-    if (current !== 'review' || !ctx?.authority || !String(form.name || '').trim()) return null;
+  const preview = useMemo(() => {
+    if (current !== 'review' || !String(form.name || '').trim()) return {};
+    if (!ctx?.authority) return { error: 'Loading this org’s roles and settings…' };
     try {
-      return buildRoleFormBatch({
+      return { built: buildRoleFormBatch({
+        ...ctx,
+        preview: true,
         authority: ctx.authority,
         hybridVoting: ctx.hybridVoting || '',
         taskManagerAddress: ctx.taskManagerAddress || '',
@@ -167,23 +157,26 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
         inOrgUsers: inOrg,
         votingClasses,
         form,
-      });
-    } catch {
-      return null;
+      }) };
+    } catch (error) {
+      return { error: error?.message || 'The proposal preview could not be prepared. Try again.' };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, form, ctx, votingClasses]);
 
+  const built = preview.built;
   const currentError = stepError(current, form);
+  const reviewError = currentError || preview.error
+    || (built?.submittable && !built.submittable.ok ? built.submittable.message : null);
 
   useEffect(() => {
     if (!onStatus) return undefined;
     onStatus({
       atReview: current === 'review',
-      blocked: built && built.submittable && !built.submittable.ok ? built.submittable.message : null,
+      blocked: current === 'review' ? reviewError : null,
     });
     return () => onStatus({ atReview: false, blocked: null });
-  }, [current, built, onStatus]);
+  }, [current, reviewError, onStatus]);
 
   const classOptions = useMemo(
     () => (votingClasses || []).map((c, i) => ({
@@ -224,18 +217,64 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
     <Text fontSize="sm" color={t.help}>{children}</Text>
   );
 
+  const navigation = (
+    <HStack justify="space-between" w="full">
+      <Button
+        variant="ghost"
+        color={t.help}
+        leftIcon={<FiArrowLeft />}
+        isDisabled={stepIndex === 0 && !onBackToType}
+        data-testid="role-form-back"
+        onClick={() => stepIndex === 0 ? onBackToType?.() : setStep(steps[stepIndex - 1])}
+      >
+        Back
+      </Button>
+      {stepIndex < steps.length - 1 && (
+        <Button
+          colorScheme={t.accent}
+          rightIcon={<FiChevronRight />}
+          isDisabled={Boolean(currentError)}
+          data-testid="role-form-next"
+          onClick={() => setStep(steps[stepIndex + 1])}
+        >
+          Next: {stepLabel(steps[stepIndex + 1], form.kind)}
+        </Button>
+      )}
+    </HStack>
+  );
+
   return (
     <VStack align="stretch" spacing={5} data-testid="role-form">
       <Box>
         <Progress
+          aria-label="Role creation progress"
           value={((stepIndex + 1) / steps.length) * 100}
           size="xs"
           colorScheme={t.accent}
+          bg={t.panelBorder}
           borderRadius="full"
         />
         <Text fontSize="xs" color={t.help} mt={2}>
           Step {stepIndex + 1} of {steps.length} — {stepLabel(current, form.kind)}
         </Text>
+        <Wrap spacing={1} mt={2} aria-label="Creation steps">
+          {steps.map((item, index) => (
+            <WrapItem key={item}>
+              <Button
+                size="xs"
+                variant={item === current ? 'solid' : 'ghost'}
+                colorScheme={item === current ? t.accent : undefined}
+                color={item === current ? undefined : t.help}
+                isDisabled={index > stepIndex}
+                _disabled={{ opacity: 1, color: t.help, cursor: 'default' }}
+                aria-current={item === current ? 'step' : undefined}
+                onClick={() => setStep(item)}
+              >
+                {stepLabel(item, form.kind)}
+              </Button>
+            </WrapItem>
+          ))}
+        </Wrap>
       </Box>
 
       {/* ── BASICS ─────────────────────────────────────────────────────────── */}
@@ -313,24 +352,6 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
             <>
               <HStack justify="space-between" align="flex-start">
                 <Box pr={4}>
-                  <Text fontSize="sm" fontWeight="medium" color={t.label}>
-                    Anyone in the co-op can join it
-                  </Text>
-                  <Text fontSize="xs" color={t.help}>
-                    Open roles need no invitation — people add themselves. Leave this off for a
-                    titled role.
-                  </Text>
-                </Box>
-                <Switch
-                  isChecked={form.openRole}
-                  onChange={(e) => update({ openRole: e.target.checked })}
-                  colorScheme={t.accent}
-                  data-testid="role-form-open-role"
-                />
-              </HStack>
-
-              <HStack justify="space-between" align="flex-start">
-                <Box pr={4}>
                   <Text fontSize="sm" fontWeight="medium" color={t.label}>Limit the number of seats</Text>
                   <Text fontSize="xs" color={t.help}>Off means as many people as you like.</Text>
                 </Box>
@@ -338,6 +359,7 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
                   isChecked={form.limitSeats}
                   onChange={(e) => update({ limitSeats: e.target.checked })}
                   colorScheme={t.accent}
+                  aria-label="Limit the number of seats"
                   data-testid="role-form-limit-seats"
                 />
               </HStack>
@@ -380,16 +402,19 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
                     const on = (form.memberRoleIds || []).includes(r.subjectId);
                     return (
                       <WrapItem key={r.subjectId}>
-                        <Tag
-                          size="lg"
-                          cursor="pointer"
+                        <Button
+                          size="sm"
+                          height="auto"
+                          py={2}
+                          whiteSpace="normal"
+                          aria-pressed={on}
                           colorScheme={on ? t.accent : 'gray'}
-                          variant={on ? 'solid' : 'subtle'}
+                          variant={on ? 'solid' : 'outline'}
                           data-testid={`role-form-member-role-${r.subjectId}`}
                           onClick={() => update({ memberRoleIds: toggleId(form.memberRoleIds || [], r.subjectId) })}
                         >
                           {r.name || 'Untitled'}
-                        </Tag>
+                        </Button>
                       </WrapItem>
                     );
                   })}
@@ -405,7 +430,7 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
               {groups.length === 0 ? (
                 <Alert status="info" borderRadius="md" fontSize="sm">
                   <AlertIcon />
-                  This co-op has no groups yet. You can put this role in one later.
+                  This org has no groups yet. You can put this role in one later.
                 </Alert>
               ) : (
                 <Wrap>
@@ -413,16 +438,19 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
                     const on = (form.groupIds || []).includes(g.subjectId);
                     return (
                       <WrapItem key={g.subjectId}>
-                        <Tag
-                          size="lg"
-                          cursor="pointer"
+                        <Button
+                          size="sm"
+                          height="auto"
+                          py={2}
+                          whiteSpace="normal"
+                          aria-pressed={on}
                           colorScheme={on ? t.accent : 'gray'}
-                          variant={on ? 'solid' : 'subtle'}
+                          variant={on ? 'solid' : 'outline'}
                           data-testid={`role-form-group-${g.subjectId}`}
                           onClick={() => update({ groupIds: toggleId(form.groupIds || [], g.subjectId) })}
                         >
                           {g.name || 'Untitled'}
-                        </Tag>
+                        </Button>
                       </WrapItem>
                     );
                   })}
@@ -447,7 +475,90 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
             value={form.perms}
             onChange={(perms) => update({ perms })}
             variant={variant}
+            groupExtras={{
+              'Polls & votes': (
+                <Box>
+                  <HStack justify="space-between" align="flex-start">
+                    <Box pr={4}>
+                      <Text fontSize="sm" fontWeight="medium" color={t.label}>
+                        Vote in binding votes
+                      </Text>
+                      <Text fontSize="xs" color={t.help}>
+                        Give members voting power in the selected voting class. A person holding several
+                        roles in the same class is counted once. Their other roles keep their existing voting power.
+                      </Text>
+                    </Box>
+                    <Switch
+                      isChecked={form.bindingVote}
+                      onChange={(e) => update({
+                        bindingVote: e.target.checked,
+                        // Default to the one-member-one-vote class the moment it is turned on, so the
+                        // picker is never a required field nobody knew to answer.
+                        bindingClassIdx: e.target.checked
+                          ? (form.bindingClassIdx ?? (defaultClassIdx >= 0 ? defaultClassIdx : null))
+                          : null,
+                      })}
+                      colorScheme={t.accent}
+                      isDisabled={classOptions.length === 0}
+                      aria-label="Vote in binding votes"
+                      data-testid="role-form-class-vote"
+                    />
+                  </HStack>
+
+                  {classOptions.length === 0 ? (
+                    <Alert status="info" borderRadius="md" fontSize="sm" mt={3}>
+                      <AlertIcon />
+                      This org has no binding voting classes configured yet.
+                    </Alert>
+                  ) : form.bindingVote && (
+                    <FormControl mt={3}>
+                      <FormLabel color={t.label} fontSize="sm">Voting class</FormLabel>
+                      <Select
+                        value={form.bindingClassIdx ?? ''}
+                        onChange={(e) => update({ bindingClassIdx: e.target.value === '' ? null : Number(e.target.value) })}
+                        placeholder="Choose a voting class"
+                        data-testid="role-form-class-select"
+                        {...t.input}
+                      >
+                        {classOptions.map((c) => (
+                          <option key={c.idx} value={c.idx} style={{ background: t.optionBg }}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                </Box>
+              ),
+              Organization: (
+                <Checkbox
+                  isChecked={form.editOrgDetails}
+                  colorScheme={t.accent}
+                  alignItems="flex-start"
+                  onChange={(e) => update({ editOrgDetails: e.target.checked })}
+                  data-testid="role-form-edit-org-details"
+                >
+                  <VStack align="start" spacing={0} ml={1}>
+                    <Text fontSize="sm" fontWeight="medium" color={t.label}>Edit org details</Text>
+                    <Text fontSize="xs" color={t.help}>
+                      Update the org’s name, description and image. This replaces the org’s current
+                      editing role with this {isGroup ? 'group' : 'role'}.
+                    </Text>
+                    {form.editOrgDetails && !canSetOrgMetadataAdmin(ctx) && (
+                      <Text fontSize="xs" color={t.help}>Loading the org registry. This must be available before submitting.</Text>
+                    )}
+                  </VStack>
+                </Checkbox>
+              ),
+            }}
           />
+
+          {!isGroup && (
+            <InheritedPermissions
+              groups={groups.filter((g) => form.groupIds.includes(g.subjectId))}
+              variant={variant}
+            />
+          )}
 
           <Divider borderColor={t.panelBorder} />
 
@@ -475,6 +586,7 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
                 isChecked={form.canCreateTasks}
                 onChange={(e) => update({ canCreateTasks: e.target.checked })}
                 colorScheme={t.accent}
+                aria-label="Create projects and tasks"
                 data-testid="role-form-create-tasks"
               />
             </HStack>
@@ -489,68 +601,109 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
                 isChecked={form.canOrganizeFolders}
                 onChange={(e) => update({ canOrganizeFolders: e.target.checked })}
                 colorScheme={t.accent}
+                aria-label="Organise the folders"
                 data-testid="role-form-organize-folders"
               />
             </HStack>
           </VStack>
+          <Accordion allowToggle defaultIndex={[]} borderColor={t.panelBorder}>
+            <AccordionItem border="1px solid" borderColor={t.panelBorder} borderRadius="lg">
+              <AccordionButton px={4} py={3} data-testid="role-form-advanced">
+                <Box flex="1" textAlign="left">
+                  <Text fontSize="sm" fontWeight="semibold" color={t.label}>Advanced</Text>
+                  <Text fontSize="xs" color={t.help}>Gas sponsorship, passkeys and role management</Text>
+                </Box>
+                <AccordionIcon color={t.help} />
+              </AccordionButton>
+              <AccordionPanel px={4} pb={4}>
+                <SponsorshipSettings
+                  value={form.sponsorship}
+                  onChange={(sponsorship) => update({ sponsorship })}
+                  config={ctx.sponsorshipConfig}
+                  onRetry={ctx.refreshRoleCreation}
+                  kind={form.kind}
+                  emailJoining={!isGroup && (form.join.domains.length > 0 || form.emailInvites.length > 0)}
+                  variant={variant}
+                />
+                <Box borderTop="1px solid" borderColor={t.panelBorder} mt={4} pt={4}>
+                  <ManagerSettings
+                    value={form.manager}
+                    onChange={(manager) => update({ manager })}
+                    subjects={[
+                      ...roles.filter((role) => !isGroup || !form.memberRoleIds.includes(role.subjectId)),
+                      ...groups,
+                    ]}
+                    kind={form.kind}
+                    variant={variant}
+                  />
+                </Box>
+              </AccordionPanel>
+            </AccordionItem>
+          </Accordion>
         </VStack>
       )}
 
-      {/* ── VOTING (and joining) ───────────────────────────────────────────── */}
-      {current === 'voting' && (
+      {/* ── JOINING ────────────────────────────────────────────────────────── */}
+      {current === 'joining' && (
         <VStack align="stretch" spacing={5}>
-          <Box>
-            <HStack justify="space-between" align="flex-start">
-              <Box pr={4}>
-                <Text fontSize="sm" fontWeight="medium" color={t.label}>
-                  {isGroup ? 'Count these roles as voters in binding votes' : 'Count this role as voters in binding votes'}
-                </Text>
-                <Text fontSize="xs" color={t.help}>
-                  Only needed if the people in this {isGroup ? 'group' : 'role'} won’t already vote as
-                  members of the co-op. Leave it off and they keep whatever vote their other roles
-                  give them.
-                </Text>
-              </Box>
-              <Switch
-                isChecked={form.bindingVote}
-                onChange={(e) => update({
-                  bindingVote: e.target.checked,
-                  // Default to the one-member-one-vote class the moment it is turned on, so the
-                  // picker is never a required field nobody knew to answer.
-                  bindingClassIdx: e.target.checked
-                    ? (form.bindingClassIdx ?? (defaultClassIdx >= 0 ? defaultClassIdx : null))
-                    : null,
-                })}
-                colorScheme={t.accent}
-                isDisabled={classOptions.length === 0}
-                data-testid="role-form-class-vote"
-              />
+          <Box p={4} borderRadius="lg" bg={t.subtleBg} border="1px solid" borderColor={t.panelBorder}>
+            <HStack justify="space-between" mb={1}>
+              <Text fontSize="sm" fontWeight="semibold" color={t.label}>Election</Text>
+              <Badge colorScheme="green">Always available</Badge>
             </HStack>
-
-            {classOptions.length === 0 ? (
-              <Alert status="info" borderRadius="md" fontSize="sm" mt={3}>
-                <AlertIcon />
-                This group’s binding votes aren’t set up yet, so there is nothing to join.
-              </Alert>
-            ) : form.bindingVote && (
-              <FormControl mt={3}>
-                <FormLabel color={t.label} fontSize="sm">Vote as</FormLabel>
-                <Select
-                  value={form.bindingClassIdx ?? ''}
-                  onChange={(e) => update({ bindingClassIdx: e.target.value === '' ? null : Number(e.target.value) })}
-                  placeholder="Pick a group of voters"
-                  data-testid="role-form-class-select"
-                  {...t.input}
-                >
-                  {classOptions.map((c) => (
-                    <option key={c.idx} value={c.idx} style={{ background: t.optionBg }}>
-                      {c.label}
-                    </option>
-                  ))}
-                </Select>
-              </FormControl>
-            )}
+            {sectionHelp('A passing governance vote can add people to this role. Leave the optional methods below off for election only.')}
           </Box>
+
+          <HStack justify="space-between" align="flex-start">
+            <Box pr={4}>
+              <Text fontSize="sm" fontWeight="medium" color={t.label}>Open to claim</Text>
+              <Text fontSize="xs" color={t.help}>
+                Anyone already in the org can add themselves to this role, subject to its seat limit.
+              </Text>
+              {(form.join.domains.length > 0 || form.emailInvites.length > 0) && (
+                <Text fontSize="xs" color={t.help} mt={1}>
+                  Remove email domains and email invites to make this role open to claim.
+                </Text>
+              )}
+            </Box>
+            <Switch
+              isChecked={form.openRole}
+              isDisabled={!form.openRole && (form.join.domains.length > 0 || form.emailInvites.length > 0)}
+              onChange={(e) => update({
+                openRole: e.target.checked,
+                perms: { ...form.perms, QJ_AUTOJOIN: e.target.checked && Boolean(form.perms.QJ_AUTOJOIN) },
+              })}
+              colorScheme={t.accent}
+              aria-label="Open to claim"
+              data-testid="role-form-open-role"
+            />
+          </HStack>
+
+          <Checkbox
+            isChecked={Boolean(form.perms.QJ_AUTOJOIN)}
+            isDisabled={!form.openRole && !form.perms.QJ_AUTOJOIN}
+            onChange={(e) => update({ perms: { ...form.perms, QJ_AUTOJOIN: e.target.checked } })}
+            colorScheme={t.accent}
+            alignItems="flex-start"
+            data-testid="role-form-autojoin"
+          >
+            <VStack align="start" spacing={0} ml={1}>
+              <Text fontSize="sm" fontWeight="medium" color={t.label}>Add new org members automatically</Text>
+              <Text fontSize="xs" color={t.help}>
+                Requires Open to claim. New members receive this role through Quick Join; existing members are unchanged.
+              </Text>
+            </VStack>
+          </Checkbox>
+
+          <Divider borderColor={t.panelBorder} />
+          <InviteListInput
+            kind="domain"
+            value={form.join.domains}
+            onChange={(domains) => update({ join: { ...form.join, domains } })}
+            openRole={form.openRole}
+            config={ctx.emailConfig}
+            variant={variant}
+          />
 
           {!isGroup && (
             <>
@@ -568,6 +721,7 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
                     isChecked={Boolean(form.vouching?.enabled)}
                     onChange={(e) => update({ vouching: { ...form.vouching, enabled: e.target.checked } })}
                     colorScheme={t.accent}
+                    aria-label="Join with vouches"
                     data-testid="role-form-vouching"
                   />
                 </HStack>
@@ -631,7 +785,7 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
       {current === 'people' && (
         <VStack align="stretch" spacing={4}>
           {sectionHelp(
-            'Who holds it from day one. People already in this group are added directly; anyone '
+            'Who holds it from day one. People already in this org are added directly; anyone '
             + 'else gets an invitation they accept themselves.'
           )}
 
@@ -719,91 +873,77 @@ export default function RoleForm({ value, onChange, ctx = {}, variant = 'light',
               );
             })
           )}
+          <Divider borderColor={t.panelBorder} />
+          <InviteListInput
+            kind="email"
+            value={form.emailInvites}
+            onChange={(emailInvites) => update({ emailInvites })}
+            openRole={form.openRole}
+            config={ctx.emailConfig}
+            variant={variant}
+          />
         </VStack>
       )}
 
       {/* ── REVIEW ─────────────────────────────────────────────────────────── */}
       {current === 'review' && (
         <VStack align="stretch" spacing={4}>
-          {currentError ? (
-            <Alert status="error" borderRadius="md" fontSize="sm">
+          {reviewError && (
+            <Alert status="error" borderRadius="md" fontSize="sm" data-testid="role-form-blocked">
               <AlertIcon />
-              {currentError}
+              {reviewError}
             </Alert>
-          ) : built ? (
+          )}
+          {built ? (
             <>
               <Box>
                 <Text fontSize="xs" fontWeight="bold" color={t.help} textTransform="uppercase" mb={2}>
                   If this passes
                 </Text>
-                <VStack align="stretch" spacing={1}>
+                <VStack as="ul" align="stretch" spacing={2} pl={4}>
                   {built.summaries.map((s, i) => (
-                    <Text key={i} fontSize="sm" color={t.text}>• {s}</Text>
+                    <Text as="li" key={i} fontSize="sm" color={t.text} pl={1}>{s}</Text>
                   ))}
                 </VStack>
               </Box>
-              {built.warnings.length > 0 && <Divider borderColor={t.panelBorder} />}
-              {built.warnings.map((w, i) => (
-                <Alert key={i} status="warning" borderRadius="md" fontSize="sm">
-                  <AlertIcon />
-                  {w}
-                </Alert>
-              ))}
-              {built.submittable && !built.submittable.ok && (
-                <Alert status="error" borderRadius="md" fontSize="sm" data-testid="role-form-blocked">
-                  <AlertIcon />
-                  {built.submittable.message}
+              {built.warnings.length > 0 && (
+                <Alert
+                  status="warning"
+                  borderRadius="lg"
+                  alignItems="flex-start"
+                  bg={variant === 'dark' ? 'rgba(237, 137, 54, 0.08)' : 'orange.50'}
+                  border="1px solid"
+                  borderColor={variant === 'dark' ? 'rgba(237, 137, 54, 0.2)' : 'orange.100'}
+                  fontSize="sm"
+                >
+                  <AlertIcon color={variant === 'dark' ? 'orange.300' : 'orange.500'} boxSize={4} mt={1} />
+                  <Box>
+                    <Text fontWeight="medium" color={t.label} mb={2}>Before submitting</Text>
+                    <VStack align="stretch" spacing={2}>
+                      {built.warnings.map((w, i) => <Text key={i} color={t.text}>{w}</Text>)}
+                    </VStack>
+                  </Box>
                 </Alert>
               )}
-              <Text fontSize="xs" color={t.help}>
-                {built.batch.length === 1
-                  ? 'One step, one vote.'
-                  : built.batch.length === 2
-                    ? 'Passing this vote does both of these at once.'
-                    : `Passing this vote does all ${built.batch.length} of these at once.`}
-              </Text>
             </>
-          ) : (
+          ) : !reviewError && (
             <Alert status="info" borderRadius="md" fontSize="sm">
               <AlertIcon />
-              Still loading this co-op’s roles — give it a moment.
+              Still loading this org’s roles — give it a moment.
             </Alert>
           )}
         </VStack>
       )}
 
-      {currentError && current !== 'review' && (
+      {currentError && current !== 'review' && !(current === 'basics' && !String(form.name || '').trim()) && (
         <Alert status="warning" borderRadius="md" fontSize="sm">
           <AlertIcon />
           {currentError}
         </Alert>
       )}
 
-      <HStack justify="space-between" pt={1}>
-        <Button
-          size="sm"
-          variant="ghost"
-          color={t.help}
-          leftIcon={<FiArrowLeft />}
-          isDisabled={stepIndex === 0}
-          data-testid="role-form-back"
-          onClick={() => setStep(steps[Math.max(0, stepIndex - 1)])}
-        >
-          Back
-        </Button>
-        {stepIndex < steps.length - 1 && (
-          <Button
-            size="sm"
-            colorScheme={t.accent}
-            rightIcon={<FiChevronRight />}
-            isDisabled={Boolean(currentError)}
-            data-testid="role-form-next"
-            onClick={() => setStep(steps[stepIndex + 1])}
-          >
-            Next: {stepLabel(steps[stepIndex + 1], form.kind)}
-          </Button>
-        )}
-      </HStack>
+      {/* Stack filters its direct children to React elements; keep the portal inside a fragment. */}
+      {navigationTarget ? <>{createPortal(navigation, navigationTarget)}</> : navigation}
     </VStack>
   );
 }

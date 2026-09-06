@@ -46,7 +46,8 @@ import { useOrgGate } from "@/components/shared/OrgDeadEnd";
 
 const PerpetualOrgDashboard = () => {
   const { ongoingPolls, votingClasses } = useVotingContext();
-  const { poContextLoading, poDescription, poLinks, logoUrl, activeTaskAmount, completedTaskAmount, ptTokenBalance, poMembers, rules, educationModules, roleHatIds, educationHubEnabled, tokenLabel = 'Shares' } = usePOContext();
+  const poContext = usePOContext();
+  const { poContextLoading, poDescription, poLinks, logoUrl, activeTaskAmount, completedTaskAmount, ptTokenBalance, poMembers, rules, educationModules, roleHatIds, educationHubEnabled, tokenLabel = 'Shares' } = poContext;
   const { pageBackground } = useOrgTheme();
   const { startTour, isActive: isTourActive } = useTour();
   const router = useRouter();
@@ -60,7 +61,7 @@ const PerpetualOrgDashboard = () => {
   const [isVouchingExpanded, setIsVouchingExpanded] = useState(false);
   const { fetchImageFromIpfs } = useIPFScontext();
 
-  const inviteLink = useShareLink('/join/', { org: userDAO });
+  const inviteLink = useShareLink('/join/', { org: userDAO }, poContext);
   const { hasCopied, onCopy } = useClipboard(inviteLink);
 
   // Responsive design breakpoints — single call to reduce matchMedia listeners

@@ -16,7 +16,6 @@ import { useOrgNameState } from '@/hooks/useOrgName';
 import { resolveLegacyRoleName } from '@/lib/roles/roleNames';
 import { createOrgStateReducer, selectOrgState } from '@/lib/orgState';
 import { lookupOrganization } from '@/util/orgLookup';
-import { parseShortLink } from '@/util/shortLinks';
 
 // Re-export for back-compat with callers that imported these from POContext.
 export { getDefaultOrgForHost, getVisitUrlForOrg, resolveOrgAlias };
@@ -230,11 +229,9 @@ export const POProvider = ({ children }) => {
     newOrgRef.current = router.query.newOrg === 'true';
     const pinnedOrgId = router.query.orgId;
     const pinnedChainId = Number(router.query.chainId);
-    const hasPinnedLink = !!parseShortLink(router.asPath);
 
     useEffect(() => {
-        // Masking or expanding a URL for the same org must preserve loaded data.
-        // Reset only when the org name or resolved identity actually changes.
+        // Keep loaded data when navigation carries or drops the same org's IDs.
         if (storedStateRef.current.scopeName !== poName) {
             dispatch({ type: 'RESET_ORG', orgName: poName });
         }
@@ -248,20 +245,20 @@ export const POProvider = ({ children }) => {
             }
             dispatch({ type: 'SET_ORG_DATA', orgName: poName, payload: { orgId, orgChainId } });
         }
-        // Short links resolve an immutable registry entry. Keep that exact chain
-        // and org even if another chain has an organization with the same name.
-        if (hasPinnedLink && typeof pinnedOrgId === 'string' && /^0x[0-9a-f]{64}$/.test(pinnedOrgId)
-            && getAllSubgraphUrls().some((source) => source.chainId === pinnedChainId)) {
-            setResolvedOrg(pinnedOrgId, pinnedChainId);
-            setOrgLookupLoading(false);
-            return;
-        }
         if (!poName) {
             // Nothing to look up. `poContextLoading` deliberately stays true:
             // eleven surfaces read it as "org data is still arriving" and would
             // otherwise render a fabricated empty organisation. Pages tell this
             // terminal state apart via `orgStatus === 'missing'` and must check
             // that BEFORE the loading flag (see VotingPage / pages/votes).
+            setOrgLookupLoading(false);
+            return;
+        }
+        const sources = getAllSubgraphUrls();
+        const pinnedOrg = typeof pinnedOrgId === 'string' && /^0x[0-9a-f]{64}$/.test(pinnedOrgId)
+            && sources.some((source) => source.chainId === pinnedChainId)
+            ? { id: pinnedOrgId, chainId: pinnedChainId } : null;
+        if (!pinnedOrg && storedStateRef.current.scopeName === poName && storedStateRef.current.orgId) {
             setOrgLookupLoading(false);
             return;
         }
@@ -278,7 +275,8 @@ export const POProvider = ({ children }) => {
             try {
                 const { org: found, anySourceFailed } = await lookupOrganization({
                     name: poName,
-                    sources: getAllSubgraphUrls(),
+                    sources,
+                    pinnedOrg,
                     signal: controller.signal,
                     // Newly deployed orgs always check current chain precedence.
                     bypassCache: isNewOrg,
@@ -322,7 +320,7 @@ export const POProvider = ({ children }) => {
             clearTimeout(retryTimer);
             controller.abort();
         };
-    }, [poName, pinnedOrgId, pinnedChainId, hasPinnedLink]);
+    }, [poName, pinnedOrgId, pinnedChainId]);
 
     // Step 2: Fetch full org data using bytes ID, routed to the correct chain's subgraph
     const subgraphUrl = getSubgraphUrl(state.orgChainId);

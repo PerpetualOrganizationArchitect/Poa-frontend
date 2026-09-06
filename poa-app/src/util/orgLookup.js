@@ -117,10 +117,13 @@ export async function fetchOrgByName(source, name, { signal } = {}) {
  * A live hint queries its chain by name again. Only the same org id can use
  * it; misses, renamed/replaced orgs, and failures evict the hint and query all
  * other chains, reusing the hinted response rather than fetching it twice.
+ * An explicit org/chain from an expanded share link is checked against its
+ * name on that chain only. It never changes normal name-lookup precedence.
  */
 export function lookupOrganization({
   name,
   sources,
+  pinnedOrg,
   signal,
   bypassCache = false,
   cache = browserHints,
@@ -157,7 +160,7 @@ export function lookupOrganization({
     }
     signal?.addEventListener('abort', cancel, { once: true });
 
-    const hint = bypassCache ? null : cache?.get(name, sources);
+    const hint = pinnedOrg || bypassCache ? null : cache?.get(name, sources);
 
     const settle = () => {
       const matchIndex = outcomes.findIndex((outcome) => outcome?.kind === 'match');
@@ -186,6 +189,12 @@ export function lookupOrganization({
         if (finished) return;
         outcomes[index] = outcome;
         if (outcome.kind === 'error') onSourceError?.(source, outcome.error);
+        if (pinnedOrg) {
+          // Never switch a shared link to a same-name org on another chain or
+          // save that explicit choice as a hint for ordinary name lookups.
+          finish(outcome.kind === 'match' && outcome.org.id === pinnedOrg.id ? outcome.org : null);
+          return;
+        }
         if (hinted) {
           if (outcome.kind === 'match' && outcome.org.id === hint.orgId && cache?.get(name, sources) === hint) {
             // Revalidate the org itself, but do not renew cached higher-chain absence.
@@ -199,7 +208,11 @@ export function lookupOrganization({
       });
     };
 
-    if (hint) startSource(hint.sourceIndex, true);
+    if (pinnedOrg) {
+      const index = sources.findIndex((source) => source.chainId === pinnedOrg.chainId);
+      if (index < 0 || !pinnedOrg.id) finish(null);
+      else startSource(index);
+    } else if (hint) startSource(hint.sourceIndex, true);
     else {
       sources.forEach((_, index) => startSource(index));
       settle();

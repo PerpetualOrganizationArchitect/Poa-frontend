@@ -110,6 +110,49 @@ describe('ordered organization lookup', () => {
   });
 });
 
+describe('organization identity in expanded share links', () => {
+  const pinnedOrg = { id: park.id, chainId: 100 };
+
+  it('verifies the exact org on its chain without querying same-name alternatives', async () => {
+    const fetchSource = vi.fn(async (source) => source.chainId === 100 ? park : duplicate);
+    await expect(lookup({ pinnedOrg, fetchSource })).resolves.toEqual({
+      org: { ...park, chainId: 100 }, anySourceFailed: false,
+    });
+    expect(fetchSource).toHaveBeenCalledTimes(1);
+    expect(fetchSource.mock.calls[0][0]).toBe(sources[1]);
+  });
+
+  it.each([
+    [null, false],
+    [duplicate, false],
+    [{ ...park, name: 'A different organization' }, true],
+  ])('does not accept a missing or conflicting org (%s)', async (response, anySourceFailed) => {
+    await expect(lookup({ pinnedOrg, fetchSource: async () => response })).resolves.toEqual({ org: null, anySourceFailed });
+  });
+
+  it('keeps a failed pinned-chain lookup retryable without selecting another chain', async () => {
+    const fetchSource = vi.fn().mockRejectedValue(new Error('Gateway offline'));
+    await expect(lookup({ pinnedOrg, fetchSource })).resolves.toEqual({ org: null, anySourceFailed: true });
+    expect(fetchSource).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not change the cached precedence of ordinary name-based links', async () => {
+    const cache = createOrgLookupHintCache();
+    cache.set(park.name, sources, 0, duplicate.id);
+    const fetchSource = vi.fn(async (source) => source.chainId === 100 ? park : duplicate);
+    await expect(lookup({ pinnedOrg, cache, fetchSource })).resolves.toMatchObject({ org: { id: park.id, chainId: 100 } });
+    expect(cache.get(park.name, sources)).toMatchObject({ sourceIndex: 0, orgId: duplicate.id });
+    await expect(lookup({ cache, fetchSource })).resolves.toMatchObject({ org: { id: duplicate.id, chainId: 42161 } });
+    expect(fetchSource.mock.calls.map(([source]) => source.chainId)).toEqual([100, 42161]);
+  });
+
+  it('does not query a different chain for unsupported explicit identities', async () => {
+    const fetchSource = vi.fn();
+    await expect(lookup({ pinnedOrg: { ...pinnedOrg, chainId: 999 }, fetchSource })).resolves.toEqual({ org: null, anySourceFailed: false });
+    expect(fetchSource).not.toHaveBeenCalled();
+  });
+});
+
 describe('verified organization chain hints', () => {
   it('revalidates the known org by name on only its chain during the fixed TTL', async () => {
     let now = 0;

@@ -2,11 +2,8 @@
 /**
  * generate-og-landing.mjs — deterministic landing OG image generator (P5).
  *
- * Renders the landing-only Open Graph card (1200x630) in the Direction A
- * "public works" visual system: bone ground, ink Archivo display headline
- * ("Do the work. / Own what you build."), signal-orange accents, IBM Plex Mono
- * eyebrow + subline, the "Poa" mark, corner registration ticks. Purely
- * typographic — no product screenshot.
+ * Renders the landing-only Open Graph card (1200x630): a simple Poa.box
+ * wordmark and the "Build together. Own Together" line on a warm background.
  *
  * Output: poa-app/public/images/poa-og-landing.png (1200x630 PNG, well < 300KB).
  *
@@ -70,60 +67,26 @@ function b64(file) {
 
 function buildHtml() {
   const archivo = b64("archivo-vf.woff2");
-  const mono = b64("plex-mono-500-latin.woff2");
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8" /><style>
   @font-face { font-family:'Archivo'; src:url(data:font/woff2;base64,${archivo}) format('woff2'); font-weight:100 900; font-display:block; }
-  @font-face { font-family:'PlexMono'; src:url(data:font/woff2;base64,${mono}) format('woff2'); font-weight:500; font-display:block; }
   :root {
-    --bone:#f4f1e9; --paper:#faf8f2; --ink:#16181d; --steel:#4a4f58;
-    --civic:#10243e; --signal:#b45309; --signal-deep:#7c2d12;
-    --hair:#d6d1c3; --hair-strong:#c4bda9;
+    --bone:#f4f1e9; --ink:#16181d; --signal:#b45309; --hair:#c4bda9;
   }
   * { box-sizing:border-box; margin:0; padding:0; }
   html,body { width:1200px; height:630px; }
   body { background:var(--bone); color:var(--ink); font-family:'Archivo',system-ui,sans-serif; -webkit-font-smoothing:antialiased; overflow:hidden; }
-  .frame { position:relative; width:1200px; height:630px; padding:56px 72px 50px; display:flex; flex-direction:column; justify-content:space-between; overflow:hidden; border:1px solid var(--hair-strong); box-shadow:inset 0 0 0 12px var(--bone); }
+  .frame { position:relative; width:1200px; height:630px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:34px; overflow:hidden; border:1px solid var(--hair); box-shadow:inset 0 0 0 12px var(--bone); }
   .topband { position:absolute; top:0; left:0; right:0; height:6px; background:var(--signal); }
-  .tick { position:absolute; width:18px; height:18px; }
-  .tick::before,.tick::after { content:''; position:absolute; background:var(--signal); }
-  .tick::before { width:18px; height:2px; top:8px; }
-  .tick::after { width:2px; height:18px; left:8px; }
-  .tick-tl { top:26px; left:34px; } .tick-tr { top:26px; right:34px; }
-  .tick-bl { bottom:26px; left:34px; } .tick-br { bottom:26px; right:34px; }
-  .top { display:flex; align-items:center; justify-content:space-between; }
-  .eyebrow { font-family:'PlexMono',ui-monospace,monospace; font-weight:500; font-size:17px; letter-spacing:0.14em; text-transform:uppercase; color:var(--signal-deep); display:flex; align-items:center; gap:14px; }
-  .eyebrow-tick { width:13px; height:13px; background:var(--signal); display:inline-block; flex:none; }
-  .brand { display:flex; align-items:baseline; gap:12px; }
-  .brand-mark { font-family:'Archivo',sans-serif; font-weight:730; font-variation-settings:'wght' 730; font-size:34px; letter-spacing:-0.02em; line-height:1; color:var(--ink); }
-  .brand-reg { font-family:'PlexMono',ui-monospace,monospace; font-weight:500; font-size:13px; letter-spacing:0.1em; text-transform:uppercase; color:var(--steel); }
-  .mid { display:flex; flex-direction:column; gap:26px; }
-  .rulepair-sig { display:block; width:92px; height:5px; background:var(--signal); }
-  .rulepair-hair { display:block; width:300px; height:1px; background:var(--hair-strong); margin-top:9px; }
-  h1 { font-family:'Archivo',sans-serif; font-weight:660; font-variation-settings:'wght' 660; font-size:92px; line-height:0.96; letter-spacing:-0.03em; color:var(--ink); max-width:14ch; }
-  h1 .own { color:var(--signal); }
-  .bottom { display:flex; align-items:flex-end; justify-content:space-between; border-top:1px solid var(--hair-strong); padding-top:22px; }
-  .sub { font-family:'PlexMono',ui-monospace,monospace; font-weight:500; font-size:21px; letter-spacing:0.005em; line-height:1.3; color:var(--steel); white-space:nowrap; }
-  .sub .em { color:var(--ink); }
-  .std { font-family:'PlexMono',ui-monospace,monospace; font-weight:500; font-size:15px; letter-spacing:0.08em; color:var(--signal-deep); text-align:right; flex:none; white-space:nowrap; padding-bottom:3px; }
+  .brand { font-size:112px; font-weight:730; font-variation-settings:'wght' 730; letter-spacing:-0.045em; line-height:1; }
+  .tagline { font-size:48px; font-weight:480; font-variation-settings:'wght' 480; letter-spacing:-0.025em; line-height:1.15; }
+  .tagline .own { display:inline-block; margin-left:0.16em; color:var(--signal); }
 </style></head>
 <body>
   <div class="frame">
     <span class="topband"></span>
-    <span class="tick tick-tl"></span><span class="tick tick-tr"></span>
-    <span class="tick tick-bl"></span><span class="tick tick-br"></span>
-    <div class="top">
-      <div class="eyebrow"><span class="eyebrow-tick"></span>organizations owned by the people in them</div>
-      <div class="brand"><span class="brand-mark">Poa</span><span class="brand-reg">reg. no. 001</span></div>
-    </div>
-    <div class="mid">
-      <span class="rulepair"><span class="rulepair-sig"></span><span class="rulepair-hair"></span></span>
-      <h1>Do the work.<br /><span class="own">Own what you build.</span></h1>
-    </div>
-    <div class="bottom">
-      <p class="sub">finished work earns <span class="em">ownership</span> &middot; revenue share and a real say</p>
-      <span class="std">poa.box</span>
-    </div>
+    <h1 class="brand">Poa.box</h1>
+    <p class="tagline">Build together. <span class="own">Own Together</span></p>
   </div>
 </body></html>`;
 }

@@ -1,14 +1,15 @@
 import Head from "next/head";
 
 const SITE_URL = "https://poa.box";
-const DEFAULT_OG_IMAGE = `${SITE_URL}/images/poa_og.webp`;
+const DEFAULT_OG_IMAGE = `${SITE_URL}/images/poa-og-landing.png`;
+const DEFAULT_OG_IMAGE_ALT = "Poa.box — Build together. Own Together";
 
 export default function SEOHead({
   title,
   description,
   path,
   ogImage = DEFAULT_OG_IMAGE,
-  ogImageAlt,
+  ogImageAlt = DEFAULT_OG_IMAGE_ALT,
   ogType = "website",
   noIndex = false,
   jsonLd,

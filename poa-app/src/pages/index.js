@@ -182,8 +182,7 @@ export default function Home() {
         title="Poa: organizations that pay you with ownership"
         description="Turn your group into an organization you own together. Finished work earns ownership: revenue share and voting power for the tasks you complete. Free and open."
         path="/"
-        ogImage="/images/poa-og-landing.png"
-        ogImageAlt="Poa"
+        ogImageAlt="Poa.box — Build together. Own Together"
         keywords={[
           "worker owned organization",
           "community ownership",

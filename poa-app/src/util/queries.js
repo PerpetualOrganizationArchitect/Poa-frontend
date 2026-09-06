@@ -1211,6 +1211,8 @@ export const FETCH_TREASURY_DATA = gql`
             bountyToken
             bountyPayout
           }
+        }
+        activityProjects: projects(first: 100) {
           tasks(where: { status: "Completed" }, first: 500, orderBy: completedAt, orderDirection: desc) {
             id
             taskId

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -19,6 +19,7 @@ import {
   useToast,
 } from '@chakra-ui/react';
 import { FaCheck, FaExclamationTriangle, FaFingerprint, FaWallet } from 'react-icons/fa';
+import useOnboardingColors from '@/components/shared/useOnboardingColors';
 import { OnboardingStep } from '@/services/web3/domain/PasskeyOnboardingService';
 
 const STEP_PROGRESS = {
@@ -47,10 +48,21 @@ export default function PasskeyOnboardingDialog({
   successMessage,
   successActionLabel,
   onConnectWallet,
+  variant,
 }) {
   const [username, setUsername] = useState('');
   const inputRef = useRef(null);
   const toast = useToast();
+  const usernameId = useId();
+  const isJoin = variant === 'join';
+  const joinColors = useOnboardingColors();
+  const joinButtonStyle = isJoin ? {
+    bg: joinColors.primary,
+    color: joinColors.primaryText,
+    _hover: { bg: joinColors.hover },
+    _active: { bg: joinColors.hover },
+    _focusVisible: { boxShadow: joinColors.focusRing },
+  } : {};
   const {
     step,
     stepMessage,
@@ -69,6 +81,16 @@ export default function PasskeyOnboardingDialog({
   );
   const isSuccess = step === OnboardingStep.SUCCESS;
   const isError = step === OnboardingStep.ERROR;
+  // Only the join presentation translates phase labels; the service's step data is unchanged.
+  const joinStepLabels = {
+    [OnboardingStep.CREATING_CREDENTIAL]: 'Create your passkey to continue.',
+    [OnboardingStep.COMPUTING_ADDRESS]: 'Setting up your account…',
+    [OnboardingStep.BUILDING_TRANSACTION]: 'Preparing your membership…',
+    [OnboardingStep.SIGNING_REGISTRATION]: 'Confirm your username with your passkey.',
+    [OnboardingStep.SIGNING]: 'Confirm with your passkey to continue.',
+    [OnboardingStep.SUBMITTING]: 'Finishing your account setup…',
+    [OnboardingStep.CONFIRMING]: 'Confirming your membership…',
+  };
 
   const handleStart = async () => {
     const trimmed = username.trim();
@@ -122,49 +144,54 @@ export default function PasskeyOnboardingDialog({
       <ModalOverlay bg="blackAlpha.600" />
       <ModalContent
         borderRadius="2xl"
-        bg="white"
+        bg={isJoin ? joinColors.surface : 'white'}
+        color={isJoin ? joinColors.ink : undefined}
+        border={isJoin ? '1px solid' : undefined}
+        borderColor={isJoin ? joinColors.line : undefined}
         boxShadow="0 25px 50px -12px rgba(0, 0, 0, 0.25)"
         mx={4}
       >
-        <ModalHeader textAlign="center" pt={6} pb={2} fontSize="xl" fontWeight="700">
-          {isSuccess ? 'Account Created!' : 'Create Passkey Account'}
+        <ModalHeader textAlign={isJoin ? 'left' : 'center'} pt={isJoin ? 7 : 6} pr={isJoin ? 12 : undefined} pb={2} fontSize={isJoin ? '26px' : 'xl'} fontWeight={isJoin ? '600' : '700'} letterSpacing={isJoin ? '-0.035em' : undefined}>
+          {isSuccess ? (isJoin ? 'You’re all set' : 'Account Created!') : (isJoin ? 'Create your account' : 'Create Passkey Account')}
         </ModalHeader>
         {!isInProgress && <ModalCloseButton />}
 
         <ModalBody px={6} pb={4}>
           {!isInProgress && !isSuccess && !isError && (
             <VStack spacing={5}>
-              <Box textAlign="center">
-                <Icon as={FaFingerprint} w={12} h={12} color="amethyst.500" mb={3} />
-                <Text fontSize="sm" color="warmGray.600" lineHeight="1.6">
-                  Create an account using your device&apos;s biometric authentication.
-                  No wallet extension or ETH needed.
+              <Box textAlign={isJoin ? 'left' : 'center'}>
+                <Icon as={FaFingerprint} w={isJoin ? 8 : 12} h={isJoin ? 8 : 12} color={isJoin ? joinColors.accent : 'amethyst.500'} mb={3} aria-hidden="true" />
+                <Text fontSize="sm" color={isJoin ? joinColors.muted : 'warmGray.600'} lineHeight={isJoin ? '1.7' : '1.6'}>
+                  {isJoin ? 'You’ll sign in with your face, fingerprint, or device PIN. Your passkey replaces a password.' : <>Create an account using your device&apos;s biometric authentication. No wallet extension or ETH needed.</>}
                 </Text>
               </Box>
 
               <Box w="100%">
-                <Text fontSize="sm" fontWeight="600" mb={2} color="warmGray.700">
+                <Text as="label" htmlFor={usernameId} display="block" fontSize="sm" fontWeight="600" mb={2} color={isJoin ? joinColors.ink : 'warmGray.700'}>
                   Choose a username
                 </Text>
                 <Input
                   ref={inputRef}
+                  id={usernameId}
+                  autoComplete={isJoin ? 'username' : undefined}
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   placeholder="Enter username"
                   size="lg"
-                  borderRadius="xl"
-                  borderColor="warmGray.200"
+                  borderRadius={isJoin ? 'lg' : 'xl'}
+                  borderColor={isJoin ? joinColors.line : 'warmGray.200'}
                   _focus={{
                     borderColor: 'amethyst.400',
                     boxShadow: '0 0 0 3px rgba(144, 85, 232, 0.15)',
                   }}
                   onKeyDown={(event) => event.key === 'Enter' && handleStart()}
+                  {...(isJoin ? { bg: joinColors.surface, color: joinColors.ink, _placeholder: { color: joinColors.muted }, _focus: { borderColor: joinColors.primary, boxShadow: joinColors.inputFocusRing } } : {})}
                 />
               </Box>
 
               {!isReady && (
-                <Text fontSize="xs" color="warmGray.500" textAlign="center">
-                  Loading infrastructure...
+                <Text fontSize="xs" color={isJoin ? joinColors.muted : 'warmGray.500'} textAlign="center">
+                  {isJoin ? 'Getting things ready…' : 'Loading infrastructure...'}
                 </Text>
               )}
             </VStack>
@@ -176,9 +203,9 @@ export default function PasskeyOnboardingDialog({
                 as={FaFingerprint}
                 w={16}
                 h={16}
-                color="amethyst.500"
+                color={isJoin ? joinColors.accent : 'amethyst.500'}
                 animation={
-                  step === OnboardingStep.SIGNING || step === OnboardingStep.CREATING_CREDENTIAL
+                  !isJoin && (step === OnboardingStep.SIGNING || step === OnboardingStep.CREATING_CREDENTIAL)
                     ? 'pulse 1.5s ease-in-out infinite'
                     : undefined
                 }
@@ -191,8 +218,8 @@ export default function PasskeyOnboardingDialog({
                 }}
               />
 
-              <Text fontSize="md" fontWeight="600" color="warmGray.700" textAlign="center">
-                {stepMessage}
+              <Text fontSize="md" fontWeight="600" color={isJoin ? joinColors.ink : 'warmGray.700'} textAlign="center" aria-live={isJoin ? 'polite' : undefined}>
+                {isJoin ? (joinStepLabels[step] || stepMessage) : stepMessage}
               </Text>
 
               <Progress
@@ -200,14 +227,15 @@ export default function PasskeyOnboardingDialog({
                 size="sm"
                 w="100%"
                 borderRadius="full"
-                colorScheme="purple"
-                hasStripe
-                isAnimated
+                colorScheme={isJoin ? 'amethyst' : 'purple'}
+                hasStripe={!isJoin}
+                isAnimated={!isJoin}
+                aria-label="Account setup progress"
               />
 
               {(step === OnboardingStep.CREATING_CREDENTIAL || step === OnboardingStep.SIGNING) && (
-                <Text fontSize="xs" color="warmGray.500" textAlign="center">
-                  Use Touch ID, Face ID, or your device PIN when prompted.
+                <Text fontSize="xs" color={isJoin ? joinColors.muted : 'warmGray.500'} textAlign="center">
+                  {isJoin ? 'Use your face, fingerprint, or device PIN when prompted.' : 'Use Touch ID, Face ID, or your device PIN when prompted.'}
                 </Text>
               )}
             </VStack>
@@ -219,23 +247,23 @@ export default function PasskeyOnboardingDialog({
                 w={16}
                 h={16}
                 borderRadius="full"
-                bg="green.100"
+                bg={isJoin ? joinColors.soft : 'green.100'}
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
               >
-                <Icon as={FaCheck} w={8} h={8} color="green.500" />
+                <Icon as={FaCheck} w={8} h={8} color={isJoin ? joinColors.accent : 'green.500'} />
               </Box>
 
-              <Text fontSize="sm" color="warmGray.600" textAlign="center">
+              <Text fontSize="sm" color={isJoin ? joinColors.muted : 'warmGray.600'} textAlign="center">
                 {successMessage}
               </Text>
 
-              <Box w="100%" p={3} bg="warmGray.50" borderRadius="xl" textAlign="center">
-                <Text fontSize="xs" color="warmGray.500" mb={1}>
-                  Account Address
+              <Box as={isJoin ? 'details' : 'div'} w="100%" p={3} bg={isJoin ? joinColors.soft : 'warmGray.50'} borderRadius="xl" textAlign={isJoin ? 'left' : 'center'}>
+                <Text as={isJoin ? 'summary' : 'p'} fontSize="xs" color={isJoin ? joinColors.muted : 'warmGray.500'} mb={1} cursor={isJoin ? 'pointer' : undefined}>
+                  {isJoin ? 'Account details' : 'Account Address'}
                 </Text>
-                <Text fontSize="sm" fontFamily="mono" color="warmGray.700" wordBreak="break-all">
+                <Text fontSize="sm" fontFamily="mono" color={isJoin ? joinColors.ink : 'warmGray.700'} wordBreak="break-all">
                   {result.accountAddress}
                 </Text>
               </Box>
@@ -256,10 +284,10 @@ export default function PasskeyOnboardingDialog({
                 <Icon as={FaExclamationTriangle} w={8} h={8} color="red.500" />
               </Box>
 
-              <Text fontSize="sm" color="warmGray.700" textAlign="center" fontWeight="600">
+              <Text fontSize="sm" color={isJoin ? joinColors.ink : 'warmGray.700'} textAlign="center" fontWeight="600">
                 Something went wrong
               </Text>
-              <Text fontSize="xs" color="warmGray.500" textAlign="center">
+              <Text fontSize="xs" color={isJoin ? joinColors.muted : 'warmGray.500'} textAlign="center" role={isJoin ? 'alert' : undefined}>
                 {error.message || 'An unexpected error occurred. Please try again.'}
               </Text>
             </VStack>
@@ -272,7 +300,7 @@ export default function PasskeyOnboardingDialog({
               <Button
                 w="100%"
                 size="lg"
-                borderRadius="xl"
+                borderRadius={isJoin ? 'lg' : 'xl'}
                 bg="amethyst.500"
                 color="white"
                 _hover={{ bg: 'amethyst.600', transform: 'translateY(-1px)', boxShadow: 'lg' }}
@@ -280,13 +308,14 @@ export default function PasskeyOnboardingDialog({
                 onClick={handleStart}
                 isDisabled={!isReady || !username.trim()}
                 leftIcon={<FaFingerprint />}
+                {...joinButtonStyle}
               >
-                Create with Passkey
+                {isJoin ? 'Create account' : 'Create with Passkey'}
               </Button>
 
               {onConnectWallet && (
                 <>
-                  <HStack width="100%" align="center">
+                  <HStack width="100%" align="center" display={isJoin ? 'none' : undefined}>
                     <Divider borderColor="warmGray.200" />
                     <Text fontSize="xs" color="warmGray.400" whiteSpace="nowrap" px={2}>
                       or
@@ -297,7 +326,7 @@ export default function PasskeyOnboardingDialog({
                   <Button
                     w="100%"
                     size="lg"
-                    borderRadius="xl"
+                    borderRadius={isJoin ? 'lg' : 'xl'}
                     bg="blue.50"
                     border="1px solid"
                     borderColor="blue.200"
@@ -306,8 +335,9 @@ export default function PasskeyOnboardingDialog({
                     _active={{ bg: 'blue.200', transform: 'translateY(0)' }}
                     onClick={handleConnectWallet}
                     leftIcon={<Icon as={FaWallet} color="blue.500" />}
+                    {...(isJoin ? { size: 'sm', minH: '44px', bg: 'transparent', borderColor: 'transparent', color: joinColors.muted, _hover: { bg: joinColors.soft }, _active: { bg: joinColors.soft }, leftIcon: <Icon as={FaWallet} color={joinColors.muted} /> } : {})}
                   >
-                    Connect Wallet
+                    {isJoin ? 'Use a wallet instead' : 'Connect Wallet'}
                   </Button>
                 </>
               )}
@@ -318,9 +348,10 @@ export default function PasskeyOnboardingDialog({
             <Button
               w="100%"
               size="lg"
-              borderRadius="xl"
+              borderRadius={isJoin ? 'lg' : 'xl'}
               colorScheme="green"
               onClick={handleClose}
+              {...joinButtonStyle}
             >
               {successActionLabel}
             </Button>
@@ -328,19 +359,20 @@ export default function PasskeyOnboardingDialog({
 
           {isError && (
             <HStack w="100%" spacing={3}>
-              <Button flex={1} size="lg" borderRadius="xl" variant="outline" onClick={handleClose}>
+              <Button flex={1} size="lg" borderRadius={isJoin ? 'lg' : 'xl'} variant="outline" onClick={handleClose} {...(isJoin ? { borderColor: joinColors.line, color: joinColors.ink, _hover: { bg: joinColors.soft } } : {})}>
                 Cancel
               </Button>
               <Button
                 flex={1}
                 size="lg"
-                borderRadius="xl"
+                borderRadius={isJoin ? 'lg' : 'xl'}
                 bg="amethyst.500"
                 color="white"
                 _hover={{ bg: 'amethyst.600' }}
                 onClick={reset}
+                {...joinButtonStyle}
               >
-                Try Again
+                {isJoin ? 'Try again' : 'Try Again'}
               </Button>
             </HStack>
           )}

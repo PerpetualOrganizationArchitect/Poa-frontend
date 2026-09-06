@@ -12,7 +12,8 @@
 
 import { Badge, Box, Button, Flex, HStack, Icon, Text, VStack, Wrap, WrapItem } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
-import { FaEnvelopeOpenText, FaChevronRight } from 'react-icons/fa';
+import { FaEnvelopeOpenText, FaChevronDown, FaChevronRight } from 'react-icons/fa';
+import useOnboardingColors from '@/components/shared/useOnboardingColors';
 import { useZkEmailInviteSummary } from '@/hooks/useZkEmailInviteSummary';
 import { useOrgName } from '@/hooks/useOrgName';
 import { orgUrl } from '@/util/orgUrl';
@@ -23,6 +24,7 @@ export default function EmailInviteCard({ bg, textColor, subtextColor, accentCol
   const router = useRouter();
   const org = useOrgName();
   const ownSummary = useZkEmailInviteSummary(); // unconditional (rules of hooks); prop wins when provided
+  const colors = useOnboardingColors();
   const { status, domains, emailCount, roleNames } = summary || ownSummary;
 
   if (status !== 'active' && status !== 'degraded') return null;
@@ -52,6 +54,101 @@ export default function EmailInviteCard({ bg, textColor, subtextColor, accentCol
   const grantsLine = roleNames.length
     ? `Grants the ${roleNames.join(', ')} role${roleNames.length > 1 ? 's' : ''} — no vote or approval needed.`
     : 'Grants a role instantly — no vote or approval needed.';
+
+  if (variant === 'join' || variant === 'join-details') {
+    const eligibilityDetails = (
+      <Box
+        as="details"
+        width="100%"
+        color={colors.muted}
+        sx={{ '&[open] .email-eligibility-chevron': { transform: 'rotate(180deg)' } }}
+      >
+        <Box
+          as="summary"
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          gap={3}
+          minH="44px"
+          fontSize="xs"
+          cursor="pointer"
+          borderRadius="lg"
+          _hover={{ color: colors.ink }}
+          _focusVisible={{ boxShadow: colors.focusRing }}
+          sx={{ listStyle: 'none', '&::-webkit-details-marker': { display: 'none' } }}
+        >
+          <Text as="span">Who can join by email?</Text>
+          <Icon as={FaChevronDown} className="email-eligibility-chevron" boxSize={3} flexShrink={0} aria-hidden="true" />
+        </Box>
+        <VStack align="stretch" spacing={3} pt={1} pb={2} fontSize="xs" lineHeight="1.7">
+          {status === 'active' ? (
+            <>
+              {domains.length > 0 && (
+                <>
+                  <Text>People with an email address at these domains can join:</Text>
+                  <VStack as="ul" align="stretch" spacing={2} listStyleType="none" m={0} p={0}>
+                    {domains.map(({ domain, roleNames: domainRoles }) => (
+                      <Box as="li" key={domain} px={3} py={2} bg={colors.soft} borderRadius="lg" overflowWrap="anywhere">
+                        <Text color={colors.ink} fontWeight="600">@{domain}</Text>
+                        {domainRoles.length > 0 && (
+                          <Text>Join as {domainRoles.join(', ')}</Text>
+                        )}
+                      </Box>
+                    ))}
+                  </VStack>
+                </>
+              )}
+              {emailCount > 0 && (
+                <Text>
+                  Personal email invitations also work. Use the email address on your invitation,
+                  even if its domain isn’t listed here.
+                </Text>
+              )}
+              <Text>
+                {roleNames.length > 0
+                  ? `Available roles: ${roleNames.join(', ')}. No member vouches or approval are needed.`
+                  : 'Use an invited email address to join. No member vouches or approval are needed.'}
+              </Text>
+            </>
+          ) : (
+            <Text>
+              This community accepts email invitations. We couldn’t load the eligible email details.
+              If you have an invitation, continue with the email address it was sent to.
+            </Text>
+          )}
+        </VStack>
+      </Box>
+    );
+
+    if (variant === 'join-details') return eligibilityDetails;
+
+    return (
+      <Box width="100%" px={4} py={3} bg={colors.surface} color={colors.ink} border="1px solid" borderColor={colors.line} borderRadius="2xl">
+        <HStack spacing={3} align="start">
+          <Icon as={FaEnvelopeOpenText} color={colors.accent} boxSize={4} mt={0.5} flexShrink={0} aria-hidden="true" />
+          <Text fontSize="sm" fontWeight="600">Have an email invitation?</Text>
+        </HStack>
+        <Button
+          variant="link"
+          minH="44px"
+          fontSize="sm"
+          fontWeight="500"
+          color={colors.link}
+          rightIcon={<FaChevronRight />}
+          onClick={() => router.push(orgUrl(org, 'claim'))}
+          isDisabled={!org}
+          whiteSpace="normal"
+          borderRadius="lg"
+          _focusVisible={{ boxShadow: colors.focusRing }}
+        >
+          Continue with email
+        </Button>
+        <Box borderTop="1px solid" borderColor={colors.line}>
+          {eligibilityDetails}
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box

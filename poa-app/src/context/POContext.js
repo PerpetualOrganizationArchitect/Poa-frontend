@@ -16,6 +16,7 @@ import { useOrgNameState } from '@/hooks/useOrgName';
 import { resolveLegacyRoleName } from '@/lib/roles/roleNames';
 import { createOrgStateReducer, selectOrgState } from '@/lib/orgState';
 import { lookupOrganization } from '@/util/orgLookup';
+import { parseShortLink } from '@/util/shortLinks';
 
 // Re-export for back-compat with callers that imported these from POContext.
 export { getDefaultOrgForHost, getVisitUrlForOrg, resolveOrgAlias };
@@ -173,6 +174,8 @@ export const POProvider = ({ children }) => {
     const { seedIdentities } = useIdentityContext();
 
     const [storedState, dispatch] = useReducer(poReducer, initialState);
+    const storedStateRef = React.useRef(storedState);
+    storedStateRef.current = storedState;
     // Mask old addresses and metadata during the render where the name changes,
     // before the effect below resets state. No consumer may pair a new org name
     // with a previous org's contract addresses, even for a single commit.
@@ -225,11 +228,34 @@ export const POProvider = ({ children }) => {
     // Cleaning up ?newOrg after data arrives must not restart the org lookup.
     const newOrgRef = React.useRef(false);
     newOrgRef.current = router.query.newOrg === 'true';
+    const pinnedOrgId = router.query.orgId;
+    const pinnedChainId = Number(router.query.chainId);
+    const hasPinnedLink = !!parseShortLink(router.asPath);
 
     useEffect(() => {
-        dispatch({ type: 'RESET_ORG', orgName: poName });
+        // Masking or expanding a URL for the same org must preserve loaded data.
+        // Reset only when the org name or resolved identity actually changes.
+        if (storedStateRef.current.scopeName !== poName) {
+            dispatch({ type: 'RESET_ORG', orgName: poName });
+        }
         setOrgLookupError(null);
         setOrgNotFoundName(null);
+        function setResolvedOrg(orgId, orgChainId) {
+            const previous = storedStateRef.current;
+            if (previous.scopeName === poName && previous.orgId
+                && (previous.orgId !== orgId || previous.orgChainId !== orgChainId)) {
+                dispatch({ type: 'RESET_ORG', orgName: poName });
+            }
+            dispatch({ type: 'SET_ORG_DATA', orgName: poName, payload: { orgId, orgChainId } });
+        }
+        // Short links resolve an immutable registry entry. Keep that exact chain
+        // and org even if another chain has an organization with the same name.
+        if (hasPinnedLink && typeof pinnedOrgId === 'string' && /^0x[0-9a-f]{64}$/.test(pinnedOrgId)
+            && getAllSubgraphUrls().some((source) => source.chainId === pinnedChainId)) {
+            setResolvedOrg(pinnedOrgId, pinnedChainId);
+            setOrgLookupLoading(false);
+            return;
+        }
         if (!poName) {
             // Nothing to look up. `poContextLoading` deliberately stays true:
             // eleven surfaces read it as "org data is still arriving" and would
@@ -262,11 +288,7 @@ export const POProvider = ({ children }) => {
                 });
                 if (cancelled) return;
                 if (found) {
-                    dispatch({
-                        type: 'SET_ORG_DATA',
-                        orgName: poName,
-                        payload: { orgId: found.id, orgChainId: found.chainId },
-                    });
+                    setResolvedOrg(found.id, found.chainId);
                     setOrgLookupLoading(false);
                 } else if ((isNewOrg || anySourceFailed) && retryCount < MAX_RETRIES) {
                     // Either a newly deployed org the subgraph hasn't indexed yet, OR a
@@ -300,7 +322,7 @@ export const POProvider = ({ children }) => {
             clearTimeout(retryTimer);
             controller.abort();
         };
-    }, [poName]);
+    }, [poName, pinnedOrgId, pinnedChainId, hasPinnedLink]);
 
     // Step 2: Fetch full org data using bytes ID, routed to the correct chain's subgraph
     const subgraphUrl = getSubgraphUrl(state.orgChainId);

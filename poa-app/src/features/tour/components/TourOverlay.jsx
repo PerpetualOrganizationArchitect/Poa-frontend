@@ -1,3 +1,4 @@
+import { useShareLink } from '@/hooks/useShareLink';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { keyframes } from '@emotion/react';
 import {
@@ -177,6 +178,7 @@ function ProgressBar({ current, total }) {
 
 export default function TourOverlay() {
   const { isActive, currentStep, currentStepDef, totalSteps, orgName, tourCtx, nextStep, prevStep, skipTour } = useTour();
+  const inviteLink = useShareLink('/join/', { org: isActive ? orgName : '' });
   const isMobile = useBreakpointValue({ base: true, md: false });
 
   const selector = currentStepDef
@@ -242,10 +244,6 @@ export default function TourOverlay() {
   const rawStyle = getTooltipStyle(targetRect, currentStepDef.placement, isMobile, measuredHeight);
   const { _actual, ...style } = rawStyle;
   const arrowPlacement = _actual || (targetRect ? currentStepDef.placement : null);
-
-  const inviteLink = typeof window !== 'undefined' && orgName
-    ? `${window.location.origin}/join?org=${encodeURIComponent(orgName)}`
-    : '';
 
   return (
     <Portal>
@@ -372,6 +370,7 @@ function TooltipCard({ step, stepIndex, totalSteps, StepIcon, isFirst, isLast, i
                 variant="ghost"
                 color={hasCopied ? 'green.400' : 'whiteAlpha.400'}
                 onClick={onCopy}
+                isDisabled={!inviteLink}
                 aria-label="Copy invite link"
               />
             </InputRightElement>

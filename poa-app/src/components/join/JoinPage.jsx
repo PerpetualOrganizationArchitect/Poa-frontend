@@ -57,6 +57,7 @@ import { RoleApplicationForm, VouchLinkHandler, VouchProgressBar } from '@/compo
 import EmailInviteCard from '@/components/zkEmail/EmailInviteCard';
 import { useZkEmailInviteSummary } from '@/hooks/useZkEmailInviteSummary';
 import { orgUrl } from '@/util/orgUrl';
+import { shareUrl } from '@/util/shortLinks';
 import ConnectedAccountBadge from '@/components/common/ConnectedAccountBadge';
 import AccountControl from '@/components/common/AccountControl';
 import { VouchFirstPhase } from '@/hooks/useVouchFirstOnboarding';
@@ -542,7 +543,7 @@ const User = () => {
 
       // Generate vouch link for the user to share with existing members
       const userAddr = accountAddress || address;
-      const vouchLink = `${window.location.origin}/join?org=${encodeURIComponent(userDAO)}&vouch=${userAddr}&hatId=${selectedHatId}`;
+      const vouchLink = await shareUrl('/join/', { org: userDAO, vouch: userAddr, hatId: selectedHatId });
 
       // Copy to clipboard
       try {

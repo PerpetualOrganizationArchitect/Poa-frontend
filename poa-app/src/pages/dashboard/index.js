@@ -1,3 +1,4 @@
+import { useShareLink } from '@/hooks/useShareLink';
 import SEOHead from "@/components/common/SEOHead";
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -59,9 +60,7 @@ const PerpetualOrgDashboard = () => {
   const [isVouchingExpanded, setIsVouchingExpanded] = useState(false);
   const { fetchImageFromIpfs } = useIPFScontext();
 
-  const inviteLink = typeof window !== 'undefined' && userDAO
-    ? `${window.location.origin}/join?org=${encodeURIComponent(userDAO)}`
-    : '';
+  const inviteLink = useShareLink('/join/', { org: userDAO });
   const { hasCopied, onCopy } = useClipboard(inviteLink);
 
   // Responsive design breakpoints — single call to reduce matchMedia listeners
@@ -332,6 +331,7 @@ const PerpetualOrgDashboard = () => {
                   <Tooltip label={hasCopied ? 'Copied!' : 'Copy invite link to clipboard'} closeOnClick={false} hasArrow>
                     <Button
                       onClick={onCopy}
+                      isDisabled={!inviteLink}
                       size="sm"
                       variant="outline"
                       colorScheme={hasCopied ? 'green' : 'purple'}

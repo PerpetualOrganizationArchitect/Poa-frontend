@@ -17,8 +17,11 @@ cd poa-app && yarn e2e:test-passkey # virtual-passkey crypto self-test
 ```
 
 Automated coverage is vitest over the pure layer (colocated `*.test.js`, mostly
-`src/lib/**` + `src/util/**`) plus the E2E harness. React-coupled code has no unit
-tests — drive it through Test6 instead. No Prettier. No formatting commands.
+`src/lib/**` + `src/util/**`), React integration tests, and the E2E harness. The normal
+`yarn test` command includes server-rendered tests of MainLayout's actual project
+callback through TaskService and JoinPage's recipient display and vouch callbacks.
+These mock data hooks and transaction transport; browser layout and live flows still
+need Test6 verification. No Prettier. No formatting commands.
 
 ## Frontend changes: verify on Test6
 

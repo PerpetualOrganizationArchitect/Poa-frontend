@@ -367,38 +367,17 @@ const MainLayout = () => {
       }
     }
 
-    // Build default permissions using creatorHatIds (roles trusted to manage tasks)
-    // For the simple-create path (quick project creation without the modal)
-    if (!roleHatIds || roleHatIds.length === 0) {
-      console.error('Cannot create project: roleHatIds not loaded yet');
-      throw new Error('Organization roles are still loading. Please wait a moment and try again.');
-    }
-
-    // Seed the new project's permission matrix from the TaskManager's creator hats —
-    // the org's own statement of which roles are trusted. With none indexed, seed every
-    // role rather than guessing by deploy order (index 0 is not reliably "the members
-    // role": on orgs whose senior role deployed first it is the opposite).
-    const creatorSet = new Set((creatorHatIds || []).map(String));
-    const adminRoles = creatorSet.size > 0
-      ? roleHatIds.filter(id => creatorSet.has(String(id)))
-      : roleHatIds;
-    // If no admin roles resolved, give all roles full permissions
-    const effectiveAdminRoles = adminRoles.length > 0 ? adminRoles : roleHatIds;
-
-    const defaultCreateHats = effectiveAdminRoles;
-    const defaultClaimHats = roleHatIds; // all roles can claim
-    const defaultReviewHats = effectiveAdminRoles;
-    const defaultAssignHats = effectiveAdminRoles;
-
+    // New projects inherit current authority permissions. Never refill the retired
+    // role arrays from a legacy list; explicit old inputs are rejected by TaskService.
     const createProjectData = {
       name: projectName,
       metadataHash,
       cap: isSimpleCreate ? 0 : (projectData.cap || 0),
       managers: isSimpleCreate ? [] : (projectData.managers || []),
-      createHats: isSimpleCreate ? defaultCreateHats : (projectData.createHats?.length > 0 ? projectData.createHats : defaultCreateHats),
-      claimHats: isSimpleCreate ? defaultClaimHats : (projectData.claimHats?.length > 0 ? projectData.claimHats : defaultClaimHats),
-      reviewHats: isSimpleCreate ? defaultReviewHats : (projectData.reviewHats?.length > 0 ? projectData.reviewHats : defaultReviewHats),
-      assignHats: isSimpleCreate ? defaultAssignHats : (projectData.assignHats?.length > 0 ? projectData.assignHats : defaultAssignHats),
+      createHats: isSimpleCreate ? [] : (projectData.createHats || []),
+      claimHats: isSimpleCreate ? [] : (projectData.claimHats || []),
+      reviewHats: isSimpleCreate ? [] : (projectData.reviewHats || []),
+      assignHats: isSimpleCreate ? [] : (projectData.assignHats || []),
       bountyTokens: isSimpleCreate ? [] : (projectData.bountyTokens || []),
       bountyCaps: isSimpleCreate ? [] : (projectData.bountyCaps || []),
     };
@@ -411,7 +390,7 @@ const MainLayout = () => {
         refreshEvent: 'project:created',
       }
     );
-  }, [taskService, executeWithNotification, taskManagerContractAddress, addToIpfs, roleHatIds, creatorHatIds]);
+  }, [taskService, executeWithNotification, taskManagerContractAddress, addToIpfs]);
 
   // Toggle sidebar visibility
   const toggleSidebar = () => {

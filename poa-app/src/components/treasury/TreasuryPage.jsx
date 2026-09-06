@@ -21,7 +21,8 @@ import { useRefreshSubscription, RefreshEvent } from '@/context/RefreshContext';
 import Navbar from '@/templateComponents/studentOrgDAO/NavBar';
 import { FETCH_TREASURY_DATA, FETCH_INFRASTRUCTURE_ADDRESSES } from '@/util/queries';
 import { FETCH_GAS_POOL_DATA } from '@/util/passkeyQueries';
-import { getBountyTokenOptions } from '@/util/tokens';
+import { getBountyTokenOptions, getTokenByAddress } from '@/util/tokens';
+import { committedBountiesByToken, bountyShortfall } from '@/util/bountyFunding';
 import { formatTokenAmount } from '@/util/formatToken';
 import { createChainClients } from '@/services/web3/utils/chainClients';
 import TreasuryHeader from './TreasuryHeader';
@@ -168,7 +169,15 @@ const TreasuryPage = () => {
 
   // ERC20 treasury balance fetching
   const [erc20Balances, setErc20Balances] = useState([]);
+  const [bountyPoolBalances, setBountyPoolBalances] = useState([]);
   const [balancesLoading, setBalancesLoading] = useState(false);
+
+  // What live tasks promise in bounties, per token — completeTask pays these
+  // straight from the TaskManager's balance, so the ledger must show that pot.
+  const committedBounties = useMemo(
+    () => committedBountiesByToken(treasuryData?.organization?.taskManager?.projects),
+    [treasuryData]
+  );
 
   // Non-stable holdings the hero must disclose beside the $ figure ("the group
   // also holds X — no reliable dollar price"). Display-zero balances excluded.
@@ -184,37 +193,66 @@ const TreasuryPage = () => {
     if (!paymentManager?.id || !orgChainId) return;
 
     const tokens = getBountyTokenOptions(orgChainId);
-    if (tokens.length === 0) return;
+
+    // The task-reward pool can owe a token the chain list doesn't carry —
+    // resolve those from the promised-bounty map so an exotic bounty still shows.
+    const poolTokens = [...tokens];
+    for (const address of Object.keys(committedBounties)) {
+      if (!poolTokens.some(t => t.address.toLowerCase() === address)) {
+        poolTokens.push(getTokenByAddress(address));
+      }
+    }
+    if (tokens.length === 0 && poolTokens.length === 0) return;
 
     const clients = createChainClients(orgChainId);
     const client = clients?.publicClient;
     if (!client) return;
 
+    const readAll = (list, holder) => Promise.all(
+      list.map(async (token) => {
+        try {
+          const balance = await client.readContract({
+            address: token.address,
+            abi: BALANCE_OF_ABI,
+            functionName: 'balanceOf',
+            args: [holder],
+          });
+          return { ...token, balance: balance.toString() };
+        } catch (e) {
+          console.warn(`Failed to fetch balance for ${token.symbol}:`, e.message);
+          return { ...token, balance: '0' };
+        }
+      })
+    );
+
     setBalancesLoading(true);
     try {
-      const balances = await Promise.all(
-        tokens.map(async (token) => {
-          try {
-            const balance = await client.readContract({
-              address: token.address,
-              abi: BALANCE_OF_ABI,
-              functionName: 'balanceOf',
-              args: [paymentManager.id],
-            });
-            return { ...token, balance: balance.toString() };
-          } catch (e) {
-            console.warn(`Failed to fetch balance for ${token.symbol}:`, e.message);
-            return { ...token, balance: '0' };
-          }
-        })
-      );
+      const [balances, poolBalances] = await Promise.all([
+        readAll(tokens, paymentManager.id),
+        taskManagerAddress ? readAll(poolTokens, taskManagerAddress) : Promise.resolve([]),
+      ]);
       setErc20Balances(balances);
+      setBountyPoolBalances(poolBalances);
     } catch (e) {
       console.error('Failed to fetch treasury balances:', e);
     } finally {
       setBalancesLoading(false);
     }
-  }, [paymentManager?.id, orgChainId]);
+  }, [paymentManager?.id, orgChainId, taskManagerAddress, committedBounties]);
+
+  // Task-reward pool rows for the ledger: pool balance beside what live tasks
+  // promise, so an underfunded pot is visible before a completion reverts.
+  const bountyPool = useMemo(
+    () => bountyPoolBalances.map((token) => {
+      const committed = committedBounties[token.address.toLowerCase()] || '0';
+      return {
+        ...token,
+        committed,
+        shortfall: bountyShortfall(token.balance || '0', committed),
+      };
+    }),
+    [bountyPoolBalances, committedBounties]
+  );
 
   // Fetch balances on initial load
   useEffect(() => {
@@ -295,6 +333,8 @@ const TreasuryPage = () => {
                     onPTClick={onPTModalOpen}
                     isLoading={treasuryLoading || balancesLoading}
                     erc20Balances={erc20Balances}
+                    bountyPool={bountyPool}
+                    onFundBounties={taskManagerAddress ? onBountyDepositOpen : undefined}
                   />
                 </Box>
               </Rise>

@@ -1203,6 +1203,14 @@ export const FETCH_TREASURY_DATA = gql`
         projects(where: { deleted: false }, first: 100) {
           id
           title
+          bountyTasks: tasks(
+            where: { status_in: ["Open", "Assigned", "Submitted"], bountyPayout_gt: "0" }
+            first: 500
+          ) {
+            id
+            bountyToken
+            bountyPayout
+          }
           tasks(where: { status: "Completed" }, first: 500, orderBy: completedAt, orderDirection: desc) {
             id
             taskId
